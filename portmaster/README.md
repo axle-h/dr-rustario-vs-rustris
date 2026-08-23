@@ -5,7 +5,7 @@ on a shared SDL2 engine. Both games come with NES, SNES, N64 and modern themes, 
 one or two player, mixed (each player picks a game) or as a playlist that alternates games a
 stage at a time.
 
-Source: https://github.com/axle-h/dr-rustario
+Source: https://github.com/axle-h/dr-rustario-vs-rustris
 
 The game links the device's own SDL2 and reads the gamepad natively through SDL's
 GameController API (no gptokeyb). Config (`config.yml`) and the high score tables
