@@ -19,6 +19,9 @@ pub struct HeadlessGame {
     game_over: bool,
     pieces: u32,
     tetris_lines: u32,
+    /// lines counted from clear events: [Game::lines] saturates at [crate::game::MAX_LINES],
+    /// which would stop [EndGame] line caps and the survival phase's line target ever being hit
+    lines: u32,
 }
 
 impl HeadlessGame {
@@ -35,6 +38,7 @@ impl HeadlessGame {
             game_over: false,
             pieces: 0,
             tetris_lines: 0,
+            lines: 0,
             options,
             end_game
         }
@@ -70,6 +74,7 @@ impl HeadlessGame {
                 GameEvent::Clear { count, .. } => {
                     // simulate line clear animation
                     self.duration += self.options.line_clear_delay;
+                    self.lines += count;
                     if count == 4 {
                         self.tetris_lines += count;
                     }
@@ -87,7 +92,7 @@ impl HeadlessGame {
     fn result(&self) -> GameResult {
         GameResult::new(
             self.game.score(),
-            self.game.lines(),
+            self.lines,
             self.game.level(),
             self.game_over,
             self.duration,
@@ -281,6 +286,19 @@ mod tests {
         let evaluator = ActionEvaluator::Linear(LinearCoefficients::default());
         let result = fixture.play(evaluator);
         assert!(result.score() > 0);
+    }
+
+    #[test]
+    fn line_cap_ends_the_game() {
+        let fixture = HeadlessGameFixture::new(
+            RandomMode::Bag,
+            100.into(),
+            HeadlessGameOptions::default(),
+            EndGame::of_lines(3)
+        );
+        let result = fixture.play(ActionEvaluator::Linear(LinearCoefficients::default()));
+        assert!(result.lines() >= 3);
+        assert!(!result.game_over());
     }
 
     #[test]
