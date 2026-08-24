@@ -43,6 +43,12 @@ impl StructuredMusic {
         audio::play_music(music.intro, music.repeating, music.loops)
     }
 
+    /// Plays, unless an endless loop of this same music is already playing, which is left
+    /// alone: menus that share a tune switch without restarting it.
+    pub fn play_unless_current(music: &Rc<StructuredMusic>) -> Result<(), String> {
+        audio::play_music_unless_current(music.intro, music.repeating, music.loops)
+    }
+
     pub fn maybe_play(music: Option<&Rc<StructuredMusic>>) -> Result<(), String> {
         if let Some(music) = music {
             StructuredMusic::play(music)
