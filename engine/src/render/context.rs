@@ -11,11 +11,11 @@ use crate::particles::render::ParticleRender;
 use crate::render::layout::BoardLayout;
 use crate::render::sound::AudioTheme;
 use crate::render::Theme;
-use crate::scale::Scale;
+use crate::scale::{Scale, ScaleMode};
 use crate::session::MatchState;
 use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::{Point, Rect};
-use sdl2::render::{BlendMode, Texture, TextureCreator, WindowCanvas};
+use sdl2::render::{BlendMode, ScaleMode as TextureScaleMode, Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -628,6 +628,14 @@ impl<'a> ThemeContext<'a> {
         delta: Duration,
     ) -> Result<(), String> {
         for (texture, texture_mode) in texture_refs.iter_mut() {
+            let (TextureMode::Background(pid) | TextureMode::Board(pid)) = texture_mode;
+            // retro pixel art scales up by whole pixels, so keep its hard edges; a Native
+            // (modern) theme is built at 1-player size and drawn smaller when the window is
+            // shared, and nearest sampling breaks up its anti-aliased text
+            texture.set_scale_mode(match self.theme(*pid).scale_mode() {
+                ScaleMode::Source => TextureScaleMode::Nearest,
+                ScaleMode::Native => TextureScaleMode::Linear,
+            });
             match texture_mode {
                 TextureMode::Background(pid) => {
                     let current = self.current(*pid);
