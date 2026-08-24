@@ -312,6 +312,12 @@ impl<'a> ThemeContext<'a> {
         self.current(player).is_pause_required_for_animation(player)
     }
 
+    /// whether a player's animations have stopped their sprint clock, see
+    /// [`PlayerAnimations::stops_clock`]
+    pub fn stops_clock(&self, player: u32) -> bool {
+        self.player_animations(player).stops_clock()
+    }
+
     pub fn update_animations(&mut self, delta: Duration) -> Vec<AnimationEvent> {
         let mut events = vec![];
         for (id, theme) in self.themes.iter_mut().enumerate() {

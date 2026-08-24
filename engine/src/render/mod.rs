@@ -15,6 +15,7 @@ pub mod retro;
 pub mod scene;
 pub mod sound;
 pub mod sprite_sheet;
+pub mod timer;
 
 use crate::animate::game_over::{CurtainPhase, GameOverStyle};
 use crate::animate::{AnimationMeta, PlayerAnimations};

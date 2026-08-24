@@ -21,11 +21,6 @@ const MAX_PLAYERS: u32 = 2;
 
 const QUIT: &str = "quit";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TitleAction {
-    ViewHighScores,
-}
-
 /// The pre-menu: which of the three modes to run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModeChoice {
@@ -44,6 +39,13 @@ impl ModeChoice {
             ModeChoice::Versus => "dr. rustario vs. rustris",
         }
     }
+}
+
+/// A pick from the pre-menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PreMenuAction {
+    Play(ModeChoice),
+    ViewHighScores,
 }
 
 /// What happens when a mode's menus are left.
@@ -65,10 +67,9 @@ fn run_mode<M: Mode>(
 
     'title: loop {
         let mut items = mode.title_items(MAX_PLAYERS);
-        items.push(MenuItem::select(HIGH_SCORES));
         items.push(MenuItem::select(START));
         items.push(MenuItem::select(BACK));
-        let exit = app.run_menu(
+        let exit = app.run_menu::<()>(
             items,
             mode.title(),
             None,
@@ -76,7 +77,6 @@ fn run_mode<M: Mode>(
             bg_particles,
             &race,
             |name, value| match name {
-                HIGH_SCORES => Some(MenuExit::Custom(TitleAction::ViewHighScores)),
                 START => Some(MenuExit::Start),
                 BACK => Some(MenuExit::Back),
                 _ => {
@@ -89,10 +89,7 @@ fn run_mode<M: Mode>(
             MenuExit::Start => {}
             MenuExit::Back => return Ok(Exit::ToPreMenu),
             MenuExit::Quit => return Ok(Exit::Quit),
-            MenuExit::Custom(TitleAction::ViewHighScores) => {
-                app.view_high_score(&mode.high_score_key(), bg_particles)?;
-                continue 'title;
-            }
+            MenuExit::Custom(()) => {}
         }
 
         'menu: loop {
@@ -204,7 +201,7 @@ fn main() -> Result<(), String> {
         let items = ModeChoice::ALL
             .iter()
             .map(|m| MenuItem::select(m.name()))
-            .chain(std::iter::once(MenuItem::select(QUIT)))
+            .chain([MenuItem::select(HIGH_SCORES), MenuItem::select(QUIT)])
             .collect();
         let exit = app.run_menu(
             items,
@@ -217,14 +214,28 @@ fn main() -> Result<(), String> {
                 if name == QUIT {
                     return Some(MenuExit::Back);
                 }
+                if name == HIGH_SCORES {
+                    return Some(MenuExit::Custom(PreMenuAction::ViewHighScores));
+                }
                 ModeChoice::ALL
                     .iter()
                     .find(|m| m.name() == name)
-                    .map(|m| MenuExit::Custom(*m))
+                    .map(|m| MenuExit::Custom(PreMenuAction::Play(*m)))
             },
         )?;
         let choice = match exit {
-            MenuExit::Custom(mode) => mode,
+            MenuExit::Custom(PreMenuAction::Play(mode)) => mode,
+            MenuExit::Custom(PreMenuAction::ViewHighScores) => {
+                // every table of every game and mode, at its defaults until played
+                let keys = [
+                    rustris.all_high_score_keys(),
+                    dr_rustario.all_high_score_keys(),
+                    versus.all_high_score_keys(),
+                ]
+                .concat();
+                app.view_high_scores(&keys, &mut bg_particles)?;
+                continue;
+            }
             MenuExit::Start => continue,
             MenuExit::Back | MenuExit::Quit => break,
         };

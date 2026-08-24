@@ -3,6 +3,8 @@
 
 use crate::games::{AnyGame, GameKind};
 use engine::app::{MatchSettings, PlayerSettings, StageChange, ThemeMode};
+use engine::high_score::table::Ranking;
+use engine::high_score::HighScoreKey;
 use engine::menu::sound::MenuSounds;
 use engine::menu::MenuItem;
 use engine::particles::prescribed::RaceTheme;
@@ -67,7 +69,12 @@ pub trait Mode {
     fn menu_items(&self) -> Vec<MenuItem>;
     fn menu_select(&mut self, name: &str, value: &str);
     fn subtitle(&self) -> String;
-    fn high_score_key(&self) -> String;
+    /// the high score table the current options compete for: one table per game and mode.
+    /// Start level, speed and difficulty all share their mode's table, so a quicker setup
+    /// simply ranks higher.
+    fn high_score_key(&self) -> HighScoreKey;
+    /// every table this mode can compete for, whatever the options
+    fn all_high_score_keys(&self) -> Vec<HighScoreKey>;
     fn settings(&self, themes: &Themes) -> MatchSettings;
     fn games(&self) -> Result<Vec<AnyGame>, String>;
     fn next_stage(&self, themes: &Themes, player: u32, completed: u32)
@@ -85,6 +92,14 @@ fn players_item(max_players: u32, current: u32) -> Option<MenuItem> {
     } else {
         None
     }
+}
+
+/// one table per rules variant of a game
+fn game_high_score_keys(game: &str, stage_noun: &str) -> Vec<HighScoreKey> {
+    MatchRules::SINGLE_PLAYER_MODES
+        .iter()
+        .map(|rules| HighScoreKey::new(game, rules.name(stage_noun), rules.ranking()))
+        .collect()
 }
 
 fn subtitle(name: &str, players: u32) -> String {
@@ -147,8 +162,17 @@ impl Mode for DrRustarioMode {
         subtitle("", self.options.players()).trim().to_string()
     }
 
-    fn high_score_key(&self) -> String {
-        GameKind::DrRustario.key().to_string()
+    fn high_score_key(&self) -> HighScoreKey {
+        let rules = self.options.rules();
+        HighScoreKey::new(
+            self.title(),
+            rules.name(dr_rustario::options::STAGE_NOUN),
+            rules.ranking(),
+        )
+    }
+
+    fn all_high_score_keys(&self) -> Vec<HighScoreKey> {
+        game_high_score_keys(&self.title(), dr_rustario::options::STAGE_NOUN)
     }
 
     fn settings(&self, themes: &Themes) -> MatchSettings {
@@ -234,8 +258,17 @@ impl Mode for RustrisMode {
         subtitle("", self.options.players()).trim().to_string()
     }
 
-    fn high_score_key(&self) -> String {
-        GameKind::Rustris.key().to_string()
+    fn high_score_key(&self) -> HighScoreKey {
+        let rules = self.options.rules();
+        HighScoreKey::new(
+            self.title(),
+            rules.name(rustris::options::STAGE_NOUN),
+            rules.ranking(),
+        )
+    }
+
+    fn all_high_score_keys(&self) -> Vec<HighScoreKey> {
+        game_high_score_keys(&self.title(), rustris::options::STAGE_NOUN)
     }
 
     fn settings(&self, themes: &Themes) -> MatchSettings {
@@ -287,14 +320,16 @@ impl Mode for RustrisMode {
 const PLAYLIST: &str = "playlist";
 const DIFFICULTY: &str = "difficulty";
 
-/// How the two games are sequenced. Every player plays the same playlist, so it is always fair.
+/// How the two games are sequenced. Every player plays the same playlist, so it is always
+/// fair. The theme race is a sprint: first to the end of the playlist wins. The other
+/// playlists cycle endlessly as marathons: the highest score when everyone is out wins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Playlist {
-    /// every theme of each game, the games taking turns
+    /// every theme of each game, the games taking turns; a race to the end of the playlist
     ThemeRace,
-    /// the games take turns, each carrying on through its themes
+    /// the games take turns, each carrying on through its themes; a marathon
     Interleaved,
-    /// all of one game, then all of the other
+    /// all of one game, then all of the other; a marathon
     BackToBack,
 }
 
@@ -315,6 +350,42 @@ impl Playlist {
 
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|p| p.name() == name)
+    }
+
+    /// a race to the end of the playlist rather than an endless marathon around it
+    pub fn is_race(&self) -> bool {
+        matches!(self, Playlist::ThemeRace)
+    }
+
+    /// the race ranks best times, the marathons rank highest scores
+    pub fn ranking(&self) -> Ranking {
+        if self.is_race() {
+            Ranking::LowestTime
+        } else {
+            Ranking::HighestScore
+        }
+    }
+
+    pub fn rules(&self, stage_count: usize) -> MatchRules {
+        if self.is_race() {
+            MatchRules::StageSprint {
+                stages: stage_count as u32,
+            }
+        } else {
+            MatchRules::Marathon
+        }
+    }
+
+    /// which stage of the playlist a player is on after `completed` stages: the race ends
+    /// with the playlist, the marathons cycle it forever
+    fn stage_index(&self, completed: usize, stage_count: usize) -> Option<usize> {
+        if stage_count == 0 {
+            None
+        } else if self.is_race() {
+            (completed < stage_count).then_some(completed)
+        } else {
+            Some(completed % stage_count)
+        }
     }
 
     /// the stages, as the game and theme of each
@@ -503,18 +574,22 @@ impl Mode for VersusMode {
         subtitle("", self.players).trim().to_string()
     }
 
-    fn high_score_key(&self) -> String {
-        "versus".to_string()
+    fn high_score_key(&self) -> HighScoreKey {
+        HighScoreKey::new(self.title(), self.playlist.name(), self.playlist.ranking())
+    }
+
+    fn all_high_score_keys(&self) -> Vec<HighScoreKey> {
+        Playlist::ALL
+            .iter()
+            .map(|playlist| HighScoreKey::new(self.title(), playlist.name(), playlist.ranking()))
+            .collect()
     }
 
     fn settings(&self, themes: &Themes) -> MatchSettings {
         let stages = self.stages(themes);
         let (first, theme_mode) = stages[0];
         MatchSettings {
-            // first through the whole playlist wins
-            rules: MatchRules::StageSprint {
-                stages: stages.len() as u32,
-            },
+            rules: self.playlist.rules(stages.len()),
             players: (0..self.players)
                 .map(|_| PlayerSettings {
                     themes: themes.range(first),
@@ -537,11 +612,12 @@ impl Mode for VersusMode {
         completed: u32,
     ) -> Option<StageChange<AnyGame>> {
         let stages = self.stages(themes);
-        let (kind, theme_mode) = *stages.get(completed as usize)?;
+        let index = self.playlist.stage_index(completed as usize, stages.len())?;
+        let (kind, theme_mode) = stages[index];
         let previous = completed
             .checked_sub(1)
-            .and_then(|i| stages.get(i as usize))
-            .map(|(kind, _)| *kind);
+            .and_then(|i| self.playlist.stage_index(i as usize, stages.len()))
+            .map(|i| stages[i].0);
         // the same game again keeps its board and hold: only the theme changes
         let game = if previous == Some(kind) {
             None
@@ -573,6 +649,49 @@ mod tests {
         assert_eq!(stages[0], (GameKind::Rustris, ThemeMode::Fixed(0)));
         assert_eq!(stages[1], (GameKind::DrRustario, ThemeMode::Fixed(0)));
         assert_eq!(stages[7], (GameKind::DrRustario, ThemeMode::Fixed(3)));
+    }
+
+    #[test]
+    fn every_mode_has_one_table_per_rules_variant() {
+        let rustris = RustrisMode::new();
+        let keys = rustris.all_high_score_keys();
+        assert_eq!(
+            keys.iter().map(|k| k.mode.as_str()).collect::<Vec<_>>(),
+            vec!["marathon", "1 level sprint", "theme sprint", "10,000 point sprint"]
+        );
+        assert!(keys.contains(&rustris.high_score_key()));
+        assert_eq!(DrRustarioMode::new().all_high_score_keys().len(), 4);
+
+        let versus = VersusMode::new();
+        let keys = versus.all_high_score_keys();
+        assert_eq!(
+            keys.iter().map(|k| k.mode.as_str()).collect::<Vec<_>>(),
+            vec!["theme race", "interleaved", "back to back"]
+        );
+        assert_eq!(keys[0].ranking, Ranking::LowestTime);
+        assert_eq!(keys[1].ranking, Ranking::HighestScore);
+        assert_eq!(keys[2].ranking, Ranking::HighestScore);
+        assert!(keys.contains(&versus.high_score_key()));
+    }
+
+    #[test]
+    fn only_the_theme_race_is_a_sprint() {
+        assert_eq!(
+            Playlist::ThemeRace.rules(8),
+            MatchRules::StageSprint { stages: 8 }
+        );
+        assert_eq!(Playlist::Interleaved.rules(8), MatchRules::Marathon);
+        assert_eq!(Playlist::BackToBack.rules(8), MatchRules::Marathon);
+    }
+
+    #[test]
+    fn the_race_ends_with_the_playlist_and_marathons_cycle_it() {
+        assert_eq!(Playlist::ThemeRace.stage_index(7, 8), Some(7));
+        assert_eq!(Playlist::ThemeRace.stage_index(8, 8), None);
+        assert_eq!(Playlist::BackToBack.stage_index(7, 8), Some(7));
+        assert_eq!(Playlist::BackToBack.stage_index(8, 8), Some(0));
+        assert_eq!(Playlist::Interleaved.stage_index(13, 8), Some(5));
+        assert_eq!(Playlist::Interleaved.stage_index(0, 0), None);
     }
 
     #[test]

@@ -10,8 +10,8 @@ use crate::game::{Game, GameEvent, StageState, StageTransition};
 use crate::game_input::{GameInputContext, GameInputKey};
 use crate::high_score::event::HighScoreEntryEvent;
 use crate::high_score::render::HighScoreRender;
-use crate::high_score::table::HighScoreTable;
-use crate::high_score::NewHighScore;
+use crate::high_score::table::{HighScoreStore, HighScoreTable};
+use crate::high_score::{HighScoreKey, NewHighScore};
 use crate::icon::app_icon;
 use crate::menu::sound::{MenuSound, MenuSounds};
 use crate::menu::{Menu, MenuItem};
@@ -26,6 +26,7 @@ use crate::particles::source::ParticleSource;
 use crate::particles::Particles;
 use crate::render::context::{PlayerTextures, PlayerThemes, TextureMode, ThemeContext};
 use crate::render::pause::PausedScreen;
+use crate::render::timer::TimerRender;
 use crate::render::{GameRender, Theme};
 use crate::session::{Match, MatchRules, MatchState};
 use sdl2::pixels::Color;
@@ -114,7 +115,7 @@ pub struct MatchSettings {
     pub rules: MatchRules,
     pub players: Vec<PlayerSettings>,
     /// which high score table the match competes for
-    pub high_score_key: String,
+    pub high_score_key: HighScoreKey,
     /// stages may switch games, so every stage boundary shows the stage card
     pub playlist: bool,
 }
@@ -335,24 +336,50 @@ impl App {
         }
     }
 
-    pub fn view_high_score(
+    /// browse the high score tables of `keys`, in that order, each at its defaults until a
+    /// score is saved; any saved tables under other keys (e.g. from older versions) follow.
+    /// Left/right (or up/down) pages between tables and any other key leaves.
+    pub fn view_high_scores(
         &mut self,
-        key: &str,
+        keys: &[HighScoreKey],
         particles: &mut ParticleRender,
     ) -> Result<(), String> {
         let texture_creator = self.canvas.texture_creator();
         let inputs = MenuInputContext::new(self.config.input);
-        let high_scores = HighScoreTable::load(key)?;
-        if high_scores.entries().is_empty() {
+        let store = HighScoreStore::load()?;
+        let mut tables: Vec<(String, String, HighScoreTable)> = keys
+            .iter()
+            .map(|key| (key.game.clone(), key.mode.clone(), store.table(key)))
+            .collect();
+        for (game, mode, table) in store.all() {
+            if !tables
+                .iter()
+                .any(|(g, m, _)| g == game && m == mode)
+            {
+                tables.push((game.to_string(), mode.to_string(), table.clone()));
+            }
+        }
+        if tables.is_empty() {
             return Ok(());
         }
+        let mut index = 0;
 
-        let mut view = HighScoreRender::new(
-            high_scores,
-            &texture_creator,
-            self.canvas.window().size(),
-            None,
-        )?;
+        let window_size = self.canvas.window().size();
+        let build = |index: usize| -> Result<HighScoreRender, String> {
+            let (game, mode, table) = &tables[index];
+            let mut subtitle = format!("{}, {}", game, mode);
+            if tables.len() > 1 {
+                subtitle = format!("{} ({}/{})", subtitle, index + 1, tables.len());
+            }
+            HighScoreRender::new(
+                table.clone(),
+                &texture_creator,
+                window_size,
+                None,
+                Some(subtitle),
+            )
+        };
+        let mut view = build(index)?;
 
         particles.clear();
         particles.add_source(self.fireworks_particle_source());
@@ -361,10 +388,20 @@ impl App {
         self.menu_sound.play_high_score_music()?;
         'menu: loop {
             let delta = frame_rate.update()?;
-            let events = inputs.parse(self.controllers.poll(&mut self.event_pump));
-            if !events.is_empty() {
-                // any button press
-                break 'menu;
+            for key in inputs.parse(self.controllers.poll(&mut self.event_pump)) {
+                match key {
+                    MenuInputKey::Left | MenuInputKey::Up if tables.len() > 1 => {
+                        index = (index + tables.len() - 1) % tables.len();
+                        view = build(index)?;
+                        self.menu_sound.play_chime()?;
+                    }
+                    MenuInputKey::Right | MenuInputKey::Down if tables.len() > 1 => {
+                        index = (index + 1) % tables.len();
+                        view = build(index)?;
+                        self.menu_sound.play_chime()?;
+                    }
+                    _ => break 'menu,
+                }
             }
             self.canvas.set_draw_color(Color::BLACK);
             self.canvas.clear();
@@ -382,22 +419,20 @@ impl App {
 
     pub fn new_high_score(
         &mut self,
-        key: &str,
+        key: &HighScoreKey,
         new_high_score: NewHighScore,
         particles: &mut ParticleRender,
     ) -> Result<(), String> {
         let texture_creator = self.canvas.texture_creator();
         let inputs = MenuInputContext::new(self.config.input);
-        let high_scores = HighScoreTable::load(key)?;
-        if high_scores.entries().is_empty() {
-            return Ok(());
-        }
+        let mut store = HighScoreStore::load()?;
 
         let mut table = HighScoreRender::new(
-            high_scores,
+            store.table(key),
             &texture_creator,
             self.canvas.window().size(),
             Some(new_high_score),
+            Some(key.title()),
         )?;
 
         particles.clear();
@@ -440,9 +475,10 @@ impl App {
         }
 
         if let Some(new_entry) = table.new_entry() {
-            let mut high_scores = HighScoreTable::load(key).unwrap();
+            let mut high_scores = store.table(key);
             high_scores.add_high_score(new_entry);
-            high_scores.save(key)
+            store.set(key, high_scores);
+            store.save()
         } else {
             Ok(())
         }
@@ -508,6 +544,12 @@ impl App {
 
         let paused_screen =
             PausedScreen::new(&mut self.canvas, &texture_creator, window_size)?;
+        // sprints race the clock, so show it
+        let timer = if settings.rules.is_sprint() {
+            Some(TimerRender::new(&mut self.canvas, &texture_creator, window_size, players)?)
+        } else {
+            None
+        };
 
         let mut frame_rate = FrameRate::new();
         // per player: time since they finished a playlist stage, until the switch happens
@@ -651,6 +693,16 @@ impl App {
                             fixture.mut_game(*player, |g| controller(g, delta));
                         }
                     }
+                    // the race clock runs while anyone is playing: it stops only when every
+                    // player is held up at once (in single player, any stage card or fade)
+                    let anyone_playing = (0..players).any(|player| {
+                        !themes.stops_clock(player)
+                            && !themes.is_fading(player)
+                            && pending_switches[player as usize].is_none()
+                    });
+                    if anyone_playing {
+                        fixture.add_play_time(delta);
+                    }
                     for player in fixture.players.iter_mut() {
                         let player_id = player.player();
                         if themes.is_pause_required_for_animation(player_id)
@@ -731,7 +783,7 @@ impl App {
                 match (event_player, event) {
                     (Some(player), GameEvent::StageComplete) => {
                         if fixture.next_stage_ends_match(player) {
-                            fixture.set_winner(player);
+                            fixture.complete_sprint(player);
                         } else if settings.playlist {
                             // the finished board holds for a moment, then the next game of
                             // the playlist fades in (see the pending switches below)
@@ -945,6 +997,10 @@ impl App {
                 .map_err(|e| e.to_string())?;
 
             themes.draw_players(&mut self.canvas, &mut texture_refs, delta)?;
+
+            if let Some(timer) = &timer {
+                timer.draw(&mut self.canvas, fixture.play_time())?;
+            }
 
             // fg particles
             fg_particles.draw(&mut self.canvas)?;

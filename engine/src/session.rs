@@ -1,11 +1,12 @@
 //! A match: the players, their games, who is winning and how garbage moves between them.
 
 use crate::game::{Attack, Game, StageState};
-use crate::high_score::table::HighScoreTable;
-use crate::high_score::NewHighScore;
+use crate::high_score::table::{HighScoreStore, HighScoreTable, Ranking};
+use crate::high_score::{HighScoreKey, NewHighScore};
 use num_format::{Locale, ToFormattedString};
 use rand::prelude::ThreadRng;
 use rand::{rng, RngExt};
+use std::time::Duration;
 
 /// How a match is won. Game-neutral: stages are whatever a game calls a stage (a cleared
 /// bottle, ten lines...).
@@ -51,6 +52,20 @@ impl MatchRules {
         self != &Self::ThemeSprint
     }
 
+    /// a race to a goal: timed, and its high scores are the quickest finishes
+    pub fn is_sprint(&self) -> bool {
+        !matches!(self, MatchRules::Marathon)
+    }
+
+    /// how these rules' high score table is ranked
+    pub fn ranking(&self) -> Ranking {
+        if self.is_sprint() {
+            Ranking::LowestTime
+        } else {
+            Ranking::HighestScore
+        }
+    }
+
     pub fn default_by_players(players: u32) -> Self {
         if players == 1 {
             MatchRules::Marathon
@@ -64,6 +79,8 @@ pub struct Player<G: Game> {
     player: u32,
     game: G,
     winner: bool,
+    /// won by reaching the sprint goal rather than by outlasting everyone else
+    completed_sprint: bool,
 }
 
 impl<G: Game> Player<G> {
@@ -72,6 +89,7 @@ impl<G: Game> Player<G> {
             player,
             game,
             winner: false,
+            completed_sprint: false,
         }
     }
 
@@ -133,6 +151,8 @@ pub struct Match<G: Game> {
     theme_count: u32,
     /// players a computer plays for; they do not enter the high score table
     ai_players: Vec<u32>,
+    /// the race clock of a sprint: it runs while anyone is playing, see [`Match::add_play_time`]
+    play_time: Duration,
     rng: ThreadRng,
 }
 
@@ -143,7 +163,7 @@ impl<G: Game> Match<G> {
         games: Vec<G>,
         rules: MatchRules,
         theme_counts: &[u32],
-        high_score_key: &str,
+        high_score_key: &HighScoreKey,
     ) -> Self {
         assert!(!games.is_empty());
         Self {
@@ -152,11 +172,12 @@ impl<G: Game> Match<G> {
                 .enumerate()
                 .map(|(pid, game)| Player::new(pid as u32, game))
                 .collect(),
-            high_scores: HighScoreTable::load(high_score_key).unwrap(),
+            high_scores: HighScoreStore::load().unwrap().table(high_score_key),
             state: MatchState::Normal,
             rules,
             theme_count: theme_counts.iter().copied().min().unwrap_or(1).max(1),
             ai_players: vec![],
+            play_time: Duration::ZERO,
             rng: rng(),
         }
     }
@@ -207,6 +228,22 @@ impl<G: Game> Match<G> {
         self.state
     }
 
+    /// run the race clock: the match loop calls this for every frame at least one player is
+    /// playing, so it stops while paused and when everyone is held up at once (stage cards,
+    /// theme fades, the end of the match)
+    pub fn add_play_time(&mut self, delta: Duration) {
+        self.play_time += delta;
+    }
+
+    pub fn play_time(&self) -> Duration {
+        self.play_time
+    }
+
+    /// the clock as a high score table entry
+    fn play_time_millis(&self) -> u32 {
+        self.play_time.as_millis().min(u32::MAX as u128) as u32
+    }
+
     fn sprint_stages(&self) -> Option<u32> {
         match self.rules {
             MatchRules::StageSprint { stages } => Some(stages),
@@ -225,6 +262,23 @@ impl<G: Game> Match<G> {
 
     pub fn set_winner(&mut self, player: u32) {
         self.player_mut(player).winner = true;
+    }
+
+    /// this player reached the sprint goal: they win, and their time counts
+    pub fn complete_sprint(&mut self, player: u32) {
+        let player = self.player_mut(player);
+        player.winner = true;
+        player.completed_sprint = true;
+    }
+
+    /// whether a player has reached the goal of a sprint (a stage sprint is flagged as the
+    /// last stage completes; a score sprint is read off the score)
+    fn reached_sprint_goal(&self, player: &Player<G>) -> bool {
+        match self.rules {
+            MatchRules::ScoreSprint { score } => player.game.score() >= score,
+            MatchRules::StageSprint { .. } | MatchRules::ThemeSprint => player.completed_sprint,
+            MatchRules::Marathon => false,
+        }
     }
 
     pub fn check_for_winning_player(&self) -> Option<u32> {
@@ -286,13 +340,26 @@ impl<G: Game> Match<G> {
         }
 
         // only human players can enter the high score table
-        let high_score = self
+        let humans = self
             .players
             .iter()
-            .filter(|p| !self.is_ai_player(p.player))
-            .max_by_key(|p| p.game.score())
-            .filter(|best| self.high_scores.is_high_score(best.game.score()))
-            .map(|best| NewHighScore::new(best.player, best.game.score()));
+            .filter(|p| !self.is_ai_player(p.player));
+        let high_score = if self.rules.is_sprint() {
+            // a sprint's table is the quickest finishes, so only a player who finished may
+            // enter it: not one who merely outlasted an opponent, nor one who topped out.
+            // The race clock stopped as the match ended, so it is the winner's time.
+            let millis = self.play_time_millis();
+            humans
+                .filter(|p| self.reached_sprint_goal(p))
+                .max_by_key(|p| p.game.score())
+                .filter(|_| self.high_scores.is_high_score(millis))
+                .map(|best| NewHighScore::new(best.player, millis))
+        } else {
+            humans
+                .max_by_key(|p| p.game.score())
+                .filter(|best| self.high_scores.is_high_score(best.game.score()))
+                .map(|best| NewHighScore::new(best.player, best.game.score()))
+        };
 
         self.state = MatchState::GameOver { high_score };
         true
@@ -479,6 +546,7 @@ mod tests {
             rules: MatchRules::Marathon,
             theme_count: 1,
             ai_players: vec![],
+            play_time: Duration::ZERO,
             rng: rng(),
         };
         assert_eq!(fixture.leading_player(), Some(1));
@@ -488,18 +556,113 @@ mod tests {
         assert_eq!(fixture.leading_player(), None);
     }
 
-    #[test]
-    fn stage_sprint_ends_with_the_last_stage() {
-        let fixture = Match {
-            players: vec![Player::new(0, counter(0, 0, 1))],
-            high_scores: HighScoreTable::default(),
+    fn sprint(players: Vec<Player<Counter>>, rules: MatchRules) -> Match<Counter> {
+        Match {
+            players,
+            high_scores: HighScoreTable::new(rules.ranking()),
             state: MatchState::Normal,
-            rules: MatchRules::StageSprint { stages: 2 },
+            rules,
             theme_count: 1,
             ai_players: vec![],
+            play_time: Duration::ZERO,
             rng: rng(),
-        };
+        }
+    }
+
+    #[test]
+    fn stage_sprint_ends_with_the_last_stage() {
+        let fixture = sprint(
+            vec![Player::new(0, counter(0, 0, 1))],
+            MatchRules::StageSprint { stages: 2 },
+        );
         assert!(fixture.next_stage_ends_match(0));
         assert_eq!(fixture.check_for_winning_player(), None);
+    }
+
+    #[test]
+    fn a_finished_sprint_enters_its_time() {
+        let mut fixture = sprint(
+            vec![
+                Player::new(0, counter(0, 0, 0)),
+                Player::new(1, counter(0, 0, 0)),
+            ],
+            MatchRules::StageSprint { stages: 1 },
+        );
+        fixture.add_play_time(Duration::from_millis(90_000));
+        fixture.complete_sprint(1);
+        assert!(fixture.maybe_set_game_over());
+        assert_eq!(
+            fixture.state(),
+            MatchState::GameOver {
+                high_score: Some(NewHighScore::new(1, 90_000))
+            }
+        );
+    }
+
+    #[test]
+    fn outlasting_an_opponent_is_not_a_sprint_time() {
+        let mut fixture = sprint(
+            vec![
+                Player::new(0, counter(0, 0, 0)),
+                Player::new(1, counter(0, 0, 0)),
+            ],
+            MatchRules::StageSprint { stages: 1 },
+        );
+        fixture.add_play_time(Duration::from_millis(1500));
+        fixture.set_winner(0);
+        assert!(fixture.maybe_set_game_over());
+        assert_eq!(fixture.state(), MatchState::GameOver { high_score: None });
+    }
+
+    #[test]
+    fn a_score_sprint_is_finished_by_its_score() {
+        let mut fixture = sprint(
+            vec![Player::new(0, counter(12_000, 0, 0))],
+            MatchRules::ScoreSprint { score: 10_000 },
+        );
+        fixture.add_play_time(Duration::from_millis(45_000));
+        assert_eq!(fixture.check_for_winning_player(), Some(0));
+        assert!(fixture.maybe_set_game_over());
+        assert_eq!(
+            fixture.state(),
+            MatchState::GameOver {
+                high_score: Some(NewHighScore::new(0, 45_000))
+            }
+        );
+    }
+
+    #[test]
+    fn ai_players_do_not_enter_times() {
+        let mut fixture = sprint(
+            vec![Player::new(0, counter(0, 0, 0))],
+            MatchRules::StageSprint { stages: 1 },
+        )
+        .with_ai_players(vec![0]);
+        fixture.complete_sprint(0);
+        assert!(fixture.maybe_set_game_over());
+        assert_eq!(fixture.state(), MatchState::GameOver { high_score: None });
+    }
+
+    #[test]
+    fn a_marathon_enters_its_score() {
+        let mut fixture = sprint(
+            vec![Player::new(0, counter(1234, 0, 0))],
+            MatchRules::Marathon,
+        );
+        assert!(fixture.maybe_set_game_over());
+        assert_eq!(
+            fixture.state(),
+            MatchState::GameOver {
+                high_score: Some(NewHighScore::new(0, 1234))
+            }
+        );
+    }
+
+    #[test]
+    fn only_marathons_rank_by_score() {
+        assert_eq!(MatchRules::Marathon.ranking(), Ranking::HighestScore);
+        assert_eq!(MatchRules::ONE_STAGE_SPRINT.ranking(), Ranking::LowestTime);
+        assert_eq!(MatchRules::DEFAULT_SCORE_SPRINT.ranking(), Ranking::LowestTime);
+        assert_eq!(MatchRules::ThemeSprint.ranking(), Ranking::LowestTime);
     }
 }

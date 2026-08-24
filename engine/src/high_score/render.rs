@@ -1,4 +1,4 @@
-use crate::high_score::table::{HighScore, HighScoreTable};
+use crate::high_score::table::{HighScore, HighScoreTable, Ranking};
 
 use crate::font::{FontTexture, FontType};
 use crate::high_score::event::HighScoreEntryEvent;
@@ -62,6 +62,7 @@ impl<'a> HighScoreTableRow<'a> {
 
 struct Entry {
     ordinal: usize,
+    ranking: Ranking,
     high_score: NewHighScore,
     name: [char; NAME_CHARACTERS],
     current_char: usize,
@@ -69,9 +70,15 @@ struct Entry {
 }
 
 impl Entry {
-    fn new(ordinal: usize, high_score: NewHighScore, font: &Font) -> Result<Self, String> {
+    fn new(
+        ordinal: usize,
+        ranking: Ranking,
+        high_score: NewHighScore,
+        font: &Font,
+    ) -> Result<Self, String> {
         Ok(Self {
             ordinal,
+            ranking,
             high_score,
             name: [' '; NAME_CHARACTERS],
             current_char: 0,
@@ -89,7 +96,11 @@ impl Entry {
     }
 
     fn title_text(&self) -> String {
-        format!("New High Score Player {}", self.high_score.player + 1)
+        format!(
+            "{} Player {}",
+            self.ranking.new_entry_title(),
+            self.high_score.player + 1
+        )
     }
 
     fn name(&self) -> String {
@@ -165,6 +176,7 @@ pub struct HighScoreRender<'a> {
     rect: Rect,
     entry: Option<Entry>,
     font: Font,
+    subtitle: Option<(Texture<'a>, Rect)>,
 }
 
 /// TODO music
@@ -174,12 +186,14 @@ impl<'a> HighScoreRender<'a> {
         texture_creator: &'a TextureCreator<WindowContext>,
         (window_width, window_height): (u32, u32),
         new_high_score: Option<NewHighScore>,
+        subtitle: Option<String>,
     ) -> Result<Self, String> {
         let font_size = window_width / 32;
         let font_header = FontType::Bold.load(font_size)?;
         let font_body = FontType::Mono.load(font_size)?;
         let font_title = FontType::Retro.load(window_width / 24)?;
 
+        let ranking = table.ranking();
         let (table, entry) = if let Some(new_high_score) = new_high_score {
             let score_index = table
                 .try_get_score_index(new_high_score.score)
@@ -191,7 +205,7 @@ impl<'a> HighScoreRender<'a> {
             ));
             (
                 new_table,
-                Some(Entry::new(score_index, new_high_score, &font_body)?),
+                Some(Entry::new(score_index, ranking, new_high_score, &font_body)?),
             )
         } else {
             (table, None)
@@ -202,7 +216,7 @@ impl<'a> HighScoreRender<'a> {
             texture_creator,
             "#",
             "Name",
-            "Score",
+            ranking.label(),
         )?];
         for (i, row) in table.entries().iter().enumerate() {
             rows.push(HighScoreTableRow::new(
@@ -210,7 +224,7 @@ impl<'a> HighScoreRender<'a> {
                 texture_creator,
                 &(i + 1).to_string(),
                 &row.name,
-                &row.score.to_string(),
+                &ranking.format(row.score),
             )?);
         }
 
@@ -241,7 +255,7 @@ impl<'a> HighScoreRender<'a> {
         let title_text = entry
             .as_ref()
             .map(|e| e.title_text())
-            .unwrap_or("High Scores".to_string());
+            .unwrap_or(ranking.title().to_string());
         let title =
             FontTexture::from_string(&font_title, texture_creator, &title_text, FONT_COLOR)?;
         let title_rect = Rect::new(
@@ -250,6 +264,23 @@ impl<'a> HighScoreRender<'a> {
             title.width,
             title.height,
         );
+
+        // which game and mode the table belongs to, under the title
+        let subtitle = match subtitle {
+            Some(text) => {
+                let font_subtitle = FontType::Bold.load(window_width / 48)?;
+                let rendered =
+                    FontTexture::from_string(&font_subtitle, texture_creator, &text, FONT_COLOR)?;
+                let rect = Rect::new(
+                    (window_width - rendered.width) as i32 / 2,
+                    title_rect.bottom() + padding as i32 / 2,
+                    rendered.width,
+                    rendered.height,
+                );
+                Some((rendered.texture, rect))
+            }
+            None => None,
+        };
 
         Ok(Self {
             texture_creator,
@@ -264,6 +295,7 @@ impl<'a> HighScoreRender<'a> {
             rect,
             entry,
             font: font_body,
+            subtitle,
         })
     }
 
@@ -363,6 +395,10 @@ impl<'a> HighScoreRender<'a> {
             })
             .map_err(|e| e.to_string())?;
         canvas.copy(&self.texture, None, self.rect)?;
-        canvas.copy(&self.title_texture, None, self.title_rect)
+        canvas.copy(&self.title_texture, None, self.title_rect)?;
+        if let Some((texture, rect)) = &self.subtitle {
+            canvas.copy(texture, None, *rect)?;
+        }
+        Ok(())
     }
 }

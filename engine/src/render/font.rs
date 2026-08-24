@@ -217,7 +217,7 @@ impl<'a> FontRender<'a> {
         let chars = ('A'..='Z')
             .chain('a'..='z')
             .chain('0'..='9')
-            .chain([' ', ',', '.'])
+            .chain([' ', ',', '.', ':'])
             .map(|c| {
                 (
                     c,

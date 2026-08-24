@@ -14,16 +14,6 @@ pub enum GameKind {
     Rustris,
 }
 
-impl GameKind {
-    /// the high score table key
-    pub fn key(&self) -> &'static str {
-        match self {
-            GameKind::DrRustario => "dr-rustario",
-            GameKind::Rustris => "rustris",
-        }
-    }
-}
-
 pub enum AnyGame {
     DrRustario(dr_rustario::game::Game),
     Rustris(rustris::game::Game),

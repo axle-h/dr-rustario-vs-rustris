@@ -163,6 +163,15 @@ impl PlayerAnimations {
             || self.interstitial.state().is_some()
     }
 
+    /// whether the player is between stages or out of the match, when a sprint clock stops.
+    /// In-play animations (spawn, lock, clears) are part of playing and keep the clock running.
+    pub fn stops_clock(&self) -> bool {
+        self.game_over.state().is_some()
+            || self.victory.state().is_some()
+            || self.next_stage.state().is_some()
+            || self.interstitial.state().is_some()
+    }
+
     pub fn mascot_idle_frame(&self) -> Option<usize> {
         self.mascot_idle.map(|m| m.frame())
     }

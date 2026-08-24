@@ -75,8 +75,21 @@ Config and high scores are stored in yaml:
 * MacOS: `$HOME/Library/Application Support/dr-rustario-vs-rustris`
 * Linux: `$XDG_CONFIG_HOME/dr-rustario-vs-rustris` or `$HOME/.config/dr-rustario-vs-rustris`
 
-High scores are kept per game (`high_scores.dr-rustario.yml`, `high_scores.rustris.yml`) plus
-`mixed` and `playlist` tables. Scores from the standalone games are not carried over.
+High scores all live in one `high_scores.yml`, structured by game and then mode: one table
+per mode of each game and per vs. playlist (start level, speed and difficulty share their
+mode's table). Marathon tables rank the highest scores; sprint games (level, theme and
+point sprints, and the vs. theme race, which is first to the end of the playlist) race a
+single clock, shown in the bottom-left corner (single player) or bottom-centre
+(multiplayer), and their tables rank the fastest times. The interleaved and back to back
+vs. playlists are marathons: they cycle their playlist endlessly and rank scores. The clock
+runs while anyone is playing: it stops while paused and when every player is held up at
+once, so in single player a stage-clear card or theme change does not count against you,
+while in a multiplayer race the clock keeps running.
+Every table starts with default entries to beat: low scores, or long times for sprints; a
+table that cannot be loaded falls back to the defaults, and new entries are saved along
+with them. The high scores screen on the first menu pages through every table with
+left/right. Per-mode files from earlier versions (`high_scores.dr-rustario.yml`,
+`high_scores.rustris.yml`, ...) are ignored.
 
 Most of it you can ignore except:
 
