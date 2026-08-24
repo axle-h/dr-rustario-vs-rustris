@@ -22,8 +22,10 @@ pub fn run<S: 'static>(
 
 /// Runs `tick` against `state` once per animation frame. This function never returns:
 /// emscripten unwinds `main` (skipping the rest of it) and calls back into the leaked
-/// state, which lives for the rest of the page. [`LoopControl::Exit`] or an error stops
-/// the callbacks, leaving the page frozen on its last frame.
+/// state, which lives for the rest of the page. [`LoopControl::Exit`] or an error cancels
+/// the callbacks and exits the runtime via `emscripten_force_exit`, which detaches the
+/// runtime's event listeners and fires the page's `Module.onExit` with the exit status,
+/// so the page can react (e.g. offer a restart) instead of freezing on the last frame.
 #[cfg(target_os = "emscripten")]
 pub fn run<S: 'static>(
     state: S,
@@ -39,6 +41,7 @@ pub fn run<S: 'static>(
             simulate_infinite_loop: c_int,
         );
         fn emscripten_cancel_main_loop();
+        fn emscripten_force_exit(status: c_int) -> !;
     }
 
     type Holder<S> = (S, Box<dyn FnMut(&mut S) -> Result<LoopControl, String>>);
@@ -47,10 +50,16 @@ pub fn run<S: 'static>(
         let holder = unsafe { &mut *(arg as *mut Holder<S>) };
         match (holder.1)(&mut holder.0) {
             Ok(LoopControl::Continue) => {}
-            Ok(LoopControl::Exit) => unsafe { emscripten_cancel_main_loop() },
+            Ok(LoopControl::Exit) => unsafe {
+                emscripten_cancel_main_loop();
+                emscripten_force_exit(0);
+            },
             Err(e) => {
                 eprintln!("fatal: {e}");
-                unsafe { emscripten_cancel_main_loop() }
+                unsafe {
+                    emscripten_cancel_main_loop();
+                    emscripten_force_exit(1);
+                }
             }
         }
     }
