@@ -11,7 +11,7 @@ mod game_result;
 mod mutation;
 mod generation_stats;
 mod coefficient;
-mod neural;
+pub mod neural;
 mod genome;
 pub mod linear;
 mod generation_record;
