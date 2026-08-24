@@ -17,7 +17,7 @@ const FONT_COLOR: Color = Color::WHITE;
 
 fn char_carets(font: &Font, text: &str) -> Result<Vec<Rect>, String> {
     let mut char_carets = vec![];
-    for (i, char) in text.chars().enumerate() {
+    for (i, char) in text.char_indices() {
         let x = if i == 0 {
             0
         } else {
