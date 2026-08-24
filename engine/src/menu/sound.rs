@@ -85,14 +85,14 @@ impl MenuSound {
     }
 
     pub fn play_title_music(&self) -> Result<(), String> {
-        StructuredMusic::play(&self.title_music)
+        StructuredMusic::play_unless_current(&self.title_music)
     }
 
     pub fn play_menu_music(&self) -> Result<(), String> {
-        StructuredMusic::play(&self.menu_music)
+        StructuredMusic::play_unless_current(&self.menu_music)
     }
 
     pub fn play_high_score_music(&self) -> Result<(), String> {
-        StructuredMusic::play(&self.high_score_music)
+        StructuredMusic::play_unless_current(&self.high_score_music)
     }
 }

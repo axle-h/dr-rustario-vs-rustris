@@ -119,15 +119,51 @@ impl Music {
     fn stream(self) -> Box<dyn mixer::MusicSource> {
         Box::new(VorbisStream::new(self.0).expect("music validated at load"))
     }
+
+    /// identity of the embedded bytes: enough to recognise the same track played again
+    fn id(self) -> (usize, usize) {
+        (self.0.as_ptr() as usize, self.0.len())
+    }
+}
+
+/// A piece of music as requested: (intro, repeat, loops), each track identified by its
+/// embedded bytes.
+type MusicId = (Option<(usize, usize)>, (usize, usize), i32);
+
+/// What `play_music` last started, so an identical endless loop can be recognised and
+/// left playing. Never ends by itself (only endless loops are ever matched), so it is
+/// invalidated only by `play_music` and `halt_music`.
+static CURRENT_MUSIC: Mutex<Option<MusicId>> = Mutex::new(None);
+
+fn music_id(intro: Option<Music>, repeat: Music, loops: i32) -> MusicId {
+    (intro.map(Music::id), repeat.id(), loops)
+}
+
+fn current_music() -> Result<std::sync::MutexGuard<'static, Option<MusicId>>, String> {
+    CURRENT_MUSIC
+        .lock()
+        .map_err(|_| "current music poisoned".to_string())
 }
 
 /// Plays `intro` once (if any) then `repeat` `loops` times (`-1` forever), replacing any current music.
 pub fn play_music(intro: Option<Music>, repeat: Music, loops: i32) -> Result<(), String> {
+    *current_music()? = Some(music_id(intro, repeat, loops));
     send(Command::PlayMusic {
         intro: intro.map(Music::stream),
         repeat: repeat.stream(),
         loops,
     })
+}
+
+/// Like [`play_music`], except that if this exact endlessly-looping music is already
+/// playing it is left alone rather than restarted, so menus that share a tune switch
+/// seamlessly.
+pub fn play_music_unless_current(intro: Option<Music>, repeat: Music, loops: i32) -> Result<(), String> {
+    if loops < 0 && *current_music()? == Some(music_id(intro, repeat, loops)) {
+        // already playing this loop: just make sure it is not paused
+        return resume_music();
+    }
+    play_music(intro, repeat, loops)
 }
 
 pub fn pause_music() -> Result<(), String> {
@@ -139,5 +175,6 @@ pub fn resume_music() -> Result<(), String> {
 }
 
 pub fn halt_music() -> Result<(), String> {
+    *current_music()? = None;
     send(Command::HaltMusic)
 }
