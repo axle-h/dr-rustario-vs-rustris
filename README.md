@@ -18,6 +18,9 @@ cargo build --release --no-default-features --features vcpkg
 
 All resources are embedded into the binary, including the Rustris AI opponent, demo mode and
 the `ga` training subcommand (`dr-rustario-vs-rustris ga [auto|survival|score|diagnose]`).
+`ga play <seed> [line cap] [report every n lines] [survival|tetris]` plays a built-in model
+headless on a fixed seed, reporting progress; it counts lines and banks the score itself as the
+in-game counters are capped.
 
 ### macOS
 
