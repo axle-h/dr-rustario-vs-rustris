@@ -1,5 +1,6 @@
 //! Match options specific to Rustris.
 
+use crate::game::ai::TetrisNeuralNetwork;
 use crate::game::random::RandomMode;
 pub use engine::session::MatchRules;
 use std::time::Duration;
@@ -44,23 +45,27 @@ impl MatchThemes {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AiDifficulty {
-    /// Heavily speed limited
-    Challenging,
-    /// Slightly speed limited
-    Difficult,
+    /// The most speed limited, and plays the survival model, which rarely attacks
+    Easy,
+    /// Speed limited, and plays the survival model, which rarely attacks
+    Normal,
+    /// Speed limited
+    Hard,
     /// Full speed
     Impossible,
 }
 
 impl AiDifficulty {
-    pub const ALL: [Self; 3] = [Self::Challenging, Self::Difficult, Self::Impossible];
-    pub const CHALLENGING_KEY_DELAY: Duration = Duration::from_millis(250);
-    pub const DIFFICULT_KEY_DELAY: Duration = Duration::from_millis(80);
+    pub const ALL: [Self; 4] = [Self::Easy, Self::Normal, Self::Hard, Self::Impossible];
+    pub const EASY_KEY_DELAY: Duration = Duration::from_millis(500);
+    pub const NORMAL_KEY_DELAY: Duration = Duration::from_millis(400);
+    pub const HARD_KEY_DELAY: Duration = Duration::from_millis(300);
 
     pub fn name(&self) -> &'static str {
         match self {
-            AiDifficulty::Challenging => "challenging",
-            AiDifficulty::Difficult => "difficult",
+            AiDifficulty::Easy => "easy",
+            AiDifficulty::Normal => "normal",
+            AiDifficulty::Hard => "hard",
             AiDifficulty::Impossible => "impossible",
         }
     }
@@ -72,9 +77,19 @@ impl AiDifficulty {
     /// Minimum time between simulated key presses
     pub fn key_delay(&self) -> Duration {
         match self {
-            AiDifficulty::Challenging => Self::CHALLENGING_KEY_DELAY,
-            AiDifficulty::Difficult => Self::DIFFICULT_KEY_DELAY,
+            AiDifficulty::Easy => Self::EASY_KEY_DELAY,
+            AiDifficulty::Normal => Self::NORMAL_KEY_DELAY,
+            AiDifficulty::Hard => Self::HARD_KEY_DELAY,
             AiDifficulty::Impossible => Duration::ZERO,
+        }
+    }
+
+    /// The model this difficulty plays: easy and normal keep to the survival model,
+    /// everything harder plays the high scoring tetris clear model
+    pub fn network(&self) -> TetrisNeuralNetwork {
+        match self {
+            AiDifficulty::Easy | AiDifficulty::Normal => TetrisNeuralNetwork::survival_trained(),
+            _ => TetrisNeuralNetwork::tetris_clear_trained(),
         }
     }
 }
@@ -85,6 +100,9 @@ pub enum AiMode {
     Off,
     /// Single player game played by the ai at full speed
     Demo,
+    /// Two player game played by the ai at full speed: the survival model
+    /// as player 1 against the tetris clear model as player 2
+    VsDemo,
     /// Two player game where player 2 is the ai
     Opponent(AiDifficulty),
 }
@@ -116,21 +134,28 @@ impl GameConfig {
         match self.ai {
             AiMode::Off => self.players,
             AiMode::Demo => 1,
+            AiMode::VsDemo => 2,
             AiMode::Opponent(_) => 2,
         }
     }
 
-    /// The ai controlled players (0-indexed) and the key delay they play at
-    pub fn ai_players(&self) -> Vec<(u32, Duration)> {
+    /// The ai controlled players (0-indexed), the key delay they play at and the model they play
+    pub fn ai_players(&self) -> Vec<(u32, Duration, TetrisNeuralNetwork)> {
         match self.ai {
             AiMode::Off => vec![],
-            AiMode::Demo => vec![(0, Duration::ZERO)],
-            AiMode::Opponent(difficulty) => vec![(1, difficulty.key_delay())],
+            AiMode::Demo => vec![(0, Duration::ZERO, TetrisNeuralNetwork::default())],
+            AiMode::VsDemo => vec![
+                (0, Duration::ZERO, TetrisNeuralNetwork::survival_trained()),
+                (1, Duration::ZERO, TetrisNeuralNetwork::tetris_clear_trained()),
+            ],
+            AiMode::Opponent(difficulty) => {
+                vec![(1, difficulty.key_delay(), difficulty.network())]
+            }
         }
     }
 
     pub fn is_ai_player(&self, player: u32) -> bool {
-        self.ai_players().iter().any(|(p, _)| *p == player)
+        self.ai_players().iter().any(|(p, _, _)| *p == player)
     }
 }
 

@@ -63,7 +63,12 @@ impl AiAgent {
     }
     
     pub fn default_neural() -> Self {
-        Self::new(ActionEvaluator::NeuralNetwork(TetrisNeuralNetwork::default()), DEFAULT_LOOKAHEAD)
+        Self::neural(TetrisNeuralNetwork::default())
+    }
+
+    /// An agent playing the given trained network
+    pub fn neural(network: TetrisNeuralNetwork) -> Self {
+        Self::new(ActionEvaluator::NeuralNetwork(network), DEFAULT_LOOKAHEAD)
     }
 
     /// Queue the inputs to be pressed, then press as many as the key delay allows
@@ -359,9 +364,9 @@ mod tests {
 
     #[test]
     fn paced_agent_plays_a_game() {
-        // simulate a "challenging" ai for a minute of game time at 60hz
+        // simulate a "hard" ai for a minute of game time at 60hz
         let mut game = Game::new(0, RandomTetromino::new(RandomMode::Bag, 10, 7.into()));
-        let mut agent = agent(crate::game::rules::AiDifficulty::CHALLENGING_KEY_DELAY);
+        let mut agent = agent(crate::game::rules::AiDifficulty::HARD_KEY_DELAY);
         let step = Duration::from_millis(16);
         let mut pieces = 0;
         'play: for _ in 0..(60 * 1000 / 16) {

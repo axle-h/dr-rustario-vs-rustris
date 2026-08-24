@@ -16,7 +16,8 @@ const LEVEL: &str = "level";
 const RANDOM: &str = "random";
 const VS_AI_PREFIX: &str = "vs ";
 const VS_AI_SUFFIX: &str = " ai";
-const AI_DEMO: &str = "ai demo";
+const AI_DEMO_1P: &str = "1-player ai demo";
+const AI_DEMO_2P: &str = "2-player ai demo";
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Options {
@@ -37,7 +38,7 @@ impl Options {
         self.config.rules = MatchRules::default_by_players(players);
     }
 
-    /// the title screen's players list: humans, then the ai opponents and the ai demo
+    /// the title screen's players list: humans, then the ai opponents and the ai demos
     pub fn players_list(&self, max_players: u32) -> (Vec<String>, usize) {
         let mut players = (1..=max_players).map(|i| i.to_string()).collect::<Vec<String>>();
         if max_players > 1 {
@@ -47,14 +48,18 @@ impl Options {
                     .map(|d| format!("{}{}{}", VS_AI_PREFIX, d.name(), VS_AI_SUFFIX)),
             );
         }
-        players.push(AI_DEMO.to_string());
+        players.push(AI_DEMO_1P.to_string());
+        if max_players > 1 {
+            players.push(AI_DEMO_2P.to_string());
+        }
         let current = match self.config.ai {
             AiMode::Off => (self.config.players as usize).clamp(1, max_players as usize) - 1,
             AiMode::Opponent(difficulty) => players
                 .iter()
                 .position(|p| *p == format!("{}{}{}", VS_AI_PREFIX, difficulty.name(), VS_AI_SUFFIX))
                 .unwrap_or(0),
-            AiMode::Demo => players.len() - 1,
+            AiMode::Demo => players.iter().position(|p| p == AI_DEMO_1P).unwrap_or(0),
+            AiMode::VsDemo => players.iter().position(|p| p == AI_DEMO_2P).unwrap_or(0),
         };
         (players, current)
     }
@@ -65,9 +70,12 @@ impl Options {
             .strip_prefix(VS_AI_PREFIX)
             .and_then(|s| s.strip_suffix(VS_AI_SUFFIX))
             .and_then(AiDifficulty::from_name);
-        if value == AI_DEMO {
+        if value == AI_DEMO_1P {
             self.set_players(1);
             self.config.ai = AiMode::Demo;
+        } else if value == AI_DEMO_2P {
+            self.set_players(2);
+            self.config.ai = AiMode::VsDemo;
         } else if let Some(difficulty) = ai_difficulty {
             self.set_players(2);
             self.config.ai = AiMode::Opponent(difficulty);
@@ -170,8 +178,10 @@ impl Options {
         self.config.ai
     }
 
-    /// the players the AI plays for and how fast
-    pub fn ai_players(&self) -> Vec<(u32, std::time::Duration)> {
+    /// the players the AI plays for, how fast, and the model they play
+    pub fn ai_players(
+        &self,
+    ) -> Vec<(u32, std::time::Duration, crate::game::ai::TetrisNeuralNetwork)> {
         self.config.ai_players()
     }
 }

@@ -185,10 +185,14 @@ There are no default player 2 controls.
 The **ai** option on a Rustris main menu selects who plays:
 
 * `off` - human players.
-* `vs challenging` / `vs difficult` / `vs impossible` - in a 2-player match the AI plays as player 2 (who must be on
-  Rustris) and is speed limited by pressing one key every 250 ms / 80 ms / instantly (see `AiDifficulty` in
-  `rustris/src/game/rules.rs`).
-* `demo` - the first player's board is played by the AI at full speed; their controls are disabled.
+* `vs easy` / `vs normal` / `vs hard` / `vs impossible` - in a 2-player match the AI plays as player 2 (who must
+  be on Rustris) and is speed limited by pressing one key every 500 ms / 400 ms / 300 ms / instantly (see
+  `AiDifficulty` in `rustris/src/game/rules.rs`). `easy` and `normal` play the survival-trained model, which
+  keeps its stack low and rarely attacks; `hard` and `impossible` play the high scoring model, which chases
+  4-line Tetris clears.
+* `1-player ai demo` - the first player's board is played by the AI at full speed; their controls are disabled.
+* `2-player ai demo` - the AI plays both boards at full speed: the survival model as player 1 against the
+  high scoring model as player 2.
 
 Only human players can enter the high score table.
 

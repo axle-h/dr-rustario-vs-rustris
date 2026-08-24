@@ -17,6 +17,7 @@ mod mutation;
 mod generation_stats;
 mod coefficient;
 mod neural;
+pub use neural::TetrisNeuralNetwork;
 #[cfg(not(target_os = "emscripten"))]
 pub mod harness;
 mod genome;

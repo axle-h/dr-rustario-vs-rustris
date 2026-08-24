@@ -300,8 +300,9 @@ impl Mode for RustrisMode {
 
     fn controllers(&self) -> Vec<Controller> {
         let mut controllers: Vec<Controller> = vec![];
-        for (player, key_delay) in self.options.ai_players() {
-            let mut agent = rustris::game::ai::agent::AiAgent::default().with_key_delay(key_delay);
+        for (player, key_delay, network) in self.options.ai_players() {
+            let mut agent =
+                rustris::game::ai::agent::AiAgent::neural(network).with_key_delay(key_delay);
             controllers.push((
                 player,
                 Box::new(move |game: &mut AnyGame, delta| {
