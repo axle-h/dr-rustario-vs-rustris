@@ -13,7 +13,8 @@ path = "src/main.rs"
 default = ["pkgconfig"]
 vcpkg = ["engine/vcpkg"]
 pkgconfig = ["engine/pkgconfig"]
-retro_handheld = ["engine/retro_handheld"]
+portmaster = ["engine/portmaster"]
+browser = ["engine/browser"]
 
 [build-dependencies]
 built = { version = "0.8.1", default-features = false, features = [] }

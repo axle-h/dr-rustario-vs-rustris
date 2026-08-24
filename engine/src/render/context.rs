@@ -463,6 +463,7 @@ impl<'a> ThemeContext<'a> {
         &mut self,
         player: u32,
         canvas: &mut WindowCanvas,
+        frame: &Texture,
     ) -> Result<(), String> {
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).reset();
@@ -475,7 +476,7 @@ impl<'a> ThemeContext<'a> {
         } else {
             range.start
         };
-        self.start_fade(player, canvas)
+        self.start_fade(player, canvas, frame)
     }
 
     /// move a player onto a different set of themes (the next game of a playlist), fading
@@ -485,6 +486,7 @@ impl<'a> ThemeContext<'a> {
         player: u32,
         themes: PlayerThemes,
         canvas: &mut WindowCanvas,
+        frame: &Texture,
     ) -> Result<(), String> {
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).reset();
@@ -492,12 +494,16 @@ impl<'a> ThemeContext<'a> {
         let index = player as usize;
         self.ranges[index] = themes.range;
         self.current[index] = themes.initial;
-        self.start_fade_for(player, canvas, GAME_SWITCH_FADE_DURATION)
+        self.start_fade_for(player, canvas, frame, GAME_SWITCH_FADE_DURATION)
     }
 
-    pub fn fade_all_into_next_theme(&mut self, canvas: &mut WindowCanvas) -> Result<(), String> {
+    pub fn fade_all_into_next_theme(
+        &mut self,
+        canvas: &mut WindowCanvas,
+        frame: &Texture,
+    ) -> Result<(), String> {
         for player in 0..self.players() {
-            self.fade_into_next_theme(player, canvas)?;
+            self.fade_into_next_theme(player, canvas, frame)?;
         }
         Ok(())
     }
@@ -548,29 +554,35 @@ impl<'a> ThemeContext<'a> {
         self.current(player).scale.player_clip(player)
     }
 
-    fn start_fade(&mut self, player: u32, canvas: &mut WindowCanvas) -> Result<(), String> {
-        self.start_fade_for(player, canvas, THEME_FADE_DURATION)
+    fn start_fade(
+        &mut self,
+        player: u32,
+        canvas: &mut WindowCanvas,
+        frame: &Texture,
+    ) -> Result<(), String> {
+        self.start_fade_for(player, canvas, frame, THEME_FADE_DURATION)
     }
 
     fn start_fade_for(
         &mut self,
         player: u32,
         canvas: &mut WindowCanvas,
+        frame: &Texture,
         total: Duration,
     ) -> Result<(), String> {
         self.fades[player as usize] = Some((Duration::ZERO, total));
 
-        // only snapshot this player's side so another player's in-progress fade is untouched
+        // snapshot the outgoing frame from the frame texture (never the backbuffer, whose
+        // content is undefined after a present under WebGL), and only this player's side
+        // so another player's in-progress fade is untouched
         let clip = self.player_clip(player);
-        let query = self.fade_buffer.query();
-        let pixels = canvas.read_pixels(clip, query.format)?;
-        self.fade_buffer
-            .update(
-                clip,
-                pixels.as_slice(),
-                query.format.byte_size_per_pixel() * clip.width() as usize,
-            )
-            .map_err(|e| e.to_string())
+        let mut result = Ok(());
+        canvas
+            .with_texture_canvas(&mut self.fade_buffer, |c| {
+                result = c.copy(frame, clip, clip);
+            })
+            .map_err(|e| e.to_string())?;
+        result.map_err(|e| e.to_string())
     }
 
     pub fn is_fading(&self, player: u32) -> bool {

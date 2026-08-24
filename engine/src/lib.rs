@@ -1,5 +1,11 @@
+#[cfg(all(feature = "portmaster", feature = "browser"))]
+compile_error!("features `portmaster` and `browser` are mutually exclusive: pick one target flavour per build");
+#[cfg(all(feature = "browser", not(target_os = "emscripten")))]
+compile_error!("feature `browser` only supports --target wasm32-unknown-emscripten");
+
 pub mod animate;
 pub mod app;
+pub mod main_loop;
 pub mod app_info;
 pub mod audio;
 pub mod config;
@@ -17,3 +23,4 @@ pub mod particles;
 pub mod render;
 pub mod scale;
 pub mod session;
+pub mod storage;

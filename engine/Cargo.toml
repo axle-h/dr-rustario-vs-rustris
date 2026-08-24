@@ -7,7 +7,8 @@ edition.workspace = true
 [features]
 vcpkg = ["sdl2/static-link", "sdl2/use-vcpkg"]
 pkgconfig = ["sdl2/use-pkgconfig"]
-retro_handheld = []
+portmaster = []
+browser = []
 
 [dependencies]
 rand.workspace = true

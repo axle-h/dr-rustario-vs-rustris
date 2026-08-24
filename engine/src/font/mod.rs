@@ -27,9 +27,9 @@ impl FontType {
             FontType::Normal => FONT_ROBOTO_REGULAR,
             FontType::Bold => FONT_ROBOTO_BOLD,
             FontType::Mono => FONT_ROBOTO_MONO_REGULAR,
-            #[cfg(not(feature = "retro_handheld"))]
+            #[cfg(not(feature = "portmaster"))]
             FontType::Retro => include_bytes!("Handjet.ttf"),
-            #[cfg(feature = "retro_handheld")]
+            #[cfg(feature = "portmaster")]
             FontType::Retro => FONT_ROBOTO_REGULAR,
         }
     }

@@ -1,0 +1,14 @@
+# Browser build flags. Target-scoped: native and PortMaster builds are unaffected.
+# Build with: cargo build --release --target wasm32-unknown-emscripten \
+#               --no-default-features --features browser        (see README / build-browser.sh)
+[target.wasm32-unknown-emscripten]
+rustflags = [
+  "-C", "link-arg=-sUSE_SDL=2",
+  "-C", "link-arg=-lidbfs.js",
+  "-C", "link-arg=-sALLOW_MEMORY_GROWTH=1",
+  "-C", "link-arg=-sINITIAL_MEMORY=256MB",
+  # emscripten's default stack is 64KB; the AI's move search needs a native-sized one
+  "-C", "link-arg=-sSTACK_SIZE=8MB",
+  "-C", "link-arg=-sENVIRONMENT=web",
+  "-C", "link-arg=-sEXIT_RUNTIME=0",
+]
