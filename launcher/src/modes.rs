@@ -10,6 +10,7 @@ use engine::menu::MenuItem;
 use engine::particles::prescribed::RaceTheme;
 use engine::render::Theme;
 use engine::session::MatchRules;
+use std::cell::Cell;
 use std::ops::Range;
 use std::time::Duration;
 
@@ -322,8 +323,10 @@ const PLAYLIST: &str = "playlist";
 const DIFFICULTY: &str = "difficulty";
 
 /// How the two games are sequenced. Every player plays the same playlist, so it is always
-/// fair. The theme race is a sprint: first to the end of the playlist wins. The other
-/// playlists cycle endlessly as marathons: the highest score when everyone is out wins.
+/// fair: the random playlists are dealt once per match, and every player faces the same
+/// sequence. The theme race and the random sprints race to the end of the playlist. The
+/// other playlists cycle endlessly as marathons: the highest score when everyone is out
+/// wins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Playlist {
     /// every theme of each game, the games taking turns; a race to the end of the playlist
@@ -332,20 +335,33 @@ pub enum Playlist {
     Interleaved,
     /// all of one game, then all of the other; a marathon
     BackToBack,
+    /// a random game and theme each stage; a race over this many stages
+    RandomSprint { stages: u32 },
+    /// a random game and theme each stage, forever; a marathon
+    RandomMarathon,
 }
 
 impl Playlist {
-    pub const ALL: [Playlist; 3] = [
+    pub const ALL: [Playlist; 7] = [
         Playlist::ThemeRace,
         Playlist::Interleaved,
         Playlist::BackToBack,
+        Playlist::RandomSprint { stages: 3 },
+        Playlist::RandomSprint { stages: 5 },
+        Playlist::RandomSprint { stages: 10 },
+        Playlist::RandomMarathon,
     ];
 
     pub fn name(&self) -> &'static str {
         match self {
             Playlist::ThemeRace => "theme race",
-            Playlist::Interleaved => "interleaved",
-            Playlist::BackToBack => "back to back",
+            Playlist::Interleaved => "interleaved marathon",
+            Playlist::BackToBack => "back to back marathon",
+            Playlist::RandomSprint { stages: 3 } => "3 level random sprint",
+            Playlist::RandomSprint { stages: 5 } => "5 level random sprint",
+            Playlist::RandomSprint { stages: 10 } => "10 level random sprint",
+            Playlist::RandomSprint { .. } => "random sprint",
+            Playlist::RandomMarathon => "random marathon",
         }
     }
 
@@ -355,10 +371,10 @@ impl Playlist {
 
     /// a race to the end of the playlist rather than an endless marathon around it
     pub fn is_race(&self) -> bool {
-        matches!(self, Playlist::ThemeRace)
+        matches!(self, Playlist::ThemeRace | Playlist::RandomSprint { .. })
     }
 
-    /// the race ranks best times, the marathons rank highest scores
+    /// the races rank best times, the marathons rank highest scores
     pub fn ranking(&self) -> Ranking {
         if self.is_race() {
             Ranking::LowestTime
@@ -367,30 +383,66 @@ impl Playlist {
         }
     }
 
-    pub fn rules(&self, stage_count: usize) -> MatchRules {
+    /// how many stages the playlist deals, or `None` for the endless random marathon
+    fn stage_count(&self, themes_per_game: usize) -> Option<usize> {
+        match self {
+            Playlist::RandomSprint { stages } => Some(*stages as usize),
+            Playlist::RandomMarathon => None,
+            _ => Some(2 * themes_per_game),
+        }
+    }
+
+    pub fn rules(&self, themes_per_game: usize) -> MatchRules {
         if self.is_race() {
             MatchRules::StageSprint {
-                stages: stage_count as u32,
+                stages: self.stage_count(themes_per_game).unwrap_or(0) as u32,
             }
         } else {
             MatchRules::Marathon
         }
     }
 
-    /// which stage of the playlist a player is on after `completed` stages: the race ends
-    /// with the playlist, the marathons cycle it forever
-    fn stage_index(&self, completed: usize, stage_count: usize) -> Option<usize> {
-        if stage_count == 0 {
-            None
-        } else if self.is_race() {
-            (completed < stage_count).then_some(completed)
-        } else {
-            Some(completed % stage_count)
+    /// which stage of the playlist a player is on after `completed` stages: the races end
+    /// with the playlist, the fixed marathons cycle it forever and the random marathon
+    /// never repeats
+    fn stage_index(&self, completed: usize, themes_per_game: usize) -> Option<usize> {
+        match self.stage_count(themes_per_game) {
+            Some(0) => None,
+            Some(count) if self.is_race() => (completed < count).then_some(completed),
+            Some(count) => Some(completed % count),
+            None => Some(completed),
         }
     }
 
-    /// the stages, as the game and theme of each
-    pub fn stages(&self, themes_per_game: usize) -> Vec<(GameKind, ThemeMode)> {
+    /// the game and theme a player is on after `completed` stages, or `None` when a race
+    /// has been run
+    pub fn stage(
+        &self,
+        seed: u64,
+        completed: usize,
+        themes_per_game: usize,
+    ) -> Option<(GameKind, ThemeMode)> {
+        let index = self.stage_index(completed, themes_per_game)?;
+        Some(match self {
+            Playlist::RandomSprint { .. } | Playlist::RandomMarathon => {
+                random_stage(seed, index, themes_per_game)
+            }
+            _ => self.fixed_stages(themes_per_game)[index],
+        })
+    }
+
+    /// which game the playlist opens with; the seed only matters to the random playlists
+    pub fn first_game(&self, seed: u64) -> GameKind {
+        match self {
+            Playlist::RandomSprint { .. } | Playlist::RandomMarathon => random_game(seed, 0),
+            // every fixed playlist starts on Rustris
+            _ => GameKind::Rustris,
+        }
+    }
+
+    /// the stages of the fixed playlists, as the game and theme of each; the random
+    /// playlists are dealt by [`random_stage`] instead
+    fn fixed_stages(&self, themes_per_game: usize) -> Vec<(GameKind, ThemeMode)> {
         let order = [GameKind::Rustris, GameKind::DrRustario];
         match self {
             Playlist::ThemeRace => (0..themes_per_game)
@@ -403,54 +455,96 @@ impl Playlist {
                 .into_iter()
                 .flat_map(|game| (0..themes_per_game).map(move |theme| (game, ThemeMode::Fixed(theme))))
                 .collect(),
+            Playlist::RandomSprint { .. } | Playlist::RandomMarathon => vec![],
         }
     }
 }
 
-/// One setting for both games' difficulty.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Difficulty {
-    Easy,
-    Medium,
-    Hard,
+/// splitmix64: spreads a seed and stage index into independent random rolls
+fn splitmix64(mut z: u64) -> u64 {
+    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
 }
 
-impl Difficulty {
-    pub const ALL: [Difficulty; 3] = [Difficulty::Easy, Difficulty::Medium, Difficulty::Hard];
+/// one roll of a random playlist's deal: `salt` 0 picks the game, 1 the theme
+fn stage_roll(seed: u64, index: usize, salt: u64) -> u64 {
+    splitmix64(seed ^ splitmix64(2 * index as u64 + salt))
+}
 
-    pub fn name(&self) -> &'static str {
-        match self {
-            Difficulty::Easy => "easy",
-            Difficulty::Medium => "medium",
-            Difficulty::Hard => "hard",
+/// the game dealt to a random playlist's stage; independent of the theme count, so the
+/// opening game is known before the themes are
+fn random_game(seed: u64, index: usize) -> GameKind {
+    if stage_roll(seed, index, 0) & 1 == 0 {
+        GameKind::Rustris
+    } else {
+        GameKind::DrRustario
+    }
+}
+
+/// the stage a random playlist deals: a random game and theme, never repeating the exact
+/// game and theme of the stage before, so every stage change changes something on screen
+fn random_stage(seed: u64, index: usize, themes_per_game: usize) -> (GameKind, ThemeMode) {
+    let mut previous: Option<(GameKind, usize)> = None;
+    for i in 0..=index {
+        let game = random_game(seed, i);
+        let mut theme = if themes_per_game == 0 {
+            0
+        } else {
+            (stage_roll(seed, i, 1) % themes_per_game as u64) as usize
+        };
+        if themes_per_game > 1 && previous == Some((game, theme)) {
+            theme = (theme + 1) % themes_per_game;
         }
+        previous = Some((game, theme));
+    }
+    let (game, theme) = previous.unwrap();
+    (game, ThemeMode::Fixed(theme))
+}
+
+/// One 0-10 dial for both games, shared by every playlist: it sets Dr. Rustario's virus
+/// level and fall speed and Rustris's starting level together. 0 is the gentlest start
+/// (no viruses, level 0, low fall speed) and each step up adds a virus level and a
+/// Rustris level, with the fall speed stepping up along the way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Difficulty(u32);
+
+impl Difficulty {
+    pub const MAX: u32 = 10;
+
+    pub fn new(difficulty: u32) -> Self {
+        Self(difficulty.min(Self::MAX))
+    }
+
+    pub fn names() -> Vec<String> {
+        (0..=Self::MAX).map(|d| d.to_string()).collect()
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|d| d.name() == name)
+        name.parse::<u32>()
+            .ok()
+            .filter(|d| *d <= Self::MAX)
+            .map(Self::new)
     }
 
+    /// one Rustris starting level per step (the guideline fall speed curve runs to level
+    /// 14, so even 10 leaves headroom)
     fn rustris_level(&self) -> u32 {
-        match self {
-            Difficulty::Easy => 0,
-            Difficulty::Medium => 3,
-            Difficulty::Hard => 6,
-        }
+        self.0
     }
 
+    /// one virus level per step
     fn dr_rustario_level(&self) -> u32 {
-        match self {
-            Difficulty::Easy => 0,
-            Difficulty::Medium => 5,
-            Difficulty::Hard => 10,
-        }
+        self.0
     }
 
+    /// low up to 3, medium up to 7, high from 8
     fn dr_rustario_speed(&self) -> dr_rustario::game::GameSpeed {
-        match self {
-            Difficulty::Easy => dr_rustario::game::GameSpeed::Low,
-            Difficulty::Medium => dr_rustario::game::GameSpeed::Medium,
-            Difficulty::Hard => dr_rustario::game::GameSpeed::High,
+        match self.0 {
+            0..=3 => dr_rustario::game::GameSpeed::Low,
+            4..=7 => dr_rustario::game::GameSpeed::Medium,
+            _ => dr_rustario::game::GameSpeed::High,
         }
     }
 }
@@ -459,6 +553,9 @@ pub struct VersusMode {
     players: u32,
     playlist: Playlist,
     difficulty: Difficulty,
+    /// what the random playlists are dealt from: re-rolled as each match starts, so every
+    /// player of one match faces the same random sequence
+    seed: Cell<u64>,
 }
 
 impl VersusMode {
@@ -466,16 +563,13 @@ impl VersusMode {
         Self {
             players: 1,
             playlist: Playlist::ThemeRace,
-            difficulty: Difficulty::Easy,
+            difficulty: Difficulty::default(),
+            seed: Cell::new(0),
         }
     }
 
     fn themes_per_game(themes: &Themes) -> usize {
         themes.dr_rustario.len().min(themes.rustris.len())
-    }
-
-    fn stages(&self, themes: &Themes) -> Vec<(GameKind, ThemeMode)> {
-        self.playlist.stages(Self::themes_per_game(themes))
     }
 
     /// `count` games of a kind at this difficulty, sharing a seed
@@ -544,14 +638,7 @@ impl Mode for VersusMode {
                     .position(|p| *p == self.playlist)
                     .unwrap_or(0),
             ),
-            MenuItem::select_list(
-                DIFFICULTY,
-                Difficulty::ALL.iter().map(|d| d.name().to_string()).collect(),
-                Difficulty::ALL
-                    .iter()
-                    .position(|d| *d == self.difficulty)
-                    .unwrap_or(0),
-            ),
+            MenuItem::select_list(DIFFICULTY, Difficulty::names(), self.difficulty.0 as usize),
         ]
     }
 
@@ -587,10 +674,13 @@ impl Mode for VersusMode {
     }
 
     fn settings(&self, themes: &Themes) -> MatchSettings {
-        let stages = self.stages(themes);
-        let (first, theme_mode) = stages[0];
+        let themes_per_game = Self::themes_per_game(themes);
+        let (first, theme_mode) = self
+            .playlist
+            .stage(self.seed.get(), 0, themes_per_game)
+            .expect("every playlist opens with a stage");
         MatchSettings {
-            rules: self.playlist.rules(stages.len()),
+            rules: self.playlist.rules(themes_per_game),
             players: (0..self.players)
                 .map(|_| PlayerSettings {
                     themes: themes.range(first),
@@ -603,7 +693,13 @@ impl Mode for VersusMode {
     }
 
     fn games(&self) -> Result<Vec<AnyGame>, String> {
-        self.new_games(GameKind::Rustris, self.players as usize)
+        let seed = engine::game::random::Seed::random();
+        self.seed
+            .set(u64::from_le_bytes(seed.bytes()[..8].try_into().unwrap()));
+        self.new_games(
+            self.playlist.first_game(self.seed.get()),
+            self.players as usize,
+        )
     }
 
     fn next_stage(
@@ -612,13 +708,15 @@ impl Mode for VersusMode {
         _player: u32,
         completed: u32,
     ) -> Option<StageChange<AnyGame>> {
-        let stages = self.stages(themes);
-        let index = self.playlist.stage_index(completed as usize, stages.len())?;
-        let (kind, theme_mode) = stages[index];
+        let themes_per_game = Self::themes_per_game(themes);
+        let seed = self.seed.get();
+        let (kind, theme_mode) = self
+            .playlist
+            .stage(seed, completed as usize, themes_per_game)?;
         let previous = completed
             .checked_sub(1)
-            .and_then(|i| self.playlist.stage_index(i as usize, stages.len()))
-            .map(|i| stages[i].0);
+            .and_then(|i| self.playlist.stage(seed, i as usize, themes_per_game))
+            .map(|(kind, _)| kind);
         // the same game again keeps its board and hold: only the theme changes
         let game = if previous == Some(kind) {
             None
@@ -643,13 +741,19 @@ impl Mode for VersusMode {
 mod tests {
     use super::*;
 
+    fn stages(playlist: Playlist, seed: u64, count: usize) -> Vec<(GameKind, ThemeMode)> {
+        (0..count)
+            .map(|i| playlist.stage(seed, i, 4).unwrap())
+            .collect()
+    }
+
     #[test]
     fn theme_race_alternates_games_through_every_theme() {
-        let stages = Playlist::ThemeRace.stages(4);
-        assert_eq!(stages.len(), 8);
+        let stages = stages(Playlist::ThemeRace, 0, 8);
         assert_eq!(stages[0], (GameKind::Rustris, ThemeMode::Fixed(0)));
         assert_eq!(stages[1], (GameKind::DrRustario, ThemeMode::Fixed(0)));
         assert_eq!(stages[7], (GameKind::DrRustario, ThemeMode::Fixed(3)));
+        assert_eq!(Playlist::ThemeRace.stage(0, 8, 4), None);
     }
 
     #[test]
@@ -667,38 +771,135 @@ mod tests {
         let keys = versus.all_high_score_keys();
         assert_eq!(
             keys.iter().map(|k| k.mode.as_str()).collect::<Vec<_>>(),
-            vec!["theme race", "interleaved", "back to back"]
+            vec![
+                "theme race",
+                "interleaved",
+                "back to back",
+                "3 level random sprint",
+                "5 level random sprint",
+                "10 level random sprint",
+                "random marathon"
+            ]
         );
-        assert_eq!(keys[0].ranking, Ranking::LowestTime);
-        assert_eq!(keys[1].ranking, Ranking::HighestScore);
-        assert_eq!(keys[2].ranking, Ranking::HighestScore);
+        assert_eq!(
+            keys.iter().map(|k| k.ranking).collect::<Vec<_>>(),
+            vec![
+                Ranking::LowestTime,
+                Ranking::HighestScore,
+                Ranking::HighestScore,
+                Ranking::LowestTime,
+                Ranking::LowestTime,
+                Ranking::LowestTime,
+                Ranking::HighestScore
+            ]
+        );
         assert!(keys.contains(&versus.high_score_key()));
     }
 
     #[test]
-    fn only_the_theme_race_is_a_sprint() {
+    fn only_the_races_are_sprints() {
         assert_eq!(
-            Playlist::ThemeRace.rules(8),
+            Playlist::ThemeRace.rules(4),
             MatchRules::StageSprint { stages: 8 }
         );
-        assert_eq!(Playlist::Interleaved.rules(8), MatchRules::Marathon);
-        assert_eq!(Playlist::BackToBack.rules(8), MatchRules::Marathon);
+        assert_eq!(
+            Playlist::RandomSprint { stages: 5 }.rules(4),
+            MatchRules::StageSprint { stages: 5 }
+        );
+        assert_eq!(Playlist::Interleaved.rules(4), MatchRules::Marathon);
+        assert_eq!(Playlist::BackToBack.rules(4), MatchRules::Marathon);
+        assert_eq!(Playlist::RandomMarathon.rules(4), MatchRules::Marathon);
     }
 
     #[test]
-    fn the_race_ends_with_the_playlist_and_marathons_cycle_it() {
-        assert_eq!(Playlist::ThemeRace.stage_index(7, 8), Some(7));
-        assert_eq!(Playlist::ThemeRace.stage_index(8, 8), None);
-        assert_eq!(Playlist::BackToBack.stage_index(7, 8), Some(7));
-        assert_eq!(Playlist::BackToBack.stage_index(8, 8), Some(0));
-        assert_eq!(Playlist::Interleaved.stage_index(13, 8), Some(5));
-        assert_eq!(Playlist::Interleaved.stage_index(0, 0), None);
+    fn the_races_end_with_the_playlist_and_marathons_cycle_it() {
+        assert!(Playlist::ThemeRace.stage(0, 7, 4).is_some());
+        assert_eq!(Playlist::ThemeRace.stage(0, 8, 4), None);
+        assert_eq!(Playlist::RandomSprint { stages: 3 }.stage(0, 3, 4), None);
+        assert_eq!(
+            Playlist::BackToBack.stage(0, 8, 4),
+            Playlist::BackToBack.stage(0, 0, 4)
+        );
+        assert_eq!(
+            Playlist::Interleaved.stage(0, 13, 4),
+            Playlist::Interleaved.stage(0, 5, 4)
+        );
+        assert!(Playlist::RandomMarathon.stage(0, 10_000, 4).is_some());
+        assert_eq!(Playlist::ThemeRace.stage(0, 0, 0), None);
     }
 
     #[test]
     fn back_to_back_plays_one_game_then_the_other() {
-        let stages = Playlist::BackToBack.stages(4);
+        let stages = stages(Playlist::BackToBack, 0, 8);
         assert!(stages[..4].iter().all(|(g, _)| *g == GameKind::Rustris));
         assert!(stages[4..].iter().all(|(g, _)| *g == GameKind::DrRustario));
+    }
+
+    #[test]
+    fn random_playlists_deal_the_same_stages_for_one_seed() {
+        let first = stages(Playlist::RandomMarathon, 42, 32);
+        assert_eq!(first, stages(Playlist::RandomMarathon, 42, 32));
+        assert_ne!(first, stages(Playlist::RandomMarathon, 43, 32));
+        // a sprint over the same seed deals the same opening stages
+        assert_eq!(first[..3], stages(Playlist::RandomSprint { stages: 3 }, 42, 3));
+    }
+
+    #[test]
+    fn random_playlists_open_with_the_game_they_deal_first() {
+        for seed in 0..32 {
+            let (game, _) = Playlist::RandomMarathon.stage(seed, 0, 4).unwrap();
+            assert_eq!(Playlist::RandomMarathon.first_game(seed), game);
+            assert_eq!(Playlist::RandomSprint { stages: 3 }.first_game(seed), game);
+        }
+    }
+
+    #[test]
+    fn random_playlists_pick_both_games_and_every_theme() {
+        let stages = stages(Playlist::RandomMarathon, 7, 256);
+        for game in [GameKind::Rustris, GameKind::DrRustario] {
+            for theme in 0..4 {
+                assert!(stages.contains(&(game, ThemeMode::Fixed(theme))));
+            }
+        }
+    }
+
+    #[test]
+    fn random_playlists_never_deal_the_same_stage_twice_in_a_row() {
+        for seed in 0..32 {
+            let stages = stages(Playlist::RandomMarathon, seed, 64);
+            for pair in stages.windows(2) {
+                assert_ne!(pair[0], pair[1], "seed {}", seed);
+            }
+        }
+    }
+
+    #[test]
+    fn difficulty_ramps_both_games_together() {
+        let easiest = Difficulty::new(0);
+        assert_eq!(easiest.rustris_level(), 0);
+        assert_eq!(easiest.dr_rustario_level(), 0);
+        assert_eq!(
+            easiest.dr_rustario_speed(),
+            dr_rustario::game::GameSpeed::Low
+        );
+        assert_eq!(easiest, Difficulty::default());
+
+        let hardest = Difficulty::new(10);
+        assert_eq!(hardest.rustris_level(), 10);
+        assert_eq!(hardest.dr_rustario_level(), 10);
+        assert_eq!(
+            hardest.dr_rustario_speed(),
+            dr_rustario::game::GameSpeed::High
+        );
+
+        assert_eq!(
+            Difficulty::new(5).dr_rustario_speed(),
+            dr_rustario::game::GameSpeed::Medium
+        );
+        // the dial stops at 10
+        assert_eq!(Difficulty::new(99), hardest);
+        assert_eq!(Difficulty::from_name("11"), None);
+        assert_eq!(Difficulty::from_name("7"), Some(Difficulty::new(7)));
+        assert_eq!(Difficulty::names().len(), 11);
     }
 }
