@@ -22,7 +22,9 @@ pub mod rules;
 pub mod tetromino;
 
 pub const LINES_PER_LEVEL: u32 = 10;
-pub const MAX_LEVEL: u32 = 99;
+/// levels are 0-based: the guideline plays 15 levels with the fall speed curve ending on the
+/// 15th, so the level (and with it the score multiplier of level + 1) caps together with [STEPS]
+pub const MAX_LEVEL: u32 = STEPS.len() as u32 - 1;
 pub const MAX_SCORE: u32 = 999_999_999;
 pub const MAX_LINES: u32 = 9_999;
 /// rows shown above the skyline
