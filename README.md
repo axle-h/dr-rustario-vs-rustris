@@ -98,10 +98,16 @@ Config and high scores are stored in yaml:
 High scores all live in one `high_scores.yml`, structured by game and then mode: one table
 per mode of each game and per vs. playlist (start level, speed and difficulty share their
 mode's table). Marathon tables rank the highest scores; sprint games (level, theme and
-point sprints, and the vs. theme race, which is first to the end of the playlist) race a
-single clock, shown in the bottom-left corner (single player) or bottom-centre
-(multiplayer), and their tables rank the fastest times. The interleaved and back to back
-vs. playlists are marathons: they cycle their playlist endlessly and rank scores. The clock
+point sprints, and the vs. races: the theme race, which is first to the end of the
+playlist, and the 3, 5 and 10 level random sprints, which deal a random game and theme
+each level) race a single clock, shown in the bottom-left corner (single player) or
+bottom-centre (multiplayer), and their tables rank the fastest times. The interleaved,
+back to back and random marathon vs. playlists are marathons: the first two cycle their
+playlist endlessly, the random marathon deals random games and themes forever, and all
+rank scores. Every vs. playlist shares one difficulty dial, 0 (default) to 10: it sets
+Dr. Rustario's virus level and fall speed and Rustris's starting level together, from no
+viruses at low speed on level 0 up to virus level 10 at high speed on level 10. In a
+random playlist every player faces the same random sequence, dealt fresh each match. The clock
 runs while anyone is playing: it stops while paused and when every player is held up at
 once, so in single player a stage-clear card or theme change does not count against you,
 while in a multiplayer race the clock keeps running.
