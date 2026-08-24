@@ -150,14 +150,15 @@ fn run_mode<M: Mode>(
 fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("ga") {
-        use rustris::game::ai::genetic;
+        use rustris::game::ai::{genetic, harness};
         return match args.get(1).map(String::as_str) {
             None | Some("auto") => genetic::ga_main_auto(),
             Some("survival") => genetic::ga_main_survival(),
             Some("score") => genetic::ga_main_score(),
             Some("diagnose") => genetic::ga_diagnose(),
+            Some("play") => harness::harness_main(&args[2..]),
             Some(other) => Err(format!(
-                "unknown ga mode '{}', expected: auto, survival, score or diagnose",
+                "unknown ga mode '{}', expected: auto, survival, score, diagnose or play",
                 other
             )),
         };
