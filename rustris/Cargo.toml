@@ -13,9 +13,14 @@ sdl2.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
 bitflags = "2.13"
-rayon = "1.12"
 itertools = "0.15"
 num-bigint = "0.5"
 num-traits = "0.2"
 serde_json = "1.0"
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
+# training only (the ga subcommand); the browser build compiles neither
+rayon = "1.12"
+
+[dev-dependencies]
 approx = "0.5"

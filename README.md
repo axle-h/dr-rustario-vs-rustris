@@ -58,7 +58,7 @@ DEPLOY_HOST=root@rocknix ./build-portmaster.sh # ... and copy it to the device
 ```
 
 This cross-compiles in Docker (`Dockerfile.aarch64`: Ubuntu 20.04 / glibc 2.31, the PortMaster
-baseline) with the `retro_handheld` feature, then zips the binary up with the launcher script
+baseline) with the `portmaster` feature, then zips the binary up with the launcher script
 and metadata from [portmaster/](portmaster). SDL2 is not bundled: like other native PortMaster ports
 the binary links the firmware's own `libSDL2-2.0.so.0`.
 
@@ -67,8 +67,25 @@ To install without PortMaster's catalogue drop the zip into the device's
 open PortMaster, or unzip it straight into `/roms/ports/`. Config and high scores are then kept
 in `/roms/ports/dr-rustario-vs-rustris/`.
 
-The `retro_handheld` feature defaults to desktop fullscreen and no integer scaling, and stores
-config next to the binary.
+The `portmaster` feature defaults to desktop fullscreen and stores config next to the binary.
+
+### Browser (wasm)
+
+The game runs in the browser via [Emscripten](https://emscripten.org)
+(`wasm32-unknown-emscripten`), behind the `browser` feature. `browser` and `portmaster`
+are mutually exclusive: enabling both fails the build.
+
+```shell
+./build-browser.sh          # -> dist/browser/ (index.html + js + wasm)
+./serve-browser.sh          # serve it on http://localhost:8080 (PORT=... to change)
+```
+
+This builds in Docker (`Dockerfile.browser`: emsdk pinned to ABI-match the Rust
+toolchain's prebuilt std) with the emscripten link flags from `.cargo/config.toml`. The
+page (`web/index.html`) starts the game on a click - browsers only allow audio after a
+user gesture - and mounts IndexedDB at `/data`, where config and high scores persist
+across reloads. The `ga` training subcommand is not part of the browser build, but the
+AI opponent and demo mode are. The wasm embeds all game assets, so serve it compressed.
 
 ## Config
 

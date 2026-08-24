@@ -205,7 +205,9 @@ impl HighScoreStore {
 
     pub fn save(&self) -> Result<(), String> {
         let config_path = config_path(CONFIG_NAME)?;
-        confy::store_path(config_path, self).map_err(|e| e.to_string())
+        confy::store_path(config_path, self).map_err(|e| e.to_string())?;
+        crate::storage::flush();
+        Ok(())
     }
 
     /// the table for `key`: the stored one, or a fresh table when there is none yet or the

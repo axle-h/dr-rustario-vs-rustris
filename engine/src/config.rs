@@ -143,14 +143,14 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             video: VideoConfig {
-                #[cfg(not(feature = "retro_handheld"))]
+                #[cfg(not(feature = "portmaster"))]
                 mode: VideoMode::Window {
                     width: 1280,
                     height: 720,
                 },
                 // handhelds: fill whatever the panel is (PortMaster runs ports under sway or
                 // KMSDRM, where a mode switch is the fragile option) and let the scaler fit it
-                #[cfg(feature = "retro_handheld")]
+                #[cfg(feature = "portmaster")]
                 mode: VideoMode::FullScreenDesktop,
                 vsync: true,
                 disable_screensaver: true,
@@ -183,24 +183,30 @@ impl Default for Config {
                     hold: GameKey::LShift,
                 },
                 player2: None,
-                #[cfg(feature = "retro_handheld")] pause: GameKey::Return,
-                #[cfg(not(feature = "retro_handheld"))] pause: GameKey::F1,
-                #[cfg(feature = "retro_handheld")] next_theme: GameKey::RShift,
-                #[cfg(not(feature = "retro_handheld"))] next_theme: GameKey::F2,
+                #[cfg(feature = "portmaster")] pause: GameKey::Return,
+                #[cfg(not(feature = "portmaster"))] pause: GameKey::F1,
+                #[cfg(feature = "portmaster")] next_theme: GameKey::RShift,
+                #[cfg(not(feature = "portmaster"))] next_theme: GameKey::F2,
                 quit: GameKey::Escape,
             },
         }
     }
 }
 
-#[cfg(feature = "retro_handheld")]
+#[cfg(feature = "portmaster")]
 pub fn config_path(name: &str) -> Result<PathBuf, String> {
     let mut absolute = std::env::current_dir().map_err(|e| e.to_string())?;
     absolute.push(format!("{}.yml", name));
     Ok(absolute)
 }
 
-#[cfg(not(feature = "retro_handheld"))]
+#[cfg(feature = "browser")]
+pub fn config_path(name: &str) -> Result<PathBuf, String> {
+    // /data is the IDBFS (IndexedDB) mount set up by the page, see web/index.html
+    Ok(PathBuf::from(format!("/data/{}.yml", name)))
+}
+
+#[cfg(not(any(feature = "portmaster", feature = "browser")))]
 pub fn config_path(name: &str) -> Result<PathBuf, String> {
     confy::get_configuration_file_path(crate::app_info::get().name, name)
         .map_err(|e| e.to_string())

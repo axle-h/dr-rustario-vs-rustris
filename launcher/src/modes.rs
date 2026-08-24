@@ -55,7 +55,7 @@ impl<'a> Themes<'a> {
     }
 }
 
-pub type Controller<'a> = (u32, Box<dyn FnMut(&mut AnyGame, Duration) + 'a>);
+pub type Controller = (u32, Box<dyn FnMut(&mut AnyGame, Duration) + 'static>);
 
 /// A launcher mode: its menus, and how it builds a match.
 pub trait Mode {
@@ -79,7 +79,7 @@ pub trait Mode {
     fn games(&self) -> Result<Vec<AnyGame>, String>;
     fn next_stage(&self, themes: &Themes, player: u32, completed: u32)
         -> Option<StageChange<AnyGame>>;
-    fn controllers(&self) -> Vec<Controller<'_>>;
+    fn controllers(&self) -> Vec<Controller>;
 }
 
 fn players_item(max_players: u32, current: u32) -> Option<MenuItem> {
@@ -202,7 +202,7 @@ impl Mode for DrRustarioMode {
         None
     }
 
-    fn controllers(&self) -> Vec<Controller<'_>> {
+    fn controllers(&self) -> Vec<Controller> {
         vec![]
     }
 }
@@ -298,8 +298,8 @@ impl Mode for RustrisMode {
         None
     }
 
-    fn controllers(&self) -> Vec<Controller<'_>> {
-        let mut controllers: Vec<Controller<'_>> = vec![];
+    fn controllers(&self) -> Vec<Controller> {
+        let mut controllers: Vec<Controller> = vec![];
         for (player, key_delay) in self.options.ai_players() {
             let mut agent = rustris::game::ai::agent::AiAgent::default().with_key_delay(key_delay);
             controllers.push((
@@ -633,7 +633,7 @@ impl Mode for VersusMode {
         })
     }
 
-    fn controllers(&self) -> Vec<Controller<'_>> {
+    fn controllers(&self) -> Vec<Controller> {
         vec![]
     }
 }
