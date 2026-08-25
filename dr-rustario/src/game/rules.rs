@@ -1,5 +1,8 @@
+use crate::game::ai::DrNeuralNetwork;
+use crate::game::ai::models;
 use crate::game::random::RandomMode;
 use crate::game::GameSpeed;
+use std::time::Duration;
 use strum::IntoEnumIterator;
 
 pub const MAX_VIRUS_LEVEL: u32 = 30;
@@ -36,6 +39,63 @@ impl MatchThemes {
 
 pub use engine::session::MatchRules;
 
+/// How fast the ai is allowed to play. There is one Dr. Rustario model, trained to clear the
+/// viruses as quickly as it can, so a difficulty only decides how quickly it may press keys.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiDifficulty {
+    /// The most speed limited
+    Easy,
+    Normal,
+    Hard,
+    /// Full speed
+    Impossible,
+}
+
+impl AiDifficulty {
+    pub const ALL: [Self; 4] = [Self::Easy, Self::Normal, Self::Hard, Self::Impossible];
+    pub const EASY_KEY_DELAY: Duration = Duration::from_millis(500);
+    pub const NORMAL_KEY_DELAY: Duration = Duration::from_millis(400);
+    pub const HARD_KEY_DELAY: Duration = Duration::from_millis(300);
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            AiDifficulty::Easy => "easy",
+            AiDifficulty::Normal => "normal",
+            AiDifficulty::Hard => "hard",
+            AiDifficulty::Impossible => "impossible",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.name() == name)
+    }
+
+    /// Minimum time between simulated key presses
+    pub fn key_delay(&self) -> Duration {
+        match self {
+            AiDifficulty::Easy => Self::EASY_KEY_DELAY,
+            AiDifficulty::Normal => Self::NORMAL_KEY_DELAY,
+            AiDifficulty::Hard => Self::HARD_KEY_DELAY,
+            AiDifficulty::Impossible => Duration::ZERO,
+        }
+    }
+
+    /// every difficulty plays the one trained model
+    pub fn network(&self) -> DrNeuralNetwork {
+        models::virus_clear_trained()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiMode {
+    /// No ai players
+    Off,
+    /// Single player game played by the ai at full speed
+    Demo,
+    /// Two player game where player 2 is the ai
+    Opponent(AiDifficulty),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GameConfig {
     players: u32,
@@ -44,6 +104,7 @@ pub struct GameConfig {
     themes: MatchThemes,
     rules: MatchRules,
     random: RandomMode,
+    ai: AiMode,
 }
 
 impl GameConfig {
@@ -62,7 +123,40 @@ impl GameConfig {
             themes,
             rules,
             random,
+            ai: AiMode::Off,
         }
+    }
+
+    pub fn ai(&self) -> AiMode {
+        self.ai
+    }
+
+    pub fn set_ai(&mut self, ai: AiMode) {
+        self.ai = ai;
+    }
+
+    /// The number of players actually in the match, taking the ai mode into account
+    pub fn effective_players(&self) -> u32 {
+        match self.ai {
+            AiMode::Off => self.players,
+            AiMode::Demo => 1,
+            AiMode::Opponent(_) => 2,
+        }
+    }
+
+    /// The ai controlled players (0-indexed), the key delay they play at and the model they play
+    pub fn ai_players(&self) -> Vec<(u32, Duration, DrNeuralNetwork)> {
+        match self.ai {
+            AiMode::Off => vec![],
+            AiMode::Demo => vec![(0, Duration::ZERO, models::virus_clear_trained())],
+            AiMode::Opponent(difficulty) => {
+                vec![(1, difficulty.key_delay(), difficulty.network())]
+            }
+        }
+    }
+
+    pub fn is_ai_player(&self, player: u32) -> bool {
+        self.ai_players().iter().any(|(p, _, _)| *p == player)
     }
 
     pub fn players(&self) -> u32 {

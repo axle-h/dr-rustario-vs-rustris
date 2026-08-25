@@ -16,11 +16,14 @@ cargo vcpkg build
 cargo build --release --no-default-features --features vcpkg
 ```
 
-All resources are embedded into the binary, including the Rustris AI opponent, demo mode and
+All resources are embedded into the binary, including both games' AI opponents, demo mode and
 the `ga` training subcommand (`dr-rustario-vs-rustris ga [auto|survival|score|diagnose]`).
 `ga play <seed> [line cap] [report every n lines] [survival|tetris]` plays a built-in model
 headless on a fixed seed, reporting progress; it counts lines and banks the score itself as the
-in-game counters are capped.
+in-game counters are capped. `ga dr [auto|tune|diagnose]` trains Dr. Rustario instead, and
+`ga dr play <seed> [virus level] [pill cap] [report every n pills]` plays its model headless.
+A `ga dr auto` run has no generation limit: it stops when a candidate clears every bottle on its
+training seeds and then does it again on five it has never played.
 
 ### macOS
 
@@ -186,7 +189,17 @@ All key names are defined in [engine/src/config.rs](engine/src/config.rs).
 
 There are no default player 2 controls.
 
-## Rustris AI
+## The AI
+
+Both games are played by the same machinery: features are extracted from the board, fed to a
+small neural network that scores every placement the piece in play can reach, and the best one
+is handed to an agent that presses the keys. The network and the genetic algorithm that trains
+it are shared in `engine/src/ai`; each game supplies its own features, placement search and
+agent. Only human players can enter the high score table.
+
+Full write up: [https://ax-h.com/ai/machine-learning-from-scratch](https://ax-h.com/ai/machine-learning-from-scratch)
+
+### Rustris
 
 The **ai** option on a Rustris main menu selects who plays:
 
@@ -200,6 +213,43 @@ The **ai** option on a Rustris main menu selects who plays:
 * `2-player ai demo` - the AI plays both boards at full speed: the survival model as player 1 against the
   high scoring model as player 2.
 
-Only human players can enter the high score table.
+Trained by `ga [auto|survival|score]`, which optimises for survival and then for 4-line clears.
 
-Full write up: [https://ax-h.com/ai/machine-learning-from-scratch](https://ax-h.com/ai/machine-learning-from-scratch)
+### Dr. Rustario
+
+The **ai** option on a Dr. Rustario main menu offers the same choices, minus the 2-player demo:
+there is one Dr. Rustario model, so it would only play itself.
+
+* `off` - human players.
+* `vs easy` / `vs normal` / `vs hard` / `vs impossible` - in a 2-player match the AI plays as player 2
+  (who must be on Dr. Rustario), speed limited to one key every 500 ms / 400 ms / 300 ms / instantly
+  (see `AiDifficulty` in `dr-rustario/src/game/rules.rs`). Every difficulty plays the same model and
+  differs only in how fast it is allowed to press keys.
+* `1-player ai demo` - the first player's bottle is played by the AI at full speed; their controls are
+  disabled.
+
+The model reads ten things about the bottle - viruses, the work still needed to clear every
+virus, runs of two and three that would take a virus with them, the same two runs where no virus
+is involved, blocks buried under other colours counted separately for viruses and for everything
+else, the tallest column and the holes under the stack - as both a change and a total, plus what
+the placement itself wasted and cleared: twenty two inputs in all, feeding two hidden layers of
+twenty two, the same architecture the Rustris model trained well at. Two of them carry most of the
+weight. The **work** count asks, for every virus, how many matching blocks a line of four through
+it still needs, and counts a virus nothing can reach any more as worse than any reachable one; it
+is what points the agent at the viruses instead of at a tidy heap in the corner. The **wasted
+halves** count charges for a half that does not join a run of its own colour with a virus in it,
+which is what makes dropping a double blue while a blue virus is still in the bottle a bad move
+rather than a neutral one. Tucking sideways under an overhang is not searched, since the agent
+has no single step soft drop to execute it with.
+
+`ga dr auto` trains it in a single stage with a single measure: candidates play the game itself,
+starting on the first bottle, clearing it, moving on to the next, and are scored on the viruses
+they took out before they were buried. There is no pill budget and nothing rewards speed - a
+model may take as long as it likes over a bottle - so this trains purely for survival. Each
+genome plays three whole games. A run has no generation limit; it ends when a candidate clears
+every bottle up to level 20 on all three of its training seeds and then proves it on five seeds
+it has never played, and carries on training from that candidate if it cannot. `ga dr tune` runs
+the same thing seeded from the built in model instead of from scratch.
+
+The weights currently embedded are **random, not trained**: the Dr. Rustario opponent and demo
+will not play well until a `ga dr auto` run replaces them.

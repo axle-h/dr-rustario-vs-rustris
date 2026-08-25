@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
-use crate::game::ai::objective::Objective;
-use crate::game::ai::organism::Organism;
-use crate::game::random::Seed;
+use crate::ai::objective::Objective;
+use crate::ai::organism::Organism;
+use crate::ai::seed::Seed;
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

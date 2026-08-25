@@ -3,6 +3,7 @@ compile_error!("features `portmaster` and `browser` are mutually exclusive: pick
 #[cfg(all(feature = "browser", not(target_os = "emscripten")))]
 compile_error!("feature `browser` only supports --target wasm32-unknown-emscripten");
 
+pub mod ai;
 pub mod animate;
 pub mod app;
 pub mod main_loop;

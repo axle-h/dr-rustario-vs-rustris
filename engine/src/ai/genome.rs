@@ -1,8 +1,7 @@
 use std::fmt::{Debug, Display};
 use std::ops::Deref;
 use std::vec::IntoIter;
-use crate::game::ai::coefficient::Coefficient;
-use crate::game::ai::neural::NEURAL_GENOME_SIZE;
+use crate::ai::coefficient::Coefficient;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Genome<const N: usize> {
@@ -66,7 +65,3 @@ impl<const N: usize> Into<[f64; N]> for Genome<N> {
         self.chromosome.map(Coefficient::into_f64)
     }
 }
-
-pub const LINEAR_GENOME_SIZE: usize = 10;
-
-pub type LinearGenome = Genome<LINEAR_GENOME_SIZE>;

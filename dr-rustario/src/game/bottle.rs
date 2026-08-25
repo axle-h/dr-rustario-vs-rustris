@@ -3,9 +3,10 @@ use crate::game::event::ColoredBlock;
 use crate::game::geometry::BottlePoint;
 use crate::game::pill::{Garbage, Pill, PillShape, VirusColor, Vitamin, Vitamins};
 use crate::game::random::BottleSeed;
-use rand::rngs::ThreadRng;
+#[cfg(test)]
+use rand::SeedableRng;
+use rand_chacha::ChaChaRng;
 use rand::seq::SliceRandom;
-use rand::rng;
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::ops::Range;
@@ -101,7 +102,7 @@ impl PatternMatchContext {
 pub struct Bottle {
     blocks: [Block; TOTAL_BLOCKS as usize],
     pill: Option<Pill>,
-    rng: ThreadRng,
+    rng: ChaChaRng,
 }
 
 impl Bottle {
@@ -110,16 +111,21 @@ impl Bottle {
         Self {
             blocks: [Block::Empty; TOTAL_BLOCKS as usize],
             pill: None,
-            rng: rng(),
+            rng: ChaChaRng::seed_from_u64(0),
         }
     }
 
-    pub fn from_seed(seed: BottleSeed) -> Self {
+    pub fn from_seed(seed: BottleSeed, rng: ChaChaRng) -> Self {
         Self {
             blocks: seed.into_blocks(),
             pill: None,
-            rng: rng(),
+            rng,
         }
+    }
+
+    /// the pill in play, if one has spawned and not yet locked
+    pub fn pill(&self) -> Option<&Pill> {
+        self.pill.as_ref()
     }
 
     pub fn row(&self, y: u32) -> &[Block] {
@@ -136,6 +142,12 @@ impl Bottle {
 
     fn set_block(&mut self, point: BottlePoint, state: Block) {
         self.blocks[index(point)] = state;
+    }
+
+    /// place a settled block directly, for tests and the ai's own fixtures
+    #[cfg(test)]
+    pub fn place(&mut self, x: u32, y: u32, state: Block) {
+        self.set_block_at(x, y, state);
     }
 
     fn set_block_at(&mut self, x: u32, y: u32, state: Block) {

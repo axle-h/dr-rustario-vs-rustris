@@ -20,6 +20,7 @@ use crate::game::bottle::Bottle;
 #[cfg(test)]
 use crate::game::tests::MockBottle as Bottle;
 
+pub mod ai;
 pub mod block;
 pub mod bottle;
 pub mod cell;
@@ -270,7 +271,7 @@ impl Game {
         speed: GameSpeed,
         mut random: GameRandom,
     ) -> Result<Self, String> {
-        let bottle = Bottle::from_seed(random.bottle_seed(virus_level)?);
+        let bottle = Bottle::from_seed(random.bottle_seed(virus_level)?, random.garbage_rng());
         Ok(Self::from_bottle(
             virus_level,
             speed,
@@ -307,7 +308,7 @@ impl Game {
         self.virus_level += 1;
         self.level_count += 1;
         self.events.clear();
-        self.bottle = Bottle::from_seed(self.random.bottle_seed(self.virus_level)?);
+        self.bottle = Bottle::from_seed(self.random.bottle_seed(self.virus_level)?, self.random.garbage_rng());
         self.state = GameState::NEW_SPAWN;
         self.total_pills = 0;
         self.soft_drop = false;
@@ -316,6 +317,26 @@ impl Game {
         HoldState::unlock(&mut self.hold);
         self.garbage_buffer.clear();
         Ok(())
+    }
+
+    /// the bottle the AI reads and simulates placements on
+    pub(crate) fn bottle(&self) -> &Bottle {
+        &self.bottle
+    }
+
+    /// the shape holding, if any: what pressing hold would swap the pill in play for
+    pub(crate) fn held_shape(&self) -> Option<PillShape> {
+        self.hold.map(|h| h.piece)
+    }
+
+    /// the shape at the front of the queue, which is what hold takes when nothing is held
+    pub(crate) fn next_shape(&self) -> PillShape {
+        self.random.peek()[0]
+    }
+
+    /// hold is locked until the pill in play locks
+    pub(crate) fn can_hold(&self) -> bool {
+        !HoldState::is_locked(&self.hold)
     }
 
     pub fn viruses(&self) -> Vec<ColoredBlock> {
@@ -731,12 +752,13 @@ mod tests {
     use crate::game::pill::Pill;
     use crate::game::pill::Vitamin;
     use crate::game::geometry::BottlePoint;
+    use rand_chacha::ChaChaRng;
     use mockall::mock;
     use mockall::predicate::*;
 
     mock! {
         pub Bottle {
-            pub fn from_seed(seed: BottleSeed) -> Self;
+            pub fn from_seed(seed: BottleSeed, rng: ChaChaRng) -> Self;
             pub fn pill(&self) -> &Pill;
             pub fn virus_count(&self) -> u32;
             pub fn viruses(&self) -> Vec<ColoredBlock>;

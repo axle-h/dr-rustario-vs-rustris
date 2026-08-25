@@ -1,5 +1,7 @@
-//! The Rustris AI. The genetic-algorithm training half (the `ga` subcommand) is not
-//! compiled for the browser; the playing agent and its trained network always are.
+//! The Rustris AI: board features, placement search and the agent that plays them. The generic
+//! half - the neural network and the genetic algorithm - lives in [engine::ai]. The training
+//! entry points (the `ga` subcommand) are not compiled for the browser; the playing agent and
+//! its trained networks always are.
 pub mod recording;
 mod apply_inputs;
 mod input_search;
@@ -8,24 +10,11 @@ pub mod action_evaluator;
 mod board_features;
 pub mod agent;
 mod headless_game;
+pub mod models;
 #[cfg(not(target_os = "emscripten"))]
 pub mod genetic;
-mod game_result;
-#[cfg(not(target_os = "emscripten"))]
-mod mutation;
-#[cfg(not(target_os = "emscripten"))]
-mod generation_stats;
-mod coefficient;
-mod neural;
-pub use neural::TetrisNeuralNetwork;
 #[cfg(not(target_os = "emscripten"))]
 pub mod harness;
-mod genome;
 pub mod linear;
-#[cfg(not(target_os = "emscripten"))]
-mod generation_record;
-#[cfg(not(target_os = "emscripten"))]
-mod organism;
-#[cfg(not(target_os = "emscripten"))]
-mod objective;
 
+pub use models::{NeuralGenome, TetrisNeuralNetwork, NEURAL_GENOME_SIZE};

@@ -1,16 +1,20 @@
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
-use crate::game::ai::game_result::GameResult;
-use crate::game::ai::headless_game::EndGame;
-use crate::game::ai::mutation::RateLimits;
+use crate::ai::game_result::GameResult;
+use crate::ai::end_game::EndGame;
+use crate::ai::mutation::RateLimits;
 
 /// what the genetic algorithm is optimising for
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Objective {
     /// do not lose: a game that is not over beats any game that is, then higher score wins
     Survival,
-    /// maximise tetris line clears within a fixed piece budget, then higher score wins
+    /// maximise the bonus counter within a fixed piece budget, then higher score wins
     Score,
+    /// get as far through the game as you can: play it from the first board to the last and see
+    /// how much of it you clear before you are buried. Nothing here rewards speed, so a model
+    /// trained on it is free to take as long as it needs over a board.
+    Progress,
 }
 
 impl Display for Objective {
@@ -18,6 +22,7 @@ impl Display for Objective {
         match self {
             Objective::Survival => write!(f, "survival"),
             Objective::Score => write!(f, "score"),
+            Objective::Progress => write!(f, "progress"),
         }
     }
 }
@@ -27,7 +32,8 @@ impl Objective {
     pub fn fitness(&self, result: &GameResult) -> f64 {
         match self {
             Objective::Survival => result.score() as f64,
-            Objective::Score => result.tetris_lines() as f64,
+            Objective::Score => result.bonus() as f64,
+            Objective::Progress => result.cleared() as f64,
         }
     }
 
@@ -36,7 +42,11 @@ impl Objective {
         match self {
             Objective::Survival => b.game_over().cmp(&a.game_over())
                 .then_with(|| a.score().cmp(&b.score())),
-            Objective::Score => a.tetris_lines().cmp(&b.tetris_lines())
+            Objective::Score => a.bonus().cmp(&b.bonus())
+                .then_with(|| a.score().cmp(&b.score())),
+            // whoever got further wins, then whoever finished more boards on the way
+            Objective::Progress => a.cleared().cmp(&b.cleared())
+                .then_with(|| a.bonus().cmp(&b.bonus()))
                 .then_with(|| a.score().cmp(&b.score())),
         }
     }
@@ -56,11 +66,11 @@ pub struct Phase {
 }
 
 impl Phase {
-    /// train from scratch until a member survives `line_cap` lines
-    pub fn survival(line_cap: u32) -> Self {
+    /// train from scratch until a member survives `clear_cap` of the game's progress counter
+    pub fn survival(clear_cap: u32) -> Self {
         Self {
             objective: Objective::Survival,
-            end_game: EndGame::of_lines(line_cap),
+            end_game: EndGame::of_cleared(clear_cap),
             seeds_per_game: 1,
             mutation_rate: RateLimits::new(0.1 ..= 0.20),
             crossover_rate: RateLimits::new(0.1 ..= 0.20),
@@ -69,7 +79,7 @@ impl Phase {
         }
     }
 
-    /// gently fine-tune an already surviving model for tetris play within `piece_cap` pieces
+    /// gently fine-tune an already surviving model for bonus play within `piece_cap` pieces
     pub fn score(piece_cap: u32) -> Self {
         Self {
             objective: Objective::Score,
@@ -90,7 +100,10 @@ impl Phase {
     /// the survival phase is complete once a member has reached the line cap without losing
     pub fn is_complete(&self, best: &GameResult) -> bool {
         match self.objective {
-            Objective::Survival => !best.game_over() && best.lines() >= self.end_game.lines,
+            // survived all the way to whichever cap the phase set
+            Objective::Survival => !best.game_over() && self.end_game.reached(*best),
+            // cleared every board it was given, on every seed it played
+            Objective::Progress => !best.game_over() && self.end_game.reached(*best),
             Objective::Score => false,
         }
     }
@@ -101,8 +114,8 @@ mod tests {
     use std::time::Duration;
     use super::*;
 
-    fn result(score: u32, lines: u32, game_over: bool, tetris_lines: u32) -> GameResult {
-        GameResult::new(score, lines, 0, game_over, Duration::ZERO).with_pieces(0, tetris_lines)
+    fn result(score: u32, cleared: u32, game_over: bool, bonus: u32) -> GameResult {
+        GameResult::new(score, cleared, 0, game_over, Duration::ZERO).with_pieces(0, bonus)
     }
 
     #[test]
@@ -115,16 +128,40 @@ mod tests {
     }
 
     #[test]
-    fn score_prefers_tetris_lines_regardless_of_game_over() {
+    fn score_prefers_the_bonus_counter_regardless_of_game_over() {
         let timid = result(5000, 100, false, 0);
         let aggressive = result(100, 8, true, 8);
         assert_eq!(Objective::Score.cmp(&aggressive, &timid), Ordering::Greater);
-        // same tetris lines, break tie on score
+        // same bonus, break tie on score
         assert_eq!(Objective::Score.cmp(&result(100, 8, true, 8), &result(200, 8, false, 8)), Ordering::Less);
     }
 
     #[test]
-    fn survival_phase_completes_at_the_line_cap() {
+    fn progress_prefers_whoever_got_further() {
+        let further = result(0, 60, true, 2).with_pieces(300, 2);
+        let stalled = result(0, 20, false, 1).with_pieces(300, 1);
+        assert_eq!(Objective::Progress.cmp(&further, &stalled), Ordering::Greater);
+        // taking longer over it costs nothing: there is no speed term
+        let slow = result(0, 60, true, 2).with_pieces(9000, 2);
+        assert_eq!(Objective::Progress.cmp(&slow, &further), Ordering::Equal);
+    }
+
+    #[test]
+    fn a_progress_phase_is_complete_once_every_board_is_cleared() {
+        let mut phase = Phase::survival(u32::MAX);
+        phase.objective = Objective::Progress;
+        phase.end_game = EndGame::of_cleared(924);
+
+        // still alive but short of the last board
+        assert!(!phase.is_complete(&result(0, 900, false, 20)));
+        // cleared the lot on every seed it played
+        assert!(phase.is_complete(&result(0, 924, false, 21)));
+        // cleared the lot on some seeds but was buried on another
+        assert!(!phase.is_complete(&result(0, 924, true, 21)));
+    }
+
+    #[test]
+    fn survival_phase_completes_at_the_clear_cap() {
         let phase = Phase::survival(100);
         assert!(!phase.is_complete(&result(0, 99, false, 0)));
         assert!(!phase.is_complete(&result(0, 100, true, 0)));

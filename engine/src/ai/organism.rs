@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
-use crate::game::ai::game_result::GameResult;
-use crate::game::ai::genome::Genome;
-use crate::game::ai::objective::Objective;
+use crate::ai::game_result::GameResult;
+use crate::ai::genome::Genome;
+use crate::ai::objective::Objective;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Organism<const GENOME: usize> {

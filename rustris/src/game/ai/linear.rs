@@ -1,6 +1,8 @@
 use std::fmt::{Display, Formatter};
-use crate::game::ai::coefficient::Coefficient;
-use crate::game::ai::genome::LinearGenome;
+use engine::ai::{Coefficient, Genome};
+
+pub const LINEAR_GENOME_SIZE: usize = 10;
+pub type LinearGenome = Genome<LINEAR_GENOME_SIZE>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LinearCoefficients {

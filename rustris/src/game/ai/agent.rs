@@ -7,7 +7,7 @@ use crate::game::{Game, GameState};
 use crate::game::ai::board_features::{BoardFeatures, StackStats};
 use crate::game::ai::headless_game::DEFAULT_LOOKAHEAD;
 use crate::game::ai::linear::LinearCoefficients;
-use crate::game::ai::neural::{NeuralGenome, TetrisNeuralNetwork};
+use crate::game::ai::models::{self, TetrisNeuralNetwork};
 use crate::game::board::Board;
 use crate::game::tetromino::TetrominoShape;
 use crate::game::ai::recording::{GamePlayback, GameRecording};
@@ -63,7 +63,7 @@ impl AiAgent {
     }
     
     pub fn default_neural() -> Self {
-        Self::neural(TetrisNeuralNetwork::default())
+        Self::neural(models::tetris_clear_trained())
     }
 
     /// An agent playing the given trained network
