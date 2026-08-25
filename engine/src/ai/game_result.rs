@@ -6,29 +6,31 @@ use std::time::Duration;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GameResult {
     score: u32,
-    lines: u32,
+    /// the game defined progress counter: Rustris lines, Dr. Rustario viruses
+    cleared: u32,
     level: u32,
     game_over: bool,
     time: Duration,
     pieces: u32,
-    tetris_lines: u32,
+    /// the game defined bonus counter: Rustris tetris lines, Dr. Rustario stages
+    bonus: u32,
 }
 
 impl Display for GameResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "score: {}, lines: {}, level: {}, pieces: {}, tetris lines: {}, game over: {}, time: {:?}",
-               self.score, self.lines, self.level, self.pieces, self.tetris_lines, self.game_over, self.time)
+        write!(f, "score: {}, cleared: {}, level: {}, pieces: {}, bonus: {}, game over: {}, time: {:?}",
+               self.score, self.cleared, self.level, self.pieces, self.bonus, self.game_over, self.time)
     }
 }
 
 impl GameResult {
-    pub fn new(score: u32, lines: u32, level: u32, game_over: bool, time: Duration) -> Self {
-        Self { score, lines, level, game_over, time, pieces: 0, tetris_lines: 0 }
+    pub fn new(score: u32, cleared: u32, level: u32, game_over: bool, time: Duration) -> Self {
+        Self { score, cleared, level, game_over, time, pieces: 0, bonus: 0 }
     }
 
-    pub fn with_pieces(mut self, pieces: u32, tetris_lines: u32) -> Self {
+    pub fn with_pieces(mut self, pieces: u32, bonus: u32) -> Self {
         self.pieces = pieces;
-        self.tetris_lines = tetris_lines;
+        self.bonus = bonus;
         self
     }
 
@@ -36,22 +38,22 @@ impl GameResult {
         self.pieces
     }
 
-    /// lines that were cleared as part of a tetris (4 line clear)
-    pub fn tetris_lines(&self) -> u32 {
-        self.tetris_lines
+    /// the game defined bonus counter
+    pub fn bonus(&self) -> u32 {
+        self.bonus
     }
 
-    /// fraction of cleared lines that were part of a tetris
-    pub fn tetris_fraction(&self) -> f64 {
-        if self.lines == 0 { 0.0 } else { self.tetris_lines as f64 / self.lines as f64 }
+    /// fraction of the cleared counter that also counted as a bonus
+    pub fn bonus_fraction(&self) -> f64 {
+        if self.cleared == 0 { 0.0 } else { self.bonus as f64 / self.cleared as f64 }
     }
 
     pub fn score(&self) -> u32 {
         self.score
     }
 
-    pub fn lines(&self) -> u32 {
-        self.lines
+    pub fn cleared(&self) -> u32 {
+        self.cleared
     }
 
     pub fn level(&self) -> u32 {
@@ -79,12 +81,12 @@ impl Add for GameResult {
     fn add(self, rhs: Self) -> Self::Output {
         GameResult {
             score: self.score + rhs.score,
-            lines: self.lines + rhs.lines,
+            cleared: self.cleared + rhs.cleared,
             level: self.level + rhs.level,
             game_over: self.game_over || rhs.game_over,
             time: self.time + rhs.time,
             pieces: self.pieces + rhs.pieces,
-            tetris_lines: self.tetris_lines + rhs.tetris_lines,
+            bonus: self.bonus + rhs.bonus,
         }
     }
 }
@@ -98,12 +100,12 @@ impl Sum for GameResult {
 impl AddAssign for GameResult {
     fn add_assign(&mut self, rhs: Self) {
         self.score += rhs.score;
-        self.lines += rhs.lines;
+        self.cleared += rhs.cleared;
         self.level += rhs.level;
         self.game_over |= rhs.game_over;
         self.time += rhs.time;
         self.pieces += rhs.pieces;
-        self.tetris_lines += rhs.tetris_lines;
+        self.bonus += rhs.bonus;
     }
 }
 
@@ -122,12 +124,12 @@ impl Div<usize> for GameResult {
         let rhs_f64 = rhs as f64;
         GameResult {
             score: (self.score as f64 / rhs_f64).round() as u32,
-            lines: (self.lines as f64 / rhs_f64).round() as u32,
+            cleared: (self.cleared as f64 / rhs_f64).round() as u32,
             level: (self.level as f64 / rhs_f64).round() as u32,
             game_over: self.game_over,
             time: self.time.div_f64(rhs_f64),
             pieces: (self.pieces as f64 / rhs_f64).round() as u32,
-            tetris_lines: (self.tetris_lines as f64 / rhs_f64).round() as u32,
+            bonus: (self.bonus as f64 / rhs_f64).round() as u32,
         }
     }
 }
@@ -142,16 +144,16 @@ mod tests {
         let b = GameResult::new(300, 20, 2, true, Duration::from_secs(3)).with_pieces(50, 0);
         let avg = (a + b) / 2;
         assert_eq!(avg.score(), 200);
-        assert_eq!(avg.lines(), 15);
+        assert_eq!(avg.cleared(), 15);
         assert_eq!(avg.pieces(), 38);
-        assert_eq!(avg.tetris_lines(), 4);
+        assert_eq!(avg.bonus(), 4);
         assert!(avg.game_over());
     }
 
     #[test]
-    fn tetris_fraction() {
+    fn bonus_fraction() {
         let r = GameResult::new(0, 10, 0, false, Duration::ZERO).with_pieces(0, 8);
-        assert_eq!(r.tetris_fraction(), 0.8);
-        assert_eq!(GameResult::default().tetris_fraction(), 0.0);
+        assert_eq!(r.bonus_fraction(), 0.8);
+        assert_eq!(GameResult::default().bonus_fraction(), 0.0);
     }
 }

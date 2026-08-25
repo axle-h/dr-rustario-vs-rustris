@@ -1,6 +1,6 @@
 //! Match options specific to Rustris.
 
-use crate::game::ai::TetrisNeuralNetwork;
+use crate::game::ai::models::{self, TetrisNeuralNetwork};
 use crate::game::random::RandomMode;
 pub use engine::session::MatchRules;
 use std::time::Duration;
@@ -88,8 +88,8 @@ impl AiDifficulty {
     /// everything harder plays the high scoring tetris clear model
     pub fn network(&self) -> TetrisNeuralNetwork {
         match self {
-            AiDifficulty::Easy | AiDifficulty::Normal => TetrisNeuralNetwork::survival_trained(),
-            _ => TetrisNeuralNetwork::tetris_clear_trained(),
+            AiDifficulty::Easy | AiDifficulty::Normal => models::survival_trained(),
+            _ => models::tetris_clear_trained(),
         }
     }
 }
@@ -143,10 +143,10 @@ impl GameConfig {
     pub fn ai_players(&self) -> Vec<(u32, Duration, TetrisNeuralNetwork)> {
         match self.ai {
             AiMode::Off => vec![],
-            AiMode::Demo => vec![(0, Duration::ZERO, TetrisNeuralNetwork::default())],
+            AiMode::Demo => vec![(0, Duration::ZERO, models::tetris_clear_trained())],
             AiMode::VsDemo => vec![
-                (0, Duration::ZERO, TetrisNeuralNetwork::survival_trained()),
-                (1, Duration::ZERO, TetrisNeuralNetwork::tetris_clear_trained()),
+                (0, Duration::ZERO, models::survival_trained()),
+                (1, Duration::ZERO, models::tetris_clear_trained()),
             ],
             AiMode::Opponent(difficulty) => {
                 vec![(1, difficulty.key_delay(), difficulty.network())]

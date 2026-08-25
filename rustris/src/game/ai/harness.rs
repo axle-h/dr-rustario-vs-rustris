@@ -13,7 +13,7 @@
 
 use crate::game::ai::action_evaluator::ActionEvaluator;
 use crate::game::ai::agent::AiAgent;
-use crate::game::ai::neural::TetrisNeuralNetwork;
+use crate::game::ai::models;
 use crate::game::random::{RandomMode, RandomTetromino, Seed, MIN_GARBAGE_PER_HOLE};
 use crate::game::Game;
 use engine::game::{Game as _, GameEvent};
@@ -77,8 +77,8 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
         .unwrap_or(u64::MAX);
     let every: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(1000);
     let model = match args.get(3).map(String::as_str) {
-        None | Some("survival") => TetrisNeuralNetwork::survival_trained(),
-        Some("tetris") => TetrisNeuralNetwork::tetris_clear_trained(),
+        None | Some("survival") => models::survival_trained(),
+        Some("tetris") => models::tetris_clear_trained(),
         Some(other) => return Err(format!("unknown model '{}', expected: survival or tetris", other)),
     };
 

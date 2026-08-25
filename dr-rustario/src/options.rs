@@ -1,11 +1,13 @@
 //! The match options Dr. Rustario offers on the main menu.
 
+use crate::game::ai::DrNeuralNetwork;
 use crate::game::random::{random, RandomMode};
-use crate::game::rules::{GameConfig, MatchRules, MatchThemes, MAX_VIRUS_LEVEL};
+use crate::game::rules::{AiDifficulty, AiMode, GameConfig, MatchRules, MatchThemes, MAX_VIRUS_LEVEL};
 use crate::game::{Game, GameSpeed};
 use engine::app::ThemeMode;
 use engine::menu::MenuItem;
 use std::str::FromStr;
+use std::time::Duration;
 
 pub const STAGE_NOUN: &str = "level";
 
@@ -14,6 +16,9 @@ const MODE: &str = "mode";
 const LEVEL: &str = "level";
 const SPEED: &str = "speed";
 const RANDOM: &str = "random";
+const VS_AI_PREFIX: &str = "vs ";
+const VS_AI_SUFFIX: &str = " ai";
+const AI_DEMO_1P: &str = "1-player ai demo";
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Options {
@@ -33,6 +38,60 @@ impl Options {
         self.config.set_players(players);
         self.config
             .set_rules(MatchRules::default_by_players(players));
+    }
+
+    /// the title screen's players list: humans, then the ai opponents and the ai demo. There is
+    /// only one Dr. Rustario model, so there is no 2-player demo: it would play itself.
+    pub fn players_list(&self, max_players: u32) -> (Vec<String>, usize) {
+        let mut players = (1..=max_players)
+            .map(|i| i.to_string())
+            .collect::<Vec<String>>();
+        if max_players > 1 {
+            players.extend(
+                AiDifficulty::ALL
+                    .iter()
+                    .map(|d| format!("{}{}{}", VS_AI_PREFIX, d.name(), VS_AI_SUFFIX)),
+            );
+        }
+        players.push(AI_DEMO_1P.to_string());
+        let current = match self.config.ai() {
+            AiMode::Off => (self.config.players() as usize).clamp(1, max_players as usize) - 1,
+            AiMode::Opponent(difficulty) => players
+                .iter()
+                .position(|p| {
+                    *p == format!("{}{}{}", VS_AI_PREFIX, difficulty.name(), VS_AI_SUFFIX)
+                })
+                .unwrap_or(0),
+            AiMode::Demo => players.iter().position(|p| p == AI_DEMO_1P).unwrap_or(0),
+        };
+        (players, current)
+    }
+
+    /// a pick from [`Self::players_list`]
+    pub fn select_players(&mut self, value: &str) {
+        let ai_difficulty = value
+            .strip_prefix(VS_AI_PREFIX)
+            .and_then(|s| s.strip_suffix(VS_AI_SUFFIX))
+            .and_then(AiDifficulty::from_name);
+        if value == AI_DEMO_1P {
+            self.set_players(1);
+            self.config.set_ai(AiMode::Demo);
+        } else if let Some(difficulty) = ai_difficulty {
+            self.set_players(2);
+            self.config.set_ai(AiMode::Opponent(difficulty));
+        } else {
+            self.set_players(value.parse::<u32>().unwrap_or(1));
+            self.config.set_ai(AiMode::Off);
+        }
+    }
+
+    pub fn ai(&self) -> AiMode {
+        self.config.ai()
+    }
+
+    /// the players the ai plays for, how fast, and the model they play
+    pub fn ai_players(&self) -> Vec<(u32, Duration, DrNeuralNetwork)> {
+        self.config.ai_players()
     }
 
     pub fn players(&self) -> u32 {

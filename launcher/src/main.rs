@@ -16,6 +16,21 @@ fn main() -> Result<(), String> {
     {
         let args: Vec<String> = std::env::args().skip(1).collect();
         if args.first().map(String::as_str) == Some("ga") {
+            // `ga dr ...` trains Dr. Rustario, everything else is Rustris
+            if args.get(1).map(String::as_str) == Some("dr") {
+                use dr_rustario::game::ai::{genetic, harness};
+                return match args.get(2).map(String::as_str) {
+                    None | Some("auto") => genetic::ga_main_auto(),
+                    Some("tune") => genetic::ga_main_tune(),
+                    Some("diagnose") => genetic::ga_diagnose(),
+                    Some("play") => harness::harness_main(&args[3..]),
+                    Some(other) => Err(format!(
+                        "unknown ga dr mode '{}', expected: auto, tune, diagnose or play",
+                        other
+                    )),
+                };
+            }
+
             use rustris::game::ai::{genetic, harness};
             return match args.get(1).map(String::as_str) {
                 None | Some("auto") => genetic::ga_main_auto(),
@@ -24,7 +39,7 @@ fn main() -> Result<(), String> {
                 Some("diagnose") => genetic::ga_diagnose(),
                 Some("play") => harness::harness_main(&args[2..]),
                 Some(other) => Err(format!(
-                    "unknown ga mode '{}', expected: auto, survival, score, diagnose or play",
+                    "unknown ga mode '{}', expected: dr, auto, survival, score, diagnose or play",
                     other
                 )),
             };

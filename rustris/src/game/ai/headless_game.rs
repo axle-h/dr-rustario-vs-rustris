@@ -1,7 +1,6 @@
 use crate::game::ai::action_evaluator::ActionEvaluator;
 use crate::game::ai::agent::AiAgent;
-use crate::game::ai::game_result::GameResult;
-use crate::game::ai::linear::LinearCoefficients;
+use engine::ai::{EndGame, GameResult};
 use crate::game::random::{RandomMode, RandomTetromino, Seed, MIN_GARBAGE_PER_HOLE};
 use crate::game::Game;
 use engine::game::{Game as _, GameEvent};
@@ -209,66 +208,10 @@ impl HeadlessGameFixture {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct EndGame {
-    pub score: u32,
-    pub lines: u32,
-    pub pieces: u32,
-    pub duration: Duration,
-}
-
-impl Default for EndGame {
-    fn default() -> Self {
-        Self::NONE
-    }
-}
-
-impl EndGame {
-    pub const NONE: Self = Self {
-        score: u32::MAX,
-        lines: u32::MAX,
-        pieces: u32::MAX,
-        duration: Duration::MAX
-    };
-
-    pub fn of_score(score: u32) -> Self {
-        Self {
-            score,
-            ..Default::default()
-        }
-    }
-
-    pub fn of_lines(lines: u32) -> Self {
-        Self {
-            lines,
-            ..Default::default()
-        }
-    }
-
-    pub fn of_pieces(pieces: u32) -> Self {
-        Self {
-            pieces,
-            ..Default::default()
-        }
-    }
-
-    pub fn of_seconds(seconds: u64) -> Self {
-        Self {
-            duration: Duration::from_secs(seconds),
-            ..Default::default()
-        }
-    }
-    
-    pub fn is_end_game(&self, result: GameResult, duration: Duration) -> bool {
-        result.score() >= self.score
-            || result.lines() >= self.lines
-            || result.pieces() >= self.pieces
-            || duration >= self.duration
-    }
-}
 
 #[cfg(test)]
 mod tests {
+    use crate::game::ai::linear::LinearCoefficients;
     use super::*;
 
     fn test_fixture() -> HeadlessGameFixture {
@@ -294,10 +237,10 @@ mod tests {
             RandomMode::Bag,
             100.into(),
             HeadlessGameOptions::default(),
-            EndGame::of_lines(3)
+            EndGame::of_cleared(3)
         );
         let result = fixture.play(ActionEvaluator::Linear(LinearCoefficients::default()));
-        assert!(result.lines() >= 3);
+        assert!(result.cleared() >= 3);
         assert!(!result.game_over());
     }
 
@@ -312,8 +255,8 @@ mod tests {
         let result = fixture.play(ActionEvaluator::Linear(LinearCoefficients::default()));
         assert_eq!(result.pieces(), 100);
         assert!(!result.game_over());
-        assert!(result.lines() > 0);
-        assert!(result.tetris_lines() <= result.lines());
+        assert!(result.cleared() > 0);
+        assert!(result.bonus() <= result.cleared());
     }
 
     #[test]

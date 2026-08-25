@@ -3,7 +3,7 @@ use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::game::ai::generation_stats::GenerationStatistics;
+use crate::ai::generation_stats::GenerationStatistics;
 
 pub struct GenerationRecord {
     file: File,
@@ -21,7 +21,7 @@ impl GenerationRecord {
         let mut record = Self { file, path };
 
         // Write CSV header
-        writeln!(record.file, "Generation,Phase,Fitness,Score,Lines,Tetris Lines,Pieces,Fitness P95,Score P95,Lines P95,Tetris Lines P95,Fitness P50,Score P50,Lines P50,Tetris Lines P50,Seed,Genome")?;
+        writeln!(record.file, "Generation,Phase,Fitness,Score,Cleared,Bonus,Pieces,Fitness P95,Score P95,Cleared P95,Bonus P95,Fitness P50,Score P50,Cleared P50,Bonus P50,Seed,Genome")?;
         Ok(record)
     }
     
@@ -37,17 +37,17 @@ impl GenerationRecord {
             stats.objective(),
             stats.objective().fitness(&stats.max().result()),
             stats.max().result().score(),
-            stats.max().result().lines(),
-            stats.max().result().tetris_lines(),
+            stats.max().result().cleared(),
+            stats.max().result().bonus(),
             stats.max().result().pieces(),
             stats.objective().fitness(&stats.p95().result()),
             stats.p95().result().score(),
-            stats.p95().result().lines(),
-            stats.p95().result().tetris_lines(),
+            stats.p95().result().cleared(),
+            stats.p95().result().bonus(),
             stats.objective().fitness(&stats.median().result()),
             stats.median().result().score(),
-            stats.median().result().lines(),
-            stats.median().result().tetris_lines(),
+            stats.median().result().cleared(),
+            stats.median().result().bonus(),
             stats.seed(),
             stats.max().genome()
         )

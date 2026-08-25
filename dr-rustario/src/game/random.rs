@@ -14,6 +14,12 @@ pub const PEEK_SIZE: usize = 5;
 pub const MAX_BOTTLE_SEED_ATTEMPTS: usize = 100_000;
 pub const MAX_VIRUSES: u32 = 99;
 
+/// how many viruses a bottle at `virus_level` is dealt
+pub const fn viruses_at_level(virus_level: u32) -> u32 {
+    let target = virus_level * 4 + 4;
+    if target > MAX_VIRUSES { MAX_VIRUSES } else { target }
+}
+
 impl Distribution<VirusColor> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> VirusColor {
         rng.random_range(0..VirusColor::N).try_into().unwrap()
@@ -139,6 +145,12 @@ impl GameRandom {
         }
     }
 
+    /// an independent seeded rng for the bottle to shuffle incoming garbage with, so a
+    /// training run is reproducible from the seed alone
+    pub fn garbage_rng(&mut self) -> ChaChaRng {
+        ChaChaRng::seed_from_u64(self.bottle_rng.random())
+    }
+
     pub fn peek(&self) -> [PillShape; PEEK_SIZE] {
         self.pills.peek().try_into().unwrap()
     }
@@ -166,7 +178,7 @@ impl GameRandom {
 
     fn try_bottle_seed(&mut self, virus_level: u32) -> Option<BottleSeed> {
         let mut bottle = BottleSeed::new();
-        let target = (virus_level * 4 + 4).min(MAX_VIRUSES);
+        let target = viruses_at_level(virus_level);
         let max_virus_row = match virus_level {
             0..=14 => 6,
             15 | 16 => 5,

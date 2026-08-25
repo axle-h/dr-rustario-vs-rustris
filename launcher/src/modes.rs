@@ -140,14 +140,13 @@ impl Mode for DrRustarioMode {
     }
 
     fn title_items(&self, max_players: u32) -> Vec<MenuItem> {
-        players_item(max_players, self.options.players())
-            .into_iter()
-            .collect()
+        let (players, current) = self.options.players_list(max_players);
+        vec![MenuItem::select_list(PLAYERS, players, current)]
     }
 
     fn title_select(&mut self, name: &str, value: &str) {
         if name == PLAYERS {
-            self.options.set_players(value.parse::<u32>().unwrap_or(1));
+            self.options.select_players(value);
         }
     }
 
@@ -204,7 +203,20 @@ impl Mode for DrRustarioMode {
     }
 
     fn controllers(&self) -> Vec<Controller> {
-        vec![]
+        let mut controllers: Vec<Controller> = vec![];
+        for (player, key_delay, network) in self.options.ai_players() {
+            let mut agent =
+                dr_rustario::game::ai::agent::DrAiAgent::new(network).with_key_delay(key_delay);
+            controllers.push((
+                player,
+                Box::new(move |game: &mut AnyGame, delta| {
+                    if let AnyGame::DrRustario(game) = game {
+                        agent.act(game, delta);
+                    }
+                }),
+            ));
+        }
+        controllers
     }
 }
 
@@ -754,6 +766,50 @@ mod tests {
         assert_eq!(stages[1], (GameKind::DrRustario, ThemeMode::Fixed(0)));
         assert_eq!(stages[7], (GameKind::DrRustario, ThemeMode::Fixed(3)));
         assert_eq!(Playlist::ThemeRace.stage(0, 8, 4), None);
+    }
+
+    #[test]
+    fn dr_rustario_offers_the_ai_opponents_and_a_single_player_demo() {
+        let mode = DrRustarioMode::new();
+        let players: Vec<String> = [
+            "1",
+            "2",
+            "vs easy ai",
+            "vs normal ai",
+            "vs hard ai",
+            "vs impossible ai",
+            // there is only one Dr. Rustario model, so a 2-player demo would play itself
+            "1-player ai demo",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        assert_eq!(
+            mode.title_items(2),
+            vec![MenuItem::select_list(PLAYERS, players, 0)]
+        );
+    }
+
+    #[test]
+    fn picking_an_ai_opponent_puts_the_agent_on_player_two() {
+        let mut mode = DrRustarioMode::new();
+        assert!(mode.controllers().is_empty());
+
+        mode.title_select(PLAYERS, "vs normal ai");
+        let controllers = mode.controllers();
+        assert_eq!(controllers.len(), 1);
+        assert_eq!(controllers[0].0, 1, "the ai should play as player 2");
+
+        // and the demo plays the first board instead
+        mode.title_select(PLAYERS, "1-player ai demo");
+        let controllers = mode.controllers();
+        assert_eq!(controllers.len(), 1);
+        assert_eq!(controllers[0].0, 0);
+
+        // back to humans
+        mode.title_select(PLAYERS, "2");
+        assert!(mode.controllers().is_empty());
     }
 
     #[test]

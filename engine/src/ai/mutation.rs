@@ -1,14 +1,14 @@
 use std::array;
 use std::ops::RangeInclusive;
-use rand::{Rng, RngExt, SeedableRng};
+use rand::{Rng, RngExt};
 use std::collections::VecDeque;
 use rand_chacha::ChaChaRng;
-use crate::game::ai::coefficient::{raw_coefficient_range, Coefficient, DEFAULT_MUTATION_STEP};
-use crate::game::ai::generation_stats::GenerationStatistics;
-use crate::game::ai::genome::Genome;
-use crate::game::ai::objective::Objective;
-use crate::game::ai::organism::Organism;
-use crate::game::random::Seed;
+use crate::ai::coefficient::{raw_coefficient_range, Coefficient, DEFAULT_MUTATION_STEP};
+use crate::ai::generation_stats::GenerationStatistics;
+use crate::ai::genome::Genome;
+use crate::ai::objective::Objective;
+use crate::ai::organism::Organism;
+use crate::ai::seed::Seed;
 
 #[derive(Debug, Clone)]
 pub struct RateLimits {
@@ -267,9 +267,10 @@ impl<R: Rng + ?Sized> RngMutation for R {
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
     use std::time::Duration;
     use itertools::Itertools;
-    use crate::game::ai::game_result::GameResult;
+    use crate::ai::game_result::GameResult;
     use super::*;
 
     const TEST_GENES: usize = 9;

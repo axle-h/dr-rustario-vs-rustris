@@ -178,6 +178,19 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         // events tagged with the player that caused them (None for match-wide events) so
         // sound effects are routed through that player's theme
         let mut events: Vec<(Option<u32>, GameEvent)> = vec![];
+
+        // a board played by a controller has nobody to press a key on its stage clear card, so
+        // it dismisses its own and carries on
+        let mut players_to_advance: Vec<u32> = controllers
+            .iter()
+            .map(|(player, _)| *player)
+            .filter(|player| {
+                pending_switches[*player as usize].is_none()
+                    && themes.is_pause_required_for_animation(*player)
+            })
+            .collect();
+        players_to_advance.retain(|player| themes.maybe_dismiss_interstitial(*player));
+
         for key in inputs.update(delta, app.controllers.poll(&mut app.event_pump)) {
             if let Some(player) = key.player() {
                 if pending_switches[player as usize].is_some() {
@@ -191,36 +204,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                 }
                 if themes.is_pause_required_for_animation(player) {
                     if themes.maybe_dismiss_interstitial(player) {
-                        let game = fixture.player_mut(player).game_mut();
-                        game.next_stage()?;
-                        stage_changed = true;
-
-                        let completed = game.completed_stages();
-                        if let Some(change) = next_stage(player, completed) {
-                            // the playlist moves this player to another game
-                            if let Some(next_game) = change.game {
-                                fixture.player_mut(player).replace_game(next_game);
-                            }
-                            themes.switch_player_themes(
-                                player,
-                                change.settings.player_themes(),
-                                &mut app.canvas,
-                                frame_buffer,
-                            )?;
-                            settings.players[player as usize] = change.settings;
-                            if is_single_player {
-                                themes.music_audio().play_game_music()?;
-                            }
-                        } else if settings.players[player as usize].theme_mode == ThemeMode::All {
-                            // only this player advances to their next theme
-                            events.push((Some(player), GameEvent::NextTheme));
-                        } else if is_single_player {
-                            // single player was playing next-stage music; resume game music.
-                            // multiplayer game music never stopped (stage clear is a jingle).
-                            themes.music_audio().play_game_music()?;
-                        }
-                        let cells = fixture.player(player).game().stage_intro_cells();
-                        themes.animate_next_stage(player, &cells);
+                        players_to_advance.push(player);
                     } else {
                         themes.maybe_dismiss_game_over();
                     }
@@ -267,6 +251,39 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     }
                 }
             }
+        }
+
+        for player in players_to_advance {
+            let game = fixture.player_mut(player).game_mut();
+            game.next_stage()?;
+            stage_changed = true;
+
+            let completed = game.completed_stages();
+            if let Some(change) = next_stage(player, completed) {
+                // the playlist moves this player to another game
+                if let Some(next_game) = change.game {
+                    fixture.player_mut(player).replace_game(next_game);
+                }
+                themes.switch_player_themes(
+                    player,
+                    change.settings.player_themes(),
+                    &mut app.canvas,
+                    frame_buffer,
+                )?;
+                settings.players[player as usize] = change.settings;
+                if is_single_player {
+                    themes.music_audio().play_game_music()?;
+                }
+            } else if settings.players[player as usize].theme_mode == ThemeMode::All {
+                // only this player advances to their next theme
+                events.push((Some(player), GameEvent::NextTheme));
+            } else if is_single_player {
+                // single player was playing next-stage music; resume game music.
+                // multiplayer game music never stopped (stage clear is a jingle).
+                themes.music_audio().play_game_music()?;
+            }
+            let cells = fixture.player(player).game().stage_intro_cells();
+            themes.animate_next_stage(player, &cells);
         }
 
         match fixture.state() {
