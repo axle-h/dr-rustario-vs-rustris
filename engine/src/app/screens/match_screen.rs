@@ -464,9 +464,12 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         // post-update events; a seamless stage change may queue a theme change
         let mut deferred_events: Vec<(Option<u32>, GameEvent)> = vec![];
         for (event_player, event) in events {
-            if matches!(event, GameEvent::AttackSent(_)) && fixture.player_count() < 2 {
-                // nobody to attack
-                continue;
+            // an attack is routed before anything reacts to it: with nobody to attack, or
+            // when the clear is worth nothing to the player it lands on, it never happened
+            if let GameEvent::AttackSent(attack) = &event {
+                if !event_player.is_some_and(|player| fixture.send_attack(player, *attack)) {
+                    continue;
+                }
             }
             // sound effects play through the theme of the player that caused them;
             // match-wide events (pause etc.) go through the theme whose music is playing
@@ -561,9 +564,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         field_events.push(FieldEvent::Spell { word });
                     }
                     themes.animate_destroy(player, cells);
-                }
-                (Some(player), GameEvent::AttackSent(attack)) => {
-                    fixture.send_attack(player, attack);
                 }
                 (Some(player), GameEvent::Lock { cells, dropped }) => {
                     if dropped {

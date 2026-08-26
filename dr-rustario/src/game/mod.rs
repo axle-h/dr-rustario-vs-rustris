@@ -193,6 +193,17 @@ impl GameState {
     }
 }
 
+/// What a combo is worth to a player of the *other* game, in rows of garbage, since that is
+/// what an attack is over there. Most combos are two patterns - one pill finishing two lines
+/// at once - which is nowhere near the work a Rustris player puts into a row, so the first
+/// pattern of a combo buys nothing abroad and the rest buy a row each. A real chain still
+/// hurts, up to the four rows a tetris sends
+const MAX_FOREIGN_GARBAGE_ROWS: u32 = 4;
+
+fn foreign_attack(blocks: u32) -> u32 {
+    blocks.saturating_sub(1).min(MAX_FOREIGN_GARBAGE_ROWS)
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Combo {
     patterns: Vec<VirusColor>,
@@ -393,7 +404,10 @@ impl Game {
     }
 
     pub fn attack(garbage: &SendGarbage) -> Attack {
-        Attack::new(GAME_ID, garbage.len() as u32).with_detail(encode_garbage(garbage))
+        let blocks = garbage.len() as u32;
+        Attack::new(GAME_ID, blocks)
+            .with_foreign(foreign_attack(blocks))
+            .with_detail(encode_garbage(garbage))
     }
 
     fn garbage_of(&mut self, attack: Attack) -> SendGarbage {
@@ -401,7 +415,7 @@ impl Game {
             decode_garbage(attack.detail)
         } else {
             // another game attacked: make up the colours
-            (0..attack.strength)
+            (0..attack.strength_for(GAME_ID))
                 .map(|_| self.random.random_color())
                 .collect()
         }
@@ -1255,6 +1269,31 @@ mod tests {
             VirusColor::Blue,
             VirusColor::Red,
         ]))]);
+    }
+
+    #[test]
+    fn a_combo_crosses_to_the_other_game_a_row_smaller() {
+        // the two pattern combo a pill finishes most often buys one row abroad, not two
+        for (blocks, expected) in [(0, 0), (1, 0), (2, 1), (3, 2), (4, 3), (8, 4)] {
+            let garbage: SendGarbage = vec![VirusColor::Blue; blocks];
+            let attack = Game::attack(&garbage);
+            assert_eq!(attack.strength, blocks as u32, "{blocks} blocks");
+            assert_eq!(attack.foreign, expected, "{blocks} blocks abroad");
+        }
+    }
+
+    #[test]
+    fn a_foreign_attack_lands_in_the_receivers_own_units() {
+        let mut game = having_bottle(|_| {});
+        let colors = vec![VirusColor::Blue, VirusColor::Red];
+        // another Dr. Rustario player sends its own blocks, colours and all
+        assert_eq!(game.garbage_of(Game::attack(&colors)), colors);
+        // another game sends what it says it is worth here, in made up colours
+        assert_eq!(
+            game.garbage_of(Attack::new(GameId(u16::MAX), 8).with_foreign(2))
+                .len(),
+            2
+        );
     }
 
     #[test]

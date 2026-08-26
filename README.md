@@ -15,6 +15,38 @@ T-spin) straight after another is worth back to back, which a piece that clears 
 break. Clears that chain build a combo, and emptying the board is a perfect clear. In a
 two player game every one of those sends its own garbage.
 
+## Garbage between the two games
+
+Against your own game an attack is what that game has always sent: rows of garbage between two
+Rustris players, garbage blocks between two Dr. Rustario players. Across the two, though, the
+units are not the same thing and neither is the work behind them - a Dr. Rustario bottle is
+eight wide and its blocks only come out by matching four of a colour, so a row per row would
+bury one in seconds - so an attack carries a second size for the other game, and the sender
+prices it:
+
+* **Rustris to Dr. Rustario**: only the clears worth working for cross at all. A tetris sends
+  two garbage blocks - the size of the combo a Dr. Rustario player sends most often - a T-spin
+  double two and a T-spin triple three, and a perfect clear four, whatever cleared it. Singles,
+  doubles, triples, T-spin singles, minis, combos and back to back send their rows at home as
+  they always did and nothing abroad.
+* **Dr. Rustario to Rustris**: a combo sends a row per pattern past the first, up to four. Most
+  combos are two patterns - one pill finishing two lines at once - which is nowhere near the
+  work a Rustris player puts into a row, so it buys one; a real chain still hurts.
+
+Which sizes those are was measured rather than guessed at: each game's own ai played five seeds
+at full speed for fifty minutes of game time, counting what it sent.
+
+| sending | to its own game | to the other game |
+|--|--|--|
+| Rustris, survival model | 32 rows/min | 0.2 blocks/min |
+| Rustris, high scoring model | 144 rows/min | 55 blocks/min |
+| Dr. Rustario, the N64 ai | 13 blocks/min | 7 rows/min |
+
+A minute of the high scoring model is twenty seven tetrises, which is not a human rate; a human
+tetris every fifteen seconds or so is four blocks a minute, next to the seven rows a minute a
+Dr. Rustario player sends back. Row for row it used to be 144 garbage blocks a minute into an
+eight wide bottle.
+
 ## Building
 
 Requires vcpkg to build on macos and Windows.

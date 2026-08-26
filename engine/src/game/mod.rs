@@ -58,27 +58,50 @@ impl Cell {
 /// A cell together with where it is.
 pub type PlacedCell = (Point, CellId);
 
-/// An attack sent from one player to another. `strength` is the game-neutral size of the
-/// attack (roughly "rows of garbage"); `detail` is private to the sending game and only
-/// meaningful to a receiver of the same `origin`.
+/// An attack sent from one player to another. `strength` is how big the attack is to a player
+/// of the same game, in that game's own units - rows of garbage in Rustris, garbage blocks in
+/// Dr. Rustario - and `foreign` how big it is to a player of the other game, in theirs.
+/// `detail` is private to the sending game and only meaningful to a receiver of the same
+/// `origin`.
+///
+/// The two numbers differ because the two games' units are not the same thing and neither are
+/// the clears that earn them: only the sending game knows how much work the clear took, so
+/// only it can say what that is worth to somebody playing the other one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attack {
     pub origin: GameId,
     pub strength: u32,
+    pub foreign: u32,
     pub detail: u64,
 }
 
 impl Attack {
+    /// an attack worth the same to any receiver, whatever they are playing
     pub fn new(origin: GameId, strength: u32) -> Self {
         Self {
             origin,
             strength,
+            foreign: strength,
             detail: 0,
         }
     }
 
+    /// what this attack is worth to a player of another game, in that game's own units
+    pub fn with_foreign(self, foreign: u32) -> Self {
+        Self { foreign, ..self }
+    }
+
     pub fn with_detail(self, detail: u64) -> Self {
         Self { detail, ..self }
+    }
+
+    /// how big the attack is to a player of `receiver`
+    pub fn strength_for(&self, receiver: GameId) -> u32 {
+        if receiver == self.origin {
+            self.strength
+        } else {
+            self.foreign
+        }
     }
 }
 
