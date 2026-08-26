@@ -16,9 +16,11 @@ use crate::particles::particle::Particle;
 pub mod words {
     pub const TETRIS: &str = "TETRIS";
     pub const COMBO: &str = "COMBO";
+    pub const T_SPIN: &str = "T-SPIN";
+    pub const PERFECT: &str = "PERFECT";
     pub const GAME_OVER: &str = "GAME OVER";
 
-    pub const ALL: [&str; 3] = [TETRIS, COMBO, GAME_OVER];
+    pub const ALL: [&str; 5] = [TETRIS, COMBO, T_SPIN, PERFECT, GAME_OVER];
 }
 
 /// Something that happened in the match, in the terms the field cares about. Built by the

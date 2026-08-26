@@ -6,6 +6,15 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 * **Rustris** - Tetris with the guideline ruleset (Game Boy, NES, SNES and particle themes)
 * **Dr. Rustario vs Rustris** - play a multi-player focussed playlist over both games.
 
+Rustris follows the guideline: the Super Rotation System and its wall kicks, a seven bag
+randomiser, hold, extended placement lock down, and guideline scoring. A T rotated into a slot
+with three of the four corners of its bounding box filled is a T-spin - a mini when only one of
+the corners in front of its stem is filled, unless it took the last of the wall kicks to get
+there - and scores as one whether it clears a line or not. A difficult clear (a tetris or any
+T-spin) straight after another is worth back to back, which a piece that clears nothing does not
+break. Clears that chain build a combo, and emptying the board is a perfect clear. In a
+two player game every one of those sends its own garbage.
+
 ## Building
 
 Requires vcpkg to build on macos and Windows.
@@ -161,7 +170,8 @@ a set of concentric rings drifting about, a spiral, a Lissajous figure, weather 
 through, and the boards themselves pulling the field around. It reacts to the match: clears
 send a wave through it, a big clear calls up a silhouette, an attack flies across it as a
 comet, and a stack near the top drains it toward red. It spells `TETRIS` on a four line
-clear, `COMBO` on a Dr. Rustario combo and `GAME OVER` when someone is buried; left to
+clear, `T-SPIN` on a Rustris T-spin, `PERFECT` on an emptied Rustris board, `COMBO` on a
+Dr. Rustario combo and `GAME OVER` when someone is buried; left to
 itself it spells the game in play, the level, or `VS`. It keeps out of the players' way,
 thinning and dimming where it would cross a playfield. Draw calls are what it costs, so how
 much of it there is is configurable (config file only, there is no video options menu):

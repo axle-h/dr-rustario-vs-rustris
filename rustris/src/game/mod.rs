@@ -1,4 +1,7 @@
-use crate::game::board::{compact_destroy_lines, Board, DestroyLines, BOARD_WIDTH, TOTAL_HEIGHT};
+use crate::game::board::{
+    compact_destroy_lines, Board, DestroyLines, Spin, BOARD_WIDTH, MAX_DESTROYED_LINES,
+    TOTAL_HEIGHT,
+};
 use crate::game::cell::{garbage_row, placed_minos, GAME_ID};
 use crate::game::geometry::Point;
 use crate::game::random::{RandomTetromino, PEEK_SIZE};
@@ -6,8 +9,7 @@ use crate::game::tetromino::{Minos, TetrominoShape};
 use engine::game::hold::HoldState;
 use engine::game::timing::{lock_move, LockMove, LockPlacements, Timing};
 use engine::game::{
-    Attack, Cell, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState,
-    StageTransition,
+    Attack, Cell, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState, StageTransition,
 };
 use std::cmp::max;
 use std::time::Duration;
@@ -43,6 +45,21 @@ const TRIPLE_POINTS: u32 = 500;
 const TETRIS_POINTS: u32 = 800;
 const COMBO_POINTS: u32 = 50;
 const DIFFICULT_MULTIPLIER: f64 = 1.5;
+/// rows of garbage a combo adds, indexed by the combo counter. A longer combo than the table
+/// keeps sending its last entry
+const COMBO_GARBAGE: [u32; 12] = [0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5, 5];
+/// what a T-spin is worth by the lines it cleared. A T can complete three lines at most
+const T_SPIN_POINTS: [u32; 4] = [400, 800, 1_200, 1_600];
+const T_SPIN_MINI_POINTS: [u32; 4] = [100, 200, 400, 400];
+/// rows a T-spin sends, by the lines it cleared
+const T_SPIN_GARBAGE: [u32; 4] = [0, 2, 4, 6];
+const T_SPIN_MINI_GARBAGE: [u32; 4] = [0, 0, 1, 1];
+/// what a perfect clear is worth on top of the lines it cleared, by line count
+const PERFECT_CLEAR_POINTS: [u32; 5] = [0, 800, 1_200, 1_800, 2_000];
+/// a perfect clear by a tetris that was itself back to back
+const PERFECT_CLEAR_BACK_TO_BACK_TETRIS_POINTS: u32 = 3_200;
+/// rows a perfect clear sends on top of the rows its lines sent
+const PERFECT_CLEAR_GARBAGE: u32 = 10;
 const SOFT_DROP_POINTS_PER_ROW: u32 = 1;
 const HARD_DROP_POINTS_PER_ROW: u32 = 2;
 
@@ -72,8 +89,8 @@ pub enum GameState {
     Fall(Duration),
     Lock(Duration),
     HardDropLock,
-    /// check the board for completed lines
-    Pattern,
+    /// check the board for completed lines, having locked a piece that spun into place or not
+    Pattern(Option<Spin>),
     /// completed lines have been emptied; drop the stack once the clear animation is done
     Settle(DestroyLines),
     GameOver,
@@ -84,10 +101,50 @@ pub enum GameState {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Combo {
-    count: u32,
-    difficult: bool,
+/// What a locked piece achieved, in the terms the guideline scores it by. It travels to the
+/// themes as the game-private `detail` of a [`GameEvent::Clear`], the way an [`Attack`] carries
+/// its own detail, so a theme can tell a perfect clear from an ordinary one without knowing
+/// anything about tetrominoes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct ClearAction {
+    /// lines the piece completed, 0 to 4
+    pub lines: u32,
+    /// the piece was spun into place
+    pub spin: Option<Spin>,
+    /// the piece left the board empty
+    pub perfect_clear: bool,
+}
+
+const DETAIL_LINES: u64 = 0b111;
+const DETAIL_PERFECT_CLEAR: u64 = 1 << 3;
+const DETAIL_SPIN: u64 = 1 << 4;
+const DETAIL_SPIN_MINI: u64 = 1 << 5;
+
+impl ClearAction {
+    pub fn to_detail(self) -> u64 {
+        let mut detail = self.lines as u64 & DETAIL_LINES;
+        if self.perfect_clear {
+            detail |= DETAIL_PERFECT_CLEAR;
+        }
+        match self.spin {
+            None => {}
+            Some(Spin::Full) => detail |= DETAIL_SPIN,
+            Some(Spin::Mini) => detail |= DETAIL_SPIN | DETAIL_SPIN_MINI,
+        }
+        detail
+    }
+
+    pub fn from_detail(detail: u64) -> Self {
+        Self {
+            lines: (detail & DETAIL_LINES) as u32,
+            spin: match (detail & DETAIL_SPIN != 0, detail & DETAIL_SPIN_MINI != 0) {
+                (false, _) => None,
+                (true, false) => Some(Spin::Full),
+                (true, true) => Some(Spin::Mini),
+            },
+            perfect_clear: detail & DETAIL_PERFECT_CLEAR != 0,
+        }
+    }
 }
 
 /// The reasons a game ends, as named by the Tetris guideline.
@@ -109,7 +166,13 @@ pub struct Game {
     stage_lines: u32,
     lines: u32,
     score: u32,
-    combo: Option<Combo>,
+    /// the guideline combo counter: `None` until a piece clears a line, then counting the
+    /// clears *after* the first, and broken by a piece that clears nothing
+    combo: Option<u32>,
+    /// whether the last line clear was a difficult one, which is what a difficult clear has to
+    /// follow to be worth back to back. Only a line clear can change it: a piece that clears
+    /// nothing leaves it alone
+    back_to_back: bool,
     state: GameState,
     soft_drop: bool,
     skip_next_spawn_delay: bool,
@@ -141,6 +204,7 @@ impl Game {
             lines: 0,
             score: 0,
             combo: None,
+            back_to_back: false,
             state: GameState::Spawn(Duration::ZERO, first_shape),
             soft_drop: false,
             skip_next_spawn_delay: false,
@@ -302,7 +366,7 @@ impl Game {
             GameState::Fall(duration) => self.fall(duration + delta),
             GameState::Lock(duration) => self.lock(duration + delta, false),
             GameState::HardDropLock => self.lock(TIMING.lock, true),
-            GameState::Pattern => self.pattern(),
+            GameState::Pattern(spin) => self.pattern(spin),
             GameState::Settle(lines) => self.settle(lines),
             GameState::SpawnGarbage {
                 duration,
@@ -380,6 +444,8 @@ impl Game {
             // lock timeout and still colliding so lock the piece now
             // but before locking, need to check for a game over event.
             let is_lock_out = self.board.is_tetromino_above_skyline();
+            // ask while the piece is still the board's: locking it takes it away
+            let spin = self.board.t_spin();
             let cells = self
                 .board
                 .tetromino()
@@ -396,7 +462,7 @@ impl Game {
                     cells,
                     dropped: hard_dropped || self.soft_drop,
                 });
-                GameState::Pattern
+                GameState::Pattern(spin)
             }
         } else {
             // otherwise must've moved over empty space so start a new fall
@@ -406,12 +472,15 @@ impl Game {
 
     /// completed lines leave the board at once and the theme animates them from the event;
     /// the stack above only drops once that animation has held the game
-    fn pattern(&mut self) -> GameState {
-        // TODO t-spin garbage
+    fn pattern(&mut self, spin: Option<Spin>) -> GameState {
         let lines = self.board.pattern();
         let rows = compact_destroy_lines(lines);
         if rows.is_empty() {
-            self.update_score_and_send_attack(lines);
+            self.update_score_and_send_attack(ClearAction {
+                lines: 0,
+                spin,
+                perfect_clear: false,
+            });
             return GameState::Spawn(Duration::ZERO, self.random.next());
         }
         let cells = rows
@@ -425,13 +494,22 @@ impl Game {
             .filter_map(|(point, cell)| cell.id().map(|id| (point, id)))
             .collect::<Vec<PlacedCell>>();
         self.board.clear_lines(lines);
-        let is_combo = matches!(self.combo, Some(Combo { count, .. }) if count > 0);
+        // the completed rows have been emptied and the stack above them has not dropped yet, so
+        // nothing left on the board now means nothing will be left once it settles either
+        let action = ClearAction {
+            lines: rows.len() as u32,
+            spin,
+            perfect_clear: self.board.is_empty(),
+        };
+        // a combo is already running, so this clear continues it
+        let is_combo = self.combo.is_some();
         self.events.push(GameEvent::Clear {
             cells,
-            count: rows.len() as u32,
+            count: action.lines,
             is_combo,
+            detail: action.to_detail(),
         });
-        self.update_score_and_send_attack(lines);
+        self.update_score_and_send_attack(action);
         GameState::Settle(lines)
     }
 
@@ -478,55 +556,86 @@ impl Game {
         }
     }
 
-    fn update_score_and_send_attack(&mut self, pattern: DestroyLines) {
-        // TODO test
-        // todo t-spin
-        // todo perfect clear
+    fn update_score_and_send_attack(&mut self, action: ClearAction) {
+        let line_count = action.lines;
+        // a T can complete three lines at most, so the spin tables are indexed by a clamped
+        // count rather than trusting the caller
+        let spin_index = (line_count as usize).min(T_SPIN_POINTS.len() - 1);
 
-        let line_count = pattern.iter().filter(|y| y.is_some()).count() as u32;
-
-        let (action_score, action_difficult, garbage_lines) = match line_count {
-            0 => {
+        let (action_score, action_difficult, garbage_lines) = match (action.spin, line_count) {
+            (spin, 0) => {
+                // a piece that clears nothing breaks the combo. It does not break back to
+                // back: only a line clear that is not difficult can do that
                 self.combo = None;
+                // a spin that cleared nothing still scores, it just scores nothing else
+                if let Some(spin) = spin {
+                    let points = match spin {
+                        Spin::Full => T_SPIN_POINTS[0],
+                        Spin::Mini => T_SPIN_MINI_POINTS[0],
+                    };
+                    let score_delta = points * (self.level + 1);
+                    self.score = (self.score + score_delta).min(MAX_SCORE);
+                }
                 return;
             }
-            1 => (SINGLE_POINTS, false, 0),
-            2 => (DOUBLE_POINTS, false, 1),
-            3 => (TRIPLE_POINTS, false, 2),
-            4 => (TETRIS_POINTS, true, 4),
-            _ => unreachable!(),
+            // every T-spin that clears a line is difficult, mini or not
+            (Some(Spin::Full), _) => (T_SPIN_POINTS[spin_index], true, T_SPIN_GARBAGE[spin_index]),
+            (Some(Spin::Mini), _) => (
+                T_SPIN_MINI_POINTS[spin_index],
+                true,
+                T_SPIN_MINI_GARBAGE[spin_index],
+            ),
+            (None, 1) => (SINGLE_POINTS, false, 0),
+            (None, 2) => (DOUBLE_POINTS, false, 1),
+            (None, 3) => (TRIPLE_POINTS, false, 2),
+            (None, 4) => (TETRIS_POINTS, true, 4),
+            (None, _) => unreachable!(),
         };
 
-        // update combo
-        self.combo = match self.combo {
-            None => Some(Combo {
-                count: 0,
-                difficult: action_difficult,
-            }),
-            Some(Combo { count, difficult }) => Some(Combo {
-                count: count + 1,
-                difficult: difficult && action_difficult,
-            }),
-        };
+        // update the combo counter: 0 for the first clear of a chain, and one more for each
+        // clear that follows it
+        let combo = self.combo.map_or(0, |count| count + 1);
+        self.combo = Some(combo);
+
+        // a difficult clear straight after another difficult clear is worth back to back
+        let back_to_back = action_difficult && self.back_to_back;
+        self.back_to_back = action_difficult;
 
         // calculate score delta
         let level_multiplier = self.level + 1;
-        let (difficult_score_multiplier, difficult_garbage_lines) = match self.combo {
-            // back to back difficult clears get a 1.5x multiplier
-            Some(Combo { count, difficult }) if count > 0 && difficult => (DIFFICULT_MULTIPLIER, 1),
-            _ => (1.0, 0),
+        let (difficult_score_multiplier, difficult_garbage_lines) = if back_to_back {
+            (DIFFICULT_MULTIPLIER, 1)
+        } else {
+            (1.0, 0)
         };
-        let combo_score = match self.combo {
-            Some(Combo { count, .. }) if count > 0 => COMBO_POINTS * count,
-            _ => 0,
+        let combo_score = COMBO_POINTS * combo * level_multiplier;
+        // an emptied board pays a bonus on top of the lines that emptied it
+        let perfect_clear_score = if action.perfect_clear {
+            let points = if line_count as usize == MAX_DESTROYED_LINES && back_to_back {
+                PERFECT_CLEAR_BACK_TO_BACK_TETRIS_POINTS
+            } else {
+                PERFECT_CLEAR_POINTS[line_count as usize]
+            };
+            points * level_multiplier
+        } else {
+            0
         };
-        let score_delta = action_score as f64 * level_multiplier as f64 * difficult_score_multiplier
-            + combo_score as f64;
+        let score_delta =
+            action_score as f64 * level_multiplier as f64 * difficult_score_multiplier
+                + combo_score as f64
+                + perfect_clear_score as f64;
 
         // update score
         self.score = (self.score + score_delta.round() as u32).min(MAX_SCORE);
 
-        let attack = garbage_lines + difficult_garbage_lines;
+        let combo_garbage = COMBO_GARBAGE[(combo as usize).min(COMBO_GARBAGE.len() - 1)];
+        let perfect_clear_garbage = if action.perfect_clear {
+            PERFECT_CLEAR_GARBAGE
+        } else {
+            0
+        };
+        let attack =
+            garbage_lines + difficult_garbage_lines + combo_garbage + perfect_clear_garbage;
         if attack > 0 {
             self.events
                 .push(GameEvent::AttackSent(Attack::new(GAME_ID, attack)));
@@ -689,5 +798,434 @@ impl engine::game::Game for Game {
 
     fn receive_attack(&mut self, attack: Attack) {
         self.send_garbage(max(attack.strength, 0));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::block::BlockState;
+    use crate::game::random::RandomMode;
+
+    fn game() -> Game {
+        Game::new(0, RandomTetromino::new(RandomMode::Bag, 10, 7.into()))
+    }
+
+    /// a pattern of n completed lines from the bottom of the board up
+    fn lines(n: u32) -> DestroyLines {
+        let mut result: DestroyLines = [None; MAX_DESTROYED_LINES];
+        for (y, slot) in result.iter_mut().enumerate().take(n as usize) {
+            *slot = Some(y as u32);
+        }
+        result
+    }
+
+    /// score a locked piece that cleared n lines on a fixed level, returning the points it
+    /// earned. The level is pinned so a test may clear as much as it likes without the level
+    /// multiplier moving underneath it
+    fn clear_at(game: &mut Game, level: u32, n: u32) -> u32 {
+        game.level = level;
+        game.stage_lines = 0;
+        let before = game.score;
+        game.update_score_and_send_attack(ClearAction {
+            lines: n,
+            spin: None,
+            perfect_clear: false,
+        });
+        game.score - before
+    }
+
+    fn clear(game: &mut Game, n: u32) -> u32 {
+        clear_at(game, 0, n)
+    }
+
+    /// score a locked piece that cleared n lines and emptied the board with them
+    fn perfect_clear_at(game: &mut Game, level: u32, n: u32) -> u32 {
+        game.level = level;
+        game.stage_lines = 0;
+        let before = game.score;
+        game.update_score_and_send_attack(ClearAction {
+            lines: n,
+            spin: None,
+            perfect_clear: true,
+        });
+        game.score - before
+    }
+
+    /// the rows of garbage the events drained so far would send
+    fn attack_sent(game: &mut Game) -> u32 {
+        std::mem::take(&mut game.events)
+            .into_iter()
+            .filter_map(|event| match event {
+                GameEvent::AttackSent(attack) => Some(attack.strength),
+                _ => None,
+            })
+            .sum()
+    }
+
+    #[test]
+    fn line_clears_score_the_guideline_values() {
+        assert_eq!(clear(&mut game(), 1), SINGLE_POINTS);
+        assert_eq!(clear(&mut game(), 2), DOUBLE_POINTS);
+        assert_eq!(clear(&mut game(), 3), TRIPLE_POINTS);
+        assert_eq!(clear(&mut game(), 4), TETRIS_POINTS);
+    }
+
+    #[test]
+    fn the_level_multiplies_the_line_score() {
+        // levels are 0-based so the multiplier is level + 1
+        assert_eq!(clear_at(&mut game(), 4, 1), SINGLE_POINTS * 5);
+        assert_eq!(clear_at(&mut game(), 9, 4), TETRIS_POINTS * 10);
+    }
+
+    #[test]
+    fn a_tetris_after_a_tetris_is_worth_back_to_back() {
+        let mut game = game();
+        assert_eq!(clear(&mut game, 4), TETRIS_POINTS);
+        // back to back tetrises are also a combo, so the second is worth the combo too
+        assert_eq!(
+            clear(&mut game, 4),
+            (TETRIS_POINTS as f64 * 1.5) as u32 + COMBO_POINTS
+        );
+    }
+
+    #[test]
+    fn back_to_back_survives_a_piece_that_clears_nothing() {
+        let mut game = game();
+        clear(&mut game, 4);
+        clear(&mut game, 0);
+        clear(&mut game, 0);
+        // only a line clear that is not difficult can break back to back
+        assert_eq!(clear(&mut game, 4), (TETRIS_POINTS as f64 * 1.5) as u32);
+    }
+
+    #[test]
+    fn a_clear_that_is_not_difficult_breaks_back_to_back() {
+        let mut game = game();
+        clear(&mut game, 4);
+        clear(&mut game, 1);
+        // the third clear is combo 2, but earns no back to back multiplier
+        assert_eq!(clear(&mut game, 4), TETRIS_POINTS + COMBO_POINTS * 2);
+    }
+
+    #[test]
+    fn a_combo_scores_fifty_a_clear_times_the_level() {
+        let mut game = game();
+        // the first clear of a chain is combo 0 and scores no combo points
+        assert_eq!(clear_at(&mut game, 3, 1), SINGLE_POINTS * 4);
+        assert_eq!(
+            clear_at(&mut game, 3, 1),
+            SINGLE_POINTS * 4 + COMBO_POINTS * 4
+        );
+        assert_eq!(
+            clear_at(&mut game, 3, 1),
+            SINGLE_POINTS * 4 + COMBO_POINTS * 2 * 4
+        );
+    }
+
+    #[test]
+    fn a_piece_that_clears_nothing_breaks_the_combo() {
+        let mut game = game();
+        clear(&mut game, 1);
+        clear(&mut game, 1);
+        clear(&mut game, 0);
+        assert_eq!(game.combo, None);
+        assert_eq!(clear(&mut game, 1), SINGLE_POINTS);
+    }
+
+    #[test]
+    fn line_clears_send_the_guideline_garbage() {
+        for (count, expected) in [(1, 0), (2, 1), (3, 2), (4, 4)] {
+            let mut game = game();
+            clear(&mut game, count);
+            assert_eq!(attack_sent(&mut game), expected, "{count} lines");
+        }
+    }
+
+    #[test]
+    fn back_to_back_sends_an_extra_row() {
+        let mut game = game();
+        clear(&mut game, 4);
+        // break the combo so the extra row is the back to back one alone
+        clear(&mut game, 0);
+        attack_sent(&mut game);
+        clear(&mut game, 4);
+        assert_eq!(attack_sent(&mut game), 4 + 1);
+    }
+
+    #[test]
+    fn a_combo_sends_garbage_from_the_table() {
+        let mut game = game();
+        for (combo, expected) in COMBO_GARBAGE.iter().enumerate() {
+            clear(&mut game, 1);
+            assert_eq!(attack_sent(&mut game), *expected, "combo {combo}");
+        }
+    }
+
+    #[test]
+    fn a_long_combo_keeps_sending_the_last_row_of_the_table() {
+        let mut game = game();
+        for _ in 0..COMBO_GARBAGE.len() + 5 {
+            clear(&mut game, 1);
+            attack_sent(&mut game);
+        }
+        clear(&mut game, 1);
+        assert_eq!(
+            attack_sent(&mut game),
+            COMBO_GARBAGE[COMBO_GARBAGE.len() - 1]
+        );
+    }
+
+    #[test]
+    fn a_perfect_clear_pays_a_bonus_on_top_of_its_lines() {
+        for (lines, action_points) in [
+            (1, SINGLE_POINTS),
+            (2, DOUBLE_POINTS),
+            (3, TRIPLE_POINTS),
+            (4, TETRIS_POINTS),
+        ] {
+            let observed = perfect_clear_at(&mut game(), 0, lines);
+            assert_eq!(
+                observed,
+                action_points + PERFECT_CLEAR_POINTS[lines as usize],
+                "{lines} lines"
+            );
+        }
+    }
+
+    #[test]
+    fn a_back_to_back_tetris_perfect_clear_is_worth_more() {
+        let mut game = game();
+        clear(&mut game, 4);
+        // break the combo so only the back to back tetris bonus is left to see
+        clear(&mut game, 0);
+        let observed = perfect_clear_at(&mut game, 0, 4);
+        assert_eq!(
+            observed,
+            (TETRIS_POINTS as f64 * 1.5) as u32 + PERFECT_CLEAR_BACK_TO_BACK_TETRIS_POINTS
+        );
+    }
+
+    #[test]
+    fn the_level_multiplies_the_perfect_clear_bonus() {
+        let observed = perfect_clear_at(&mut game(), 4, 2);
+        assert_eq!(observed, (DOUBLE_POINTS + PERFECT_CLEAR_POINTS[2]) * 5);
+    }
+
+    #[test]
+    fn a_perfect_clear_sends_ten_rows_on_top_of_its_lines() {
+        let mut game = game();
+        perfect_clear_at(&mut game, 0, 2);
+        assert_eq!(attack_sent(&mut game), 1 + PERFECT_CLEAR_GARBAGE);
+    }
+
+    #[test]
+    fn clear_detail_survives_the_round_trip() {
+        for lines in 0..=4 {
+            for spin in [None, Some(Spin::Full), Some(Spin::Mini)] {
+                for perfect_clear in [false, true] {
+                    let action = ClearAction {
+                        lines,
+                        spin,
+                        perfect_clear,
+                    };
+                    assert_eq!(ClearAction::from_detail(action.to_detail()), action);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn emptying_the_board_is_a_perfect_clear() {
+        let mut game = game();
+        having_completed_rows(&mut game, 2);
+        game.pattern(None);
+        assert!(ClearAction::from_detail(clear_event_detail(&mut game).unwrap()).perfect_clear);
+    }
+
+    #[test]
+    fn leaving_a_block_behind_is_not_a_perfect_clear() {
+        let mut game = game();
+        having_completed_rows(&mut game, 2);
+        game.board
+            .set_block(Point::from_u32(0, 4), BlockState::Garbage);
+        game.pattern(None);
+        assert!(!ClearAction::from_detail(clear_event_detail(&mut game).unwrap()).perfect_clear);
+    }
+
+    /// score a locked piece that spun into place and cleared n lines
+    fn spin_clear_at(game: &mut Game, level: u32, spin: Spin, n: u32) -> u32 {
+        game.level = level;
+        game.stage_lines = 0;
+        let before = game.score;
+        game.update_score_and_send_attack(ClearAction {
+            lines: n,
+            spin: Some(spin),
+            perfect_clear: false,
+        });
+        game.score - before
+    }
+
+    #[test]
+    fn t_spins_score_the_guideline_values() {
+        for lines in 0..=3 {
+            assert_eq!(
+                spin_clear_at(&mut game(), 0, Spin::Full, lines),
+                T_SPIN_POINTS[lines as usize],
+                "{lines} lines"
+            );
+            assert_eq!(
+                spin_clear_at(&mut game(), 0, Spin::Mini, lines),
+                T_SPIN_MINI_POINTS[lines as usize],
+                "mini, {lines} lines"
+            );
+        }
+    }
+
+    #[test]
+    fn the_level_multiplies_a_t_spin() {
+        assert_eq!(
+            spin_clear_at(&mut game(), 4, Spin::Full, 2),
+            T_SPIN_POINTS[2] * 5
+        );
+        assert_eq!(
+            spin_clear_at(&mut game(), 4, Spin::Full, 0),
+            T_SPIN_POINTS[0] * 5
+        );
+    }
+
+    #[test]
+    fn every_t_spin_that_clears_a_line_is_difficult() {
+        for spin in [Spin::Full, Spin::Mini] {
+            let mut game = game();
+            spin_clear_at(&mut game, 0, spin, 1);
+            // break the combo so only the back to back multiplier is left to see
+            clear(&mut game, 0);
+            assert_eq!(
+                clear(&mut game, 4),
+                (TETRIS_POINTS as f64 * 1.5) as u32,
+                "{spin:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_t_spin_that_clears_nothing_breaks_the_combo_but_not_back_to_back() {
+        let mut game = game();
+        clear(&mut game, 4);
+        clear(&mut game, 1);
+        spin_clear_at(&mut game, 0, Spin::Full, 0);
+        assert_eq!(game.combo, None);
+        // the single broke back to back, and the spin that cleared nothing did not restore it
+        assert_eq!(clear(&mut game, 4), TETRIS_POINTS);
+    }
+
+    #[test]
+    fn t_spins_send_the_guideline_garbage() {
+        for lines in 0..=3 {
+            let mut full = game();
+            spin_clear_at(&mut full, 0, Spin::Full, lines);
+            assert_eq!(
+                attack_sent(&mut full),
+                T_SPIN_GARBAGE[lines as usize],
+                "{lines} lines"
+            );
+
+            let mut mini = game();
+            spin_clear_at(&mut mini, 0, Spin::Mini, lines);
+            assert_eq!(
+                attack_sent(&mut mini),
+                T_SPIN_MINI_GARBAGE[lines as usize],
+                "mini, {lines} lines"
+            );
+        }
+    }
+
+    /// a T spawned into a nook that has three of its corners filled either way it is turned,
+    /// and resting on a block so that it locks
+    fn having_t_at_spawn(game: &mut Game) {
+        assert!(game.board.try_spawn_tetromino(TetrominoShape::T).is_some());
+        // clear of the skyline, so that locking it up here is not a lock out
+        assert!(game.board.step_down());
+        assert!(game.board.step_down());
+        for (x, y) in [(5, 19), (5, 17), (3, 17), (4, 16)] {
+            game.board
+                .set_block(Point::from_u32(x, y), BlockState::Garbage);
+        }
+    }
+
+    fn locked_state(game: &mut Game) -> GameState {
+        game.state = GameState::Lock(TIMING.lock);
+        game.update(Duration::ZERO);
+        game.state
+    }
+
+    #[test]
+    fn locking_a_t_that_spun_into_place_carries_the_spin_to_the_pattern() {
+        let mut game = game();
+        having_t_at_spawn(&mut game);
+        assert!(game.board.rotate(true));
+        assert_eq!(
+            locked_state(&mut game),
+            GameState::Pattern(Some(Spin::Full))
+        );
+    }
+
+    #[test]
+    fn locking_a_t_that_never_rotated_carries_no_spin() {
+        let mut game = game();
+        // the same three corners are filled, but the piece only ever fell into them
+        having_t_at_spawn(&mut game);
+        assert_eq!(locked_state(&mut game), GameState::Pattern(None));
+    }
+
+    /// fill n rows from the bottom of the board so the next pattern completes them
+    fn having_completed_rows(game: &mut Game, n: u32) {
+        for y in 0..n {
+            for x in 0..BOARD_WIDTH {
+                game.board
+                    .set_block(Point::from_u32(x, y), BlockState::Garbage);
+            }
+        }
+    }
+
+    fn clear_event_detail(game: &mut Game) -> Option<u64> {
+        std::mem::take(&mut game.events)
+            .into_iter()
+            .find_map(|event| match event {
+                GameEvent::Clear { detail, .. } => Some(detail),
+                _ => None,
+            })
+    }
+
+    fn clear_event_is_combo(game: &mut Game) -> Option<bool> {
+        std::mem::take(&mut game.events)
+            .into_iter()
+            .find_map(|event| match event {
+                GameEvent::Clear { is_combo, .. } => Some(is_combo),
+                _ => None,
+            })
+    }
+
+    #[test]
+    fn the_first_clear_of_a_chain_is_not_a_combo() {
+        let mut game = game();
+        having_completed_rows(&mut game, 1);
+        game.pattern(None);
+        assert_eq!(clear_event_is_combo(&mut game), Some(false));
+    }
+
+    #[test]
+    fn the_second_clear_of_a_chain_is_a_combo() {
+        let mut game = game();
+        having_completed_rows(&mut game, 1);
+        game.pattern(None);
+        clear_event_is_combo(&mut game);
+
+        game.state = GameState::Settle(lines(1));
+        game.board.destroy(lines(1));
+        having_completed_rows(&mut game, 1);
+        game.pattern(None);
+        assert_eq!(clear_event_is_combo(&mut game), Some(true));
     }
 }

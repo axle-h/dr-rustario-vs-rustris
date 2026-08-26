@@ -544,6 +544,8 @@ impl Game {
             cells: blocks.into_iter().map(Into::into).collect(),
             count: combo.patterns.len() as u32,
             is_combo: combo.is_combo(),
+            // Dr. Rustario grades its clears by the count and the combo alone
+            detail: 0,
         });
 
         if self.bottle.virus_count() == 0 {
@@ -1278,6 +1280,7 @@ mod tests {
             cells: vec![ColoredBlock::virus(1, 2, VirusColor::Yellow).into()],
             count: 1,
             is_combo: false,
+            detail: 0,
         }]);
     }
 
@@ -1305,6 +1308,7 @@ mod tests {
             cells: vec![ColoredBlock::virus(1, 2, VirusColor::Yellow).into()],
             count: 2,
             is_combo: true,
+            detail: 0,
         }]);
     }
 
