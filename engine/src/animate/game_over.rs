@@ -19,7 +19,9 @@ const CURTAIN_CLOSED_FOR: Duration = Duration::from_millis(2000);
 pub enum GameOverStyle {
     /// after a pause a "game over" graphic with `frames` frames cycles over the board
     Screen { frames: usize },
-    /// rows of blocks fill the board like a curtain, from the top or the bottom
+    /// rows of blocks fill the board like a curtain, from the top or the bottom. `rows` is
+    /// how much of the board it covers, counted up from the floor, so a board drawn with a
+    /// buffer zone above its skyline keeps it: nothing ever comes to rest up there
     Curtain { from_top: bool, rows: u32 },
 }
 
@@ -144,9 +146,18 @@ impl GameOverAnimation {
         Some((phase, range))
     }
 
-    /// the rows currently covered by the curtain (`Curtain` style)
+    /// the rows currently covered by the curtain, counted from the top of its span
+    /// (`Curtain` style)
     pub fn curtain_rows(&self) -> Option<Range<u32>> {
         self.curtain().map(|(_, rows)| rows)
+    }
+
+    /// how much of the board the curtain covers, counted up from the floor
+    pub fn curtain_height(&self) -> Option<u32> {
+        match self.style {
+            GameOverStyle::Curtain { rows, .. } => Some(rows),
+            GameOverStyle::Screen { .. } => None,
+        }
     }
 
     pub fn curtain_phase(&self) -> Option<CurtainPhase> {

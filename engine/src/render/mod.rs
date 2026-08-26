@@ -450,14 +450,17 @@ impl<'a> Theme<'a> {
                 .draw_board(canvas, game, &self.geometry, animations, self.ghost_style)?;
         }
 
-        if let Some(rows) = animations.game_over().curtain_rows() {
+        if let (Some(rows), Some(height)) = (
+            animations.game_over().curtain_rows(),
+            animations.game_over().curtain_height(),
+        ) {
             if let Some(cell) = self.curtain_cell {
+                // the curtain closes over the board itself, from its floor up: a board
+                // drawn with a buffer zone showing above the skyline keeps it clear
+                let floor = self.geometry.rows().saturating_sub(height);
                 for j in rows {
                     for i in 0..self.geometry.columns() {
-                        let point = crate::game::geometry::Point::from_u32(
-                            i,
-                            j + self.geometry.hidden_rows(),
-                        );
+                        let point = crate::game::geometry::Point::from_u32(i, floor + j);
                         self.sprites.draw_cell(
                             canvas,
                             cell,

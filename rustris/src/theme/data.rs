@@ -1,9 +1,10 @@
 //! Helpers that describe Rustris's sprites and sounds to the engine's theme builders.
 
+use crate::game::board::BOARD_HEIGHT;
 use crate::game::cell::Mino;
 use crate::game::geometry::Rotation;
 use crate::game::tetromino::TetrominoShape;
-use crate::game::{MAX_LEVEL, MAX_LINES, MAX_SCORE, VISIBLE_HEIGHT};
+use crate::game::{MAX_LEVEL, MAX_LINES, MAX_SCORE};
 use engine::animate::game_over::GameOverStyle;
 use engine::config::AudioConfig;
 use engine::game::{CellId, MetricKind, PieceId};
@@ -180,10 +181,12 @@ pub fn right<P: Into<Point>>(point: P, chars: u32) -> MetricSnips {
     MetricSnips::chars(FontAlign::Right, point, chars)
 }
 
+/// the game over curtain fills the playfield only: the two rows of buffer zone a Rustris
+/// board shows above the skyline are open sky, and stay that way
 pub fn curtain(from_top: bool) -> GameOverStyle {
     GameOverStyle::Curtain {
         from_top,
-        rows: VISIBLE_HEIGHT,
+        rows: BOARD_HEIGHT,
     }
 }
 
