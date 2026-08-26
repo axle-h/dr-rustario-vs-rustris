@@ -525,7 +525,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         }
                     }
                 }
-                (Some(player), GameEvent::Clear { ref cells, count, is_combo }) => {
+                (Some(player), GameEvent::Clear { ref cells, count, is_combo, .. }) => {
                     let mut rows = cells.iter().map(|(p, _)| p.y as u32).collect::<Vec<u32>>();
                     rows.sort();
                     rows.dedup();

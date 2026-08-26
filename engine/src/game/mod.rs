@@ -138,10 +138,13 @@ pub enum GameEvent {
     },
     /// cells were removed from the board. `count` is the game's own measure of how much was
     /// cleared (lines, patterns...) and `is_combo` whether it chained from a previous clear.
+    /// `detail` is game-private, the way an [`Attack`]'s is: whatever grading the game's own
+    /// renderer wants back out of it.
     Clear {
         cells: Vec<PlacedCell>,
         count: u32,
         is_combo: bool,
+        detail: u64,
     },
     /// loose blocks fell after a clear
     Settle,

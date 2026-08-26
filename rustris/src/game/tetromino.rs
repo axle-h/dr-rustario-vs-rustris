@@ -1,4 +1,4 @@
-use super::geometry::{Point, Rotation, Pose};
+use super::geometry::{Point, Pose, Rotation};
 #[allow(unused_imports)]
 use bitflags::{bitflags, Flags};
 
@@ -37,7 +37,7 @@ impl TetrominoShape {
         TetrominoShape::J,
         TetrominoShape::L,
     ];
-    
+
     pub fn id(&self) -> u8 {
         match self {
             TetrominoShape::I => 0,
@@ -46,7 +46,7 @@ impl TetrominoShape {
             TetrominoShape::S => 3,
             TetrominoShape::Z => 4,
             TetrominoShape::J => 5,
-            TetrominoShape::L => 6
+            TetrominoShape::L => 6,
         }
     }
 
@@ -181,7 +181,6 @@ pub type MinoCorners = [Corner; 4];
 pub fn minos_of(p0: (i32, i32), p1: (i32, i32), p2: (i32, i32), p3: (i32, i32)) -> Minos {
     [p0, p1, p2, p3].map(|(x, y)| Point::new(x, y))
 }
-
 
 const fn perimeter(minos: [u8; 4]) -> MinoPerimeter {
     // error[E0658]: `for` is not allowed in a `const fn`
@@ -419,12 +418,30 @@ const Z: TetrominoMeta = TetrominoMeta {
     bounding_box: 3,
 };
 
+/// How the piece last got where it is. A spin is only a spin if the piece was rotated into
+/// place, so this is what the guideline's three corner rule is gated on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum LastMove {
+    #[default]
+    Spawn,
+    /// moved sideways, or fell
+    Shift,
+    /// rotated, and whether it took the last of the SRS kicks to fit. That kick is the one
+    /// that wrenches a T into a slot it could not otherwise reach, so it always earns a full
+    /// spin rather than a mini
+    Rotation { last_kick: bool },
+}
+
+/// the index of the last SRS kick offset, the one that only a wrenched rotation reaches
+const LAST_WALL_KICK: usize = 4;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Tetromino {
     shape: TetrominoShape,
     pose: Pose,
     lock_placements: u32,
     y_min: i32,
+    last_move: LastMove,
 }
 
 impl Tetromino {
@@ -435,6 +452,7 @@ impl Tetromino {
             pose: Pose::from_position(position),
             lock_placements: 0,
             y_min: position.y,
+            last_move: LastMove::Spawn,
         }
     }
 
@@ -449,22 +467,26 @@ impl Tetromino {
     pub fn rotation(&self) -> Rotation {
         self.pose.rotation
     }
-    
+
     pub fn position(&self) -> Point {
         self.pose.position
     }
 
     pub fn minos(&self) -> Minos {
-        self
-            .meta()
+        self.meta()
             .rotated_minos(self.pose.rotation)
             .map(|p| p + self.pose.position)
     }
 
     pub fn translate(&mut self, x: i32, y: i32) {
         self.translate_point(Point::new(x, y));
+        self.last_move = LastMove::Shift;
     }
-    
+
+    pub fn last_move(&self) -> LastMove {
+        self.last_move
+    }
+
     pub fn meta(&self) -> &TetrominoMeta {
         self.shape.meta()
     }
@@ -473,8 +495,7 @@ impl Tetromino {
         let to_rotation = self.pose.rotation.rotate(clockwise);
         let meta = self.meta();
         let basic_rotation_minos = meta.rotated_minos(to_rotation);
-        meta
-            .wall_kicks(self.pose.rotation, to_rotation)
+        meta.wall_kicks(self.pose.rotation, to_rotation)
             .iter()
             .map(|kick| basic_rotation_minos.map(|p| p + self.pose.position + *kick))
             .collect::<Vec<Minos>>()
@@ -485,6 +506,9 @@ impl Tetromino {
         let to_rotation = self.pose.rotate_mut(clockwise);
         let wall_kick = self.meta().wall_kicks(from_rotation, to_rotation)[wall_kick_id];
         self.translate_point(wall_kick);
+        self.last_move = LastMove::Rotation {
+            last_kick: wall_kick_id == LAST_WALL_KICK,
+        };
     }
 
     fn translate_point(&mut self, p: Point) {
