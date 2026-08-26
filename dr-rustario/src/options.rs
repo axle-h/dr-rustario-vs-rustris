@@ -21,6 +21,7 @@ const RANDOM: &str = "random";
 const VS_AI_PREFIX: &str = "vs ";
 const VS_AI_SUFFIX: &str = " ai";
 const AI_DEMO_1P: &str = "1-player ai demo";
+const AI_DEMO_2P: &str = "2-player ai demo";
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Options {
@@ -48,8 +49,7 @@ impl Options {
             .set_rules(MatchRules::default_by_players(players));
     }
 
-    /// the title screen's players list: humans, then the ai opponents and the ai demo. There is
-    /// only one Dr. Rustario model, so there is no 2-player demo: it would play itself.
+    /// the title screen's players list: humans, then the ai opponents and the ai demos
     pub fn players_list(&self, max_players: u32) -> (Vec<String>, usize) {
         let mut players = (1..=max_players)
             .map(|i| i.to_string())
@@ -62,6 +62,9 @@ impl Options {
             );
         }
         players.push(AI_DEMO_1P.to_string());
+        if max_players > 1 {
+            players.push(AI_DEMO_2P.to_string());
+        }
         let current = match self.config.ai() {
             AiMode::Off => (self.config.players() as usize).clamp(1, max_players as usize) - 1,
             AiMode::Opponent(difficulty) => players
@@ -71,6 +74,7 @@ impl Options {
                 })
                 .unwrap_or(0),
             AiMode::Demo => players.iter().position(|p| p == AI_DEMO_1P).unwrap_or(0),
+            AiMode::VsDemo => players.iter().position(|p| p == AI_DEMO_2P).unwrap_or(0),
         };
         (players, current)
     }
@@ -84,6 +88,9 @@ impl Options {
         if value == AI_DEMO_1P {
             self.set_players(1);
             self.config.set_ai(AiMode::Demo);
+        } else if value == AI_DEMO_2P {
+            self.set_players(2);
+            self.config.set_ai(AiMode::VsDemo);
         } else if let Some(difficulty) = ai_difficulty {
             self.set_players(2);
             self.config.set_ai(AiMode::Opponent(difficulty));

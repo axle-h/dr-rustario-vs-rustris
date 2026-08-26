@@ -24,7 +24,16 @@ the placement leaves a chain, `routes.rs` measures how much room the pill has le
 holds the weights and `mod.rs` picks the skill row and situation column that select them.
 `DrAiAgent` chooses between the two through `DrAiKind`; `ga dr play <seed> <level> <cap>
 <every> <brain>` runs either headless, where a brain is `n64`, `n64:0`..`n64:5`, `neural` or
-`linear`.
+`linear`. The six skill rows are the one dial the original has, and `params.rs`'s `SKILL_ORDER`
+ranks them worst to best (measured, not assumed - the rows are personalities, not a ladder):
+that is what Dr. Rustario's four ai difficulties and its 2-player demo pick from, so a harder
+setting is a better player as well as a faster one.
+
+Both games and the vs. mode offer the same ai modes - four difficulties and a 1- and 2-player
+demo - off the title screen's `players` list. Each game names its own models per mode in its
+`GameConfig::ai_players`; the vs. mode's `VersusAi` (`launcher/src/modes.rs`) just asks both
+games for theirs, so an ai player there is a pair of brains and its controller dispatches on
+`AnyGame::kind()`, resetting both agents as the playlist swaps the board for the other game's.
 
 The particle engine has two models. `particles/source.rs` is the original fire-and-forget
 emitter: a source emits a group and then has no further say, which is right for a burst and is

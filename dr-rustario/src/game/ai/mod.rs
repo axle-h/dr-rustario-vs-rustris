@@ -20,7 +20,7 @@ pub mod input_sequence;
 pub mod models;
 
 pub use models::{DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
-pub use n64::N64Ai;
+pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 
 /// Which brain an ai player is thinking with. The default is Dr. Mario 64's own deterministic
 /// opponent, ported in [n64]; the neural network is what a `ga dr` run trains, and the linear
@@ -30,6 +30,18 @@ pub enum DrAiKind {
     N64(N64Ai),
     Neural(DrNeuralNetwork),
     Linear,
+}
+
+impl DrAiKind {
+    /// one of the N64 ai's six rows of weights, which is what a difficulty picks between
+    pub fn n64(skill: u8) -> Self {
+        Self::N64(N64Ai::with_skill(skill))
+    }
+
+    /// the `nth` weakest of the six rows, as measured in [`SKILL_ORDER`]
+    pub fn n64_nth_weakest(nth: usize) -> Self {
+        Self::n64(SKILL_ORDER[nth.min(SKILLS - 1)])
+    }
 }
 
 impl Default for DrAiKind {

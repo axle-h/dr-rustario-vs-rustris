@@ -38,15 +38,16 @@ impl MatchThemes {
 
 pub use engine::session::MatchRules;
 
-/// How fast the ai is allowed to play. Every difficulty plays the same brain - Dr. Mario 64's
-/// own deterministic opponent - so a difficulty only decides how quickly it may press keys.
+/// How well and how fast the ai is allowed to play. Every difficulty plays Dr. Mario 64's own
+/// deterministic opponent, but on a different one of its six rows of weights - the one dial the
+/// original ai has - as well as at a different key rate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AiDifficulty {
-    /// The most speed limited
+    /// The most speed limited, on the weakest row of weights
     Easy,
     Normal,
     Hard,
-    /// Full speed
+    /// Full speed, on the best row of weights
     Impossible,
 }
 
@@ -79,9 +80,16 @@ impl AiDifficulty {
         }
     }
 
-    /// every difficulty plays the same brain
+    /// The row of weights this difficulty thinks with, out of the six ranked worst to best in
+    /// [`crate::game::ai::SKILL_ORDER`]: the two weakest for easy and normal, then the runner
+    /// up, then the best of them.
     pub fn brain(&self) -> DrAiKind {
-        DrAiKind::default()
+        match self {
+            AiDifficulty::Easy => DrAiKind::n64_nth_weakest(0),
+            AiDifficulty::Normal => DrAiKind::n64_nth_weakest(1),
+            AiDifficulty::Hard => DrAiKind::n64_nth_weakest(3),
+            AiDifficulty::Impossible => DrAiKind::n64_nth_weakest(5),
+        }
     }
 }
 
@@ -91,6 +99,9 @@ pub enum AiMode {
     Off,
     /// Single player game played by the ai at full speed
     Demo,
+    /// Two player game played by the ai at full speed: the two best rows of the N64 ai's
+    /// weights against each other, the runner up as player 1 and the best as player 2
+    VsDemo,
     /// Two player game where player 2 is the ai
     Opponent(AiDifficulty),
 }
@@ -139,7 +150,7 @@ impl GameConfig {
         match self.ai {
             AiMode::Off => self.players,
             AiMode::Demo => 1,
-            AiMode::Opponent(_) => 2,
+            AiMode::VsDemo | AiMode::Opponent(_) => 2,
         }
     }
 
@@ -149,6 +160,10 @@ impl GameConfig {
         match self.ai {
             AiMode::Off => vec![],
             AiMode::Demo => vec![(0, Duration::ZERO, DrAiKind::default())],
+            AiMode::VsDemo => vec![
+                (0, Duration::ZERO, DrAiKind::n64_nth_weakest(4)),
+                (1, Duration::ZERO, DrAiKind::n64_nth_weakest(5)),
+            ],
             AiMode::Opponent(difficulty) => {
                 vec![(1, difficulty.key_delay(), difficulty.brain())]
             }
@@ -219,9 +234,60 @@ impl Default for GameConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::ai::{DrAiKind, SKILL_ORDER};
+
+    fn skill(brain: DrAiKind) -> u8 {
+        match brain {
+            DrAiKind::N64(ai) => ai.skill(),
+            other => panic!("expected one of the N64 ai's rows, got {:?}", other),
+        }
+    }
 
     #[test]
     fn theme_count() {
         assert_eq!(MatchThemes::count(), 4);
+    }
+
+    #[test]
+    fn every_difficulty_plays_a_different_row_of_the_weights() {
+        let rows: Vec<u8> = AiDifficulty::ALL.iter().map(|d| skill(d.brain())).collect();
+        assert_eq!(
+            rows,
+            vec![
+                SKILL_ORDER[0],
+                SKILL_ORDER[1],
+                SKILL_ORDER[3],
+                SKILL_ORDER[5]
+            ]
+        );
+
+        // and they climb the measured ranking, so a harder setting is a better player and not
+        // merely a faster one
+        let ranks: Vec<usize> = rows
+            .iter()
+            .map(|row| SKILL_ORDER.iter().position(|r| r == row).unwrap())
+            .collect();
+        assert!(
+            ranks.windows(2).all(|pair| pair[0] < pair[1]),
+            "{:?}",
+            ranks
+        );
+    }
+
+    #[test]
+    fn the_two_player_demo_puts_two_different_rows_against_each_other() {
+        let mut config = GameConfig::default();
+        config.set_ai(AiMode::VsDemo);
+        let players = config.ai_players();
+        assert_eq!(config.effective_players(), 2);
+        assert_eq!(
+            players.iter().map(|(p, _, _)| *p).collect::<Vec<u32>>(),
+            vec![0, 1]
+        );
+        // both at full speed: the demo is a contest of models, not of key rates
+        assert!(players.iter().all(|(_, delay, _)| delay.is_zero()));
+        assert_ne!(skill(players[0].2), skill(players[1].2));
+        // and it is the best of them defending player 2, as the hardest difficulty plays
+        assert_eq!(skill(players[1].2), skill(AiDifficulty::Impossible.brain()));
     }
 }

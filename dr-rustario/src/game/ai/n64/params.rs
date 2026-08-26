@@ -11,13 +11,17 @@ pub const SKILLS: usize = 6;
 const SITUATIONS: usize = 8;
 const FIELDS: usize = 28;
 
-/// Which of the six rows to play. Every difficulty plays the same one - a Dr. Rustario
-/// difficulty only decides how fast the agent may press keys - but the row is worth keeping
-/// selectable, since it is the one dial the original ai has, and the rows are personalities
-/// rather than a ladder. This one wins on stages cleared over twenty seeds at virus levels 10
-/// and 20 (`ga dr play <seed> <level> 1200 100000 n64:<row>`), and is the only row that never
-/// buried itself at level 10.
-pub const DEFAULT_SKILL: u8 = 4;
+/// The six rows worst to best, which is what a difficulty picks from. The rows are
+/// personalities rather than a ladder - the original picks one per character, not per skill
+/// setting - so the order was measured rather than assumed: each row played twenty seeds at
+/// virus levels 5, 10, 15 and 20 with a 1200 pill cap
+/// (`ga dr play <seed> <level> 1200 100000 n64:<row>`), ranked on bottles cleared less four per
+/// burial. Row 4 leads at every level and is the only row that never buried itself at level 10;
+/// rows 5 and 3 are the two that hardly get past the first few bottles.
+pub const SKILL_ORDER: [u8; SKILLS] = [5, 3, 2, 0, 1, 4];
+
+/// The row an ai plays when nothing picks one: the best of them.
+pub const DEFAULT_SKILL: u8 = SKILL_ORDER[SKILLS - 1];
 
 /// Original name: `ai_param_org`
 #[rustfmt::skip]
