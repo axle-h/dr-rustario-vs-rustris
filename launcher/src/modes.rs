@@ -809,12 +809,24 @@ impl VersusMode {
         }
     }
 
+    /// the seed every copy of `kind` in this match is dealt from, derived from the match
+    /// seed: a playlist starts each player's game as their own board reaches it, so a game
+    /// dealt to player 2 three stages after player 1 must still be dealt from the same seed
+    fn game_seed(&self, kind: GameKind) -> engine::game::random::Seed {
+        let salt = match kind {
+            GameKind::DrRustario => 1,
+            GameKind::Rustris => 2,
+        };
+        engine::game::random::Seed::from_u64(splitmix64(self.seed.get() ^ splitmix64(salt)))
+    }
+
     /// `count` games of a kind at this difficulty, sharing a seed
     fn new_games(&self, kind: GameKind, count: usize) -> Result<Vec<AnyGame>, String> {
+        let seed = self.game_seed(kind);
         Ok(match kind {
             GameKind::DrRustario => {
                 let mode = dr_rustario::game::random::RandomMode::Bag;
-                dr_rustario::game::random::random(count, mode)
+                dr_rustario::game::random::from_seed(seed, count, mode)
                     .into_iter()
                     .map(|rand| {
                         dr_rustario::game::Game::new(
@@ -828,7 +840,7 @@ impl VersusMode {
             }
             GameKind::Rustris => {
                 let mode = rustris::game::random::RandomMode::Bag;
-                rustris::game::random::random_tetrominos(mode, count)
+                rustris::game::random::from_seed(seed.into(), mode, count)
                     .into_iter()
                     .map(|rand| {
                         AnyGame::Rustris(rustris::game::Game::new(
@@ -1414,5 +1426,58 @@ mod tests {
         assert_eq!(Difficulty::from_name("11"), None);
         assert_eq!(Difficulty::from_name("7"), Some(Difficulty::new(7)));
         assert_eq!(Difficulty::names().len(), 11);
+    }
+
+    /// a game's board and queue, for comparing two players' copies of it
+    fn board_of(game: &AnyGame) -> (Vec<engine::game::Cell>, Vec<engine::game::PieceId>) {
+        use engine::game::geometry::Point;
+        use engine::game::Game;
+        let cells = (0..game.board_height())
+            .flat_map(|y| (0..game.board_width()).map(move |x| Point::new(x as i32, y as i32)))
+            .map(|p| game.cell(p))
+            .collect();
+        (cells, game.queue())
+    }
+
+    fn versus_at(seed: u64, difficulty: u32) -> VersusMode {
+        let mut mode = VersusMode::new();
+        mode.difficulty = Difficulty::new(difficulty);
+        mode.seed.set(seed);
+        mode
+    }
+
+    /// the playlist deals each player's game as their own board reaches it, so two players
+    /// three stages apart must still be dealt the same bottle - and the same pieces
+    #[test]
+    fn every_player_is_dealt_the_same_game_whenever_the_playlist_reaches_them() {
+        for kind in [GameKind::DrRustario, GameKind::Rustris] {
+            let mode = versus_at(12345, 10);
+            // both at once, as a match starts
+            let together = mode.new_games(kind, 2).unwrap();
+            assert_eq!(board_of(&together[0]), board_of(&together[1]), "{:?}", kind);
+            // and one at a time, as a playlist swaps a board over
+            let apart = mode.new_games(kind, 1).unwrap();
+            assert_eq!(board_of(&together[0]), board_of(&apart[0]), "{:?}", kind);
+        }
+    }
+
+    /// ... and it is a seed doing that, not every match dealing the same thing
+    #[test]
+    fn another_match_is_dealt_another_game() {
+        for kind in [GameKind::DrRustario, GameKind::Rustris] {
+            let one = versus_at(1, 10).new_games(kind, 1).unwrap();
+            let two = versus_at(2, 10).new_games(kind, 1).unwrap();
+            assert_ne!(board_of(&one[0]), board_of(&two[0]), "{:?}", kind);
+        }
+    }
+
+    /// the two games are dealt from the same match seed but must not shadow each other
+    #[test]
+    fn the_two_games_are_dealt_from_different_seeds() {
+        let mode = versus_at(7, 10);
+        assert_ne!(
+            mode.game_seed(GameKind::DrRustario),
+            mode.game_seed(GameKind::Rustris)
+        );
     }
 }

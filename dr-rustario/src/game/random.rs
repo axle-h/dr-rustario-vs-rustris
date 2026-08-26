@@ -37,7 +37,12 @@ impl Distribution<PillShape> for StandardUniform {
 }
 
 pub fn random(count: usize, mode: RandomMode) -> Vec<GameRandom> {
-    let seed = Seed::random();
+    from_seed(Seed::random(), count, mode)
+}
+
+/// `count` randomisers all dealt from one seed: every player sees the same bottles and the
+/// same pills
+pub fn from_seed(seed: Seed, count: usize, mode: RandomMode) -> Vec<GameRandom> {
     (0..count)
         .map(|_| GameRandom::from_seed(seed, mode))
         .collect()
@@ -129,6 +134,7 @@ impl Debug for BottleSeed {
 pub struct GameRandom {
     pills: BagRandom<PillShape>,
     bottle_rng: ChaChaRng,
+    garbage_color_rng: ChaChaRng,
 }
 
 impl GameRandom {
@@ -143,9 +149,15 @@ impl GameRandom {
 
     pub fn new(rng: ChaChaRng, mode: RandomMode) -> Self {
         let bottle_rng = rng.clone();
+        // colours made up for another game's garbage come off a stream of their own, so being
+        // attacked cannot shift the bottles that come after it: two players on one seed are
+        // dealt the same bottles however differently the match treats them
+        let mut garbage_color_rng = rng.clone();
+        garbage_color_rng.set_stream(1);
         Self {
             pills: BagRandom::new(rng, mode, &PillShape::ALL, PEEK_SIZE),
             bottle_rng,
+            garbage_color_rng,
         }
     }
 
@@ -165,7 +177,7 @@ impl GameRandom {
 
     /// a colour for garbage sent by a game that has no colours of its own
     pub fn random_color(&mut self) -> VirusColor {
-        self.bottle_rng.random()
+        self.garbage_color_rng.random()
     }
 
     pub fn bottle_seed(&mut self, virus_level: u32) -> Result<BottleSeed, String> {
@@ -221,6 +233,28 @@ impl GameRandom {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// a player sent garbage by Rustris must still be dealt the bottles their seed says, so
+    /// that in a vs. match both players see the same ones
+    #[test]
+    fn garbage_colours_do_not_shift_the_bottles() {
+        let seed = Seed::from_u64(9876);
+        let mut attacked = GameRandom::from_seed(seed, RandomMode::Bag);
+        let mut untouched = GameRandom::from_seed(seed, RandomMode::Bag);
+        assert_eq!(
+            attacked.bottle_seed(5).unwrap(),
+            untouched.bottle_seed(5).unwrap()
+        );
+        for _ in 0..32 {
+            attacked.random_color();
+        }
+        assert_eq!(
+            attacked.bottle_seed(6).unwrap(),
+            untouched.bottle_seed(6).unwrap()
+        );
+        // ... and the pills are untouched too
+        assert_eq!(attacked.peek(), untouched.peek());
+    }
 
     #[test]
     fn seeds_bottle_at_level_0() {
