@@ -85,6 +85,102 @@ impl ParticleAnimation {
     }
 }
 
+/// A force acting on every particle of a group or pool. [`Field::Orbit`] is the gravity well
+/// the background has always used; the rest are what the scene routines steer with.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Field {
+    /// Newtonian attraction toward a point
+    Orbit(Vec2D),
+    /// spiral: tangential about `centre` with a mild inward pull, so arms form and shear
+    Vortex { centre: Vec2D, strength: f64 },
+    /// sum-of-sines advection; `phase` walks with time to keep it from repeating
+    Flow {
+        scale: f64,
+        strength: f64,
+        phase: f64,
+    },
+    /// pushed away from a point
+    Repel { centre: Vec2D, strength: f64 },
+}
+
+impl Field {
+    /// the empirically ideal `G * m` of the original orbit source
+    const GRAVITY: f64 = 0.001;
+
+    /// nudge one particle for one step
+    pub fn apply(&self, particle: &mut Particle, delta_time: f64) {
+        match self {
+            Field::Orbit(orbit) => {
+                let delta = particle.position - *orbit;
+                let magnitude_squared = delta.magnitude_squared();
+                // only apply gravitation when particle is sufficiently distant as this
+                // approximation breaks down for small distances
+                if magnitude_squared > 0.001 {
+                    // Vector form of Newtons law of gravitation
+                    let f = delta.unit_vector() * (-Self::GRAVITY / magnitude_squared);
+                    particle.velocity += f * delta_time;
+                }
+            }
+            Field::Repel { centre, strength } => {
+                let delta = particle.position - *centre;
+                let magnitude_squared = delta.magnitude_squared();
+                if magnitude_squared > 0.001 {
+                    let f = delta.unit_vector() * (strength / magnitude_squared);
+                    particle.velocity += f * delta_time;
+                }
+            }
+            Field::Vortex { centre, strength } => {
+                let delta = particle.position - *centre;
+                let magnitude = delta.magnitude();
+                if magnitude > 0.02 {
+                    let unit = delta * (1.0 / magnitude);
+                    // angular velocity falls off with distance, so the middle winds up first
+                    let tangent = unit.perpendicular() * (strength / magnitude);
+                    // and a light pull inward keeps the arms from unwinding forever
+                    let inward = unit * (-strength * 0.25);
+                    particle.velocity += (tangent + inward) * delta_time;
+                }
+            }
+            Field::Flow {
+                scale,
+                strength,
+                phase,
+            } => {
+                let (x, y) = (particle.position.x() * scale, particle.position.y() * scale);
+                // the curl of a sum of sines: divergence free, so the field circulates
+                // rather than piling particles up in one corner
+                let vx = (y + phase).sin() + 0.5 * (2.0 * y - phase * 0.7).cos();
+                let vy = (x - phase * 0.9).cos() + 0.5 * (2.0 * x + phase * 0.5).sin();
+                particle.velocity += Vec2D::new(vx, vy) * (*strength * delta_time);
+            }
+        }
+    }
+}
+
+/// Somewhere a particle is being pulled to, as a critically damped spring. This is the
+/// primitive every formation routine is built on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ParticleTarget {
+    pub position: Vec2D,
+    pub stiffness: f64,
+    pub damping: f64,
+}
+
+impl ParticleTarget {
+    pub fn new(position: Vec2D, stiffness: f64) -> Self {
+        // critical damping for a unit mass: nothing overshoots its place in a silhouette
+        Self {
+            position,
+            stiffness,
+            damping: 2.0 * stiffness.sqrt(),
+        }
+    }
+
+    pub fn with_damping(self, damping: f64) -> Self {
+        Self { damping, ..self }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
     position: Vec2D,
@@ -100,6 +196,7 @@ pub struct Particle {
     rotation: f64,
     angular_velocity: f64,
     animation: Option<ParticleAnimation>,
+    target: Option<ParticleTarget>,
 }
 
 impl Particle {
@@ -131,6 +228,7 @@ impl Particle {
             rotation: 0.0,
             angular_velocity,
             animation,
+            target: None,
         }
     }
 
@@ -153,6 +251,11 @@ impl Particle {
     }
 
     pub fn update(&mut self, delta_time: f64, lifetime: f64) {
+        if let Some(target) = self.target {
+            let displacement = target.position - self.position;
+            let spring = displacement * target.stiffness - self.velocity * target.damping;
+            self.velocity += spring * delta_time;
+        }
         self.velocity += self.acceleration * delta_time;
         self.position += self.velocity * delta_time;
         self.rotation += self.angular_velocity * delta_time;
@@ -172,6 +275,54 @@ impl Particle {
 
     pub fn position(&self) -> Vec2D {
         self.position
+    }
+    pub fn velocity(&self) -> Vec2D {
+        self.velocity
+    }
+    pub fn target(&self) -> Option<ParticleTarget> {
+        self.target
+    }
+    pub fn set_position(&mut self, position: Vec2D) {
+        self.position = position;
+    }
+    pub fn set_velocity(&mut self, velocity: Vec2D) {
+        self.velocity = velocity;
+    }
+    pub fn add_velocity(&mut self, velocity: Vec2D) {
+        self.velocity += velocity;
+    }
+    pub fn set_acceleration(&mut self, acceleration: Vec2D) {
+        self.acceleration = acceleration;
+    }
+    pub fn set_target(&mut self, target: Option<ParticleTarget>) {
+        self.target = target;
+    }
+    pub fn set_color(&mut self, color: ParticleColor) {
+        self.color = color;
+    }
+    pub fn set_alpha(&mut self, alpha: f64) {
+        self.alpha = alpha.clamp(0.0, 1.0);
+        self.max_alpha = self.alpha;
+    }
+    pub fn set_size(&mut self, size: f64) {
+        self.size = size;
+    }
+    pub fn set_sprite(&mut self, sprite: ParticleSprite) {
+        self.sprite = sprite;
+        self.animation = sprite.animation().map(ParticleAnimation::new);
+    }
+    pub fn set_rotation(&mut self, rotation: f64) {
+        self.rotation = rotation;
+    }
+    pub fn set_angular_velocity(&mut self, angular_velocity: f64) {
+        self.angular_velocity = angular_velocity;
+    }
+    /// step the particle with no group around it: pools own their own lifetimes
+    pub fn step(&mut self, delta_time: f64, field: Option<&Field>) {
+        if let Some(field) = field {
+            field.apply(self, delta_time);
+        }
+        self.update(delta_time, 0.0);
     }
     pub fn alpha(&self) -> f64 {
         self.alpha
@@ -205,7 +356,7 @@ pub struct ParticleGroup {
     anchor_for: Option<f64>,
     fade_in: Option<f64>,
     fade_out: bool,
-    orbit: Option<Vec2D>,
+    field: Option<Field>,
     particles: Vec<Particle>,
 }
 
@@ -214,7 +365,7 @@ impl ParticleGroup {
         anchor_for: Option<f64>,
         fade_in: Option<f64>,
         fade_out: bool,
-        orbit: Option<Vec2D>,
+        field: Option<Field>,
         particles: Vec<Particle>,
     ) -> Self {
         Self {
@@ -222,7 +373,7 @@ impl ParticleGroup {
             anchor_for,
             fade_in,
             fade_out,
-            orbit,
+            field,
             particles,
         }
     }
@@ -263,17 +414,9 @@ impl ParticleGroup {
                 Some(anchor_for - delta_time)
             }
         } else {
-            // orbit
-            if let Some(orbit) = self.orbit {
+            if let Some(field) = self.field {
                 for particle in self.particles.iter_mut() {
-                    let delta = particle.position - orbit;
-                    let magnitude_squared = delta.magnitude_squared();
-                    // only apply gravitation when particle is sufficiently distant as this approximation breaks down for small distances
-                    if magnitude_squared > 0.001 {
-                        // Vector form of Newtons law of gravitation with empirically ideal G * m
-                        let f = delta.unit_vector() * (-0.001 / magnitude_squared);
-                        particle.velocity += f * delta_time;
-                    }
+                    field.apply(particle, delta_time);
                 }
             }
 

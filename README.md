@@ -144,6 +144,33 @@ Most of it you can ignore except:
       mode: !FullScreenDesktop
     ```  
 
+### Particle density
+
+The modern themes' background is a particle field: a retained pool of particles spanning
+every player on a modern theme, resting between features and then gathering into one before
+shattering back. It rests as a slow orbit, a drifting flow, a vortex, or a constellation of
+particles with lines drawn between near neighbours; the features it gathers into are a piece
+silhouette (a tetromino, a pill, a virus or either game's mascot, outlined from the sprites
+of the themes in play), a word spelt out, a lattice, a waveform,
+a set of concentric rings drifting about, a spiral, a Lissajous figure, weather blowing
+through, and the boards themselves pulling the field around. It reacts to the match: clears
+send a wave through it, a big clear calls up a silhouette, an attack flies across it as a
+comet, and a stack near the top drains it toward red. It spells `TETRIS` on a four line
+clear, `COMBO` on a Dr. Rustario combo and `GAME OVER` when someone is buried; left to
+itself it spells the game in play, the level, or `VS`. It keeps out of the players' way,
+thinning and dimming where it would cross a playfield. Draw calls are what it costs, so how
+much of it there is is configurable (config file only, there is no video options menu):
+
+```yaml
+video:
+  particle_density: Auto   # Auto | Low | Medium | High | Ultra
+```
+
+`Auto` is `High` on a desktop and `Low` on a handheld. It sizes the pool, the number of links
+drawn between neighbouring particles, how finely a silhouette is sampled and how many
+concurrent effects there may be. At `Low` the links are single pixel lines rather than
+textured quads.
+
 ### Controls
 
 Game controllers are supported out of the box through SDL's GameController API (set

@@ -135,8 +135,16 @@ impl Game for AnyGame {
 }
 
 impl GameRender for AnyGame {
+    fn name(&self) -> &'static str {
+        delegate!(self, g => GameRender::name(g))
+    }
+
     fn clear_class(&self, event: &GameEvent) -> u16 {
         delegate!(self, g => GameRender::clear_class(g, event))
+    }
+
+    fn clear_word(&self, event: &GameEvent) -> Option<&'static str> {
+        delegate!(self, g => GameRender::clear_word(g, event))
     }
 
     fn spawn_cells(&self) -> Vec<Point> {

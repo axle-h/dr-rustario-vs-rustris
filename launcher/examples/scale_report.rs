@@ -29,6 +29,7 @@ fn main() -> Result<(), String> {
         vsync: false,
         disable_screensaver: false,
         integer_scale,
+        ..Config::default().video
     };
 
     let mut all = dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?;

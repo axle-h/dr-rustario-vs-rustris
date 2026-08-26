@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Vec2D {
@@ -50,6 +50,15 @@ impl Vec2D {
     pub fn magnitude_squared(&self) -> f64 {
         self.x().powi(2) + self.y().powi(2)
     }
+
+    pub fn magnitude(&self) -> f64 {
+        self.magnitude_squared().sqrt()
+    }
+
+    /// rotated a quarter turn anticlockwise, the tangent of an orbit about the origin
+    pub fn perpendicular(&self) -> Self {
+        Self::new(-self.y, self.x)
+    }
 }
 
 impl PartialEq for Vec2D {
@@ -78,6 +87,14 @@ impl Mul<f64> for Vec2D {
 
     fn mul(self, rhs: f64) -> Self::Output {
         Vec2D::new(self.x * rhs, self.y * rhs)
+    }
+}
+
+impl Neg for Vec2D {
+    type Output = Vec2D;
+
+    fn neg(self) -> Self::Output {
+        Vec2D::new(-self.x, -self.y)
     }
 }
 
@@ -136,6 +153,60 @@ impl RectF {
     pub fn height(&self) -> f64 {
         self.height
     }
+
+    pub fn right(&self) -> f64 {
+        self.x + self.width
+    }
+
+    pub fn bottom(&self) -> f64 {
+        self.y + self.height
+    }
+
+    pub fn center(&self) -> Vec2D {
+        Vec2D::new(self.x + self.width / 2.0, self.y + self.height / 2.0)
+    }
+
+    pub fn contains(&self, point: Vec2D) -> bool {
+        point.x() >= self.x
+            && point.x() < self.right()
+            && point.y() >= self.y
+            && point.y() < self.bottom()
+    }
+
+    /// a point given as 0-1 across this rect, in the enclosing space
+    pub fn denormalise<P: Into<Vec2D>>(&self, point: P) -> Vec2D {
+        let point = point.into();
+        Vec2D::new(
+            self.x + point.x() * self.width,
+            self.y + point.y() * self.height,
+        )
+    }
+
+    /// the inverse of [`RectF::denormalise`]: where a point sits within this rect, 0-1
+    pub fn normalise(&self, point: Vec2D) -> Vec2D {
+        Vec2D::new(
+            (point.x() - self.x) / self.width,
+            (point.y() - self.y) / self.height,
+        )
+    }
+
+    /// the same relative position within `other`, which is what keeps a field looking the
+    /// same when the canvas changes size under it
+    pub fn remap(&self, point: Vec2D, other: &RectF) -> Vec2D {
+        other.denormalise(self.normalise(point))
+    }
+
+    /// the smallest rect containing both
+    pub fn union(&self, other: &RectF) -> RectF {
+        let x = self.x.min(other.x);
+        let y = self.y.min(other.y);
+        RectF::new(
+            x,
+            y,
+            self.right().max(other.right()) - x,
+            self.bottom().max(other.bottom()) - y,
+        )
+    }
 }
 
 impl From<(f64, f64, f64, f64)> for RectF {
@@ -158,6 +229,23 @@ mod tests {
     fn unit_vector_of_unit_vector_is_equal() {
         let point = Vec2D::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2);
         assert_eq!(point.unit_vector(), point);
+    }
+
+    #[test]
+    fn a_rect_remaps_a_point_into_another_rect() {
+        let whole = RectF::new(0.0, 0.0, 1.0, 1.0);
+        let half = RectF::new(0.5, 0.0, 0.5, 1.0);
+        // dead centre of the window is dead centre of the right half
+        assert_eq!(whole.remap(Vec2D::new(0.5, 0.5), &half), Vec2D::new(0.75, 0.5));
+        // and back again
+        assert_eq!(half.remap(Vec2D::new(0.75, 0.5), &whole), Vec2D::new(0.5, 0.5));
+    }
+
+    #[test]
+    fn the_union_of_two_halves_is_the_whole() {
+        let left = RectF::new(0.0, 0.0, 0.5, 1.0);
+        let right = RectF::new(0.5, 0.0, 0.5, 1.0);
+        assert_eq!(left.union(&right), RectF::new(0.0, 0.0, 1.0, 1.0));
     }
 
     #[test]

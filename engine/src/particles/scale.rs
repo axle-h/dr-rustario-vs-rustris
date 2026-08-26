@@ -21,6 +21,10 @@ impl Scale {
         }
     }
 
+    pub fn window_size(&self) -> (u32, u32) {
+        (self.window_width as u32, self.window_height as u32)
+    }
+
     pub fn point_to_particle_space<P: Into<Point>>(&self, point: P) -> Vec2D {
         let point = point.into();
         Vec2D::new(

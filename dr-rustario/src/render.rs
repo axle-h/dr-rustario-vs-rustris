@@ -4,9 +4,22 @@ use crate::game::Game;
 use crate::theme::data::{CLEAR_VIRUS, CLEAR_VIRUS_COMBO, CLEAR_VITAMIN, CLEAR_VITAMIN_COMBO};
 use engine::game::geometry::Point;
 use engine::game::{GameEvent, PlacedCell};
+use engine::particles::field::reaction::words;
 use engine::render::GameRender;
 
 impl GameRender for Game {
+    fn name(&self) -> &'static str {
+        "Dr. Rustario"
+    }
+
+    /// a four in a row that takes another with it as it goes
+    fn clear_word(&self, event: &GameEvent) -> Option<&'static str> {
+        match event {
+            GameEvent::Clear { is_combo: true, .. } => Some(words::COMBO),
+            _ => None,
+        }
+    }
+
     fn clear_class(&self, event: &GameEvent) -> u16 {
         match event {
             GameEvent::Clear {

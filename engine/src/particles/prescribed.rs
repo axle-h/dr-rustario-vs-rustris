@@ -6,7 +6,6 @@ use crate::render::sprite_sheet::MascotKind;
 use crate::particles::color::ParticleColor;
 use crate::particles::geometry::Vec2D;
 use crate::particles::meta::ParticleSprite;
-use crate::particles::particle::ParticleWave;
 use crate::particles::quantity::ProbabilityTable;
 use crate::particles::scale::Scale;
 use crate::particles::source::{
@@ -272,76 +271,6 @@ pub fn prescribed_piece_race(
         .with_velocity((Vec2D::new(0.2, 0.0), Vec2D::new(0.05, 0.02)))
         .with_alpha((0.9, 0.1))
         .into_box()
-}
-
-pub fn prescribed_orbit(window: Rect, scale: &Scale) -> Box<dyn ParticleSource> {
-    const V: f64 = 0.05;
-    let [top_left, top_right, bottom_right, bottom_left] = rect_quadrants(window);
-    let sources = vec![
-        orbit_source(scale, top_left, (V, -V)),
-        orbit_source(scale, top_right, (V, V)),
-        orbit_source(scale, bottom_right, (-V, V)),
-        orbit_source(scale, bottom_left, (-V, -V)),
-    ];
-    AggregateParticleSource::new(sources).into_box()
-}
-
-fn orbit_source<V: Into<Vec2D>>(scale: &Scale, rect: Rect, velocity: V) -> RandomParticleSource {
-    let modulation = ParticleModulation::Constant {
-        count: 10,
-        step: Duration::from_millis(1000),
-    };
-    let velocity = velocity.into();
-    RandomParticleSource::new(scale.rect_source(rect), modulation)
-        .with_properties(
-            ProbabilityTable::new()
-                .with(
-                    ParticleProperties::simple(&[ParticleSprite::Circle05], (1.0, 0.3)),
-                    0.8,
-                )
-                .with(
-                    ParticleProperties::new(
-                        &ParticleSprite::HOLLOW_CIRCLES,
-                        (
-                            ParticleColor::rgb(0.6, 0.6, 0.8),
-                            ParticleColor::rgb(0.1, 0.1, 0.1),
-                        ),
-                        (1.5, 0.4),
-                        0.0,
-                    ),
-                    0.1,
-                )
-                .with(
-                    ParticleProperties::new(
-                        &ParticleSprite::STARS,
-                        (
-                            ParticleColor::rgb(0.8, 0.6, 0.6),
-                            ParticleColor::rgb(0.1, 0.1, 0.1),
-                        ),
-                        (1.6, 0.4),
-                        0.0,
-                    ),
-                    0.1,
-                ),
-        )
-        .with_fade_in(Duration::from_millis(500))
-        .with_fade_out((10.0, 2.5))
-        .with_pulse((ParticleWave::new(0.03, 8.0), ParticleWave::new(0.01, 1.0)))
-        .with_velocity((velocity, velocity * 0.5))
-        .with_alpha((0.9, 0.1))
-        .with_orbit((0.5, 0.5))
-}
-
-fn rect_quadrants(rect: Rect) -> [Rect; 4] {
-    fn quad(point: Point, rect: Rect) -> Rect {
-        Rect::new(point.x(), point.y(), rect.width() / 2, rect.height() / 2)
-    }
-    [
-        quad(rect.top_left(), rect),                            // top left
-        quad(Point::new(rect.center().x(), rect.top()), rect),  // top right
-        quad(rect.center(), rect),                              // bottom right
-        quad(Point::new(rect.left(), rect.center().y()), rect), // bottom left
-    ]
 }
 
 fn perimeter_sources(scale: &Scale, rect: Rect, color: ParticleColor) -> [RandomParticleSource; 4] {

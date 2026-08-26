@@ -7,7 +7,7 @@ use crate::animate::PlayerAnimations;
 use crate::config::VideoConfig;
 use crate::game::geometry::Point as CellPoint;
 use crate::game::{Game, PieceId, PlacedCell};
-use crate::particles::render::ParticleRender;
+use crate::particles::field::context::Palette;
 use crate::render::layout::BoardLayout;
 use crate::render::sound::AudioTheme;
 use crate::render::Theme;
@@ -279,7 +279,7 @@ impl<'a> ThemeContext<'a> {
         (width, height)
     }
 
-    fn players(&self) -> u32 {
+    pub fn players(&self) -> u32 {
         self.current.len() as u32
     }
 
@@ -298,6 +298,29 @@ impl<'a> ThemeContext<'a> {
             .music_theme
             .unwrap_or(self.current[self.music_player as usize]);
         self.themes[index].theme.audio()
+    }
+
+    /// which of the context's themes a player is on right now, so the particle field can name
+    /// the sprites of the theme they are actually playing
+    pub fn current_theme_index(&self, player: u32) -> usize {
+        self.current[player as usize]
+    }
+
+    /// the colours a player radiates into the background particle field: their theme's own,
+    /// or - for a retro theme, which has none - those of the first theme of their game that
+    /// does. Driven by the game they are playing, not by the theme they are looking at.
+    pub fn player_palette(&self, player: u32) -> Palette {
+        let current = self.current_theme_index(player);
+        let own = self.themes[current].theme.particle_palette();
+        if !own.is_empty() {
+            return Palette::from_sdl(own);
+        }
+        self.ranges[player as usize]
+            .clone()
+            .map(|index| self.themes[index].theme.particle_palette())
+            .find(|palette| !palette.is_empty())
+            .map(Palette::from_sdl)
+            .unwrap_or_default()
     }
 
     pub fn player_board_snip(&self, player: u32) -> Rect {
@@ -550,7 +573,8 @@ impl<'a> ThemeContext<'a> {
         Ok(true)
     }
 
-    fn player_clip(&self, player: u32) -> Rect {
+    /// the vertical strip of the window belonging to a player
+    pub fn player_clip(&self, player: u32) -> Rect {
         self.current(player).scale.player_clip(player)
     }
 
@@ -600,22 +624,6 @@ impl<'a> ThemeContext<'a> {
             let speed = games[player as usize].speed_index();
             canvas.set_clip_rect(self.player_clip(player));
             current.theme.scene(speed).draw(canvas, &current.scale)?;
-        }
-        canvas.set_clip_rect(None);
-        Ok(())
-    }
-
-    /// draw the background particles, clipped to the sides of the players on a particle scene
-    pub fn draw_scene_particles(
-        &self,
-        canvas: &mut WindowCanvas,
-        particles: &mut ParticleRender,
-    ) -> Result<(), String> {
-        for player in 0..self.players() {
-            if self.player_renders_scene_particles(player) {
-                canvas.set_clip_rect(self.player_clip(player));
-                particles.draw(canvas)?;
-            }
         }
         canvas.set_clip_rect(None);
         Ok(())

@@ -9,9 +9,7 @@ use crate::controller::Controllers;
 use crate::high_score::{HighScoreKey, NewHighScore};
 use crate::icon::app_icon;
 use crate::menu::sound::{MenuSound, MenuSounds};
-use crate::particles::prescribed::{
-    prescribed_fireworks, prescribed_orbit, prescribed_piece_race, RaceTheme,
-};
+use crate::particles::prescribed::{prescribed_fireworks, prescribed_piece_race, RaceTheme};
 use crate::particles::render::ParticleRender;
 use crate::particles::scale::Scale as ParticleScale;
 use crate::particles::source::ParticleSource;
@@ -222,6 +220,7 @@ impl App {
             texture_creator,
             self.particle_scale,
             themes,
+            self.config.video.particle_density,
         )
     }
 
@@ -237,14 +236,6 @@ impl App {
     fn fireworks_particle_source(&self) -> Box<dyn ParticleSource> {
         let (window_width, window_height) = self.canvas.window().size();
         prescribed_fireworks(
-            Rect::new(0, 0, window_width, window_height),
-            &self.particle_scale,
-        )
-    }
-
-    fn orbit_particle_source(&self) -> Box<dyn ParticleSource> {
-        let (window_width, window_height) = self.canvas.window().size();
-        prescribed_orbit(
             Rect::new(0, 0, window_width, window_height),
             &self.particle_scale,
         )

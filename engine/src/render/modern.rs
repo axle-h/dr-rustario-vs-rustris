@@ -61,6 +61,10 @@ pub struct ModernThemeOptions {
     pub cell_idle_type: FrameAnimationType,
     pub queue_max: u32,
     pub particle_color: Color,
+    /// what this theme radiates into the background particle field, see
+    /// [`crate::particles::field`]. `particle_color` stays the fallback, so the foreground
+    /// burst effects are unaffected.
+    pub particle_palette: Vec<Color>,
     pub clear_particles: ClearParticles,
     pub destroy_style: Option<DestroyStyle>,
     pub game_over_style: Option<GameOverStyle>,
@@ -381,6 +385,7 @@ pub fn modern_theme<'a>(
         peek,
         ghost_style: options.ghost_style,
         particle_color: Some(options.particle_color),
+        particle_palette: options.particle_palette,
         scale_mode: ScaleMode::Native,
         // nothing is ever drawn in the gap above the board, unlike the rows below it
         top_slack: board_top_buffer,
