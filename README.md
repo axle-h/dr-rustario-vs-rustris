@@ -262,16 +262,19 @@ Trained by `ga [auto|survival|score]`, which optimises for survival and then for
 
 ### Dr. Rustario
 
-The **ai** option on a Dr. Rustario main menu offers the same choices, minus the 2-player demo:
-there is one Dr. Rustario brain, so it would only play itself.
+The **ai** option on a Dr. Rustario main menu offers the same choices:
 
 * `off` - human players.
 * `vs easy` / `vs normal` / `vs hard` / `vs impossible` - in a 2-player match the AI plays as player 2
   (who must be on Dr. Rustario), speed limited to one key every 500 ms / 400 ms / 300 ms / instantly
-  (see `AiDifficulty` in `dr-rustario/src/game/rules.rs`). Every difficulty plays the same brain and
-  differs only in how fast it is allowed to press keys.
+  (see `AiDifficulty` in `dr-rustario/src/game/rules.rs`). Every difficulty plays Dr. Mario 64's own
+  scorer, but on a different one of its six rows of weights - the one dial the original ai has - so a
+  harder setting is a better player and not merely a faster one: `easy` and `normal` play the two rows
+  that hardly get past the first few bottles, `hard` the runner up and `impossible` the best of them.
 * `1-player ai demo` - the first player's bottle is played by the AI at full speed; their controls are
   disabled.
+* `2-player ai demo` - the AI plays both bottles at full speed: the second best row of weights as
+  player 1 against the best as player 2.
 
 #### Dr. Mario 64's own ai
 
@@ -290,8 +293,10 @@ a *situation* column, and the situation is read off the bottle at the start of e
 whether there is room left to move, whether the end is in sight, whether a column of one colour
 is building in the middle - which is what makes it play differently with a bottle full of
 viruses than with two left in the corner. The six skill rows are personalities rather than a
-ladder; the one played was picked by measuring stages cleared over twenty seeds at virus levels
-10 and 20.
+ladder - the original picks one per character, not per skill setting - so which of them is the
+better player was measured rather than assumed: each row played twenty seeds at virus levels 5,
+10, 15 and 20, ranked on bottles cleared less four per burial. That ranking (`SKILL_ORDER` in
+`dr-rustario/src/game/ai/n64/params.rs`) is what the four difficulties pick from.
 
 Left out of the port: the sixteen characters and the moods that nudge their weights about, the
 deliberate mistakes, and the frame level key pacing, which the engine's own key pacer already
@@ -326,3 +331,23 @@ the same thing seeded from the built in model instead of from scratch.
 The weights currently embedded are **random, not trained**, which is why the opponent and the
 demo play the deterministic ai above instead. To watch the network play, run
 `ga dr play <seed> <level> <pill cap> <report every> neural`.
+
+### Dr. Rustario vs. Rustris
+
+The vs. mode offers the same ai modes, and every one of them is the games' own. A playlist
+deals both games, so an ai player is a *pair* of brains - a Dr. Rustario one and a Rustris one -
+and each is whatever that game would field for the mode chosen; the agent handed a board plays
+whichever game the playlist has just dealt it, and forgets what it had queued for the board that
+has gone.
+
+* `off` - human players.
+* `vs easy` / `vs normal` / `vs hard` / `vs impossible` - the ai plays as player 2, at each game's
+  own difficulty of that name: the same models and the same key rates it would play at in that
+  game on its own.
+* `1-player ai demo` - one board, played by the ai at full speed through the whole playlist.
+* `2-player ai demo` - both boards at full speed, each game fielding the two models it puts against
+  each other in its own 2-player demo: Rustris's survival model against its high scoring one, and
+  the N64 ai's second best row of weights against its best.
+
+The vs. **difficulty** dial is a separate thing that applies to everyone: it is how hard the games
+are, not how well the ai plays them.

@@ -7,11 +7,11 @@
 //! leaves behind would chain, and adds the answers up with a table of weights. The highest
 //! total wins, and a tie goes to the first candidate in the original's own order.
 //!
-//! Three things decide the weights. The *skill* row ([`params::DEFAULT_SKILL`]) is fixed - a
-//! Dr. Rustario difficulty only decides how fast the agent may press keys - and the *situation*
-//! ([`Situation`]) and *wall* are read off the bottle at the start of every pill, which is what
-//! makes the ai play differently with a bottle full of viruses than with two left in the
-//! corner. Everything the original does that is not about choosing a square is left out: the
+//! Three things decide the weights. The *skill* row is one of six, which is the one dial the
+//! original ai has: a Dr. Rustario difficulty picks a row out of [`params::SKILL_ORDER`] as well
+//! as deciding how fast the agent may press keys. The *situation* ([`Situation`]) and *wall* are
+//! read off the bottle at the start of every pill, which is what makes the ai play differently
+//! with a bottle full of viruses than with two left in the corner. Everything the original does that is not about choosing a square is left out: the
 //! sixteen characters and their moods, the deliberate mistakes, and the frame level key pacing,
 //! which [`engine::ai::KeyPacer`] already does.
 //!
@@ -34,7 +34,7 @@ use field::{
     ST_VERTICAL_TOP,
 };
 use params::Params;
-pub use params::{DEFAULT_SKILL, SKILLS};
+pub use params::{DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 use score::{search_line_ms, Flag};
 
 /// What the bottle is asking for, which picks a column of the weight table.
@@ -118,11 +118,17 @@ impl N64Ai {
         }
     }
 
-    /// one of the original's six rows of weights, 0 the meekest and 5 the most aggressive
+    /// one of the original's six rows of weights; they are personalities rather than a ladder,
+    /// so [`SKILL_ORDER`] is what ranks them
     pub fn with_skill(skill: u8) -> Self {
         Self {
             skill: skill.min(SKILLS as u8 - 1),
         }
+    }
+
+    /// which of the six rows of weights this one thinks with
+    pub fn skill(&self) -> u8 {
+        self.skill
     }
 
     /// Which of `placements` to play. `bottle` is the bottle those placements were found in,

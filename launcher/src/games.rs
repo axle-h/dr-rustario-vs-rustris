@@ -28,6 +28,17 @@ macro_rules! delegate {
     };
 }
 
+impl AnyGame {
+    /// which of the two games this is, which is what a versus playlist deals and what an ai
+    /// controller has to dispatch on
+    pub fn kind(&self) -> GameKind {
+        match self {
+            AnyGame::DrRustario(_) => GameKind::DrRustario,
+            AnyGame::Rustris(_) => GameKind::Rustris,
+        }
+    }
+}
+
 impl Game for AnyGame {
     fn game_id(&self) -> GameId {
         delegate!(self, g => Game::game_id(g))

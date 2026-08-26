@@ -2,6 +2,7 @@
 //! and a versus mode where every player plays the same playlist of both games.
 
 use crate::games::{AnyGame, GameKind};
+use dr_rustario::game::ai::DrAiKind;
 use engine::app::{MatchSettings, PlayerSettings, StageChange, ThemeMode};
 use engine::high_score::table::Ranking;
 use engine::high_score::HighScoreKey;
@@ -10,6 +11,7 @@ use engine::menu::MenuItem;
 use engine::particles::prescribed::RaceTheme;
 use engine::render::{Theme, ThemeFamily};
 use engine::session::MatchRules;
+use rustris::game::ai::models::TetrisNeuralNetwork;
 use std::cell::Cell;
 use std::ops::Range;
 use std::time::Duration;
@@ -136,18 +138,6 @@ pub trait Mode {
         completed: u32,
     ) -> Option<StageChange<AnyGame>>;
     fn controllers(&self) -> Vec<Controller>;
-}
-
-fn players_item(max_players: u32, current: u32) -> Option<MenuItem> {
-    if max_players > 1 {
-        Some(MenuItem::select_list(
-            PLAYERS,
-            (1..=max_players).map(|i| i.to_string()).collect(),
-            current as usize - 1,
-        ))
-    } else {
-        None
-    }
 }
 
 /// one table per rules variant of a game
@@ -388,6 +378,115 @@ impl Mode for RustrisMode {
 
 const PLAYLIST: &str = "playlist";
 const DIFFICULTY: &str = "difficulty";
+const VS_AI_PREFIX: &str = "vs ";
+const VS_AI_SUFFIX: &str = " ai";
+const AI_DEMO_1P: &str = "1-player ai demo";
+const AI_DEMO_2P: &str = "2-player ai demo";
+
+/// A versus ai difficulty is each game's own difficulty of the same name, so an ai opponent is
+/// exactly as strong, and as speed limited, as it would be in that game on its own. The two
+/// games declare the same four names, which is what [`ai_difficulties_agree`] holds them to.
+pub type AiDifficulty = dr_rustario::game::rules::AiDifficulty;
+
+/// Who is playing a versus match. A playlist deals both games, so every ai player is a pair of
+/// brains - a Dr. Rustario one and a Rustris one - and both are simply that game's own ai for
+/// the mode chosen: the modes, the difficulties and the demo pairings are the games' own.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VersusAi {
+    /// no ai players
+    #[default]
+    Off,
+    /// one board played by the ai at full speed
+    Demo,
+    /// two boards played by the ai at full speed, each game fielding the two models it puts
+    /// against each other in its own 2-player demo
+    VsDemo,
+    /// player 2 is the ai
+    Opponent(AiDifficulty),
+}
+
+impl VersusAi {
+    /// how many boards the match runs, or `None` when the players dial decides
+    fn players(&self) -> Option<u32> {
+        match self {
+            VersusAi::Off => None,
+            VersusAi::Demo => Some(1),
+            VersusAi::VsDemo | VersusAi::Opponent(_) => Some(2),
+        }
+    }
+
+    fn dr_rustario(&self) -> dr_rustario::game::rules::AiMode {
+        use dr_rustario::game::rules::AiMode;
+        match self {
+            VersusAi::Off => AiMode::Off,
+            VersusAi::Demo => AiMode::Demo,
+            VersusAi::VsDemo => AiMode::VsDemo,
+            VersusAi::Opponent(difficulty) => AiMode::Opponent(*difficulty),
+        }
+    }
+
+    fn rustris(&self) -> rustris::game::rules::AiMode {
+        use rustris::game::rules::AiMode;
+        match self {
+            VersusAi::Off => AiMode::Off,
+            VersusAi::Demo => AiMode::Demo,
+            VersusAi::VsDemo => AiMode::VsDemo,
+            VersusAi::Opponent(difficulty) => AiMode::Opponent(
+                rustris::game::rules::AiDifficulty::from_name(difficulty.name())
+                    .expect("both games offer the same ai difficulties"),
+            ),
+        }
+    }
+
+    /// the name this mode goes by in the players list
+    fn name(&self) -> Option<String> {
+        match self {
+            VersusAi::Off => None,
+            VersusAi::Demo => Some(AI_DEMO_1P.to_string()),
+            VersusAi::VsDemo => Some(AI_DEMO_2P.to_string()),
+            VersusAi::Opponent(difficulty) => Some(format!(
+                "{}{}{}",
+                VS_AI_PREFIX,
+                difficulty.name(),
+                VS_AI_SUFFIX
+            )),
+        }
+    }
+
+    /// a pick from the players list, or `None` for a number of humans
+    fn from_name(value: &str) -> Option<Self> {
+        if value == AI_DEMO_1P {
+            Some(VersusAi::Demo)
+        } else if value == AI_DEMO_2P {
+            Some(VersusAi::VsDemo)
+        } else {
+            value
+                .strip_prefix(VS_AI_PREFIX)
+                .and_then(|s| s.strip_suffix(VS_AI_SUFFIX))
+                .and_then(AiDifficulty::from_name)
+                .map(VersusAi::Opponent)
+        }
+    }
+
+    /// each ai player, the key delay it plays at and the brain it thinks with in each game,
+    /// taken from the games themselves
+    fn brains(&self) -> Vec<(u32, Duration, DrAiKind, TetrisNeuralNetwork)> {
+        let mut dr_config = dr_rustario::game::rules::GameConfig::default();
+        dr_config.set_ai(self.dr_rustario());
+        let rustris_config = rustris::game::rules::GameConfig {
+            ai: self.rustris(),
+            ..Default::default()
+        };
+        dr_config
+            .ai_players()
+            .into_iter()
+            .zip(rustris_config.ai_players())
+            .map(|((player, key_delay, brain), (_, _, network))| {
+                (player, key_delay, brain, network)
+            })
+            .collect()
+    }
+}
 
 /// How the two games are sequenced. Every player plays the same playlist, so it is always
 /// fair: the random playlists are dealt once per match, and every player faces the same
@@ -648,6 +747,7 @@ pub struct VersusMode {
     players: u32,
     playlist: Playlist,
     difficulty: Difficulty,
+    ai: VersusAi,
     /// what the random playlists are dealt from: re-rolled as each match starts, so every
     /// player of one match faces the same random sequence
     seed: Cell<u64>,
@@ -659,8 +759,42 @@ impl VersusMode {
             players: 1,
             playlist: Playlist::ThemeRace,
             difficulty: Difficulty::default(),
+            ai: VersusAi::Off,
             seed: Cell::new(0),
         }
+    }
+
+    /// the title screen's players list: humans, then the ai opponents and the ai demos, the
+    /// same set each game offers on its own
+    fn players_list(&self, max_players: u32) -> (Vec<String>, usize) {
+        let mut players = (1..=max_players)
+            .map(|i| i.to_string())
+            .collect::<Vec<String>>();
+        if max_players > 1 {
+            players.extend(
+                AiDifficulty::ALL
+                    .iter()
+                    .filter_map(|d| VersusAi::Opponent(*d).name()),
+            );
+        }
+        players.push(AI_DEMO_1P.to_string());
+        if max_players > 1 {
+            players.push(AI_DEMO_2P.to_string());
+        }
+        let current = match self.ai.name() {
+            None => (self.players as usize).clamp(1, max_players as usize) - 1,
+            Some(name) => players.iter().position(|p| *p == name).unwrap_or(0),
+        };
+        (players, current)
+    }
+
+    /// a pick from [`Self::players_list`]
+    fn select_players(&mut self, value: &str) {
+        self.ai = VersusAi::from_name(value).unwrap_or(VersusAi::Off);
+        self.players = self
+            .ai
+            .players()
+            .unwrap_or_else(|| value.parse::<u32>().unwrap_or(1));
     }
 
     /// the themes the chosen playlist deals from, falling back to every theme should a
@@ -722,14 +856,13 @@ impl Mode for VersusMode {
     }
 
     fn title_items(&self, max_players: u32) -> Vec<MenuItem> {
-        players_item(max_players, self.players)
-            .into_iter()
-            .collect()
+        let (players, current) = self.players_list(max_players);
+        vec![MenuItem::select_list(PLAYERS, players, current)]
     }
 
     fn title_select(&mut self, name: &str, value: &str) {
         if name == PLAYERS {
-            self.players = value.parse::<u32>().unwrap_or(1);
+            self.select_players(value);
         }
     }
 
@@ -838,7 +971,31 @@ impl Mode for VersusMode {
     }
 
     fn controllers(&self) -> Vec<Controller> {
-        vec![]
+        self.ai
+            .brains()
+            .into_iter()
+            .map(|(player, key_delay, brain, network)| {
+                let mut dr_agent =
+                    dr_rustario::game::ai::agent::DrAiAgent::of(brain).with_key_delay(key_delay);
+                let mut rustris_agent =
+                    rustris::game::ai::agent::AiAgent::neural(network).with_key_delay(key_delay);
+                // the playlist swaps the board out from under whichever agent was playing, so
+                // both forget what they had queued as the game changes
+                let mut playing: Option<GameKind> = None;
+                let controller = move |game: &mut AnyGame, delta: Duration| {
+                    if playing != Some(game.kind()) {
+                        dr_agent.reset();
+                        rustris_agent.reset();
+                        playing = Some(game.kind());
+                    }
+                    match game {
+                        AnyGame::DrRustario(game) => dr_agent.act(game, delta),
+                        AnyGame::Rustris(game) => rustris_agent.act(game, delta),
+                    }
+                };
+                (player, Box::new(controller) as Box<_>)
+            })
+            .collect()
     }
 }
 
@@ -867,27 +1024,129 @@ mod tests {
         assert_eq!(Playlist::ThemeRace.stage(0, 8, &all_themes()), None);
     }
 
-    #[test]
-    fn dr_rustario_offers_the_ai_opponents_and_a_single_player_demo() {
-        let mode = DrRustarioMode::new();
-        let players: Vec<String> = [
+    /// the players list every mode offers: humans, the four ai opponents, then the two demos
+    fn ai_players_list() -> Vec<String> {
+        [
             "1",
             "2",
             "vs easy ai",
             "vs normal ai",
             "vs hard ai",
             "vs impossible ai",
-            // there is only one Dr. Rustario model, so a 2-player demo would play itself
             "1-player ai demo",
+            "2-player ai demo",
         ]
         .iter()
         .map(|s| s.to_string())
-        .collect();
+        .collect()
+    }
 
+    #[test]
+    fn every_mode_offers_the_same_ai_opponents_and_demos() {
+        for items in [
+            DrRustarioMode::new().title_items(2),
+            RustrisMode::new().title_items(2),
+            VersusMode::new().title_items(2),
+        ] {
+            assert_eq!(
+                items,
+                vec![MenuItem::select_list(PLAYERS, ai_players_list(), 0)]
+            );
+        }
+    }
+
+    /// the versus mode names an ai difficulty once and asks both games for it, so the two have
+    /// to agree on what they are called
+    #[test]
+    fn ai_difficulties_agree() {
+        let versus: Vec<&str> = AiDifficulty::ALL.iter().map(|d| d.name()).collect();
+        let rustris: Vec<&str> = rustris::game::rules::AiDifficulty::ALL
+            .iter()
+            .map(|d| d.name())
+            .collect();
+        assert_eq!(versus, rustris);
+        assert_eq!(versus, vec!["easy", "normal", "hard", "impossible"]);
+    }
+
+    #[test]
+    fn a_versus_ai_is_each_games_own_ai() {
+        let mut mode = VersusMode::new();
+        assert!(mode.controllers().is_empty());
+
+        mode.title_select(PLAYERS, "vs hard ai");
+        let controllers = mode.controllers();
+        assert_eq!(controllers.len(), 1);
+        assert_eq!(controllers[0].0, 1, "the ai should play as player 2");
+        assert_eq!(mode.players, 2);
+
+        // one board in the single player demo, two in the vs. demo
+        mode.title_select(PLAYERS, AI_DEMO_1P);
+        let controllers = mode.controllers();
         assert_eq!(
-            mode.title_items(2),
-            vec![MenuItem::select_list(PLAYERS, players, 0)]
+            controllers.iter().map(|(p, _)| *p).collect::<Vec<u32>>(),
+            vec![0]
         );
+        assert_eq!(mode.players, 1);
+
+        mode.title_select(PLAYERS, AI_DEMO_2P);
+        let controllers = mode.controllers();
+        assert_eq!(
+            controllers.iter().map(|(p, _)| *p).collect::<Vec<u32>>(),
+            vec![0, 1]
+        );
+        assert_eq!(mode.players, 2);
+
+        // back to humans
+        mode.title_select(PLAYERS, "2");
+        assert!(mode.controllers().is_empty());
+        assert_eq!(mode.players, 2);
+    }
+
+    const STEP: Duration = Duration::from_millis(16);
+
+    /// run `game` for `frames`, returning how many pieces it locked
+    fn run(
+        game: &mut AnyGame,
+        frames: usize,
+        mut controller: impl FnMut(&mut AnyGame, Duration),
+    ) -> usize {
+        use engine::game::{Game, GameEvent};
+        let mut locked = 0;
+        for _ in 0..frames {
+            controller(game, STEP);
+            Game::update(game, STEP);
+            locked += Game::drain_events(game)
+                .iter()
+                .filter(|event| matches!(event, GameEvent::Lock { .. }))
+                .count();
+        }
+        locked
+    }
+
+    /// a versus ai plays whichever game the playlist deals it, and goes on playing after the
+    /// board is swapped for the other game's
+    #[test]
+    fn a_versus_ai_plays_both_games() {
+        let mut mode = VersusMode::new();
+        mode.title_select(PLAYERS, AI_DEMO_1P);
+        let mut controllers = mode.controllers();
+        let (_, controller) = &mut controllers[0];
+
+        for kind in [GameKind::Rustris, GameKind::DrRustario, GameKind::Rustris] {
+            let mut played = mode.new_games(kind, 1).unwrap().pop().unwrap();
+            let mut alone = mode.new_games(kind, 1).unwrap().pop().unwrap();
+            // the ai hard drops every piece, so a few seconds of it locks several; the same
+            // few seconds of gravity alone at difficulty 0 locks at most one
+            let with_ai = run(&mut played, 240, |game, delta| controller(game, delta));
+            let without = run(&mut alone, 240, |_, _| {});
+            assert!(
+                with_ai > without && with_ai > 1,
+                "the ai did not play {:?}: {} pieces locked against {} left to fall on their own",
+                kind,
+                with_ai,
+                without
+            );
+        }
     }
 
     #[test]
@@ -901,10 +1160,18 @@ mod tests {
         assert_eq!(controllers[0].0, 1, "the ai should play as player 2");
 
         // and the demo plays the first board instead
-        mode.title_select(PLAYERS, "1-player ai demo");
+        mode.title_select(PLAYERS, AI_DEMO_1P);
         let controllers = mode.controllers();
         assert_eq!(controllers.len(), 1);
         assert_eq!(controllers[0].0, 0);
+
+        // the 2-player demo plays both, one row of the N64 ai's weights against another
+        mode.title_select(PLAYERS, AI_DEMO_2P);
+        let controllers = mode.controllers();
+        assert_eq!(
+            controllers.iter().map(|(p, _)| *p).collect::<Vec<u32>>(),
+            vec![0, 1]
+        );
 
         // back to humans
         mode.title_select(PLAYERS, "2");
