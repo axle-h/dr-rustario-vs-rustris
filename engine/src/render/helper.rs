@@ -22,16 +22,20 @@ pub fn decode_png(buf: &[u8]) -> Result<image::RgbaImage, String> {
         .map_err(|e| e.to_string())
 }
 
-
 pub trait TextureFactory {
-    fn create_texture_target_blended(&self, width: u32, height: u32) -> Result<Texture<'_>, String>;
+    fn create_texture_target_blended(&self, width: u32, height: u32)
+        -> Result<Texture<'_>, String>;
     /// Loads a PNG into a static texture with alpha blending enabled.
     fn load_texture_bytes(&self, buf: &[u8]) -> Result<Texture<'_>, String>;
     fn load_texture_bytes_blended(&self, buf: &[u8]) -> Result<Texture<'_>, String>;
 }
 
 impl TextureFactory for TextureCreator<WindowContext> {
-    fn create_texture_target_blended(&self, width: u32, height: u32) -> Result<Texture<'_>, String> {
+    fn create_texture_target_blended(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<Texture<'_>, String> {
         let mut texture = self
             .create_texture_target(RGBA8888, width, height)
             .map_err(|e| e.to_string())?;

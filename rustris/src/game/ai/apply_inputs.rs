@@ -83,9 +83,9 @@ impl ApplyInputs for Game {
 #[cfg(test)]
 #[allow(non_snake_case)]
 mod tests {
+    use super::*;
     use crate::game::geometry::Rotation;
     use crate::game::tetromino::TetrominoShape;
-    use super::*;
 
     fn having_inputs(shape: TetrominoShape, inputs: InputSequence) -> (Board, bool) {
         let mut board = Board::new();
@@ -206,8 +206,14 @@ mod tests {
         ]);
         let (board, success) = having_inputs(shape, sequence);
         assert!(success);
-        assert_eq!(board.tetromino().map(|t| t.position()), Some(shape.meta().spawn_point().translate(-3, 0)));
-        assert_eq!(board.tetromino().map(|t| t.rotation()), Some(Rotation::South));
+        assert_eq!(
+            board.tetromino().map(|t| t.position()),
+            Some(shape.meta().spawn_point().translate(-3, 0))
+        );
+        assert_eq!(
+            board.tetromino().map(|t| t.rotation()),
+            Some(Rotation::South)
+        );
     }
 
     #[test]

@@ -57,7 +57,9 @@ impl VorbisStream {
             .map(|c| c.count())
             .ok_or_else(|| "audio track has no channel layout".to_string())?;
         if !(1..=2).contains(&channels) {
-            return Err(format!("audio track has {channels} channels; only mono/stereo are supported"));
+            return Err(format!(
+                "audio track has {channels} channels; only mono/stereo are supported"
+            ));
         }
         let decoder = symphonia::default::get_codecs()
             .make(params, &DecoderOptions::default())

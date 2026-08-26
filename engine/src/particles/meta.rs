@@ -91,8 +91,8 @@ impl ParticleSprite {
         Circle01, Circle02, Circle03, Circle04, Circle05, Dirt01, Dirt02, Dirt03, Fire01, Fire02,
         Flare01, Light01, Light02, Light03, Magic01, Magic02, Magic03, Magic04, Magic05, Scorch01,
         Scorch02, Scorch03, Smoke01, Smoke02, Smoke03, Smoke04, Smoke05, Smoke06, Smoke07, Smoke08,
-        Smoke09, Smoke10, Spark01, Spark02, Spark03, Spark04, Star01, Star02, Star03, Star04, Star05,
-        Star06, Star07, Star08, Star09, Symbol01, Symbol02, Twirl01, Twirl02, Twirl03,
+        Smoke09, Smoke10, Spark01, Spark02, Spark03, Spark04, Star01, Star02, Star03, Star04,
+        Star05, Star06, Star07, Star08, Star09, Symbol01, Symbol02, Twirl01, Twirl02, Twirl03,
     ];
 
     pub const STARS: [ParticleSprite; 9] = [

@@ -3,7 +3,6 @@ use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::{BlendMode, Texture, TextureCreator};
 use sdl2::video::WindowContext;
 
-
 const FONT_ROBOTO_REGULAR: &[u8] = include_bytes!("Roboto-Regular.ttf");
 const FONT_ROBOTO_BOLD: &[u8] = include_bytes!("Roboto-Bold.ttf");
 const FONT_ROBOTO_MONO_REGULAR: &[u8] = include_bytes!("RobotoMono-Regular.ttf");
@@ -99,7 +98,11 @@ impl Font {
             .iter()
             .filter_map(|g| s.outline_glyph(g.clone()).map(|o| o.px_bounds()))
             .collect();
-        let min_x = bounds.iter().map(|b| b.min.x).fold(0.0f32, f32::min).floor();
+        let min_x = bounds
+            .iter()
+            .map(|b| b.min.x)
+            .fold(0.0f32, f32::min)
+            .floor();
         let max_x = bounds.iter().map(|b| b.max.x).fold(caret, f32::max).ceil();
         if min_x < 0.0 {
             for g in &mut glyphs {
@@ -208,7 +211,10 @@ mod tests {
         let (three, h) = font.size_of("AAA");
         assert_eq!(h, font.height());
         assert!(one > 0);
-        assert!((three as i64 - 3 * one as i64).abs() <= 2, "{three} vs 3*{one}");
+        assert!(
+            (three as i64 - 3 * one as i64).abs() <= 2,
+            "{three} vs 3*{one}"
+        );
     }
 
     #[test]
@@ -218,6 +224,9 @@ mod tests {
         assert_eq!(px.len(), (w * h * 4) as usize);
         let opaque = px.chunks(4).filter(|p| p[3] == 255).count();
         assert!(opaque > 0);
-        assert!(px.chunks(4).filter(|p| p[3] > 0).all(|p| p[..3] == [10, 20, 30]));
+        assert!(px
+            .chunks(4)
+            .filter(|p| p[3] > 0)
+            .all(|p| p[..3] == [10, 20, 30]));
     }
 }

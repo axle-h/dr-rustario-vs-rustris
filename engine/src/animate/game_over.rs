@@ -95,10 +95,9 @@ impl GameOverAnimation {
             state.is_complete =
                 state.duration >= (GAME_OVER_SCREEN_DELAY + GAME_OVER_SCREEN_VISIBLE_FOR);
             if let GameOverStyle::Screen { frames } = self.style {
-                state.screen_frame = (state.duration.as_millis()
-                    / GAME_OVER_FRAME_DURATION.as_millis())
-                    as usize
-                    % frames.max(1);
+                state.screen_frame =
+                    (state.duration.as_millis() / GAME_OVER_FRAME_DURATION.as_millis()) as usize
+                        % frames.max(1);
             }
         }
     }

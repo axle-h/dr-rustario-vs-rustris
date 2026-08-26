@@ -32,7 +32,6 @@ impl Placement {
     pub fn features(&self) -> BottleFeatures {
         self.features
     }
-
 }
 
 pub trait PlacementSearch {
@@ -117,7 +116,11 @@ fn apply(bottle: &mut Bottle, translation: Translation) -> bool {
 
 /// drop the pill, lock it and run the clears and cascades out to a settled bottle, exactly as
 /// [crate::game::Game] would
-fn drop_and_settle(bottle: &Bottle, inputs: &InputSequence, stats_before: BottleStats) -> Placement {
+fn drop_and_settle(
+    bottle: &Bottle,
+    inputs: &InputSequence,
+    stats_before: BottleStats,
+) -> Placement {
     let mut bottle = bottle.clone();
     bottle.hard_drop();
     let placed: Vec<BottlePoint> = bottle
@@ -168,7 +171,10 @@ mod tests {
         let placements = bottle.placements(bottle.stats());
 
         // 7 horizontal positions in each of two orientations, 8 vertical in each of two
-        assert_eq!(placements.len(), 2 * (BOTTLE_WIDTH as usize - 1) + 2 * BOTTLE_WIDTH as usize);
+        assert_eq!(
+            placements.len(),
+            2 * (BOTTLE_WIDTH as usize - 1) + 2 * BOTTLE_WIDTH as usize
+        );
         // every one of them ends in a hard drop
         assert!(placements
             .iter()

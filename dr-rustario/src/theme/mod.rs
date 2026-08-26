@@ -6,8 +6,8 @@ pub mod n64;
 pub mod nes;
 pub mod snes;
 
-use engine::config::Config;
 use crate::game::pill::PillShape;
+use engine::config::Config;
 use engine::game::PieceId;
 use engine::particles::prescribed::RaceTheme;
 use engine::render::layout::reference_block_size;

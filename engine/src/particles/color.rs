@@ -48,7 +48,11 @@ impl ParticleColor {
         } else {
             60.0 * ((self.red - self.green) / chroma + 4.0)
         };
-        let saturation = if max <= f64::EPSILON { 0.0 } else { chroma / max };
+        let saturation = if max <= f64::EPSILON {
+            0.0
+        } else {
+            chroma / max
+        };
         (wrap_hue(hue), saturation, max)
     }
 

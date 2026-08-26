@@ -1,15 +1,15 @@
 use crate::high_score::table::{HighScore, HighScoreTable, Ranking};
 
+use crate::font::Font;
 use crate::font::{FontTexture, FontType};
 use crate::high_score::event::HighScoreEntryEvent;
 use crate::high_score::NewHighScore;
 use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{BlendMode, Texture, TextureCreator, WindowCanvas};
-use crate::font::Font;
 use sdl2::video::WindowContext;
 use std::cmp::min;
-use sdl2::pixels::PixelFormatEnum::RGBA8888;
 
 const NAME_CHARACTERS: usize = 5;
 const CARET_HEIGHT: u32 = 2;
@@ -205,7 +205,12 @@ impl<'a> HighScoreRender<'a> {
             ));
             (
                 new_table,
-                Some(Entry::new(score_index, ranking, new_high_score, &font_body)?),
+                Some(Entry::new(
+                    score_index,
+                    ranking,
+                    new_high_score,
+                    &font_body,
+                )?),
             )
         } else {
             (table, None)

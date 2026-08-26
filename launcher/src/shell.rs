@@ -32,7 +32,11 @@ enum ModeChoice {
 }
 
 impl ModeChoice {
-    const ALL: [ModeChoice; 3] = [ModeChoice::Rustris, ModeChoice::DrRustario, ModeChoice::Versus];
+    const ALL: [ModeChoice; 3] = [
+        ModeChoice::Rustris,
+        ModeChoice::DrRustario,
+        ModeChoice::Versus,
+    ];
 
     fn name(&self) -> &'static str {
         match self {
@@ -87,7 +91,10 @@ enum Transition {
         high_score: NewHighScore,
     },
     /// leave name entry, saving the entered name or discarding it
-    FinishNameEntry { mode: ModeChoice, save: bool },
+    FinishNameEntry {
+        mode: ModeChoice,
+        save: bool,
+    },
     Exit,
 }
 
@@ -120,11 +127,8 @@ impl Shell {
             all,
         }));
 
-        let fg_particles = app.particle_render(
-            tc,
-            MAX_PARTICLES_PER_PLAYER * MAX_PLAYERS as usize,
-            vec![],
-        )?;
+        let fg_particles =
+            app.particle_render(tc, MAX_PARTICLES_PER_PLAYER * MAX_PLAYERS as usize, vec![])?;
         let mut bg_particles =
             app.particle_render(tc, MAX_BACKGROUND_PARTICLES, themes.all.iter().collect())?;
 
@@ -230,9 +234,10 @@ impl Shell {
             }
             Screen::Playing { mode, key, screen } => {
                 let m: &dyn Mode = choose_mode(rustris, dr_rustario, versus, *mode);
-                let exit = screen.update(app, fg_particles, bg_particles, |player, completed| {
-                    m.next_stage(themes, player, completed)
-                })?;
+                let exit =
+                    screen.update(app, fg_particles, bg_particles, |player, completed| {
+                        m.next_stage(themes, player, completed)
+                    })?;
                 Ok(exit.map(|exit| match exit {
                     PostGameAction::NewHighScore(high_score) => Transition::ToNameEntry {
                         mode: *mode,
@@ -243,16 +248,16 @@ impl Shell {
                     PostGameAction::Quit => Transition::Exit,
                 }))
             }
-            Screen::HighScores(view) => {
-                Ok(view.update(app, bg_particles)?.map(|()| Transition::ToPreMenu))
-            }
+            Screen::HighScores(view) => Ok(view
+                .update(app, bg_particles)?
+                .map(|()| Transition::ToPreMenu)),
             Screen::NameEntry { mode, screen } => {
-                Ok(screen.update(app, bg_particles)?.map(|exit| {
-                    Transition::FinishNameEntry {
+                Ok(screen
+                    .update(app, bg_particles)?
+                    .map(|exit| Transition::FinishNameEntry {
                         mode: *mode,
                         save: matches!(exit, NameEntryExit::Done),
-                    }
-                }))
+                    }))
             }
         }
     }
@@ -270,7 +275,12 @@ impl Shell {
                     self.versus.all_high_score_keys(),
                 ]
                 .concat();
-                match HighScoreViewScreen::new(&mut self.app, self.tc, &keys, &mut self.bg_particles)? {
+                match HighScoreViewScreen::new(
+                    &mut self.app,
+                    self.tc,
+                    &keys,
+                    &mut self.bg_particles,
+                )? {
                     Some(view) => Screen::HighScores(view),
                     // nothing to show: straight back, as the old code's early return
                     None => pre_menu(&mut self.app, self.tc, self.themes, &mut self.bg_particles)?,
@@ -304,9 +314,18 @@ impl Shell {
                     screen: Box::new(screen),
                 }
             }
-            Transition::ToNameEntry { mode, key, high_score } => {
-                let screen =
-                    NameEntryScreen::new(&mut self.app, self.tc, &key, high_score, &mut self.bg_particles)?;
+            Transition::ToNameEntry {
+                mode,
+                key,
+                high_score,
+            } => {
+                let screen = NameEntryScreen::new(
+                    &mut self.app,
+                    self.tc,
+                    &key,
+                    high_score,
+                    &mut self.bg_particles,
+                )?;
                 Screen::NameEntry { mode, screen }
             }
             Transition::FinishNameEntry { mode, save } => {

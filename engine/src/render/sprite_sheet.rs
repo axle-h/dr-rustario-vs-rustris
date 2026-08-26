@@ -117,7 +117,9 @@ pub enum GhostStyle {
     /// the piece's own sprites, faded
     Alpha,
     /// an outline around the ghost cells
-    Outline { color: Color },
+    Outline {
+        color: Color,
+    },
     None,
 }
 
@@ -229,8 +231,8 @@ impl<'a> PreviewSpriteSheet<'a> {
         texture_creator: &'b TextureCreator<WindowContext>,
     ) -> Result<PreviewSpriteSheet<'b>, String> {
         let query = self.texture.query();
-        let mut texture =
-            texture_creator.create_texture_target_blended(query.width.max(1), query.height.max(1))?;
+        let mut texture = texture_creator
+            .create_texture_target_blended(query.width.max(1), query.height.max(1))?;
         canvas
             .with_texture_canvas(&mut texture, |c| {
                 c.set_draw_color(Color::RGBA(0, 0, 0, 0));

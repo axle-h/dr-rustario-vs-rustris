@@ -129,8 +129,12 @@ pub trait Mode {
     fn all_high_score_keys(&self) -> Vec<HighScoreKey>;
     fn settings(&self, themes: &Themes) -> MatchSettings;
     fn games(&self) -> Result<Vec<AnyGame>, String>;
-    fn next_stage(&self, themes: &Themes, player: u32, completed: u32)
-        -> Option<StageChange<AnyGame>>;
+    fn next_stage(
+        &self,
+        themes: &Themes,
+        player: u32,
+        completed: u32,
+    ) -> Option<StageChange<AnyGame>>;
     fn controllers(&self) -> Vec<Controller>;
 }
 
@@ -718,7 +722,9 @@ impl Mode for VersusMode {
     }
 
     fn title_items(&self, max_players: u32) -> Vec<MenuItem> {
-        players_item(max_players, self.players).into_iter().collect()
+        players_item(max_players, self.players)
+            .into_iter()
+            .collect()
     }
 
     fn title_select(&mut self, name: &str, value: &str) {
@@ -911,7 +917,12 @@ mod tests {
         let keys = rustris.all_high_score_keys();
         assert_eq!(
             keys.iter().map(|k| k.mode.as_str()).collect::<Vec<_>>(),
-            vec!["marathon", "1 level sprint", "theme sprint", "10,000 point sprint"]
+            vec![
+                "marathon",
+                "1 level sprint",
+                "theme sprint",
+                "10,000 point sprint"
+            ]
         );
         assert!(keys.contains(&rustris.high_score_key()));
         assert_eq!(DrRustarioMode::new().all_high_score_keys().len(), 4);
@@ -959,16 +970,28 @@ mod tests {
             Playlist::RandomSprint { stages: 5 }.rules(&all_themes()),
             MatchRules::StageSprint { stages: 5 }
         );
-        assert_eq!(Playlist::Interleaved.rules(&all_themes()), MatchRules::Marathon);
-        assert_eq!(Playlist::BackToBack.rules(&all_themes()), MatchRules::Marathon);
-        assert_eq!(Playlist::RandomMarathon.rules(&all_themes()), MatchRules::Marathon);
+        assert_eq!(
+            Playlist::Interleaved.rules(&all_themes()),
+            MatchRules::Marathon
+        );
+        assert_eq!(
+            Playlist::BackToBack.rules(&all_themes()),
+            MatchRules::Marathon
+        );
+        assert_eq!(
+            Playlist::RandomMarathon.rules(&all_themes()),
+            MatchRules::Marathon
+        );
     }
 
     #[test]
     fn the_races_end_with_the_playlist_and_marathons_cycle_it() {
         assert!(Playlist::ThemeRace.stage(0, 7, &all_themes()).is_some());
         assert_eq!(Playlist::ThemeRace.stage(0, 8, &all_themes()), None);
-        assert_eq!(Playlist::RandomSprint { stages: 3 }.stage(0, 3, &all_themes()), None);
+        assert_eq!(
+            Playlist::RandomSprint { stages: 3 }.stage(0, 3, &all_themes()),
+            None
+        );
         assert_eq!(
             Playlist::BackToBack.stage(0, 8, &all_themes()),
             Playlist::BackToBack.stage(0, 0, &all_themes())
@@ -977,8 +1000,13 @@ mod tests {
             Playlist::Interleaved.stage(0, 13, &all_themes()),
             Playlist::Interleaved.stage(0, 5, &all_themes())
         );
-        assert!(Playlist::RandomMarathon.stage(0, 10_000, &all_themes()).is_some());
-        assert_eq!(Playlist::ThemeRace.stage(0, 0, &PlaylistThemes::default()), None);
+        assert!(Playlist::RandomMarathon
+            .stage(0, 10_000, &all_themes())
+            .is_some());
+        assert_eq!(
+            Playlist::ThemeRace.stage(0, 0, &PlaylistThemes::default()),
+            None
+        );
     }
 
     #[test]
@@ -995,7 +1023,9 @@ mod tests {
         assert_eq!(stages[1], (GameKind::DrRustario, ThemeMode::Fixed(0)));
         assert_eq!(stages[5], (GameKind::DrRustario, ThemeMode::Fixed(2)));
         // never the particle theme, and it cycles rather than ending
-        assert!(stages.iter().all(|(_, theme)| *theme != ThemeMode::Fixed(3)));
+        assert!(stages
+            .iter()
+            .all(|(_, theme)| *theme != ThemeMode::Fixed(3)));
         assert_eq!(stages[6], stages[0]);
     }
 
@@ -1052,13 +1082,18 @@ mod tests {
         assert_eq!(first, stages(Playlist::RandomMarathon, 42, 32));
         assert_ne!(first, stages(Playlist::RandomMarathon, 43, 32));
         // a sprint over the same seed deals the same opening stages
-        assert_eq!(first[..3], stages(Playlist::RandomSprint { stages: 3 }, 42, 3));
+        assert_eq!(
+            first[..3],
+            stages(Playlist::RandomSprint { stages: 3 }, 42, 3)
+        );
     }
 
     #[test]
     fn random_playlists_open_with_the_game_they_deal_first() {
         for seed in 0..32 {
-            let (game, _) = Playlist::RandomMarathon.stage(seed, 0, &all_themes()).unwrap();
+            let (game, _) = Playlist::RandomMarathon
+                .stage(seed, 0, &all_themes())
+                .unwrap();
             assert_eq!(Playlist::RandomMarathon.first_game(seed), game);
             assert_eq!(Playlist::RandomSprint { stages: 3 }.first_game(seed), game);
         }

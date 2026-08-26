@@ -1,29 +1,31 @@
 //! The Rustris end of training: it plays the headless game for the genetic algorithm and
 //! provides the `ga` subcommand's entry points.
 
-use rayon::prelude::*;
-use crate::game::random::RandomMode;
 use crate::game::ai::action_evaluator::ActionEvaluator;
 use crate::game::ai::headless_game::{HeadlessGameFixture, HeadlessGameOptions};
 use crate::game::ai::models;
+use crate::game::random::RandomMode;
 use engine::ai::{
-    EndGame, Fitness, GameResult, Genome, GeneticAlgorithm, GenomeMutation, HyperParameters,
+    EndGame, Fitness, GameResult, GeneticAlgorithm, Genome, GenomeMutation, HyperParameters,
     NeuralGenome, Phase, Seed, NEURAL_GENOME_SIZE,
 };
+use rayon::prelude::*;
 
 pub const DEFAULT_LINE_CAP: u32 = 10_000;
 pub const DEFAULT_PIECE_CAP: u32 = 1_000;
 
 /// scores a genome by playing the headless Rustris game with the evaluator it decodes to
 pub struct FixtureFitness<const GENOME: usize, F>
-where F: Fn(&Genome<GENOME>) -> ActionEvaluator + Send + Sync
+where
+    F: Fn(&Genome<GENOME>) -> ActionEvaluator + Send + Sync,
 {
     fixture: HeadlessGameFixture,
     evaluator: F,
 }
 
 impl<const GENOME: usize, F> FixtureFitness<GENOME, F>
-where F: Fn(&Genome<GENOME>) -> ActionEvaluator + Send + Sync
+where
+    F: Fn(&Genome<GENOME>) -> ActionEvaluator + Send + Sync,
 {
     pub fn new(fixture: HeadlessGameFixture, evaluator: F) -> Self {
         Self { fixture, evaluator }
@@ -31,7 +33,8 @@ where F: Fn(&Genome<GENOME>) -> ActionEvaluator + Send + Sync
 }
 
 impl<const GENOME: usize, F> Fitness<GENOME> for FixtureFitness<GENOME, F>
-where F: Fn(&Genome<GENOME>) -> ActionEvaluator + Send + Sync
+where
+    F: Fn(&Genome<GENOME>) -> ActionEvaluator + Send + Sync,
 {
     fn evaluate(&self, genome: &Genome<GENOME>) -> GameResult {
         self.fixture.play((self.evaluator)(genome))
@@ -64,7 +67,7 @@ fn neural_fitness() -> impl Fitness<NEURAL_GENOME_SIZE> {
             RandomMode::Bag,
             rand::random(),
             HeadlessGameOptions::default(),
-            EndGame::NONE
+            EndGame::NONE,
         ),
         |&genome| ActionEvaluator::NeuralNetwork(genome.into()),
     )
@@ -82,7 +85,8 @@ fn run_neural(phases: Vec<Phase>, population_seed: Option<NeuralGenome>) {
         HyperParameters::default(),
         phases,
         population_seed,
-    ).run();
+    )
+    .run();
 }
 
 /// train a random population to survive the line cap
@@ -93,13 +97,22 @@ pub fn ga_main_survival() -> Result<(), String> {
 
 /// fine tune the built in model for tetris clears within the piece cap
 pub fn ga_main_score() -> Result<(), String> {
-    run_neural(vec![Phase::score(DEFAULT_PIECE_CAP)], Some(models::tetris_clear_trained().into()));
+    run_neural(
+        vec![Phase::score(DEFAULT_PIECE_CAP)],
+        Some(models::tetris_clear_trained().into()),
+    );
     Ok(())
 }
 
 /// train for survival, then once any member reaches the line cap switch to optimising for tetris clears
 pub fn ga_main_auto() -> Result<(), String> {
-    run_neural(vec![Phase::survival(DEFAULT_LINE_CAP), Phase::score(DEFAULT_PIECE_CAP)], None);
+    run_neural(
+        vec![
+            Phase::survival(DEFAULT_LINE_CAP),
+            Phase::score(DEFAULT_PIECE_CAP),
+        ],
+        None,
+    );
     Ok(())
 }
 
@@ -111,21 +124,35 @@ pub fn ga_diagnose() -> Result<(), String> {
         RandomMode::Bag,
         1.into(),
         HeadlessGameOptions::default(),
-        phase.end_game
+        phase.end_game,
     );
     let evaluator = ActionEvaluator::NeuralNetwork(models::tetris_clear_trained());
-    println!("built in neural network, {} pieces per game", DEFAULT_PIECE_CAP);
+    println!(
+        "built in neural network, {} pieces per game",
+        DEFAULT_PIECE_CAP
+    );
 
-    let results: Vec<_> = (0 .. SEEDS as u128)
+    let results: Vec<_> = (0..SEEDS as u128)
         .into_par_iter()
         .map(|seed| (seed, fixture.play_seed(evaluator, (seed + 1).into())))
         .collect();
 
     for (seed, result) in results.iter() {
-        println!("seed {}: {} tetris fraction: {:.3}", seed + 1, result, result.bonus_fraction());
+        println!(
+            "seed {}: {} tetris fraction: {:.3}",
+            seed + 1,
+            result,
+            result.bonus_fraction()
+        );
     }
     let mean: GameResult = results.iter().map(|(_, r)| *r).sum::<GameResult>() / SEEDS;
-    println!("mean: {} tetris fraction: {:.3} fitness ({}): {}", mean, mean.bonus_fraction(), phase.objective, phase.objective.fitness(&mean));
+    println!(
+        "mean: {} tetris fraction: {:.3} fitness ({}): {}",
+        mean,
+        mean.bonus_fraction(),
+        phase.objective,
+        phase.objective.fitness(&mean)
+    );
     Ok(())
 }
 
@@ -135,24 +162,26 @@ pub fn ga_main() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::game::random::RandomMode;
-    use crate::game::ai::action_evaluator::ActionEvaluator;
     use super::FixtureFitness;
-    use engine::ai::{Fitness, GeneticAlgorithm, HyperParameters};
-    use crate::game::ai::linear::{LinearGenome, LINEAR_GENOME_SIZE};
+    use crate::game::ai::action_evaluator::ActionEvaluator;
     use crate::game::ai::headless_game::{HeadlessGameFixture, HeadlessGameOptions};
-    use engine::ai::EndGame;
     use crate::game::ai::linear::LinearCoefficients;
+    use crate::game::ai::linear::{LinearGenome, LINEAR_GENOME_SIZE};
+    use crate::game::random::RandomMode;
+    use engine::ai::EndGame;
+    use engine::ai::{Fitness, GeneticAlgorithm, HyperParameters};
     use engine::ai::{GenomeMutation, RateLimits};
     use engine::ai::{Objective, Phase};
 
-    fn linear_fitness() -> FixtureFitness<LINEAR_GENOME_SIZE, impl Fn(&LinearGenome) -> ActionEvaluator + Send + Sync> {
+    fn linear_fitness(
+    ) -> FixtureFitness<LINEAR_GENOME_SIZE, impl Fn(&LinearGenome) -> ActionEvaluator + Send + Sync>
+    {
         FixtureFitness::new(
             HeadlessGameFixture::new(
                 RandomMode::Bag,
                 100.into(),
                 HeadlessGameOptions::default(),
-                EndGame::NONE
+                EndGame::NONE,
             ),
             |&genome| ActionEvaluator::Linear(genome.into()),
         )
@@ -171,7 +200,8 @@ mod tests {
             HyperParameters::new(10, 0.01, 0.5),
             vec![phase],
             None,
-        ).run();
+        )
+        .run();
     }
 
     #[test]

@@ -1,11 +1,11 @@
+use crate::ai::coefficient::Coefficient;
 use std::fmt::{Debug, Display};
 use std::ops::Deref;
 use std::vec::IntoIter;
-use crate::ai::coefficient::Coefficient;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Genome<const N: usize> {
-    chromosome: [Coefficient; N]
+    chromosome: [Coefficient; N],
 }
 
 impl<const N: usize> IntoIterator for Genome<N> {
@@ -24,7 +24,6 @@ impl<const N: usize> Deref for Genome<N> {
         &self.chromosome
     }
 }
-
 
 impl<const N: usize> Genome<N> {
     pub fn new(chromosome: [Coefficient; N]) -> Self {

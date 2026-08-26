@@ -5,24 +5,24 @@
 //! The training half is not compiled for the browser; the network itself always is.
 
 mod coefficient;
-mod game_result;
-mod genome;
-mod neural;
-mod seed;
 mod end_game;
-mod pacer;
+mod game_result;
 #[cfg(not(target_os = "emscripten"))]
 mod generation_record;
 #[cfg(not(target_os = "emscripten"))]
 mod generation_stats;
 #[cfg(not(target_os = "emscripten"))]
+mod genetic;
+mod genome;
+#[cfg(not(target_os = "emscripten"))]
 mod mutation;
+mod neural;
 #[cfg(not(target_os = "emscripten"))]
 mod objective;
 #[cfg(not(target_os = "emscripten"))]
 mod organism;
-#[cfg(not(target_os = "emscripten"))]
-mod genetic;
+mod pacer;
+mod seed;
 
 pub use coefficient::{raw_coefficient_range, Coefficient, DEFAULT_MUTATION_STEP};
 pub use end_game::EndGame;
@@ -37,9 +37,9 @@ pub use pacer::KeyPacer;
 pub use seed::Seed;
 
 #[cfg(not(target_os = "emscripten"))]
-pub use genetic::{Fitness, GeneticAlgorithm, HyperParameters};
-#[cfg(not(target_os = "emscripten"))]
 pub use generation_stats::GenerationStatistics;
+#[cfg(not(target_os = "emscripten"))]
+pub use genetic::{Fitness, GeneticAlgorithm, HyperParameters};
 #[cfg(not(target_os = "emscripten"))]
 pub use mutation::{GenomeMutation, RateLimits};
 #[cfg(not(target_os = "emscripten"))]

@@ -141,7 +141,10 @@ mod tests {
 
     #[test]
     fn breached_lock_blocks_moves() {
-        let mut board = Board { placements: 0, movable: true };
+        let mut board = Board {
+            placements: 0,
+            movable: true,
+        };
         assert_eq!(
             lock_move(&TIMING, Duration::from_millis(500), &mut board, |_| true),
             LockMove::Blocked
@@ -151,7 +154,10 @@ mod tests {
 
     #[test]
     fn blocked_move_does_not_count() {
-        let mut board = Board { placements: 0, movable: false };
+        let mut board = Board {
+            placements: 0,
+            movable: false,
+        };
         assert_eq!(
             lock_move(&TIMING, Duration::ZERO, &mut board, |b| b.movable),
             LockMove::Blocked
@@ -161,28 +167,56 @@ mod tests {
 
     #[test]
     fn moves_reset_lock_until_placements_run_out() {
-        let mut board = Board { placements: 13, movable: true };
+        let mut board = Board {
+            placements: 13,
+            movable: true,
+        };
         assert_eq!(
             lock_move(&TIMING, Duration::ZERO, &mut board, |_| true),
-            LockMove::Moved { last_placement: false }
+            LockMove::Moved {
+                last_placement: false
+            }
         );
         assert_eq!(
             lock_move(&TIMING, Duration::ZERO, &mut board, |_| true),
-            LockMove::Moved { last_placement: true }
+            LockMove::Moved {
+                last_placement: true
+            }
         );
-        assert_eq!(lock_move(&TIMING, Duration::ZERO, &mut board, |_| true), LockMove::Exhausted);
+        assert_eq!(
+            lock_move(&TIMING, Duration::ZERO, &mut board, |_| true),
+            LockMove::Exhausted
+        );
         assert_eq!(board.placements, 15);
     }
 
     #[test]
     fn soft_drop_speeds_up_but_respects_minimum() {
         let base = Duration::from_millis(1000);
-        assert_eq!(TIMING.step_delay(base, false, Duration::from_millis(16)), base);
-        assert_eq!(TIMING.step_delay(base, true, Duration::from_millis(16)), Duration::from_millis(50));
-        assert_eq!(TIMING.step_delay(base, true, Duration::from_millis(100)), Duration::from_millis(100));
-        assert_eq!(TIMING.spawn_delay(base, true, Duration::ZERO), Duration::from_millis(500));
+        assert_eq!(
+            TIMING.step_delay(base, false, Duration::from_millis(16)),
+            base
+        );
+        assert_eq!(
+            TIMING.step_delay(base, true, Duration::from_millis(16)),
+            Duration::from_millis(50)
+        );
+        assert_eq!(
+            TIMING.step_delay(base, true, Duration::from_millis(100)),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            TIMING.spawn_delay(base, true, Duration::ZERO),
+            Duration::from_millis(500)
+        );
         let capped = TIMING.with_spawn_delay_cap(Duration::from_millis(500));
-        assert_eq!(capped.spawn_delay(base, false, Duration::ZERO), Duration::from_millis(500));
-        assert_eq!(capped.spawn_delay(base, true, Duration::ZERO), Duration::from_millis(100));
+        assert_eq!(
+            capped.spawn_delay(base, false, Duration::ZERO),
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            capped.spawn_delay(base, true, Duration::ZERO),
+            Duration::from_millis(100)
+        );
     }
 }

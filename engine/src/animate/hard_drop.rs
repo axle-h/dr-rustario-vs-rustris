@@ -108,7 +108,11 @@ impl HardDropAnimation {
 
     pub fn hard_drop(&mut self, cells: &[PlacedCell], dropped_rows: u32) {
         if dropped_rows > 0 {
-            self.state = Some(State::new(cells.to_vec(), dropped_rows, self.rows_per_frame));
+            self.state = Some(State::new(
+                cells.to_vec(),
+                dropped_rows,
+                self.rows_per_frame,
+            ));
         }
     }
 

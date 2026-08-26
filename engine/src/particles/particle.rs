@@ -48,9 +48,8 @@ impl ParticleAnimationType {
     pub fn from_frames(animation_type: FrameAnimationType, frames: usize) -> Self {
         match animation_type {
             FrameAnimationType::Static => Self::Static,
-            FrameAnimationType::Linear { fps } | FrameAnimationType::LinearWithPause { fps, .. } => {
-                Self::Linear { fps, frames }
-            }
+            FrameAnimationType::Linear { fps }
+            | FrameAnimationType::LinearWithPause { fps, .. } => Self::Linear { fps, frames },
             FrameAnimationType::YoYo { fps } => Self::YoYo { fps, frames },
         }
     }

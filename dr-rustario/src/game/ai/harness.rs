@@ -38,7 +38,12 @@ impl Stats {
 
 fn fmt_duration(duration: Duration) -> String {
     let seconds = duration.as_secs();
-    format!("{}:{:02}:{:02}", seconds / 3600, (seconds / 60) % 60, seconds % 60)
+    format!(
+        "{}:{:02}:{:02}",
+        seconds / 3600,
+        (seconds / 60) % 60,
+        seconds % 60
+    )
 }
 
 /// `args` are the arguments after `ga dr play`:
@@ -111,10 +116,18 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
             break;
         }
         if stats.pills >= next_report {
-            stats.report("progress", &game, game.metric(MetricKind::Level).unwrap_or(0));
+            stats.report(
+                "progress",
+                &game,
+                game.metric(MetricKind::Level).unwrap_or(0),
+            );
             next_report = (stats.pills / every + 1) * every;
         }
     }
-    stats.report(if game_over { "game_over" } else { "end" }, &game, game.metric(MetricKind::Level).unwrap_or(0));
+    stats.report(
+        if game_over { "game_over" } else { "end" },
+        &game,
+        game.metric(MetricKind::Level).unwrap_or(0),
+    );
     Ok(())
 }

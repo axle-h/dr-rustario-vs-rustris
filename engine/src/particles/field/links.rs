@@ -90,9 +90,7 @@ impl LinkBuilder {
                         self.links.push(ParticleLink {
                             from,
                             to,
-                            color: particle
-                                .color()
-                                .lerp(particles[other].color(), 0.5),
+                            color: particle.color().lerp(particles[other].color(), 0.5),
                             alpha: alpha * closeness * particle.alpha(),
                             width,
                         });

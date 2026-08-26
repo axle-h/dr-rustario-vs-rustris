@@ -1,8 +1,8 @@
+use crate::ai::end_game::EndGame;
+use crate::ai::game_result::GameResult;
+use crate::ai::mutation::RateLimits;
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
-use crate::ai::game_result::GameResult;
-use crate::ai::end_game::EndGame;
-use crate::ai::mutation::RateLimits;
 
 /// what the genetic algorithm is optimising for
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,12 +40,18 @@ impl Objective {
     /// ordering of two results, `Greater` means `a` is the better result
     pub fn cmp(&self, a: &GameResult, b: &GameResult) -> Ordering {
         match self {
-            Objective::Survival => b.game_over().cmp(&a.game_over())
+            Objective::Survival => b
+                .game_over()
+                .cmp(&a.game_over())
                 .then_with(|| a.score().cmp(&b.score())),
-            Objective::Score => a.bonus().cmp(&b.bonus())
+            Objective::Score => a
+                .bonus()
+                .cmp(&b.bonus())
                 .then_with(|| a.score().cmp(&b.score())),
             // whoever got further wins, then whoever finished more boards on the way
-            Objective::Progress => a.cleared().cmp(&b.cleared())
+            Objective::Progress => a
+                .cleared()
+                .cmp(&b.cleared())
                 .then_with(|| a.bonus().cmp(&b.bonus()))
                 .then_with(|| a.score().cmp(&b.score())),
         }
@@ -72,8 +78,8 @@ impl Phase {
             objective: Objective::Survival,
             end_game: EndGame::of_cleared(clear_cap),
             seeds_per_game: 1,
-            mutation_rate: RateLimits::new(0.1 ..= 0.20),
-            crossover_rate: RateLimits::new(0.1 ..= 0.20),
+            mutation_rate: RateLimits::new(0.1..=0.20),
+            crossover_rate: RateLimits::new(0.1..=0.20),
             mutation_step: 0.1,
             max_generations: usize::MAX,
         }
@@ -85,8 +91,8 @@ impl Phase {
             objective: Objective::Score,
             end_game: EndGame::of_pieces(piece_cap),
             seeds_per_game: 3,
-            mutation_rate: RateLimits::new(0.01 ..= 0.05),
-            crossover_rate: RateLimits::new(0.01 ..= 0.05),
+            mutation_rate: RateLimits::new(0.01..=0.05),
+            crossover_rate: RateLimits::new(0.01..=0.05),
             mutation_step: 0.02,
             max_generations: usize::MAX,
         }
@@ -111,8 +117,8 @@ impl Phase {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
     use super::*;
+    use std::time::Duration;
 
     fn result(score: u32, cleared: u32, game_over: bool, bonus: u32) -> GameResult {
         GameResult::new(score, cleared, 0, game_over, Duration::ZERO).with_pieces(0, bonus)
@@ -124,7 +130,10 @@ mod tests {
         let dead = result(1000, 100, true, 40);
         assert_eq!(Objective::Survival.cmp(&alive, &dead), Ordering::Greater);
         assert_eq!(Objective::Survival.cmp(&dead, &alive), Ordering::Less);
-        assert_eq!(Objective::Survival.cmp(&alive, &result(20, 10, false, 0)), Ordering::Less);
+        assert_eq!(
+            Objective::Survival.cmp(&alive, &result(20, 10, false, 0)),
+            Ordering::Less
+        );
     }
 
     #[test]
@@ -133,14 +142,20 @@ mod tests {
         let aggressive = result(100, 8, true, 8);
         assert_eq!(Objective::Score.cmp(&aggressive, &timid), Ordering::Greater);
         // same bonus, break tie on score
-        assert_eq!(Objective::Score.cmp(&result(100, 8, true, 8), &result(200, 8, false, 8)), Ordering::Less);
+        assert_eq!(
+            Objective::Score.cmp(&result(100, 8, true, 8), &result(200, 8, false, 8)),
+            Ordering::Less
+        );
     }
 
     #[test]
     fn progress_prefers_whoever_got_further() {
         let further = result(0, 60, true, 2).with_pieces(300, 2);
         let stalled = result(0, 20, false, 1).with_pieces(300, 1);
-        assert_eq!(Objective::Progress.cmp(&further, &stalled), Ordering::Greater);
+        assert_eq!(
+            Objective::Progress.cmp(&further, &stalled),
+            Ordering::Greater
+        );
         // taking longer over it costs nothing: there is no speed term
         let slow = result(0, 60, true, 2).with_pieces(9000, 2);
         assert_eq!(Objective::Progress.cmp(&slow, &further), Ordering::Equal);

@@ -46,7 +46,9 @@ impl Options {
 
     /// the title screen's players list: humans, then the ai opponents and the ai demos
     pub fn players_list(&self, max_players: u32) -> (Vec<String>, usize) {
-        let mut players = (1..=max_players).map(|i| i.to_string()).collect::<Vec<String>>();
+        let mut players = (1..=max_players)
+            .map(|i| i.to_string())
+            .collect::<Vec<String>>();
         if max_players > 1 {
             players.extend(
                 AiDifficulty::ALL
@@ -62,7 +64,9 @@ impl Options {
             AiMode::Off => (self.config.players as usize).clamp(1, max_players as usize) - 1,
             AiMode::Opponent(difficulty) => players
                 .iter()
-                .position(|p| *p == format!("{}{}{}", VS_AI_PREFIX, difficulty.name(), VS_AI_SUFFIX))
+                .position(|p| {
+                    *p == format!("{}{}{}", VS_AI_PREFIX, difficulty.name(), VS_AI_SUFFIX)
+                })
                 .unwrap_or(0),
             AiMode::Demo => players.iter().position(|p| p == AI_DEMO_1P).unwrap_or(0),
             AiMode::VsDemo => players.iter().position(|p| p == AI_DEMO_2P).unwrap_or(0),
@@ -165,7 +169,6 @@ impl Options {
         true
     }
 
-
     /// `count` games sharing one seed, so players face the same pieces
     pub fn games(&self, count: usize) -> Vec<Game> {
         random_tetrominos(self.config.random, count)
@@ -192,7 +195,11 @@ impl Options {
     /// the players the AI plays for, how fast, and the model they play
     pub fn ai_players(
         &self,
-    ) -> Vec<(u32, std::time::Duration, crate::game::ai::TetrisNeuralNetwork)> {
+    ) -> Vec<(
+        u32,
+        std::time::Duration,
+        crate::game::ai::TetrisNeuralNetwork,
+    )> {
         self.config.ai_players()
     }
 }
@@ -202,11 +209,7 @@ mod tests {
     use super::*;
 
     fn mode_names(options: &Options) -> Vec<String> {
-        options
-            .modes()
-            .iter()
-            .map(|m| m.name(STAGE_NOUN))
-            .collect()
+        options.modes().iter().map(|m| m.name(STAGE_NOUN)).collect()
     }
 
     #[test]

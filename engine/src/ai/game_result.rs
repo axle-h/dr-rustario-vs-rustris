@@ -1,6 +1,6 @@
-use std::ops::{Add, AddAssign, Div, Sub};
 use std::fmt::{Display, Formatter};
 use std::iter::Sum;
+use std::ops::{Add, AddAssign, Div, Sub};
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,14 +18,31 @@ pub struct GameResult {
 
 impl Display for GameResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "score: {}, cleared: {}, level: {}, pieces: {}, bonus: {}, game over: {}, time: {:?}",
-               self.score, self.cleared, self.level, self.pieces, self.bonus, self.game_over, self.time)
+        write!(
+            f,
+            "score: {}, cleared: {}, level: {}, pieces: {}, bonus: {}, game over: {}, time: {:?}",
+            self.score,
+            self.cleared,
+            self.level,
+            self.pieces,
+            self.bonus,
+            self.game_over,
+            self.time
+        )
     }
 }
 
 impl GameResult {
     pub fn new(score: u32, cleared: u32, level: u32, game_over: bool, time: Duration) -> Self {
-        Self { score, cleared, level, game_over, time, pieces: 0, bonus: 0 }
+        Self {
+            score,
+            cleared,
+            level,
+            game_over,
+            time,
+            pieces: 0,
+            bonus: 0,
+        }
     }
 
     pub fn with_pieces(mut self, pieces: u32, bonus: u32) -> Self {
@@ -45,7 +62,11 @@ impl GameResult {
 
     /// fraction of the cleared counter that also counted as a bonus
     pub fn bonus_fraction(&self) -> f64 {
-        if self.cleared == 0 { 0.0 } else { self.bonus as f64 / self.cleared as f64 }
+        if self.cleared == 0 {
+            0.0
+        } else {
+            self.bonus as f64 / self.cleared as f64
+        }
     }
 
     pub fn score(&self) -> u32 {

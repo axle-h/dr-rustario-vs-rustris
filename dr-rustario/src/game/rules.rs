@@ -1,5 +1,5 @@
-use crate::game::ai::DrNeuralNetwork;
 use crate::game::ai::models;
+use crate::game::ai::DrNeuralNetwork;
 use crate::game::random::RandomMode;
 use crate::game::GameSpeed;
 use std::time::Duration;

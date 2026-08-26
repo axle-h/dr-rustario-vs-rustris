@@ -29,7 +29,13 @@ impl Palette {
     }
 
     pub fn from_sdl(colors: &[Color]) -> Self {
-        Self::new(colors.iter().copied().map(ParticleColor::from_sdl).collect())
+        Self::new(
+            colors
+                .iter()
+                .copied()
+                .map(ParticleColor::from_sdl)
+                .collect(),
+        )
     }
 
     pub fn colors(&self) -> &[ParticleColor] {
@@ -191,7 +197,9 @@ impl SceneContext {
                 ),
             });
         }
-        result.map(|(color, _)| color).unwrap_or(ParticleColor::WHITE)
+        result
+            .map(|(color, _)| color)
+            .unwrap_or(ParticleColor::WHITE)
     }
 }
 
@@ -250,13 +258,16 @@ mod tests {
 
     #[test]
     fn two_retro_players_have_no_field_at_all() {
-        assert!(SceneContext::new(vec![region(0, left(), false), region(1, right(), false)]).is_none());
+        assert!(
+            SceneContext::new(vec![region(0, left(), false), region(1, right(), false)]).is_none()
+        );
     }
 
     #[test]
     fn a_routine_written_in_canvas_space_fits_whatever_it_is_given() {
         let whole = SceneContext::new(vec![region(0, whole(), true)]).unwrap();
-        let half = SceneContext::new(vec![region(0, left(), false), region(1, right(), true)]).unwrap();
+        let half =
+            SceneContext::new(vec![region(0, left(), false), region(1, right(), true)]).unwrap();
         // the same authored point lands in the middle of each
         assert_eq!(whole.from_canvas((0.5, 0.5)), Vec2D::new(0.5, 0.5));
         assert_eq!(half.from_canvas((0.5, 0.5)), Vec2D::new(0.75, 0.5));

@@ -1,7 +1,7 @@
-use std::fmt::{Display, Formatter};
 use crate::ai::objective::Objective;
 use crate::ai::organism::Organism;
 use crate::ai::seed::Seed;
+use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -27,8 +27,32 @@ impl<const GENOME: usize> Display for GenerationStatistics<GENOME> {
 }
 
 impl<const GENOME: usize> GenerationStatistics<GENOME> {
-    pub fn new(id: usize, objective: Objective, seed: Seed, max: Organism<GENOME>, p95: Organism<GENOME>, median: Organism<GENOME>, mutation_rate: f64, crossover_rate: f64, total_gameplay_time: Duration, generation_duration: Duration, game_seconds_per_second: f64) -> Self {
-        Self { id, objective, seed, max, p95, median, mutation_rate, crossover_rate, total_gameplay_time, generation_duration, game_seconds_per_second }
+    pub fn new(
+        id: usize,
+        objective: Objective,
+        seed: Seed,
+        max: Organism<GENOME>,
+        p95: Organism<GENOME>,
+        median: Organism<GENOME>,
+        mutation_rate: f64,
+        crossover_rate: f64,
+        total_gameplay_time: Duration,
+        generation_duration: Duration,
+        game_seconds_per_second: f64,
+    ) -> Self {
+        Self {
+            id,
+            objective,
+            seed,
+            max,
+            p95,
+            median,
+            mutation_rate,
+            crossover_rate,
+            total_gameplay_time,
+            generation_duration,
+            game_seconds_per_second,
+        }
     }
 
     pub fn id(&self) -> usize {

@@ -2,7 +2,9 @@
 
 use crate::game::ai::DrNeuralNetwork;
 use crate::game::random::{random, RandomMode};
-use crate::game::rules::{AiDifficulty, AiMode, GameConfig, MatchRules, MatchThemes, MAX_VIRUS_LEVEL};
+use crate::game::rules::{
+    AiDifficulty, AiMode, GameConfig, MatchRules, MatchThemes, MAX_VIRUS_LEVEL,
+};
 use crate::game::{Game, GameSpeed};
 use engine::app::ThemeMode;
 use engine::menu::MenuItem;
@@ -185,7 +187,6 @@ impl Options {
         true
     }
 
-
     /// `count` games sharing one seed, so players face the same bottles and pills
     pub fn games(&self, count: usize) -> Result<Vec<Game>, String> {
         random(count, self.config.random())
@@ -214,11 +215,7 @@ mod tests {
     use super::*;
 
     fn mode_names(options: &Options) -> Vec<String> {
-        options
-            .modes()
-            .iter()
-            .map(|m| m.name(STAGE_NOUN))
-            .collect()
+        options.modes().iter().map(|m| m.name(STAGE_NOUN)).collect()
     }
 
     #[test]

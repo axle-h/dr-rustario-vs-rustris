@@ -16,7 +16,7 @@ use crate::game::ai::headless_game::{
 use crate::game::ai::models::{self, DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
 use crate::game::random::RandomMode;
 use engine::ai::{
-    EndGame, Fitness, GameResult, Genome, GeneticAlgorithm, GenomeMutation, HyperParameters,
+    EndGame, Fitness, GameResult, GeneticAlgorithm, Genome, GenomeMutation, HyperParameters,
     Objective, Phase, RateLimits, Seed,
 };
 use rayon::prelude::*;
@@ -122,12 +122,7 @@ fn verify(genome: DrNeuralGenome) -> bool {
 
     let results: Vec<_> = (0..VERIFY_SEEDS)
         .into_par_iter()
-        .map(|seed| {
-            (
-                seed,
-                fixture.play_seed(network, block + Seed::from(seed)),
-            )
-        })
+        .map(|seed| (seed, fixture.play_seed(network, block + Seed::from(seed))))
         .collect();
 
     let mut verified = true;

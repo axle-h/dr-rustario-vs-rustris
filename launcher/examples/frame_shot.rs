@@ -19,7 +19,10 @@ fn main() -> Result<(), String> {
     let height: u32 = args.get(2).map(|s| s.parse().unwrap()).unwrap_or(480);
     let players: u32 = args.get(3).map(|s| s.parse().unwrap()).unwrap_or(1);
     let out = args.get(4).cloned().unwrap_or_else(|| ".".to_string());
-    let game = args.get(5).cloned().unwrap_or_else(|| "rustris".to_string());
+    let game = args
+        .get(5)
+        .cloned()
+        .unwrap_or_else(|| "rustris".to_string());
 
     init(AppInfo {
         name: "frame-shot",
@@ -51,13 +54,35 @@ fn main() -> Result<(), String> {
     match game.as_str() {
         "rustris" => {
             let themes = rustris::theme::all_themes(&mut canvas, &texture_creator, config)?;
-            shoot(&mut canvas, &texture_creator, &themes, config, (width, height), players, &out, &game, rustris_game)
+            shoot(
+                &mut canvas,
+                &texture_creator,
+                &themes,
+                config,
+                (width, height),
+                players,
+                &out,
+                &game,
+                rustris_game,
+            )
         }
         "dr-rustario" => {
             let themes = dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?;
-            shoot(&mut canvas, &texture_creator, &themes, config, (width, height), players, &out, &game, dr_rustario_game)
+            shoot(
+                &mut canvas,
+                &texture_creator,
+                &themes,
+                config,
+                (width, height),
+                players,
+                &out,
+                &game,
+                dr_rustario_game,
+            )
         }
-        other => Err(format!("unknown game '{other}', expected rustris or dr-rustario")),
+        other => Err(format!(
+            "unknown game '{other}', expected rustris or dr-rustario"
+        )),
     }
 }
 

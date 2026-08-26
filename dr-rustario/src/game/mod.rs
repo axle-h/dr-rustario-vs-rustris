@@ -266,18 +266,9 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(
-        virus_level: u32,
-        speed: GameSpeed,
-        mut random: GameRandom,
-    ) -> Result<Self, String> {
+    pub fn new(virus_level: u32, speed: GameSpeed, mut random: GameRandom) -> Result<Self, String> {
         let bottle = Bottle::from_seed(random.bottle_seed(virus_level)?, random.garbage_rng());
-        Ok(Self::from_bottle(
-            virus_level,
-            speed,
-            random,
-            bottle,
-        ))
+        Ok(Self::from_bottle(virus_level, speed, random, bottle))
     }
 
     pub fn from_bottle(
@@ -308,7 +299,10 @@ impl Game {
         self.virus_level += 1;
         self.level_count += 1;
         self.events.clear();
-        self.bottle = Bottle::from_seed(self.random.bottle_seed(self.virus_level)?, self.random.garbage_rng());
+        self.bottle = Bottle::from_seed(
+            self.random.bottle_seed(self.virus_level)?,
+            self.random.garbage_rng(),
+        );
         self.state = GameState::NEW_SPAWN;
         self.total_pills = 0;
         self.soft_drop = false;
@@ -532,7 +526,8 @@ impl Game {
         self.score = (self.score + combo.score(self.speed)).min(MAX_SCORE);
         let garbage = combo.garbage();
         if !garbage.is_empty() {
-            self.events.push(GameEvent::AttackSent(Self::attack(&garbage)));
+            self.events
+                .push(GameEvent::AttackSent(Self::attack(&garbage)));
         }
 
         GameState::NEW_SPAWN
@@ -599,11 +594,19 @@ impl Game {
     }
 
     fn spawn_delay(&self) -> Duration {
-        TIMING.spawn_delay(self.base_delay(), self.soft_drop, self.speed.min_drop_duration())
+        TIMING.spawn_delay(
+            self.base_delay(),
+            self.soft_drop,
+            self.speed.min_drop_duration(),
+        )
     }
 
     fn step_delay(&self) -> Duration {
-        TIMING.step_delay(self.base_delay(), self.soft_drop, self.speed.min_drop_duration())
+        TIMING.step_delay(
+            self.base_delay(),
+            self.soft_drop,
+            self.speed.min_drop_duration(),
+        )
     }
 
     fn base_delay(&self) -> Duration {
@@ -748,15 +751,15 @@ impl engine::game::Game for Game {
 #[cfg(test)]
 mod tests {
     use super::pill::{Garbage, Vitamins};
-    use crate::game::block::Block;
     use super::random::{BottleSeed, RandomMode};
     use super::*;
+    use crate::game::block::Block;
+    use crate::game::geometry::BottlePoint;
     use crate::game::pill::Pill;
     use crate::game::pill::Vitamin;
-    use crate::game::geometry::BottlePoint;
-    use rand_chacha::ChaChaRng;
     use mockall::mock;
     use mockall::predicate::*;
+    use rand_chacha::ChaChaRng;
 
     mock! {
         pub Bottle {

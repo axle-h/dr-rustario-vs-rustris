@@ -16,10 +16,10 @@ const PLACEMENT_TRIES: usize = 24;
 
 /// how much of `board` a shape centred at `centre` with these half extents covers
 fn overlap(board: &RectF, centre: Vec2D, half_x: f64, half_y: f64) -> f64 {
-    let width = (board.right().min(centre.x() + half_x) - board.x().max(centre.x() - half_x))
-        .max(0.0);
-    let height = (board.bottom().min(centre.y() + half_y) - board.y().max(centre.y() - half_y))
-        .max(0.0);
+    let width =
+        (board.right().min(centre.x() + half_x) - board.x().max(centre.x() - half_x)).max(0.0);
+    let height =
+        (board.bottom().min(centre.y() + half_y) - board.y().max(centre.y() - half_y)).max(0.0);
     width * height
 }
 
@@ -41,7 +41,11 @@ pub enum Formation {
     },
     /// a rectilinear grid that breathes, then shears and collapses. Structure with no masks
     /// at all
-    Lattice { cols: usize, rows: usize, inset: f64 },
+    Lattice {
+        cols: usize,
+        rows: usize,
+        inset: f64,
+    },
     /// a waveform across the canvas, its amplitude driven by how energetic the field is
     Ribbon {
         amplitude: f64,
@@ -86,26 +90,32 @@ impl Formation {
     /// `boards` are the players' playfields in canvas-normalised coordinates: a silhouette
     /// gathers away from them where it can, so it is not drawn over the one thing the player
     /// is reading
-    pub fn sprite(
-        shape: &EdgeShape,
-        aspect: f64,
-        rng: &mut ThreadRng,
-        boards: &[RectF],
-    ) -> Self {
-        Self::sprite_sized(shape, aspect, rng, boards, (0.38, 0.58), (-0.5, 0.5), (-0.05, 0.05))
+    pub fn sprite(shape: &EdgeShape, aspect: f64, rng: &mut ThreadRng, boards: &[RectF]) -> Self {
+        Self::sprite_sized(
+            shape,
+            aspect,
+            rng,
+            boards,
+            (0.38, 0.58),
+            (-0.5, 0.5),
+            (-0.05, 0.05),
+        )
     }
 
     /// text is wide and thin, so it wants a good part of the canvas, and it should sit still
     /// enough to be read. Not the whole of it: a word stretched wall to wall is one the eye
     /// has to track rather than take in, and its letters end up further apart than the
     /// particles that spell them
-    pub fn text(
-        shape: &EdgeShape,
-        aspect: f64,
-        rng: &mut ThreadRng,
-        boards: &[RectF],
-    ) -> Self {
-        Self::sprite_sized(shape, aspect, rng, boards, (0.5, 0.62), (0.0, 0.0), (-0.008, 0.008))
+    pub fn text(shape: &EdgeShape, aspect: f64, rng: &mut ThreadRng, boards: &[RectF]) -> Self {
+        Self::sprite_sized(
+            shape,
+            aspect,
+            rng,
+            boards,
+            (0.5, 0.62),
+            (0.0, 0.0),
+            (-0.008, 0.008),
+        )
     }
 
     /// `fill` is the fraction of the canvas the shape spans on its larger side, measured from
@@ -168,7 +178,9 @@ impl Formation {
         }
         Self::Sprite {
             points: shape.points().to_vec(),
-            centre: best.map(|(centre, _)| centre).unwrap_or(Vec2D::new(0.5, 0.5)),
+            centre: best
+                .map(|(centre, _)| centre)
+                .unwrap_or(Vec2D::new(0.5, 0.5)),
             size,
             half: Vec2D::new(margin_x, margin_y),
             spin: spin.0 + (spin.1 - spin.0) * rng.random::<f64>(),
@@ -212,10 +224,7 @@ impl Formation {
                 .rev()
                 .collect(),
             spin: 0.35 + 0.35 * rng.random::<f64>(),
-            drift: Vec2D::new(
-                Self::signed(rng, 0.02, 0.06),
-                Self::signed(rng, 0.02, 0.06),
-            ),
+            drift: Vec2D::new(Self::signed(rng, 0.02, 0.06), Self::signed(rng, 0.02, 0.06)),
         }
     }
 
@@ -533,7 +542,10 @@ mod tests {
         for _ in 0..40 {
             let formation = Formation::sprite(&shape, 1.78, &mut rng, &[]);
             let (low, high) = bounds(&formation, 4.5, 1.78);
-            assert!(low > -0.05 && high < 1.05, "{formation:?} reaches {low} to {high}");
+            assert!(
+                low > -0.05 && high < 1.05,
+                "{formation:?} reaches {low} to {high}"
+            );
         }
     }
 
@@ -545,7 +557,10 @@ mod tests {
         };
         // rings about one centre: a circle bolted to each board is decoration, not a routine
         assert!((3..=4).contains(&radii.len()), "{radii:?}");
-        assert!(radii.windows(2).all(|w| w[0] > w[1]), "outermost first: {radii:?}");
+        assert!(
+            radii.windows(2).all(|w| w[0] > w[1]),
+            "outermost first: {radii:?}"
+        );
     }
 
     #[test]

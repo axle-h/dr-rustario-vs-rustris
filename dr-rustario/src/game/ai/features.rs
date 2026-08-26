@@ -169,8 +169,7 @@ impl BottleAnalysis for Bottle {
             }
         }
 
-        let (virus_near_3, virus_near_2, block_near_3, block_near_2) =
-            self.near_matches(&colors);
+        let (virus_near_3, virus_near_2, block_near_3, block_near_2) = self.near_matches(&colors);
 
         BottleStats {
             viruses,
@@ -214,10 +213,10 @@ impl ColorGrid for Bottle {
         let mut block_three = 0;
         let mut block_two = 0;
 
-        let rows = (0..BOTTLE_HEIGHT)
-            .map(|y| (0..BOTTLE_WIDTH).map(|x| (x, y)).collect::<Vec<_>>());
-        let cols = (0..BOTTLE_WIDTH)
-            .map(|x| (0..BOTTLE_HEIGHT).map(|y| (x, y)).collect::<Vec<_>>());
+        let rows =
+            (0..BOTTLE_HEIGHT).map(|y| (0..BOTTLE_WIDTH).map(|x| (x, y)).collect::<Vec<_>>());
+        let cols =
+            (0..BOTTLE_WIDTH).map(|x| (0..BOTTLE_HEIGHT).map(|y| (x, y)).collect::<Vec<_>>());
 
         for line in rows.chain(cols) {
             let color_at = |i: usize| colors[index(line[i].0, line[i].1)];
@@ -303,7 +302,8 @@ impl ColorGrid for Bottle {
                         let mut needed = 0;
                         let mut blocked = false;
                         for step in 0..MATCH_LENGTH as i32 {
-                            let cell = colors[index((sx + dx * step) as u32, (sy + dy * step) as u32)];
+                            let cell =
+                                colors[index((sx + dx * step) as u32, (sy + dy * step) as u32)];
                             match cell {
                                 // already the right colour, nothing to do for this cell
                                 c if c == color => (),
@@ -487,12 +487,7 @@ mod tests {
 
     #[test]
     fn a_column_run_counts_too() {
-        let stats = bottle(&[
-            stack(0, 13, Red),
-            stack(0, 14, Red),
-            virus(0, 15, Red),
-        ])
-        .stats();
+        let stats = bottle(&[stack(0, 13, Red), stack(0, 14, Red), virus(0, 15, Red)]).stats();
         assert_eq!(stats.virus_near_3(), 1);
     }
 

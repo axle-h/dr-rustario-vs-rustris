@@ -96,7 +96,10 @@ pub fn vitamin_ids(color: VirusColor) -> Vec<CellId> {
     ids
 }
 
-pub fn cells(block_size: u32, layouts: [(VirusColor, ColorLayout); 3]) -> Vec<(CellId, CellSpriteData)> {
+pub fn cells(
+    block_size: u32,
+    layouts: [(VirusColor, ColorLayout); 3],
+) -> Vec<(CellId, CellSpriteData)> {
     let snip = |p: Point| Rect::new(p.x, p.y, block_size, block_size);
     let mut cells = vec![];
     for (color, layout) in layouts {
@@ -156,7 +159,12 @@ pub fn animations(
 }
 
 /// a strip of `frames` same-sized frames starting at `start` in `file`
-pub fn strip(file: &'static [u8], start: Point, frames: u32, block_size: u32) -> AnimationSpriteSheetData {
+pub fn strip(
+    file: &'static [u8],
+    start: Point,
+    frames: u32,
+    block_size: u32,
+) -> AnimationSpriteSheetData {
     AnimationSpriteSheetData::non_exclusive_linear(file, start, frames, block_size, block_size)
 }
 
@@ -213,7 +221,10 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
         (SfxKey::Clear(CLEAR_VIRUS), sounds.destroy_virus),
         (SfxKey::Clear(CLEAR_VIRUS_COMBO), sounds.destroy_virus_combo),
         (SfxKey::Clear(CLEAR_VITAMIN), sounds.destroy_vitamin),
-        (SfxKey::Clear(CLEAR_VITAMIN_COMBO), sounds.destroy_vitamin_combo),
+        (
+            SfxKey::Clear(CLEAR_VITAMIN_COMBO),
+            sounds.destroy_vitamin_combo,
+        ),
         (SfxKey::Paused, sounds.paused),
         (SfxKey::SpeedUp, sounds.speed_level_up),
         (SfxKey::AttackReceived, sounds.receive_garbage),
@@ -225,7 +236,11 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
     AudioTheme::new(config, &sfx)
 }
 
-pub fn hud(score: MetricSnips, level: MetricSnips, viruses: MetricSnips) -> Vec<(MetricKind, MetricSnips)> {
+pub fn hud(
+    score: MetricSnips,
+    level: MetricSnips,
+    viruses: MetricSnips,
+) -> Vec<(MetricKind, MetricSnips)> {
     vec![
         (MetricKind::Score, score),
         (MetricKind::Level, level),

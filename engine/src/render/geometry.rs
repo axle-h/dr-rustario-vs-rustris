@@ -121,7 +121,12 @@ impl BoardGeometry {
     }
 
     pub fn game_snip(&self) -> Rect {
-        Rect::new(self.offset.x(), self.offset.y(), self.width(), self.height())
+        Rect::new(
+            self.offset.x(),
+            self.offset.y(),
+            self.width(),
+            self.height(),
+        )
     }
 }
 

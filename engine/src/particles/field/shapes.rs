@@ -113,9 +113,8 @@ impl EdgeShape {
     /// tetromino and an O, whose outlines each fill their own extents completely, do not come
     /// out as the same shape.
     pub fn signature(&self) -> u64 {
-        let cell = |value: f64| -> usize {
-            ((value + 0.5) * SIGNATURE_GRID as f64).max(0.0) as usize
-        };
+        let cell =
+            |value: f64| -> usize { ((value + 0.5) * SIGNATURE_GRID as f64).max(0.0) as usize };
         self.points.iter().fold(0u64, |bits, point| {
             let x = cell(point.x()).min(SIGNATURE_GRID - 1);
             let y = cell(point.y()).min(SIGNATURE_GRID - 1);
@@ -392,7 +391,11 @@ impl ShapeBank {
                 let Some(id) = ids.get(index).copied() else {
                     return Ok(None);
                 };
-                sheet.idle_cells.get_mut(&id).unwrap().block_mask(canvas, 0)?
+                sheet
+                    .idle_cells
+                    .get_mut(&id)
+                    .unwrap()
+                    .block_mask(canvas, 0)?
             }
             ShapeSource::Mascot => match sheet.mascot.as_mut() {
                 Some(mascot) => mascot.sheet_mut(MascotKind::Idle).block_mask(canvas, 0)?,

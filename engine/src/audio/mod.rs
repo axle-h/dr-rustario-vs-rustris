@@ -1,9 +1,9 @@
 //! Audio output: a hand-rolled mixer fed through SDL's core audio callback.
 //! Effects are decoded up front; music is streamed from the embedded OGG files.
 
-pub mod theme;
 mod decode;
 mod mixer;
+pub mod theme;
 
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -39,7 +39,11 @@ pub struct Audio {
 }
 
 impl Audio {
-    pub fn open(subsystem: &AudioSubsystem, channels: u32, music_volume: i32) -> Result<Self, String> {
+    pub fn open(
+        subsystem: &AudioSubsystem,
+        channels: u32,
+        music_volume: i32,
+    ) -> Result<Self, String> {
         let (sender, receiver) = channel();
         let spec = AudioSpecDesired {
             freq: Some(SAMPLE_RATE as i32),
@@ -66,9 +70,7 @@ impl Audio {
 }
 
 fn send(command: Command) -> Result<(), String> {
-    let handle = HANDLE
-        .get()
-        .ok_or_else(|| "audio not opened".to_string())?;
+    let handle = HANDLE.get().ok_or_else(|| "audio not opened".to_string())?;
     handle
         .lock()
         .map_err(|_| "audio handle poisoned".to_string())?
@@ -158,7 +160,11 @@ pub fn play_music(intro: Option<Music>, repeat: Music, loops: i32) -> Result<(),
 /// Like [`play_music`], except that if this exact endlessly-looping music is already
 /// playing it is left alone rather than restarted, so menus that share a tune switch
 /// seamlessly.
-pub fn play_music_unless_current(intro: Option<Music>, repeat: Music, loops: i32) -> Result<(), String> {
+pub fn play_music_unless_current(
+    intro: Option<Music>,
+    repeat: Music,
+    loops: i32,
+) -> Result<(), String> {
     if loops < 0 && *current_music()? == Some(music_id(intro, repeat, loops)) {
         // already playing this loop: just make sure it is not paused
         return resume_music();

@@ -1,13 +1,13 @@
 use crate::font::{FontTexture, FontType};
 use crate::game::{Game, MetricKind};
-use num_format::{Locale, ToFormattedString};
 use crate::render::helper::TextureFactory;
+use num_format::{Locale, ToFormattedString};
 use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{BlendMode, Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::collections::HashMap;
-use sdl2::pixels::PixelFormatEnum::RGBA8888;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum FontAlign {

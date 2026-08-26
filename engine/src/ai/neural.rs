@@ -1,10 +1,10 @@
+use crate::ai::coefficient::Coefficient;
+use crate::ai::genome::Genome;
+use rand::distr::{Distribution, StandardUniform};
+use rand::{Rng, RngExt};
 use std::array::from_fn;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Add, AddAssign};
-use rand::distr::{Distribution, StandardUniform};
-use rand::{Rng, RngExt};
-use crate::ai::coefficient::Coefficient;
-use crate::ai::genome::Genome;
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct Tensor<const R: usize, const C: usize = 1> {
@@ -12,7 +12,6 @@ pub struct Tensor<const R: usize, const C: usize = 1> {
 }
 
 impl<const R: usize, const C: usize> Tensor<R, C> {
-
     pub fn rows(&self) -> usize {
         R
     }
@@ -20,7 +19,6 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
     pub fn cols(&self) -> usize {
         C
     }
-
 
     const ZEROS: Self = Self {
         data: [[0.0; C]; R],
@@ -37,9 +35,14 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
     pub const TOTAL_SIZE: usize = R * C;
 
     pub fn from_slice(data: &[f64]) -> Self {
-        debug_assert_eq!(data.len(), Self::TOTAL_SIZE,
-           "Invalid data length for Tensor<{}, {}>: expected {}, got {}",
-           R, C, Self::TOTAL_SIZE, data.len()
+        debug_assert_eq!(
+            data.len(),
+            Self::TOTAL_SIZE,
+            "Invalid data length for Tensor<{}, {}>: expected {}, got {}",
+            R,
+            C,
+            Self::TOTAL_SIZE,
+            data.len()
         );
         let mut result = Self::ZEROS;
         for i in 0..R {
@@ -59,9 +62,12 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
         }
         result
     }
-    
+
     pub fn dot<const R2: usize, const C2: usize>(&self, other: &Tensor<R2, C2>) -> Tensor<R, C2> {
-        debug_assert_eq!(C, R2, "Cannot multiply tensors with incompatible dimensions");
+        debug_assert_eq!(
+            C, R2,
+            "Cannot multiply tensors with incompatible dimensions"
+        );
 
         let mut result = Tensor::ZEROS;
 
@@ -130,7 +136,6 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
     }
 }
 
-
 fn relu(x: f64) -> f64 {
     x.max(0.0)
 }
@@ -140,7 +145,11 @@ fn sigmoid(x: f64) -> f64 {
 }
 
 fn mcculloch_pitts(x: f64, threshold: f64) -> f64 {
-    if x > threshold { 1.0 } else { 0.0 }
+    if x > threshold {
+        1.0
+    } else {
+        0.0
+    }
 }
 
 fn activate(x: f64, activation: ActivationFunction) -> f64 {
@@ -216,7 +225,6 @@ impl<const R: usize, const C: usize> AddAssign for Tensor<R, C> {
     }
 }
 
-
 impl<const R: usize, const C: usize> Display for Tensor<R, C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.fmt(f, 0)
@@ -229,7 +237,6 @@ impl<const R: usize, const C: usize> Debug for Tensor<R, C> {
     }
 }
 
-
 impl<const R: usize, const C: usize> Default for Tensor<R, C> {
     fn default() -> Self {
         Self::ZEROS
@@ -241,7 +248,7 @@ impl<const R: usize, const C: usize> Distribution<Tensor<R, C>> for StandardUnif
         let mut result = Tensor::ZEROS;
         for i in 0..R {
             for j in 0..C {
-                result.data[i][j] = rng.random_range(0.0 ..= 1.0);
+                result.data[i][j] = rng.random_range(0.0..=1.0);
             }
         }
         result
@@ -253,7 +260,7 @@ pub enum ActivationFunction {
     Identity,
     Sigmoid,
     ReLU,
-    McCullochPitt(f64)
+    McCullochPitt(f64),
 }
 
 impl Default for ActivationFunction {
@@ -280,18 +287,33 @@ impl<const IN: usize, const SIZE: usize> Display for Layer<IN, SIZE> {
     }
 }
 
-
 impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
-    pub fn new(weights: Tensor<SIZE, IN>, bias: Tensor<SIZE>, activation: [ActivationFunction; SIZE]) -> Self {
-        Self { weights, bias, activation }
+    pub fn new(
+        weights: Tensor<SIZE, IN>,
+        bias: Tensor<SIZE>,
+        activation: [ActivationFunction; SIZE],
+    ) -> Self {
+        Self {
+            weights,
+            bias,
+            activation,
+        }
     }
 
-    pub fn fully_connected(weights: Tensor<SIZE, IN>, bias: Tensor<SIZE>, activation: ActivationFunction) -> Self {
+    pub fn fully_connected(
+        weights: Tensor<SIZE, IN>,
+        bias: Tensor<SIZE>,
+        activation: ActivationFunction,
+    ) -> Self {
         Self::new(weights, bias, [activation; SIZE])
     }
 
     pub fn mcculloch_pitt(weights: Tensor<SIZE, IN>, thresholds: [f64; SIZE]) -> Self {
-        Self::new(weights, Tensor::ZEROS, thresholds.map(ActivationFunction::McCullochPitt))
+        Self::new(
+            weights,
+            Tensor::ZEROS,
+            thresholds.map(ActivationFunction::McCullochPitt),
+        )
     }
 
     pub fn set_activation(&mut self, activation: ActivationFunction) {
@@ -305,14 +327,23 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
         let mut result = Vec::with_capacity(Self::TOTAL_SIZE);
         result.extend(self.weights.flatten());
         result.extend(self.bias.flatten());
-        debug_assert_eq!(result.len(), Self::TOTAL_SIZE, "Layer flattened size mismatch");
+        debug_assert_eq!(
+            result.len(),
+            Self::TOTAL_SIZE,
+            "Layer flattened size mismatch"
+        );
         result
     }
 
     pub fn from_slice(data: &[f64]) -> Self {
-        debug_assert_eq!(data.len(), Self::TOTAL_SIZE,
-           "Invalid data length for Layer<{}, {}>: expected {}, got {}",
-           IN, SIZE, Self::TOTAL_SIZE, data.len()
+        debug_assert_eq!(
+            data.len(),
+            Self::TOTAL_SIZE,
+            "Invalid data length for Layer<{}, {}>: expected {}, got {}",
+            IN,
+            SIZE,
+            Self::TOTAL_SIZE,
+            data.len()
         );
         Self {
             // First WEIGHTS_SIZE elements are weights
@@ -320,7 +351,7 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
             // Remaining SIZE elements are biases
             bias: Tensor::from_slice(&data[Self::WEIGHTS_SIZE..]),
             // Use default activation function
-            activation: [Default::default(); SIZE]
+            activation: [Default::default(); SIZE],
         }
     }
 
@@ -332,25 +363,31 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
         result
     }
 
-    pub fn backward(&self,
-                    input: &Tensor<IN>,
-                    output: &Tensor<SIZE>,
-                    upstream_gradient: &Tensor<SIZE>
+    pub fn backward(
+        &self,
+        input: &Tensor<IN>,
+        output: &Tensor<SIZE>,
+        upstream_gradient: &Tensor<SIZE>,
     ) -> (Tensor<SIZE, IN>, Tensor<SIZE>, Tensor<IN>) {
         // First apply activation function derivative
         let mut activation_gradient = *upstream_gradient;
         for i in 0..SIZE {
             activation_gradient.data[i][0] *= match self.activation[i] {
                 ActivationFunction::Identity => 1.0,
-                ActivationFunction::ReLU => if output.data[i][0] > 0.0 { 1.0 } else { 0.0 },
+                ActivationFunction::ReLU => {
+                    if output.data[i][0] > 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
                 ActivationFunction::Sigmoid => {
                     let s = output.data[i][0];
                     s * (1.0 - s) // derivative of sigmoid
-                },
+                }
                 ActivationFunction::McCullochPitt(_) => 0.0, // Not differentiable, treated as 0
             };
         }
-
 
         // Calculate gradients
         // dL/dW = dL/dY * X^T
@@ -368,7 +405,8 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
         let mut input_gradient = Tensor::ZEROS;
         for i in 0..IN {
             for j in 0..SIZE {
-                input_gradient.data[i][0] += self.weights.data[j][i] * activation_gradient.data[j][0];
+                input_gradient.data[i][0] +=
+                    self.weights.data[j][i] * activation_gradient.data[j][0];
             }
         }
 
@@ -376,7 +414,12 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
         (weight_gradient, bias_gradient, input_gradient)
     }
 
-    pub fn update(&mut self, weight_gradient: &Tensor<SIZE, IN>, bias_gradient: &Tensor<SIZE>, learning_rate: f64) {
+    pub fn update(
+        &mut self,
+        weight_gradient: &Tensor<SIZE, IN>,
+        bias_gradient: &Tensor<SIZE>,
+        learning_rate: f64,
+    ) {
         // Update weights: W = W - learning_rate * dL/dW
         for i in 0..SIZE {
             for j in 0..IN {
@@ -389,8 +432,6 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
             self.bias.data[i][0] -= learning_rate * bias_gradient.data[i][0];
         }
     }
-
-
 }
 
 impl<const IN: usize, const SIZE: usize> Distribution<Layer<IN, SIZE>> for StandardUniform {
@@ -406,18 +447,25 @@ impl<const IN: usize, const SIZE: usize> Distribution<Layer<IN, SIZE>> for Stand
             }
             bias.data[i][0] = (rng.random::<f64>() * 2.0 - 1.0) * 0.1;
         }
-        Layer { weights, bias, activation: [Default::default(); SIZE] }
+        Layer {
+            weights,
+            bias,
+            activation: [Default::default(); SIZE],
+        }
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct NeuralNetwork<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize> {
+pub struct NeuralNetwork<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
+{
     input: Layer<IN, WIDTH>,
     hidden: [Layer<WIDTH, WIDTH>; HIDDEN],
     output: Layer<WIDTH, OUT>,
 }
 
-impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize> Display for NeuralNetwork<IN, HIDDEN, OUT, WIDTH> {
+impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize> Display
+    for NeuralNetwork<IN, HIDDEN, OUT, WIDTH>
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "NeuralNetwork<{}, {}, {}, {}>", IN, OUT, WIDTH, HIDDEN)?;
         writeln!(f, "Input {}", self.input)?;
@@ -430,11 +478,14 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
     }
 }
 
-impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize> NeuralNetwork<IN, HIDDEN, OUT, WIDTH> {
+impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
+    NeuralNetwork<IN, HIDDEN, OUT, WIDTH>
+{
     const INPUT_LAYER_SIZE: usize = Layer::<IN, WIDTH>::TOTAL_SIZE;
     const HIDDEN_LAYER_SIZE: usize = Layer::<WIDTH, WIDTH>::TOTAL_SIZE;
     const OUTPUT_LAYER_SIZE: usize = Layer::<WIDTH, OUT>::TOTAL_SIZE;
-    pub const TOTAL_SIZE: usize = Self::INPUT_LAYER_SIZE + HIDDEN * Self::HIDDEN_LAYER_SIZE + Self::OUTPUT_LAYER_SIZE;
+    pub const TOTAL_SIZE: usize =
+        Self::INPUT_LAYER_SIZE + HIDDEN * Self::HIDDEN_LAYER_SIZE + Self::OUTPUT_LAYER_SIZE;
 
     pub fn flatten(&self) -> Vec<f64> {
         let mut result = Vec::with_capacity(Self::TOTAL_SIZE);
@@ -450,14 +501,25 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         // Flatten output layer
         result.extend(self.output.flatten());
 
-        debug_assert_eq!(result.len(), Self::TOTAL_SIZE, "Network flattened size mismatch");
+        debug_assert_eq!(
+            result.len(),
+            Self::TOTAL_SIZE,
+            "Network flattened size mismatch"
+        );
         result
     }
 
     pub fn from_slice(data: &[f64]) -> Self {
-        debug_assert_eq!(data.len(), Self::TOTAL_SIZE,
-             "Invalid data length for NeuralNetwork<{}, {}, {}, {}>: expected {}, got {}",
-             IN, HIDDEN, OUT, WIDTH, Self::TOTAL_SIZE, data.len()
+        debug_assert_eq!(
+            data.len(),
+            Self::TOTAL_SIZE,
+            "Invalid data length for NeuralNetwork<{}, {}, {}, {}>: expected {}, got {}",
+            IN,
+            HIDDEN,
+            OUT,
+            WIDTH,
+            Self::TOTAL_SIZE,
+            data.len()
         );
 
         let mut offset = 0;
@@ -469,7 +531,9 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         // Create hidden layers
         let mut hidden = Vec::with_capacity(HIDDEN);
         for _ in 0..HIDDEN {
-            hidden.push(Layer::from_slice(&data[offset..offset + Self::HIDDEN_LAYER_SIZE]));
+            hidden.push(Layer::from_slice(
+                &data[offset..offset + Self::HIDDEN_LAYER_SIZE],
+            ));
             offset += Self::HIDDEN_LAYER_SIZE;
         }
         let hidden = hidden.try_into().unwrap();
@@ -477,9 +541,12 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         // Create output layer
         let output = Layer::from_slice(&data[offset..offset + Self::OUTPUT_LAYER_SIZE]);
 
-        Self { input, hidden, output }
+        Self {
+            input,
+            hidden,
+            output,
+        }
     }
-
 
     pub fn set_input_activation(&mut self, activation: ActivationFunction) {
         self.input.set_activation(activation)
@@ -513,7 +580,12 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         self.output.forward(&current)
     }
 
-    pub fn train_step(&mut self, input: &Tensor<IN>, target: &Tensor<OUT>, learning_rate: f64) -> f64 {
+    pub fn train_step(
+        &mut self,
+        input: &Tensor<IN>,
+        target: &Tensor<OUT>,
+        learning_rate: f64,
+    ) -> f64 {
         // Store activations during forward pass
         let mut hidden_activations = Vec::with_capacity(HIDDEN);
         let mut hidden_outputs = Vec::with_capacity(HIDDEN);
@@ -546,42 +618,40 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         }
 
         // Backward pass
-        let (w_grad, b_grad, mut upstream_grad) = self.output.backward(
-            &final_activation,
-            &final_output,
-            &output_gradient
-        );
+        let (w_grad, b_grad, mut upstream_grad) =
+            self.output
+                .backward(&final_activation, &final_output, &output_gradient);
         self.output.update(&w_grad, &b_grad, learning_rate);
 
         // Backpropagate through hidden layers
         for i in (0..HIDDEN).rev() {
-            let (w_grad, b_grad, grad) = self.hidden[i].backward(
-                &hidden_activations[i],
-                &hidden_outputs[i],
-                &upstream_grad
-            );
+            let (w_grad, b_grad, grad) =
+                self.hidden[i].backward(&hidden_activations[i], &hidden_outputs[i], &upstream_grad);
             self.hidden[i].update(&w_grad, &b_grad, learning_rate);
             upstream_grad = grad;
         }
 
         // Input layer
-        let (w_grad, b_grad, _) = self.input.backward(
-            &initial_activation,
-            &initial_output,
-            &upstream_grad
-        );
+        let (w_grad, b_grad, _) =
+            self.input
+                .backward(&initial_activation, &initial_output, &upstream_grad);
         self.input.update(&w_grad, &b_grad, learning_rate);
 
         loss
     }
 
-    pub fn train(&mut self,
-                 inputs: &[Tensor<IN>],
-                 targets: &[Tensor<OUT>],
-                 epochs: usize,
-                 learning_rate: f64
+    pub fn train(
+        &mut self,
+        inputs: &[Tensor<IN>],
+        targets: &[Tensor<OUT>],
+        epochs: usize,
+        learning_rate: f64,
     ) -> Vec<f64> {
-        assert_eq!(inputs.len(), targets.len(), "Number of inputs and targets must match");
+        assert_eq!(
+            inputs.len(),
+            targets.len(),
+            "Number of inputs and targets must match"
+        );
         let mut losses = Vec::with_capacity(epochs);
 
         for _ in 0..epochs {
@@ -597,10 +667,11 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
 
         losses
     }
-
 }
 
-impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize> Distribution<NeuralNetwork<IN, HIDDEN, OUT, WIDTH>> for StandardUniform {
+impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
+    Distribution<NeuralNetwork<IN, HIDDEN, OUT, WIDTH>> for StandardUniform
+{
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NeuralNetwork<IN, HIDDEN, OUT, WIDTH> {
         let mut network = NeuralNetwork {
             input: rng.random(),
@@ -680,13 +751,12 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
     }
 }
 
-
 #[cfg(test)]
 mod tests {
+    use super::*;
     use approx::assert_relative_eq;
     use rand::SeedableRng;
     use rand_chacha::ChaChaRng;
-    use super::*;
 
     #[test]
     fn flatten_tensor() {
@@ -726,20 +796,20 @@ mod tests {
                     Tensor::new([[11., 12.], [13., 14.]]),
                     Tensor::new([[0.5], [0.6]]),
                     ActivationFunction::default(),
-                )
+                ),
             ],
             output: Layer::fully_connected(
                 Tensor::new([[15., 16.]]),
                 Tensor::new([[0.7]]),
                 ActivationFunction::default(),
-            )
+            ),
         };
         let flattened = network.flatten();
         let expected = vec![
             1., 2., 3., 4., 5., 6., 0.1, 0.2, // input
             7., 8., 9., 10., 0.3, 0.4, // hidden 1
             11., 12., 13., 14., 0.5, 0.6, // hidden 2
-            15., 16., 0.7 // output
+            15., 16., 0.7, // output
         ];
         assert_eq!(flattened, expected);
 
@@ -829,15 +899,9 @@ mod tests {
     fn test_mcculloch_pitt_network() {
         // network from https://blog.abhranil.net/2015/03/03/training-neural-networks-with-genetic-algorithms/
         let network: NeuralNetwork<2, 0, 1, 2> = NeuralNetwork {
-            input: Layer::mcculloch_pitt(
-                Tensor::new([[1.0, 1.0], [-1.0, -1.0]]),
-                [0.5,-1.5]
-            ),
+            input: Layer::mcculloch_pitt(Tensor::new([[1.0, 1.0], [-1.0, -1.0]]), [0.5, -1.5]),
             hidden: [],
-            output: Layer::mcculloch_pitt(
-                Tensor::new([[1.0, 1.0]]),
-                [1.5],
-            ),
+            output: Layer::mcculloch_pitt(Tensor::new([[1.0, 1.0]]), [1.5]),
         };
 
         for x in [0, 1] {
@@ -864,8 +928,8 @@ mod tests {
     }
 
     fn random_xy(rng: &mut ChaChaRng) -> (f64, f64) {
-        let x = rng.random_range(0. .. 1.);
-        let y = rng.random_range(0. .. 1.);
+        let x = rng.random_range(0. ..1.);
+        let y = rng.random_range(0. ..1.);
         (x, y)
     }
 
@@ -873,12 +937,11 @@ mod tests {
         rng: &mut ChaChaRng,
         training_set_size: usize,
         epochs: usize,
-        function: impl Fn(f64, f64) -> f64
+        function: impl Fn(f64, f64) -> f64,
     ) -> NeuralNetwork<2, HIDDEN, 1, WIDTH> {
         // Create a simple network: 2 inputs, 1 output
         let mut network: NeuralNetwork<2, HIDDEN, 1, WIDTH> = rng.random();
         network.set_activation(ActivationFunction::Sigmoid);
-
 
         // build training data from random numbers
         let mut inputs = vec![];
@@ -899,7 +962,7 @@ mod tests {
         rng: &mut ChaChaRng,
         network: NeuralNetwork<2, HIDDEN, 1, WIDTH>,
         validation_set_size: usize,
-        function: impl Fn(f64, f64) -> f64
+        function: impl Fn(f64, f64) -> f64,
     ) {
         let mut sum_error = 0.0;
         for _ in 0..validation_set_size {
@@ -916,5 +979,4 @@ mod tests {
             epsilon = 0.01, // within 1%
         );
     }
-
 }

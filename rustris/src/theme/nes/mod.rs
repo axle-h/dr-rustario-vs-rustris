@@ -61,13 +61,30 @@ pub fn nes_theme<'a>(
         sprites: BlockSpriteSheetData {
             file: SPRITES,
             source_block_size: BLOCK_PIXELS,
-            cells: cells(BLOCK_PIXELS, mino(0, 0), mino(2, 0), mino(1, 0), mino(0, 0), mino(2, 0), mino(0, 0), mino(1, 0), mino(0, 0)),
+            cells: cells(
+                BLOCK_PIXELS,
+                mino(0, 0),
+                mino(2, 0),
+                mino(1, 0),
+                mino(0, 0),
+                mino(2, 0),
+                mino(0, 0),
+                mino(1, 0),
+                mino(0, 0),
+            ),
             animations: vec![],
             ghost_alpha: 0x50,
             previews: previews(),
             mascot: None,
         },
-        geometry: BoardGeometry::new(BLOCK_PIXELS, 0, (7, 0), BOARD_WIDTH, TOTAL_HEIGHT, VISIBLE_HEIGHT),
+        geometry: BoardGeometry::new(
+            BLOCK_PIXELS,
+            0,
+            (7, 0),
+            BOARD_WIDTH,
+            TOTAL_HEIGHT,
+            VISIBLE_HEIGHT,
+        ),
         audio: audio(
             config.audio,
             Sounds {
@@ -88,7 +105,12 @@ pub fn nes_theme<'a>(
         )?,
         font: FontThemeOptions::simple(
             retro_font(SPRITES, 1, |i| char_snip(0, i), |i| char_snip(1, i)),
-            hud(buffer, zero_fill((8, 24), 6), zero_fill((20, 72), 3), zero_fill((20, 91), 4)),
+            hud(
+                buffer,
+                zero_fill((8, 24), 6),
+                zero_fill((20, 72), 3),
+                zero_fill((20, 91), 4),
+            ),
         ),
         board_file: BOARD_FILE,
         board_alpha: 0xff,
