@@ -126,6 +126,18 @@ fn a_speed_limited_agent_still_plays() {
     assert!(played.pills > 1, "the speed limited agent stalled");
 }
 
+/// The deterministic ai is the one every difficulty and the demo actually play, so unlike the
+/// network it is worth holding to a standard here.
+#[test]
+fn the_deterministic_ai_clears_several_bottles() {
+    let played = play_with(DrAiAgent::n64(), 10, Duration::ZERO, 3_000);
+    assert!(
+        played.stages >= 5,
+        "the N64 ai cleared {} bottles at virus level 10 before it was buried",
+        played.stages
+    );
+}
+
 #[test]
 #[ignore = "needs a trained model: run with --ignored after a ga dr auto run"]
 fn the_trained_model_clears_bottles() {

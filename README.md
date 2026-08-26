@@ -30,7 +30,9 @@ the `ga` training subcommand (`dr-rustario-vs-rustris ga [auto|survival|score|di
 `ga play <seed> [line cap] [report every n lines] [survival|tetris]` plays a built-in model
 headless on a fixed seed, reporting progress; it counts lines and banks the score itself as the
 in-game counters are capped. `ga dr [auto|tune|diagnose]` trains Dr. Rustario instead, and
-`ga dr play <seed> [virus level] [pill cap] [report every n pills]` plays its model headless.
+`ga dr play <seed> [virus level] [pill cap] [report every n pills] [brain]` plays it headless,
+where the brain is `n64` (the default), `n64:0` to `n64:5` to pick one of the N64 ai's own rows
+of weights, `neural` for the trained network or `linear` for the hand written baseline.
 A `ga dr auto` run has no generation limit: it stops when a candidate clears every bottle on its
 training seeds and then does it again on five it has never played.
 
@@ -233,11 +235,12 @@ There are no default player 2 controls.
 
 ## The AI
 
-Both games are played by the same machinery: features are extracted from the board, fed to a
-small neural network that scores every placement the piece in play can reach, and the best one
-is handed to an agent that presses the keys. The network and the genetic algorithm that trains
-it are shared in `engine/src/ai`; each game supplies its own features, placement search and
-agent. Only human players can enter the high score table.
+Both games find every placement the piece in play can reach, score them, and hand the best one
+to an agent that presses the keys. Rustris scores with a small neural network; Dr. Rustario
+plays a port of Dr. Mario 64's own hand written scorer, and has a neural network that is not
+trained yet. The network and the genetic algorithm that trains it are shared in
+`engine/src/ai`; each game supplies its own features, placement search and agent. Only human
+players can enter the high score table.
 
 Full write up: [https://ax-h.com/ai/machine-learning-from-scratch](https://ax-h.com/ai/machine-learning-from-scratch)
 
@@ -260,15 +263,42 @@ Trained by `ga [auto|survival|score]`, which optimises for survival and then for
 ### Dr. Rustario
 
 The **ai** option on a Dr. Rustario main menu offers the same choices, minus the 2-player demo:
-there is one Dr. Rustario model, so it would only play itself.
+there is one Dr. Rustario brain, so it would only play itself.
 
 * `off` - human players.
 * `vs easy` / `vs normal` / `vs hard` / `vs impossible` - in a 2-player match the AI plays as player 2
   (who must be on Dr. Rustario), speed limited to one key every 500 ms / 400 ms / 300 ms / instantly
-  (see `AiDifficulty` in `dr-rustario/src/game/rules.rs`). Every difficulty plays the same model and
+  (see `AiDifficulty` in `dr-rustario/src/game/rules.rs`). Every difficulty plays the same brain and
   differs only in how fast it is allowed to press keys.
 * `1-player ai demo` - the first player's bottle is played by the AI at full speed; their controls are
   disabled.
+
+#### Dr. Mario 64's own ai
+
+What all of those play is a port of `aiset.c` from the Nintendo 64 game's decompilation, in
+`dr-rustario/src/game/ai/n64`: a deterministic scorer with no learning in it anywhere. For
+every place the pill can come to rest it drops the two halves into a copy of the bottle,
+measures the run of colour each one lands in, takes away whatever clears, measures what is
+left, asks whether the bottle it leaves behind would chain if the next pill were any of the
+three colours, and adds the answers up with a table of weights. The highest total wins.
+
+A run is measured twice over - once as the cells actually touching, which is what clears, and
+once as the cells within reach counting the gaps a later pill could still fill, which is what a
+line could become - and it is the second that makes it build towards clears rather than only
+taking the ones in front of it. The weights are not fixed: the original picks a *skill* row and
+a *situation* column, and the situation is read off the bottle at the start of every pill -
+whether there is room left to move, whether the end is in sight, whether a column of one colour
+is building in the middle - which is what makes it play differently with a bottle full of
+viruses than with two left in the corner. The six skill rows are personalities rather than a
+ladder; the one played was picked by measuring stages cleared over twenty seeds at virus levels
+10 and 20.
+
+Left out of the port: the sixteen characters and the moods that nudge their weights about, the
+deliberate mistakes, and the frame level key pacing, which the engine's own key pacer already
+does. The candidates come from Dr. Rustario's placement search rather than the original's, so
+this game's wall kicks are honoured; only the scoring is the N64's.
+
+#### The neural model
 
 The model reads ten things about the bottle - viruses, the work still needed to clear every
 virus, runs of two and three that would take a virus with them, the same two runs where no virus
@@ -293,5 +323,6 @@ every bottle up to level 20 on all three of its training seeds and then proves i
 it has never played, and carries on training from that candidate if it cannot. `ga dr tune` runs
 the same thing seeded from the built in model instead of from scratch.
 
-The weights currently embedded are **random, not trained**: the Dr. Rustario opponent and demo
-will not play well until a `ga dr auto` run replaces them.
+The weights currently embedded are **random, not trained**, which is why the opponent and the
+demo play the deterministic ai above instead. To watch the network play, run
+`ga dr play <seed> <level> <pill cap> <report every> neural`.

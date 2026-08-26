@@ -259,9 +259,9 @@ impl Mode for DrRustarioMode {
 
     fn controllers(&self) -> Vec<Controller> {
         let mut controllers: Vec<Controller> = vec![];
-        for (player, key_delay, network) in self.options.ai_players() {
+        for (player, key_delay, brain) in self.options.ai_players() {
             let mut agent =
-                dr_rustario::game::ai::agent::DrAiAgent::new(network).with_key_delay(key_delay);
+                dr_rustario::game::ai::agent::DrAiAgent::of(brain).with_key_delay(key_delay);
             controllers.push((
                 player,
                 Box::new(move |game: &mut AnyGame, delta| {

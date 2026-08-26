@@ -47,7 +47,9 @@ fn fmt_duration(duration: Duration) -> String {
 }
 
 /// `args` are the arguments after `ga dr play`:
-/// `<seed> [virus level] [pill cap] [report every n pills] [linear]`
+/// `<seed> [virus level] [pill cap] [report every n pills] [brain]`, where the brain is `n64`
+/// (the default), `n64:0` to `n64:5` for one of the N64 ai's own rows of weights, `neural` for
+/// the trained network or `linear` for the hand written baseline it is measured against
 pub fn harness_main(args: &[String]) -> Result<(), String> {
     let seed: Seed = args
         .first()
@@ -61,15 +63,21 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
         .filter(|&c| c > 0)
         .unwrap_or(u64::MAX);
     let every: u64 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(100);
-    // the hand written baseline, for comparing the trained model against
-    let linear = args.get(4).map(String::as_str) == Some("linear");
+    let brain = args.get(4).map(String::as_str).unwrap_or("n64");
 
     let random = GameRandom::from_seed(seed.into(), RandomMode::Bag);
     let mut game = Game::new(level, GameSpeed::Medium, random)?;
-    let mut agent = if linear {
-        DrAiAgent::linear()
-    } else {
-        DrAiAgent::new(models::virus_clear_trained())
+    let mut agent = match brain {
+        "linear" => DrAiAgent::linear(),
+        "neural" => DrAiAgent::new(models::virus_clear_trained()),
+        "n64" => DrAiAgent::n64(),
+        other => match other
+            .strip_prefix("n64:")
+            .and_then(|s| s.parse::<u8>().ok())
+        {
+            Some(skill) => DrAiAgent::n64_with_skill(skill),
+            None => return Err(format!("unknown brain: {}", other)),
+        },
     };
 
     let mut stats = Stats {

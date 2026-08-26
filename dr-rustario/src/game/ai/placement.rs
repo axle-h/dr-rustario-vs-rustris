@@ -22,6 +22,7 @@ const MOVES: [Translation; 4] = [
 pub struct Placement {
     inputs: InputSequence,
     features: BottleFeatures,
+    landing: Landing,
 }
 
 impl Placement {
@@ -31,6 +32,13 @@ impl Placement {
 
     pub fn features(&self) -> BottleFeatures {
         self.features
+    }
+
+    /// where the two halves come to rest, in the pill's own order: the left hand vitamin of
+    /// the pill as it spawns first. The scorers that work on the bottle rather than on
+    /// [BottleFeatures] need to know which cells the pill actually filled.
+    pub fn landing(&self) -> Landing {
+        self.landing
     }
 }
 
@@ -95,7 +103,7 @@ fn pose(bottle: &Bottle) -> Pose {
 }
 
 /// where the pill would come to rest from here, which is what makes two candidates the same
-type Landing = [(BottlePoint, VirusColor); 2];
+pub type Landing = [(BottlePoint, VirusColor); 2];
 
 fn landing(bottle: &Bottle) -> Landing {
     let mut dropped = bottle.clone();
@@ -121,6 +129,7 @@ fn drop_and_settle(
     inputs: &InputSequence,
     stats_before: BottleStats,
 ) -> Placement {
+    let landing = landing(bottle);
     let mut bottle = bottle.clone();
     bottle.hard_drop();
     let placed: Vec<BottlePoint> = bottle
@@ -145,6 +154,7 @@ fn drop_and_settle(
     Placement {
         inputs: inputs.with(Translation::HardDrop),
         features: BottleFeatures::new(bottle.stats(), stats_before, wasted, patterns_cleared),
+        landing,
     }
 }
 
