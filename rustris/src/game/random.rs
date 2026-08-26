@@ -13,7 +13,11 @@ pub const MIN_GARBAGE_PER_HOLE: u32 = 10;
 pub use engine::ai::Seed;
 
 pub fn random_tetrominos(mode: RandomMode, count: usize) -> Vec<RandomTetromino> {
-    let seed: Seed = rand::random();
+    from_seed(rand::random(), mode, count)
+}
+
+/// `count` randomisers all dealt from one seed: every player sees the same pieces
+pub fn from_seed(seed: Seed, mode: RandomMode, count: usize) -> Vec<RandomTetromino> {
     (0..count)
         .map(|_| RandomTetromino::new(mode, MIN_GARBAGE_PER_HOLE, seed))
         .collect()
@@ -25,17 +29,24 @@ pub struct RandomTetromino {
     garbage_since_last_hole: u32,
     current_garbage_hole: u32,
     shapes: BagRandom<TetrominoShape>,
+    garbage_rng: ChaChaRng,
 }
 
 impl RandomTetromino {
     pub fn new(random_mode: RandomMode, min_garbage_per_hole: u32, seed: Seed) -> Self {
         let mut rng: ChaChaRng = seed.into();
+        // where the garbage holes fall comes off a stream of its own, so being attacked cannot
+        // shift the bag that comes after it: two players on one seed are dealt the same pieces
+        // however differently the match treats them
+        let mut garbage_rng = rng.clone();
+        garbage_rng.set_stream(1);
         let current_garbage_hole = rng.random_range(0..BOARD_WIDTH);
         Self {
             min_garbage_per_hole,
             garbage_since_last_hole: 0,
             current_garbage_hole,
             shapes: BagRandom::new(rng, random_mode, &TetrominoShape::ALL, PEEK_SIZE),
+            garbage_rng,
         }
     }
 
@@ -44,7 +55,7 @@ impl RandomTetromino {
         self.garbage_since_last_hole += 1;
         if self.garbage_since_last_hole >= self.min_garbage_per_hole {
             self.garbage_since_last_hole = 0;
-            self.current_garbage_hole = self.shapes.rng().random_range(0..BOARD_WIDTH);
+            self.current_garbage_hole = self.garbage_rng.random_range(0..BOARD_WIDTH);
         }
         result
     }
@@ -69,6 +80,20 @@ mod tests {
 
     fn next_n(random: &mut RandomTetromino, n: usize) -> Vec<TetrominoShape> {
         (0..n).map(|_| random.next()).collect()
+    }
+
+    /// a player sent garbage must still be dealt the pieces their seed says, so that in a
+    /// vs. match both players see the same ones
+    #[test]
+    fn garbage_holes_do_not_shift_the_bag() {
+        let seed: Seed = 9876u128.into();
+        let mut attacked = RandomTetromino::new(RandomMode::Bag, MIN_GARBAGE_PER_HOLE, seed);
+        let mut untouched = RandomTetromino::new(RandomMode::Bag, MIN_GARBAGE_PER_HOLE, seed);
+        assert_eq!(next_n(&mut attacked, 7), next_n(&mut untouched, 7));
+        for _ in 0..MIN_GARBAGE_PER_HOLE * 4 {
+            attacked.next_garbage_hole();
+        }
+        assert_eq!(next_n(&mut attacked, 21), next_n(&mut untouched, 21));
     }
 
     fn next_n_holes(random: &mut RandomTetromino, n: usize) -> Vec<u32> {

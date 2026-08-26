@@ -136,6 +136,12 @@ impl From<Seed> for GameSeed {
     }
 }
 
+impl From<GameSeed> for Seed {
+    fn from(seed: GameSeed) -> Self {
+        Self(*seed.bytes())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

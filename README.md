@@ -126,10 +126,13 @@ random marathon deals random games and themes forever, and all rank scores. Ever
 playlist shares one difficulty dial, 0 (default) to 10: it sets
 Dr. Rustario's virus level and fall speed and Rustris's starting level together, from no
 viruses at low speed on level 0 up to virus level 10 at high speed on level 10. In a
-random playlist every player faces the same random sequence, dealt fresh each match. The clock
-runs while anyone is playing: it stops while paused and when every player is held up at
-once, so in single player a stage-clear card or theme change does not count against you,
-while in a multiplayer race the clock keeps running.
+random playlist every player faces the same random sequence, dealt fresh each match. Every
+player is also dealt the same game: one seed per match decides Dr. Rustario's bottles and
+pills and Rustris's pieces for everyone, so however far apart the playlist has moved two
+players, and whatever garbage they have been sent, they play the same bottles and the same
+bag. The clock runs while anyone is playing: it stops while paused and when every player is
+held up at once, so in single player a stage-clear card or theme change does not count
+against you, while in a multiplayer race the clock keeps running.
 Every table starts with default entries to beat: low scores, or long times for sprints; a
 table that cannot be loaded falls back to the defaults, and new entries are saved along
 with them. The high scores screen on the first menu pages through every table with
