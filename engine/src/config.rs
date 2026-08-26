@@ -129,6 +129,81 @@ impl AudioConfig {
     }
 }
 
+/// How much the modern themes' background particle field draws. Draw calls, not particle
+/// count, are what costs: every particle is its own coloured copy, and a handheld linking the
+/// firmware's SDL has far less headroom than a desktop.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ParticleDensity {
+    /// `High` normally, `Low` on a handheld
+    #[default]
+    Auto,
+    Low,
+    Medium,
+    High,
+    Ultra,
+}
+
+impl ParticleDensity {
+    #[cfg(feature = "portmaster")]
+    const AUTO: ParticleDensity = ParticleDensity::Low;
+    #[cfg(not(feature = "portmaster"))]
+    const AUTO: ParticleDensity = ParticleDensity::High;
+
+    pub fn resolve(self) -> Self {
+        match self {
+            ParticleDensity::Auto => Self::AUTO,
+            other => other,
+        }
+    }
+
+    /// how many particles the field keeps alive
+    pub fn pool_size(self) -> usize {
+        match self.resolve() {
+            ParticleDensity::Low => 160,
+            ParticleDensity::Medium => 320,
+            ParticleDensity::High => 560,
+            _ => 900,
+        }
+    }
+
+    /// the most constellation links drawn in one frame
+    pub fn link_budget(self) -> usize {
+        match self.resolve() {
+            ParticleDensity::Low => 40,
+            ParticleDensity::Medium => 120,
+            ParticleDensity::High => 240,
+            _ => 400,
+        }
+    }
+
+    /// links are soft textured quads, which take a colour mod and read well at 4k. At the
+    /// lowest density they are `SDL_RenderDrawLine` hairlines instead: one call, one physical
+    /// pixel, nearly invisible on a big screen but very cheap on a handheld.
+    pub fn links_are_quads(self) -> bool {
+        !matches!(self.resolve(), ParticleDensity::Low)
+    }
+
+    /// roughly how many lattice steps across a silhouette's longest side
+    pub fn edge_steps(self) -> u32 {
+        match self.resolve() {
+            ParticleDensity::Low => 18,
+            ParticleDensity::Medium => 26,
+            ParticleDensity::High => 40,
+            _ => 52,
+        }
+    }
+
+    /// concurrent shockwaves, comets and the like
+    pub fn max_effects(self) -> usize {
+        match self.resolve() {
+            ParticleDensity::Low => 2,
+            ParticleDensity::Medium => 4,
+            ParticleDensity::High => 8,
+            _ => 12,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct VideoConfig {
     pub mode: VideoMode,
@@ -137,6 +212,10 @@ pub struct VideoConfig {
     /// scale the themes by whole pixels only. Crisper, but the board steps down to the next
     /// whole multiple of its art, which can waste a lot of the window.
     pub integer_scale: bool,
+    /// how much the modern themes' particle background draws. Config file only: there is no
+    /// video options menu to hang it on
+    #[serde(default)]
+    pub particle_density: ParticleDensity,
 }
 
 impl Default for Config {
@@ -158,6 +237,8 @@ impl Default for Config {
                 // smooth scaling fills the window and keeps every theme's board the same
                 // size; whole-pixel scaling looks crisper but drops a step to do it
                 integer_scale: false,
+
+                particle_density: ParticleDensity::Auto,
             },
             audio: AudioConfig {
                 music_volume: 0.5,

@@ -152,6 +152,23 @@ impl<'a> PreviewSpriteSheet<'a> {
         (width, height)
     }
 
+    /// every piece this sheet can draw, in a stable order
+    pub fn pieces(&self) -> Vec<PieceId> {
+        let mut pieces = self.snips.keys().copied().collect::<Vec<PieceId>>();
+        pieces.sort();
+        pieces
+    }
+
+    /// the opaque pixels of one piece, for the particle field's silhouettes
+    pub fn block_mask(
+        &mut self,
+        canvas: &mut WindowCanvas,
+        piece: PieceId,
+    ) -> Result<BlockMask, String> {
+        let snip = self.snip(piece);
+        BlockMask::from_texture(canvas, &mut self.texture, snip)
+    }
+
     pub fn draw_piece<A: Into<Option<f64>>, S: Into<Option<f64>>>(
         &self,
         canvas: &mut WindowCanvas,
@@ -242,6 +259,15 @@ impl<'a> MascotSprites<'a> {
             MascotKind::Spawn => &self.spawn,
             MascotKind::GameOver => &self.game_over,
             MascotKind::Victory => &self.victory,
+        }
+    }
+
+    pub fn sheet_mut(&mut self, kind: MascotKind) -> &mut AnimationSpriteSheet<'a> {
+        match kind {
+            MascotKind::Idle => &mut self.idle,
+            MascotKind::Spawn => &mut self.spawn,
+            MascotKind::GameOver => &mut self.game_over,
+            MascotKind::Victory => &mut self.victory,
         }
     }
 

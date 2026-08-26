@@ -1,7 +1,7 @@
 use crate::particles::color::ParticleColor;
 use crate::particles::geometry::{RectF, Vec2D};
 use crate::particles::meta::ParticleSprite;
-use crate::particles::particle::{Particle, ParticleGroup, ParticleWave};
+use crate::particles::particle::{Field, Particle, ParticleGroup, ParticleWave};
 use crate::particles::quantity::{ProbabilityTable, VariableQuantity};
 use rand::rngs::ThreadRng;
 use rand::{rng, RngExt};
@@ -122,7 +122,7 @@ pub struct RandomParticleSource {
     velocity: VariableQuantity<Vec2D>,
     acceleration: VariableQuantity<Vec2D>,
     alpha: VariableQuantity<f64>,
-    orbit: Option<Vec2D>,
+    field: Option<Field>,
     properties: ProbabilityTable<ParticleProperties>,
 }
 
@@ -174,7 +174,7 @@ impl ParticleSource for RandomParticleSource {
             self.anchor_for.map(|d| d.as_secs_f64()),
             self.fade_in.map(|d| d.as_secs_f64()),
             self.fade_out,
-            self.orbit,
+            self.field,
             particles,
         )]
     }
@@ -195,7 +195,7 @@ impl RandomParticleSource {
             velocity: VariableQuantity::new(Vec2D::ZERO, Vec2D::ZERO),
             acceleration: VariableQuantity::new(Vec2D::ZERO, Vec2D::ZERO),
             alpha: VariableQuantity::new(1.0, 0.0),
-            orbit: None,
+            field: None,
             properties: ProbabilityTable::identity(ParticleProperties::default()),
         }
     }
@@ -226,7 +226,7 @@ impl RandomParticleSource {
             velocity: velocity.into(),
             acceleration: VariableQuantity::new(Vec2D::ZERO, Vec2D::ZERO),
             alpha: alpha.into(),
-            orbit: None,
+            field: None,
             properties: ProbabilityTable::identity(ParticleProperties::new(
                 &[sprite],
                 color,
@@ -302,7 +302,7 @@ impl RandomParticleSource {
     }
 
     pub fn with_orbit<O: Into<Vec2D>>(mut self, value: O) -> Self {
-        self.orbit = Some(value.into());
+        self.field = Some(Field::Orbit(value.into()));
         self
     }
 

@@ -153,7 +153,18 @@ pub struct Match<G: Game> {
     ai_players: Vec<u32>,
     /// the race clock of a sprint: it runs while anyone is playing, see [`Match::add_play_time`]
     play_time: Duration,
+    /// who attacked whom this frame. The session picks the victim, and only the attacker is
+    /// visible in the events, so the route is queued here for the renderer to drain.
+    attack_routes: Vec<AttackRoute>,
     rng: ThreadRng,
+}
+
+/// An attack that landed, both ends of it named.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttackRoute {
+    pub from: u32,
+    pub to: u32,
+    pub strength: u32,
 }
 
 impl<G: Game> Match<G> {
@@ -178,6 +189,7 @@ impl<G: Game> Match<G> {
             theme_count: theme_counts.iter().copied().min().unwrap_or(1).max(1),
             ai_players: vec![],
             play_time: Duration::ZERO,
+            attack_routes: vec![],
             rng: rng(),
         }
     }
@@ -398,11 +410,21 @@ impl<G: Game> Match<G> {
         } else {
             other_players[self.rng.random_range(0..other_players.len())]
         };
+        self.attack_routes.push(AttackRoute {
+            from: from_player,
+            to: pid as u32,
+            strength: attack.strength,
+        });
         self.players
             .get_mut(pid)
             .unwrap()
             .game
             .receive_attack(attack);
+    }
+
+    /// the attacks routed since the last drain, oldest first
+    pub fn drain_attack_routes(&mut self) -> Vec<AttackRoute> {
+        std::mem::take(&mut self.attack_routes)
     }
 
     pub fn stage_state(&self, player: u32) -> StageState {
@@ -547,6 +569,7 @@ mod tests {
             theme_count: 1,
             ai_players: vec![],
             play_time: Duration::ZERO,
+            attack_routes: vec![],
             rng: rng(),
         };
         assert_eq!(fixture.leading_player(), Some(1));
@@ -565,6 +588,7 @@ mod tests {
             theme_count: 1,
             ai_players: vec![],
             play_time: Duration::ZERO,
+            attack_routes: vec![],
             rng: rng(),
         }
     }

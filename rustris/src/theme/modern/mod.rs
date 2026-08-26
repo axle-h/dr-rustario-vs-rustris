@@ -16,6 +16,18 @@ use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
 
+/// what the modern theme radiates into the background particle field: the seven tetromino
+/// colours, read off the sprite sheet
+const TETROMINO_PALETTE: [Color; 7] = [
+    Color::RGB(0x00, 0xD7, 0xFA), // I
+    Color::RGB(0x2C, 0x00, 0xFA), // J
+    Color::RGB(0xFF, 0x6C, 0x16), // L
+    Color::RGB(0xFF, 0xCE, 0x13), // O
+    Color::RGB(0x68, 0xEF, 0x13), // S
+    Color::RGB(0xAD, 0x00, 0xFA), // T
+    Color::RGB(0xFF, 0x1A, 0x45), // Z
+];
+
 const SPRITES: &[u8] = include_bytes!("sprites.png");
 const GAME_OVER_SOUND: &[u8] = include_bytes!("game-over.ogg");
 const LEVEL_UP_SOUND: &[u8] = include_bytes!("level-up.ogg");
@@ -115,6 +127,7 @@ pub fn modern_rustris_theme<'a>(
         cell_idle_type: FrameAnimationType::Static,
         queue_max: 5,
         particle_color: Color::WHITE,
+        particle_palette: TETROMINO_PALETTE.to_vec(),
         clear_particles: ClearParticles::Rows {
             fade_in: PARTICLE_FADE_IN,
         },

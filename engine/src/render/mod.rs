@@ -35,10 +35,21 @@ use sdl2::render::{Texture, WindowCanvas};
 /// What a game tells the renderer beyond its board: how to grade events for sound and
 /// particles. Everything visual comes from theme data.
 pub trait GameRender {
+    /// what this game is called, for the background field to spell out
+    fn name(&self) -> &'static str;
+
     /// grade a [`GameEvent::Clear`] for [`sound::SfxKey::Clear`]
     fn clear_class(&self, event: &GameEvent) -> u16 {
         let _ = event;
         0
+    }
+
+    /// A word for the background field to spell out when this happens, if it deserves one:
+    /// a Rustris tetris, a Dr. Rustario combo. The words themselves are the engine's, see
+    /// [`crate::particles::field::reaction::words`]; a game only says when.
+    fn clear_word(&self, event: &GameEvent) -> Option<&'static str> {
+        let _ = event;
+        None
     }
 
     /// the cells a freshly spawned piece occupies, for spawn particles
@@ -134,6 +145,9 @@ pub struct Theme<'a> {
     pub(crate) ghost_style: GhostStyle,
     /// themes that emit particles do so in this colour
     pub(crate) particle_color: Option<Color>,
+    /// the colours this theme radiates into the background particle field. Empty for a theme
+    /// with no field of its own, which then falls back to another theme of the same game
+    pub(crate) particle_palette: Vec<Color>,
     /// how this theme's art may be resized to the window
     pub(crate) scale_mode: ScaleMode,
     /// source pixels at the top of the background that nothing is ever drawn into, so they
@@ -184,6 +198,10 @@ impl<'a> Theme<'a> {
 
     pub fn particle_color(&self) -> Option<Color> {
         self.particle_color
+    }
+
+    pub fn particle_palette(&self) -> &[Color] {
+        &self.particle_palette
     }
 
     pub fn scale_mode(&self) -> ScaleMode {

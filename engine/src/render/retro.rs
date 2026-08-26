@@ -178,6 +178,7 @@ pub fn retro_theme<'a>(
         peek: options.peek,
         ghost_style: options.ghost_style,
         particle_color: None,
+        particle_palette: vec![],
         scale_mode: ScaleMode::Source,
         // the band above the skyline is where pieces spawn, so it is not empty
         top_slack: 0,

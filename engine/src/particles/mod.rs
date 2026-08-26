@@ -1,12 +1,16 @@
+use crate::particles::field::context::SceneContext;
+use crate::particles::pool::ParticlePool;
 use crate::particles::source::ParticleSource;
 use particle::{Particle, ParticleGroup};
 
 use std::time::Duration;
 
 pub mod color;
+pub mod field;
 pub mod geometry;
 pub mod meta;
 pub mod particle;
+pub mod pool;
 pub mod prescribed;
 pub mod quantity;
 pub mod render;
@@ -16,6 +20,9 @@ pub mod source;
 pub struct Particles {
     particles: Vec<ParticleGroup>,
     sources: Vec<Box<dyn ParticleSource>>,
+    /// retained pools, which own their particles for as long as they live and update them in
+    /// place. The emitter machinery above is untouched, so the menus keep working unchanged.
+    pools: Vec<Box<dyn ParticlePool>>,
     max_particles: usize,
 }
 
@@ -24,24 +31,46 @@ impl Particles {
         Self {
             sources: vec![],
             particles: vec![],
+            pools: vec![],
             max_particles,
         }
     }
 
-    pub fn particles(&self) -> Vec<&Particle> {
+    /// the particles of the emitted groups; see [`Particles::pools`] for the rest
+    pub fn group_particles(&self) -> Vec<&Particle> {
         self.particles.iter().flat_map(|g| g.particles()).collect()
     }
 
-    pub fn update(&mut self, delta: Duration) {
+    pub fn pools(&self) -> &[Box<dyn ParticlePool>] {
+        &self.pools
+    }
+
+    pub fn pools_mut(&mut self) -> &mut [Box<dyn ParticlePool>] {
+        &mut self.pools
+    }
+
+    pub fn add_pool(&mut self, pool: Box<dyn ParticlePool>) {
+        self.pools.push(pool);
+    }
+
+    /// `scene` is what the pools update against; `None` ticks the emitters only, which is all
+    /// a menu ever has
+    pub fn update(&mut self, delta: Duration, scene: Option<&SceneContext>) {
         let delta_time = delta.as_secs_f64();
         self.update_life(delta_time);
         self.update_particles(delta_time);
         self.emit_particles(delta);
+        if let Some(scene) = scene {
+            for pool in self.pools.iter_mut() {
+                pool.update(delta, scene);
+            }
+        }
     }
 
     pub fn clear(&mut self) {
         self.particles.clear();
         self.sources.clear();
+        self.pools.clear();
     }
 
     fn update_life(&mut self, delta_time: f64) {

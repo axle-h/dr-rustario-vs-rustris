@@ -58,6 +58,15 @@ mod sound {
     pub const VICTORY: &[u8] = include_bytes!("victory.ogg");
 }
 
+/// what the modern theme radiates into the background particle field: the three vitamin
+/// colours. The blue is lifted off the one in the art, which is a navy that all but vanishes
+/// as a particle over a black background
+const VITAMIN_PALETTE: [Color; 3] = [
+    Color::RGB(0xE8, 0x06, 0x06), // red
+    Color::RGB(0x2E, 0x7B, 0xD6), // blue
+    Color::RGB(0xE1, 0xBE, 0x00), // golden yellow
+];
+
 const DR_SCALE_OF_BLOCK: f64 = 6.5;
 
 fn block(i: i32, j: i32) -> Point {
@@ -198,6 +207,7 @@ pub fn modern_dr_theme<'a>(
         cell_idle_type: FrameAnimationType::Linear { fps: 30 },
         queue_max: 2,
         particle_color: Color::WHITE,
+        particle_palette: VITAMIN_PALETTE.to_vec(),
         clear_particles: ClearParticles::Masked {
             fade_in: Duration::from_millis(250),
         },

@@ -18,6 +18,25 @@ two hidden layers deep - sized to their own feature count (Rustris `FeatureNetwo
 neither game. Models are embedded as raw weight arrays in each game's
 `ai/models.rs`; Dr. Rustario's are random until a `ga dr auto` run replaces them.
 
+The particle engine has two models. `particles/source.rs` is the original fire-and-forget
+emitter: a source emits a group and then has no further say, which is right for a burst and is
+what every foreground effect and every menu uses. `particles/field/` is a retained pool
+(`particles/pool.rs`) that owns its particles for the life of a match and steers them every
+frame: it is the modern themes' background, and it is the only thing that can retarget a
+particle that already exists. The field spans a *canvas* - the union of the clips of the
+players on a particle scene - and its routines are authored in canvas-normalised coordinates,
+so one written once fits the whole window or half of it. It observes the match through a
+`SceneContext` built by the match screen and reacts to queued `FieldEvent`s; it never reads or
+writes game state and shares no RNG with the games. What it is doing at any moment is a
+`director.rs` state machine over a weighted playlist - a resting `Ambient` routine, then a
+`Feature` gathered, held and shattered - and where a feature wants its particles is a
+`formation.rs` `Formation`. The words it spells are the engine's own
+(`reaction::words`, outlined ahead of time by the renderer): a game says *when* through
+`GameRender::clear_word`, and the match screen offers the rest as `SceneContext::captions`,
+since only it can name a game or its numbers. `cargo run --example field_preview` renders it headless:
+`features` draws one png per routine, `sheet` outlines every sprite of every theme into a
+labelled png, and `<seconds>` snapshots a running field.
+
 A game implements `engine::game::Game` (a headless board of `Cell`s with game-private
 `CellId`s, producing engine `GameEvent`s) and `engine::render::GameRender`; its themes are
 data handed to the engine's `retro_theme` and `modern_theme` builders. Attacks between players
