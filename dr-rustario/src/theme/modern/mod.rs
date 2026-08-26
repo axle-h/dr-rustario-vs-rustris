@@ -127,7 +127,7 @@ pub fn modern_dr_theme<'a>(
         },
     };
     let options = ModernThemeOptions {
-        name: "modern",
+        name: "particle",
         sprites: BlockSpriteSheetData {
             file: sprites::VITAMINS,
             source_block_size: sprites::SRC_BLOCK_SIZE,

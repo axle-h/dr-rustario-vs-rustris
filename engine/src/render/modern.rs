@@ -17,7 +17,7 @@ use crate::render::metrics_table::{metric_label, GameMetricsTable};
 use crate::render::scene::{ClearParticles, SceneType};
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
-use crate::render::{HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme};
+use crate::render::{HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme, ThemeFamily};
 use crate::scale::ScaleMode;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
@@ -386,6 +386,7 @@ pub fn modern_theme<'a>(
         ghost_style: options.ghost_style,
         particle_color: Some(options.particle_color),
         particle_palette: options.particle_palette,
+        family: ThemeFamily::Particle,
         scale_mode: ScaleMode::Native,
         // nothing is ever drawn in the gap above the board, unlike the rows below it
         top_slack: board_top_buffer,

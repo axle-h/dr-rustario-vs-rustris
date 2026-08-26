@@ -45,6 +45,13 @@ impl<'a> MenuScreen<'a> {
         })
     }
 
+    /// Refresh the values a select list offers, for a list whose options depend on
+    /// another item. Call it after [`Self::update`] rather than from its callback: the
+    /// menu is borrowed for the frame.
+    pub fn set_items(&mut self, app: &mut App, items: &[MenuItem]) -> Result<(), String> {
+        self.menu.set_items(&mut app.canvas, items)
+    }
+
     /// One frame: input, update, render, present. `on_select` sees every change of a list
     /// item and every selected item by name and may end the menu with a value.
     pub fn update<R>(

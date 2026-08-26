@@ -174,11 +174,7 @@ impl GameConfig {
         self.speed
     }
     pub fn themes(&self) -> MatchThemes {
-        if self.rules == MatchRules::ThemeSprint {
-            MatchThemes::All
-        } else {
-            self.themes
-        }
+        self.themes
     }
     pub fn rules(&self) -> MatchRules {
         self.rules

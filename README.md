@@ -2,8 +2,8 @@
 
 A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 
-* **Dr. Rustario** - a Dr. Mario clone (NES, SNES, N64 and modern themes)
-* **Rustris** - Tetris with the guideline ruleset (Game Boy, NES, SNES and modern themes)
+* **Dr. Rustario** - a Dr. Mario clone (NES, SNES, N64 and particle themes)
+* **Rustris** - Tetris with the guideline ruleset (Game Boy, NES, SNES and particle themes)
 * **Dr. Rustario vs Rustris** - play a multi-player focussed playlist over both games.
 
 ## Building
@@ -100,14 +100,19 @@ Config and high scores are stored in yaml:
 
 High scores all live in one `high_scores.yml`, structured by game and then mode: one table
 per mode of each game and per vs. playlist (start level, speed and difficulty share their
-mode's table). Marathon tables rank the highest scores; sprint games (level, theme and
+mode's table). Each game offers the same four modes whether one or two are playing: a
+marathon and the level, theme and point sprints. The theme sprint runs one level per theme,
+so it is only offered while **themes** is `all` - pick a single theme and it drops off the
+list. Marathon tables rank the highest scores; sprint games (level, theme and
 point sprints, and the vs. races: the theme race, which is first to the end of the
 playlist, and the 3, 5 and 10 level random sprints, which deal a random game and theme
 each level) race a single clock, shown in the bottom-left corner (single player) or
 bottom-centre (multiplayer), and their tables rank the fastest times. The interleaved,
-back to back and random marathon vs. playlists are marathons: the first two cycle their
-playlist endlessly, the random marathon deals random games and themes forever, and all
-rank scores. Every vs. playlist shares one difficulty dial, 0 (default) to 10: it sets
+back to back, retro, particle and random marathon vs. playlists are marathons: the first
+two cycle their playlist endlessly, the retro playlist alternates the games through their
+retro themes only and the particle playlist alternates them on their particle themes, the
+random marathon deals random games and themes forever, and all rank scores. Every vs.
+playlist shares one difficulty dial, 0 (default) to 10: it sets
 Dr. Rustario's virus level and fall speed and Rustris's starting level together, from no
 viruses at low speed on level 0 up to virus level 10 at high speed on level 10. In a
 random playlist every player faces the same random sequence, dealt fresh each match. The clock
@@ -146,8 +151,8 @@ Most of it you can ignore except:
 
 ### Particle density
 
-The modern themes' background is a particle field: a retained pool of particles spanning
-every player on a modern theme, resting between features and then gathering into one before
+The particle themes' background is a particle field: a retained pool of particles spanning
+every player on a particle theme, resting between features and then gathering into one before
 shattering back. It rests as a slow orbit, a drifting flow, a vortex, or a constellation of
 particles with lines drawn between near neighbours; the features it gathers into are a piece
 silhouette (a tetromino, a pill, a virus or either game's mascot, outlined from the sprites

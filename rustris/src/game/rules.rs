@@ -19,8 +19,8 @@ pub enum MatchThemes {
     Nes,
     #[strum(serialize = "snes")]
     Snes,
-    #[strum(serialize = "modern")]
-    Modern,
+    #[strum(serialize = "particle")]
+    Particle,
 }
 
 impl MatchThemes {
@@ -38,7 +38,7 @@ impl MatchThemes {
             MatchThemes::All | MatchThemes::GameBoy => 0,
             MatchThemes::Nes => 1,
             MatchThemes::Snes => 2,
-            MatchThemes::Modern => 3,
+            MatchThemes::Particle => 3,
         }
     }
 }

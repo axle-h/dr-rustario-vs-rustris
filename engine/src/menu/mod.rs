@@ -175,38 +175,25 @@ impl<'a> SnippedTexture<'a> {
     }
 }
 
-pub struct Menu<'a> {
-    rows: Vec<MenuRow<'a>>,
+/// The body layout: where the rows sit, the texture they are drawn into, and the pill
+/// drawn behind the selected list. Recomputed whenever a row's values change, since the
+/// widest value is what the body is sized around.
+struct Body<'a> {
     row_rects: Vec<Rect>,
-    current_row_id: usize,
-    title: SnippedTexture<'a>,
-    subtitle: Option<SnippedTexture<'a>>,
-    body: SnippedTexture<'a>,
-    watermark: SnippedTexture<'a>,
+    /// the rows are drawn into this, then it is drawn to the window
+    target: SnippedTexture<'a>,
     select_list_background: Texture<'a>,
 }
 
-impl<'a> Menu<'a> {
-    pub fn new<ST: Into<Option<String>>>(
-        menu_items: Vec<MenuItem>,
+impl<'a> Body<'a> {
+    fn new(
+        rows: &[MenuRow<'a>],
         canvas: &mut WindowCanvas,
         texture_creator: &'a TextureCreator<WindowContext>,
-        title_text: String,
-        subtitle_text: ST,
+        vertical_gutter: u32,
+        horizontal_gutter: u32,
     ) -> Result<Self, String> {
-        assert!(!menu_items.is_empty());
-
         let (window_width, window_height) = canvas.window().size();
-        let font_size = window_width / 32;
-        let font = FontType::Retro.load(font_size)?;
-
-        let vertical_gutter = font_size / 3;
-        let horizontal_gutter = font_size * 2;
-
-        let rows: Vec<MenuRow> = menu_items
-            .into_iter()
-            .map(|mi| MenuRow::new(canvas, texture_creator, &font, mi).unwrap())
-            .collect();
 
         let row_height = rows.iter().map(|r| r.name_height).max().unwrap();
         let body_height =
@@ -231,6 +218,70 @@ impl<'a> Menu<'a> {
         }
 
         let body_texture = texture_creator.create_texture_target_blended(body_width, body_height)?;
+
+        let mut select_list_background =
+            texture_creator.create_texture_target_blended(body_width, row_height)?;
+        canvas
+            .with_texture_canvas(&mut select_list_background, |c| {
+                c.set_draw_color(Color::RGBA(0, 0, 0, 0));
+                c.clear();
+
+                let rect = Rect::new(0, 0, body_width, row_height);
+                c.fill_rounded_rect(rect, rect.height() / 2, Color::RGBA(0xff, 0xff, 0xff, 0x80))
+                    .unwrap();
+            })
+            .map_err(|e| e.to_string())?;
+
+        Ok(Self {
+            row_rects,
+            target: SnippedTexture::new(body_texture, body_rect),
+            select_list_background,
+        })
+    }
+}
+
+pub struct Menu<'a> {
+    rows: Vec<MenuRow<'a>>,
+    current_row_id: usize,
+    title: SnippedTexture<'a>,
+    subtitle: Option<SnippedTexture<'a>>,
+    watermark: SnippedTexture<'a>,
+    body: Body<'a>,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    font: Font,
+    vertical_gutter: u32,
+    horizontal_gutter: u32,
+}
+
+impl<'a> Menu<'a> {
+    pub fn new<ST: Into<Option<String>>>(
+        menu_items: Vec<MenuItem>,
+        canvas: &mut WindowCanvas,
+        texture_creator: &'a TextureCreator<WindowContext>,
+        title_text: String,
+        subtitle_text: ST,
+    ) -> Result<Self, String> {
+        assert!(!menu_items.is_empty());
+
+        let (window_width, window_height) = canvas.window().size();
+        let font_size = window_width / 32;
+        let font = FontType::Retro.load(font_size)?;
+
+        let vertical_gutter = font_size / 3;
+        let horizontal_gutter = font_size * 2;
+
+        let rows: Vec<MenuRow> = menu_items
+            .into_iter()
+            .map(|mi| MenuRow::new(canvas, texture_creator, &font, mi).unwrap())
+            .collect();
+
+        let body = Body::new(
+            &rows,
+            canvas,
+            texture_creator,
+            vertical_gutter,
+            horizontal_gutter,
+        )?;
 
         let watermark_font_size = 3 * font_size / 5;
         let watermark_font = FontType::Retro.load(watermark_font_size)?;
@@ -277,28 +328,50 @@ impl<'a> Menu<'a> {
             SnippedTexture::new(texture.texture, rect)
         });
 
-        let mut select_list_background = texture_creator.create_texture_target_blended(body_width, row_height)?;
-        canvas
-            .with_texture_canvas(&mut select_list_background, |c| {
-                c.set_draw_color(Color::RGBA(0, 0, 0, 0));
-                c.clear();
-
-                let rect = Rect::new(0, 0, body_width, row_height);
-                c.fill_rounded_rect(rect, rect.height() / 2, Color::RGBA(0xff, 0xff, 0xff, 0x80))
-                    .unwrap();
-            })
-            .map_err(|e| e.to_string())?;
-
         Ok(Self {
             rows,
-            row_rects,
             current_row_id: 0,
             title: SnippedTexture::new(title_texture.texture, title_rect),
             subtitle,
-            body: SnippedTexture::new(body_texture, body_rect),
             watermark: SnippedTexture::new(watermark_texture.texture, watermark_rect),
-            select_list_background,
+            body,
+            texture_creator,
+            font,
+            vertical_gutter,
+            horizontal_gutter,
         })
+    }
+
+    /// Replace the values a select list offers, keeping the selection the caller asks for.
+    /// The menu is otherwise fixed: this is for a list whose options depend on another
+    /// item, such as the modes on offer once a single theme is picked.
+    pub fn set_items(
+        &mut self,
+        canvas: &mut WindowCanvas,
+        items: &[MenuItem],
+    ) -> Result<(), String> {
+        let mut changed = false;
+        for item in items {
+            let Some(row) = self.rows.iter_mut().find(|r| r.item.name == item.name) else {
+                continue;
+            };
+            if row.item.action == item.action {
+                continue;
+            }
+            *row = MenuRow::new(canvas, self.texture_creator, &self.font, item.clone())?;
+            changed = true;
+        }
+        if changed {
+            // the widest value on offer sizes the body, so the whole layout moves with it
+            self.body = Body::new(
+                &self.rows,
+                canvas,
+                self.texture_creator,
+                self.vertical_gutter,
+                self.horizontal_gutter,
+            )?;
+        }
+        Ok(())
     }
 
     pub fn up(&mut self) {
@@ -380,18 +453,18 @@ impl<'a> Menu<'a> {
         }
 
         canvas
-            .with_texture_canvas(&mut self.body.texture, |tc| {
+            .with_texture_canvas(&mut self.body.target.texture, |tc| {
                 tc.set_draw_color(Color::RGBA(0, 0, 0, 0));
                 tc.clear();
 
                 for (row_id, (row, row_rect)) in
-                    self.rows.iter().zip(self.row_rects.iter()).enumerate()
+                    self.rows.iter().zip(self.body.row_rects.iter()).enumerate()
                 {
                     let is_selected = row_id == self.current_row_id;
 
                     // draw select list background
                     if is_selected && !row.item.action.is_select() {
-                        tc.copy(&self.select_list_background, None, *row_rect)
+                        tc.copy(&self.body.select_list_background, None, *row_rect)
                             .unwrap();
                     }
 
@@ -425,7 +498,7 @@ impl<'a> Menu<'a> {
             })
             .map_err(|e| e.to_string())?;
 
-        canvas.copy(&self.body.texture, None, self.body.snip)?;
+        canvas.copy(&self.body.target.texture, None, self.body.target.snip)?;
         canvas.copy(&self.watermark.texture, None, self.watermark.snip)
     }
 }
