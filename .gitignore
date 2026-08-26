@@ -2,3 +2,5 @@
 .idea/
 desktop.ini
 /dist
+
+generation-record-*.csv
