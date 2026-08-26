@@ -1,7 +1,7 @@
-use std::ops::{Add, Mul, RangeInclusive};
-use std::fmt::{Debug, Display, Formatter};
 use rand::distr::{Distribution, StandardUniform};
 use rand::{Rng, RngExt};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul, RangeInclusive};
 
 pub const COEFFICIENT_STEP: f64 = 0.000001;
 
@@ -12,7 +12,7 @@ pub const DEFAULT_MUTATION_STEP: f64 = 0.1;
 pub const fn raw_coefficient_range(delta: f64) -> RangeInclusive<i64> {
     let from = Coefficient::from_f64_unchecked(-delta).raw();
     let to = Coefficient::from_f64_unchecked(delta).raw();
-    from ..= to
+    from..=to
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
@@ -25,7 +25,7 @@ impl Coefficient {
     pub const fn new(magnitude: i64) -> Self {
         Self(magnitude)
     }
-    
+
     pub const fn from_f64_unchecked(value: f64) -> Self {
         Self((value / COEFFICIENT_STEP) as i64)
     }
@@ -33,11 +33,11 @@ impl Coefficient {
     pub fn from_f64(value: f64) -> Self {
         Self((value / COEFFICIENT_STEP).round() as i64)
     }
-    
+
     pub const fn raw(&self) -> i64 {
         self.0
     }
-    
+
     pub const fn into_f64(self) -> f64 {
         self.raw() as f64 * COEFFICIENT_STEP
     }

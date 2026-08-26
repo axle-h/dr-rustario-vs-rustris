@@ -1,11 +1,12 @@
 use crate::game::bottle::{BOTTLE_HEIGHT, BOTTLE_WIDTH};
 use crate::game::pill::VirusColor;
 use crate::theme::data::{
-    animations, audio, cells, mascot, previews, retro_mascot, spawn_cell, strip,
-    ColorLayout, Sounds, N64_GAME_OVER, N64_VICTORY,
+    animations, audio, cells, mascot, previews, retro_mascot, spawn_cell, strip, ColorLayout,
+    Sounds, N64_GAME_OVER, N64_VICTORY,
 };
 use engine::animate::frames::FrameAnimationType;
 use engine::config::Config;
+use engine::game::MetricKind;
 use engine::render::animation::AnimationSpriteSheetData;
 use engine::render::font::{FontRenderOptions, FontThemeOptions, MetricSnips, ThemedNumeric};
 use engine::render::geometry::BoardGeometry;
@@ -13,7 +14,6 @@ use engine::render::retro::{retro_theme, RetroThemeOptions};
 use engine::render::scene::SceneType;
 use engine::render::sprite_sheet::{BlockSpriteSheetData, GhostStyle};
 use engine::render::{HoldLayout, MascotLayout, PeekLayout, Theme};
-use engine::game::MetricKind;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
@@ -68,7 +68,13 @@ fn layout(j: i32) -> ColorLayout {
     }
 }
 
-fn color_animations(color: VirusColor, j: i32) -> Vec<(Vec<engine::game::CellId>, engine::render::sprite_sheet::CellAnimationData)> {
+fn color_animations(
+    color: VirusColor,
+    j: i32,
+) -> Vec<(
+    Vec<engine::game::CellId>,
+    engine::render::sprite_sheet::CellAnimationData,
+)> {
     animations(
         color,
         strip(sprites::VITAMINS, block(7, j), 4, BLOCK_SIZE),
@@ -82,7 +88,14 @@ pub fn n64_theme<'a>(
     texture_creator: &'a TextureCreator<WindowContext>,
     config: Config,
 ) -> Result<Theme<'a>, String> {
-    let geometry = BoardGeometry::new(BLOCK_SIZE, 0, (8, 41), BOTTLE_WIDTH, BOTTLE_HEIGHT, BOTTLE_HEIGHT);
+    let geometry = BoardGeometry::new(
+        BLOCK_SIZE,
+        0,
+        (8, 41),
+        BOTTLE_WIDTH,
+        BOTTLE_HEIGHT,
+        BOTTLE_HEIGHT,
+    );
     let scene = SceneType::Tile {
         texture: sprites::BACKGROUND_TILE,
     };
@@ -159,15 +172,24 @@ pub fn n64_theme<'a>(
             vec![
                 (
                     MetricKind::Score,
-                    ThemedNumeric::new(0, MetricSnips::zero_fill((111, 105), crate::game::MAX_SCORE)),
+                    ThemedNumeric::new(
+                        0,
+                        MetricSnips::zero_fill((111, 105), crate::game::MAX_SCORE),
+                    ),
                 ),
                 (
                     MetricKind::Level,
-                    ThemedNumeric::new(1, MetricSnips::zero_fill((131, 143), crate::game::rules::MAX_VIRUS_LEVEL)),
+                    ThemedNumeric::new(
+                        1,
+                        MetricSnips::zero_fill((131, 143), crate::game::rules::MAX_VIRUS_LEVEL),
+                    ),
                 ),
                 (
                     MetricKind::Viruses,
-                    ThemedNumeric::new(1, MetricSnips::zero_fill((131, 183), crate::game::random::MAX_VIRUSES)),
+                    ThemedNumeric::new(
+                        1,
+                        MetricSnips::zero_fill((131, 183), crate::game::random::MAX_VIRUSES),
+                    ),
                 ),
             ],
         ),

@@ -1,8 +1,8 @@
 use crate::game::bottle::{BOTTLE_HEIGHT, BOTTLE_WIDTH};
 use crate::game::pill::VirusColor;
 use crate::theme::data::{
-    animations, audio, cells, hud, mascot, previews, retro_mascot, spawn_cell, strip,
-    ColorLayout, Sounds, NES_SNES_VICTORY,
+    animations, audio, cells, hud, mascot, previews, retro_mascot, spawn_cell, strip, ColorLayout,
+    Sounds, NES_SNES_VICTORY,
 };
 use engine::animate::frames::FrameAnimationType;
 use engine::config::Config;
@@ -67,7 +67,13 @@ fn layout(j: i32) -> ColorLayout {
     }
 }
 
-fn color_animations(color: VirusColor, j: i32) -> Vec<(Vec<engine::game::CellId>, engine::render::sprite_sheet::CellAnimationData)> {
+fn color_animations(
+    color: VirusColor,
+    j: i32,
+) -> Vec<(
+    Vec<engine::game::CellId>,
+    engine::render::sprite_sheet::CellAnimationData,
+)> {
     animations(
         color,
         strip(sprites::VITAMINS, block(0, j), 2, BLOCK_SIZE),
@@ -85,7 +91,14 @@ pub fn snes_theme<'a>(
     texture_creator: &'a TextureCreator<WindowContext>,
     config: Config,
 ) -> Result<Theme<'a>, String> {
-    let geometry = BoardGeometry::new(BLOCK_SIZE, 0, (7, 39), BOTTLE_WIDTH, BOTTLE_HEIGHT, BOTTLE_HEIGHT);
+    let geometry = BoardGeometry::new(
+        BLOCK_SIZE,
+        0,
+        (7, 39),
+        BOTTLE_WIDTH,
+        BOTTLE_HEIGHT,
+        BOTTLE_HEIGHT,
+    );
     let scene = SceneType::Tile {
         texture: sprites::BACKGROUND_TILE,
     };

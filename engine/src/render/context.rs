@@ -15,7 +15,9 @@ use crate::scale::{Scale, ScaleMode};
 use crate::session::MatchState;
 use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::{Point, Rect};
-use sdl2::render::{BlendMode, ScaleMode as TextureScaleMode, Texture, TextureCreator, WindowCanvas};
+use sdl2::render::{
+    BlendMode, ScaleMode as TextureScaleMode, Texture, TextureCreator, WindowCanvas,
+};
 use sdl2::video::WindowContext;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -111,8 +113,7 @@ impl ThemedPlayer {
             scale.scale_length(theme_width),
             scale.scale_length(theme_height),
         );
-        let board_snip =
-            scale.scale_and_offset_rect(theme.board_snip(), bg_snip.x(), bg_snip.y());
+        let board_snip = scale.scale_and_offset_rect(theme.board_snip(), bg_snip.x(), bg_snip.y());
         let animations = PlayerAnimations::new(player, theme.animation_meta());
         Self {
             bg_snip,
@@ -181,11 +182,8 @@ impl<'a> ScaledTheme<'a> {
     }
 
     pub fn is_pause_required_for_animation(&self, player: u32) -> bool {
-        self.player_themes[player as usize]
-            .animations
-            .blocks_tick()
+        self.player_themes[player as usize].animations.blocks_tick()
     }
-
 }
 
 /// The themes one player may use: a range of indices into the context's theme list, so a
@@ -198,7 +196,10 @@ pub struct PlayerThemes {
 
 impl PlayerThemes {
     pub fn new(range: Range<usize>, initial: usize) -> Self {
-        assert!(range.contains(&initial), "initial theme is outside the player's range");
+        assert!(
+            range.contains(&initial),
+            "initial theme is outside the player's range"
+        );
         Self { range, initial }
     }
 }
@@ -731,11 +732,9 @@ impl<'a> ThemeContext<'a> {
                 None => vec![geometry.point(point)],
             })
             .map(|p| {
-                theme.scale.scale_and_offset_point(
-                    p,
-                    player.board_snip.x(),
-                    player.board_snip.y(),
-                )
+                theme
+                    .scale
+                    .scale_and_offset_point(p, player.board_snip.x(), player.board_snip.y())
             })
             .collect()
     }

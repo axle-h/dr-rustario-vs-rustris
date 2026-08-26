@@ -1,17 +1,17 @@
 use crate::game::geometry::Point as CellPoint;
 use crate::game::{CellId, PieceId, PlacedCell};
-use crate::particles::particle::ParticleAnimationType;
-use crate::render::context::ThemeContext;
-use crate::render::sprite_sheet::MascotKind;
 use crate::particles::color::ParticleColor;
 use crate::particles::geometry::Vec2D;
 use crate::particles::meta::ParticleSprite;
+use crate::particles::particle::ParticleAnimationType;
 use crate::particles::quantity::ProbabilityTable;
 use crate::particles::scale::Scale;
 use crate::particles::source::{
     AggregateParticleSource, ParticleModulation, ParticleProperties, ParticleSource,
     RandomParticleSource,
 };
+use crate::render::context::ThemeContext;
+use crate::render::sprite_sheet::MascotKind;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use std::time::Duration;
@@ -234,7 +234,8 @@ pub fn prescribed_piece_race(
             })
             .collect::<Vec<ParticleSprite>>();
         if !pieces.is_empty() {
-            table = table.with_1(ParticleProperties::simple(&pieces, size).angular_velocity(rotation));
+            table =
+                table.with_1(ParticleProperties::simple(&pieces, size).angular_velocity(rotation));
         }
         let cells = race
             .cells

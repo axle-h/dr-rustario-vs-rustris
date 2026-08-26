@@ -79,7 +79,14 @@ pub fn snes_theme<'a>(
             previews: previews(),
             mascot: None,
         },
-        geometry: BoardGeometry::new(BLOCK_PIXELS, 0, (8, 0), BOARD_WIDTH, TOTAL_HEIGHT, VISIBLE_HEIGHT),
+        geometry: BoardGeometry::new(
+            BLOCK_PIXELS,
+            0,
+            (8, 0),
+            BOARD_WIDTH,
+            TOTAL_HEIGHT,
+            VISIBLE_HEIGHT,
+        ),
         audio: audio(
             config.audio,
             Sounds {
@@ -100,7 +107,12 @@ pub fn snes_theme<'a>(
         )?,
         font: FontThemeOptions::simple(
             retro_font(SPRITES, 1, |i| char_snip(0, i), |i| char_snip(1, i)),
-            hud(buffer, zero_fill((7, 22), 6), zero_fill((23, 62), 3), zero_fill((23, 98), 4)),
+            hud(
+                buffer,
+                zero_fill((7, 22), 6),
+                zero_fill((23, 62), 3),
+                zero_fill((23, 98), 4),
+            ),
         ),
         board_file: BOARD_FILE,
         board_alpha: 0xff,

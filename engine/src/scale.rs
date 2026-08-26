@@ -13,11 +13,7 @@ pub enum ScaleMode {
 }
 
 /// The area of the window one player's theme is drawn into.
-pub fn player_area(
-    player: u32,
-    players: u32,
-    (window_width, window_height): (u32, u32),
-) -> Rect {
+pub fn player_area(player: u32, players: u32, (window_width, window_height): (u32, u32)) -> Rect {
     let inset_x = (PLAYER_BUFFER_PCT * window_width as f64).round() as i32;
     let inset_y = (PLAYER_BUFFER_PCT * window_height as f64).round() as i32;
     let chunk = window_width / players;
@@ -32,7 +28,13 @@ pub fn player_area(
 /// The largest scale at which art of `size` source pixels fits `area`. The top `top_slack`
 /// source pixels are empty in every theme that has them, so they are allowed to fall outside
 /// the area rather than hold the whole board back.
-pub fn fit(area: Rect, (width, height): (u32, u32), top_slack: u32, mode: ScaleMode, integer: bool) -> f64 {
+pub fn fit(
+    area: Rect,
+    (width, height): (u32, u32),
+    top_slack: u32,
+    mode: ScaleMode,
+    integer: bool,
+) -> f64 {
     let required_height = height.saturating_sub(top_slack).max(1);
     let by_width = area.width() as f64 / width.max(1) as f64;
     let by_height = area.height() as f64 / required_height as f64;

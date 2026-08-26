@@ -117,8 +117,7 @@ fn board_influence(board: &RectF, point: Vec2D) -> Option<(f64, Vec2D)> {
             (point.y() - board.y(), Vec2D::new(0.0, -1.0)),
             (board.bottom() - point.y(), Vec2D::new(0.0, 1.0)),
         ];
-        gaps
-            .into_iter()
+        gaps.into_iter()
             .min_by(|a, b| a.0.total_cmp(&b.0))
             .map(|(_, direction)| direction)
             .unwrap()
@@ -230,9 +229,14 @@ impl ParticleField {
         // occasional hollow one or star
         let roll = self.rng.random::<f64>();
         let (sprite, size) = if roll < 0.8 {
-            (ParticleSprite::Circle05, 0.7 + 0.6 * self.rng.random::<f64>())
+            (
+                ParticleSprite::Circle05,
+                0.7 + 0.6 * self.rng.random::<f64>(),
+            )
         } else if roll < 0.9 {
-            let index = self.rng.random_range(0..ParticleSprite::HOLLOW_CIRCLES.len());
+            let index = self
+                .rng
+                .random_range(0..ParticleSprite::HOLLOW_CIRCLES.len());
             (
                 ParticleSprite::HOLLOW_CIRCLES[index],
                 1.1 + 0.8 * self.rng.random::<f64>(),
@@ -407,15 +411,19 @@ impl ParticleField {
         let boards = ctx
             .visible()
             .map(|region| {
-                let top_left = self.canvas.normalise(Vec2D::new(
-                    region.board.x(),
-                    region.board.y(),
-                ));
-                let size = self.canvas.normalise(Vec2D::new(
-                    region.board.right(),
-                    region.board.bottom(),
-                )) - top_left;
-                RectF::new(top_left.x(), top_left.y(), size.x().max(1e-6), size.y().max(1e-6))
+                let top_left = self
+                    .canvas
+                    .normalise(Vec2D::new(region.board.x(), region.board.y()));
+                let size = self
+                    .canvas
+                    .normalise(Vec2D::new(region.board.right(), region.board.bottom()))
+                    - top_left;
+                RectF::new(
+                    top_left.x(),
+                    top_left.y(),
+                    size.x().max(1e-6),
+                    size.y().max(1e-6),
+                )
             })
             .collect::<Vec<RectF>>();
         match feature {
@@ -444,7 +452,10 @@ impl ParticleField {
                 let bus = bus.borrow();
                 // a word the match called for, else whatever the match screen has offered
                 // and the renderer has outlined
-                let wanted = self.word.take().filter(|word| bus.shapes.text(word).is_some());
+                let wanted = self
+                    .word
+                    .take()
+                    .filter(|word| bus.shapes.text(word).is_some());
                 let available = ctx
                     .captions
                     .iter()
@@ -476,9 +487,8 @@ impl ParticleField {
             return;
         }
         let available = ((self.particles.len() as f64) * (1.0 - AMBIENT_SHARE)).round() as usize;
-        let available = available.min(
-            self.particles.len() - self.members.iter().filter(|m| m.in_comet).count(),
-        );
+        let available = available
+            .min(self.particles.len() - self.members.iter().filter(|m| m.in_comet).count());
         let wanted = match capacity {
             Some(capacity) => capacity.min(available),
             None => available,
@@ -696,11 +706,7 @@ impl ParticleField {
                 self.particles[*index].set_target(Some(ParticleTarget::new(target, 260.0)));
             }
             if arrived {
-                arrivals.push((
-                    comet.target(),
-                    comet.color(),
-                    comet.members().to_vec(),
-                ));
+                arrivals.push((comet.target(), comet.color(), comet.members().to_vec()));
             }
         }
         for (target, color, members) in arrivals {
@@ -735,17 +741,13 @@ impl ParticleField {
         // hand the formation's members their targets
         if gathering {
             for (slot, index) in self.cast.iter().enumerate() {
-                let Some(target) =
-                    self.formation
-                        .target(slot, count, elapsed, aspect, energy)
+                let Some(target) = self.formation.target(slot, count, elapsed, aspect, energy)
                 else {
                     continue;
                 };
                 let target = self.canvas.denormalise(target);
-                self.particles[*index].set_target(Some(ParticleTarget::new(
-                    target,
-                    GATHER_STIFFNESS,
-                )));
+                self.particles[*index]
+                    .set_target(Some(ParticleTarget::new(target, GATHER_STIFFNESS)));
             }
         }
 
@@ -822,11 +824,7 @@ impl ParticleField {
         match feature {
             Feature::Weather => {
                 // speed tied to how fast the pieces are falling
-                let speed = ctx
-                    .regions()
-                    .map(|r| r.speed_index)
-                    .max()
-                    .unwrap_or(0) as f64;
+                let speed = ctx.regions().map(|r| r.speed_index).max().unwrap_or(0) as f64;
                 let fall = 0.18 + 0.02 * speed.min(15.0);
                 let wind = (self.time * 0.4).sin() * 0.05;
                 self.particles[index].add_velocity(Vec2D::new(wind, fall) * delta_time);
@@ -857,8 +855,7 @@ impl ParticleField {
         let position = self.particles[index].position();
         for region in ctx.visible() {
             if let Some((strength, away)) = board_influence(&region.board, position) {
-                self.particles[index]
-                    .add_velocity(away * (BOARD_PUSH * strength * delta_time));
+                self.particles[index].add_velocity(away * (BOARD_PUSH * strength * delta_time));
             }
         }
     }
@@ -1120,7 +1117,11 @@ mod tests {
                 position.y() > ctx.canvas.y() - 1.0 && position.y() < ctx.canvas.bottom() + 1.0,
                 "{position:?}"
             );
-            assert!((0.0..=1.0).contains(&particle.alpha()), "{}", particle.alpha());
+            assert!(
+                (0.0..=1.0).contains(&particle.alpha()),
+                "{}",
+                particle.alpha()
+            );
             let color = particle.color();
             for channel in [color.red(), color.green(), color.blue()] {
                 assert!((0.0..=1.0).contains(&channel), "{color:?}");
@@ -1172,8 +1173,14 @@ mod tests {
         let before = whole.canvas.normalise(field.particles()[index].position());
         field.update(FRAME, &half);
         let after = half.canvas.normalise(field.particles()[index].position());
-        assert!((before.x() - after.x()).abs() < 0.05, "{before:?} {after:?}");
-        assert!((before.y() - after.y()).abs() < 0.05, "{before:?} {after:?}");
+        assert!(
+            (before.x() - after.x()).abs() < 0.05,
+            "{before:?} {after:?}"
+        );
+        assert!(
+            (before.y() - after.y()).abs() < 0.05,
+            "{before:?} {after:?}"
+        );
     }
 
     #[test]
@@ -1370,11 +1377,10 @@ mod tests {
     /// a field with one word already outlined, as the renderer would have left it
     fn field_knowing(word: &str, ctx: &SceneContext) -> ParticleField {
         let mut field = field(ctx);
-        field
-            .bus
-            .borrow_mut()
-            .shapes
-            .insert_text(word, crate::particles::field::shapes::EdgeShape::unit_square());
+        field.bus.borrow_mut().shapes.insert_text(
+            word,
+            crate::particles::field::shapes::EdgeShape::unit_square(),
+        );
         field
     }
 
@@ -1428,9 +1434,11 @@ mod tests {
         let ctx = two_players(true);
         let mut field = field(&ctx);
         field.update(FRAME, &ctx);
-        field.bus.borrow_mut().events.push(FieldEvent::Spell {
-            word: words::COMBO,
-        });
+        field
+            .bus
+            .borrow_mut()
+            .events
+            .push(FieldEvent::Spell { word: words::COMBO });
         field.update(FRAME, &ctx);
         // half a word is worse than none: the field carries on with what it was doing
         assert!(matches!(field.director.stage(), Stage::Ambient { .. }));

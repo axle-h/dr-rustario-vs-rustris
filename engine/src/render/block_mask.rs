@@ -119,11 +119,13 @@ impl BlockMask {
         } else {
             ((last as f64 / spacing as f64).round() as u64).max(1)
         };
-        (0..=steps).map(move |i| match i.checked_mul(last).and_then(|v| v.checked_div(steps)) {
-            Some(value) => value as u32,
-            // a mask one pixel across has a single step, at zero
-            None => 0,
-        })
+        (0..=steps).map(
+            move |i| match i.checked_mul(last).and_then(|v| v.checked_div(steps)) {
+                Some(value) => value as u32,
+                // a mask one pixel across has a single step, at zero
+                None => 0,
+            },
+        )
     }
 }
 
@@ -169,18 +171,30 @@ mod tests {
         let mask = BlockMask::from_pixels(&pixels, 4, 1);
         // transparent, then opaque red, yellow and blue: everything but the first
         assert!(!mask.is_set(0, 0));
-        assert!(mask.is_set(1, 0), "an opaque red pixel is part of its sprite");
-        assert!(mask.is_set(2, 0), "an opaque yellow pixel is part of its sprite");
+        assert!(
+            mask.is_set(1, 0),
+            "an opaque red pixel is part of its sprite"
+        );
+        assert!(
+            mask.is_set(2, 0),
+            "an opaque yellow pixel is part of its sprite"
+        );
         assert!(mask.is_set(3, 0));
     }
 
     #[test]
     fn steps_reach_both_edges_without_doubling_up_at_the_end() {
         // an exact fit is the plain lattice
-        assert_eq!(BlockMask::steps(7, 2).collect::<Vec<u32>>(), vec![0, 2, 4, 6]);
+        assert_eq!(
+            BlockMask::steps(7, 2).collect::<Vec<u32>>(),
+            vec![0, 2, 4, 6]
+        );
         // and an inexact one is spread evenly rather than tacking the last index on next to
         // the one before it
-        assert_eq!(BlockMask::steps(8, 2).collect::<Vec<u32>>(), vec![0, 1, 3, 5, 7]);
+        assert_eq!(
+            BlockMask::steps(8, 2).collect::<Vec<u32>>(),
+            vec![0, 1, 3, 5, 7]
+        );
         assert_eq!(BlockMask::steps(3, 5).collect::<Vec<u32>>(), vec![0, 2]);
         assert_eq!(BlockMask::steps(1, 5).collect::<Vec<u32>>(), vec![0]);
         for size in 1..40u32 {

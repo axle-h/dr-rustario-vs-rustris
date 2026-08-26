@@ -4,9 +4,9 @@
 //! onto their own keys. Keyboard events pass through untouched.
 
 use sdl2::controller::{Axis, Button, GameController};
-use sdl2::GameControllerSubsystem;
 use sdl2::event::Event;
 use sdl2::EventPump;
+use sdl2::GameControllerSubsystem;
 
 /// Left-stick travel (of ±1) before it registers as a d-pad press.
 const STICK_DEADZONE: f32 = 0.5;
@@ -117,7 +117,8 @@ impl Controllers {
     }
 
     fn close(&mut self, instance_id: u32) {
-        self.pads.retain(|p| p.controller.instance_id() != instance_id);
+        self.pads
+            .retain(|p| p.controller.instance_id() != instance_id);
     }
 
     fn pad_mut(&mut self, instance_id: u32) -> Option<&mut Pad> {

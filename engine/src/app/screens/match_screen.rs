@@ -4,8 +4,8 @@
 use crate::animate::event::{AnimationEvent, AnimationType};
 use crate::app::{App, MatchSettings, PostGameAction, StageChange, ThemeMode};
 use crate::frame_rate::FrameRate;
-use crate::game::{Cell, Game, GameEvent, MetricKind, StageState, StageTransition};
 use crate::game::geometry::Point as CellPoint;
+use crate::game::{Cell, Game, GameEvent, MetricKind, StageState, StageTransition};
 use crate::game_input::{GameInputContext, GameInputKey};
 use crate::particles::field::context::{PlayerRegion, SceneContext};
 use crate::particles::field::reaction::FieldEvent;
@@ -71,8 +71,13 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             .map(|p| p.themes.len() as u32)
             .collect::<Vec<u32>>();
         let ai_players = controllers.iter().map(|(p, _)| *p).collect::<Vec<u32>>();
-        let fixture = Match::new(games, settings.rules, &theme_counts, &settings.high_score_key)
-            .with_ai_players(ai_players);
+        let fixture = Match::new(
+            games,
+            settings.rules,
+            &theme_counts,
+            &settings.high_score_key,
+        )
+        .with_ai_players(ai_players);
         let is_single_player = fixture.is_single_player();
         let window_size = app.canvas.window().size();
         let mut themes = ThemeContext::new(
@@ -107,7 +112,12 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         let paused_screen = PausedScreen::new(&mut app.canvas, texture_creator, window_size)?;
         // sprints race the clock, so show it
         let timer = if settings.rules.is_sprint() {
-            Some(TimerRender::new(&mut app.canvas, texture_creator, window_size, players)?)
+            Some(TimerRender::new(
+                &mut app.canvas,
+                texture_creator,
+                window_size,
+                players,
+            )?)
         } else {
             None
         };
@@ -305,9 +315,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                 GameInputKey::SoftDrop { player } => {
                     fixture.mut_game(player, |g| g.set_soft_drop(true))
                 }
-                GameInputKey::HardDrop { player } => {
-                    fixture.mut_game(player, |g| g.hard_drop())
-                }
+                GameInputKey::HardDrop { player } => fixture.mut_game(player, |g| g.hard_drop()),
                 GameInputKey::RotateClockwise { player } => {
                     fixture.mut_game(player, |g| g.rotate(true))
                 }
@@ -525,7 +533,15 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         }
                     }
                 }
-                (Some(player), GameEvent::Clear { ref cells, count, is_combo, .. }) => {
+                (
+                    Some(player),
+                    GameEvent::Clear {
+                        ref cells,
+                        count,
+                        is_combo,
+                        ..
+                    },
+                ) => {
                     let mut rows = cells.iter().map(|(p, _)| p.y as u32).collect::<Vec<u32>>();
                     rows.sort();
                     rows.dedup();
@@ -634,7 +650,8 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     if let Some(next_game) = change.game {
                         // resume this game where it was parked, else start the new one
                         let wanted = next_game.game_id();
-                        let resumed = match parked[index].iter().position(|g| g.game_id() == wanted) {
+                        let resumed = match parked[index].iter().position(|g| g.game_id() == wanted)
+                        {
                             Some(i) => parked[index].swap_remove(i),
                             None => next_game,
                         };
@@ -714,10 +731,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         // texture in one loop (rebuilt per frame: it borrows the player textures)
         let mut texture_refs: Vec<(&mut Texture, TextureMode)> = vec![];
         for (player_index, textures) in player_textures.iter_mut().enumerate() {
-            texture_refs.push((
-                &mut textures.board,
-                TextureMode::Board(player_index as u32),
-            ));
+            texture_refs.push((&mut textures.board, TextureMode::Board(player_index as u32)));
             texture_refs.push((
                 &mut textures.background,
                 TextureMode::Background(player_index as u32),
@@ -726,9 +740,8 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
 
         // draw the game
         app.canvas
-            .with_multiple_texture_canvas(
-                texture_refs.iter(),
-                |texture_canvas, texture_mode| match texture_mode {
+            .with_multiple_texture_canvas(texture_refs.iter(), |texture_canvas, texture_mode| {
+                match texture_mode {
                     TextureMode::Background(player_id) => {
                         let player = fixture.player(*player_id);
                         let animations = themes.player_animations(*player_id);
@@ -745,13 +758,17 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                             .draw_board(texture_canvas, player.game(), animations)
                             .unwrap();
                     }
-                },
-            )
+                }
+            })
             .map_err(|e| e.to_string())?;
 
         // render the frame into the frame texture: the previous frame then stays
         // available for theme fades to snapshot without ever reading the backbuffer
-        let games = fixture.players.iter().map(|p| p.game()).collect::<Vec<&G>>();
+        let games = fixture
+            .players
+            .iter()
+            .map(|p| p.game())
+            .collect::<Vec<&G>>();
         let mut frame_result: Result<(), String> = Ok(());
         app.canvas
             .with_texture_canvas(frame_buffer, |c| {

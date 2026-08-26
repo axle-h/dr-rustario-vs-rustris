@@ -79,7 +79,12 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
     let model = match args.get(3).map(String::as_str) {
         None | Some("survival") => models::survival_trained(),
         Some("tetris") => models::tetris_clear_trained(),
-        Some(other) => return Err(format!("unknown model '{}', expected: survival or tetris", other)),
+        Some(other) => {
+            return Err(format!(
+                "unknown model '{}', expected: survival or tetris",
+                other
+            ))
+        }
     };
 
     let rng = RandomTetromino::new(RandomMode::Bag, MIN_GARBAGE_PER_HOLE, seed);

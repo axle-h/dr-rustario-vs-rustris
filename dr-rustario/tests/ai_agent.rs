@@ -84,7 +84,10 @@ fn play_with(agent: DrAiAgent, level: u32, key_delay: Duration, max_pills: u32) 
 #[test]
 fn the_agent_places_pills_across_the_bottle() {
     let played = play(0, Duration::ZERO, 30);
-    assert!(played.steps < MAX_STEPS, "the agent stopped making progress");
+    assert!(
+        played.steps < MAX_STEPS,
+        "the agent stopped making progress"
+    );
     assert!(played.pills > 1, "the agent never got a second pill");
     // if the agent's key presses were not reaching the game every pill would land where it spawned
     assert!(
@@ -97,7 +100,10 @@ fn the_agent_places_pills_across_the_bottle() {
 #[test]
 fn the_agent_clears_viruses() {
     let played = play(0, Duration::ZERO, 300);
-    assert!(played.steps < MAX_STEPS, "the agent stopped making progress");
+    assert!(
+        played.steps < MAX_STEPS,
+        "the agent stopped making progress"
+    );
     assert!(
         played.viruses_cleared > 0,
         "the agent cleared no viruses in 300 pills"

@@ -10,7 +10,10 @@ fn main() -> Result<(), String> {
     let width: u32 = args.get(1).map(|s| s.parse().unwrap()).unwrap_or(1280);
     let height: u32 = args.get(2).map(|s| s.parse().unwrap()).unwrap_or(720);
     let players: u32 = args.get(3).map(|s| s.parse().unwrap()).unwrap_or(1);
-    let integer_scale: bool = args.get(4).map(|s| s.parse().unwrap()).unwrap_or(Config::default().video.integer_scale);
+    let integer_scale: bool = args
+        .get(4)
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(Config::default().video.integer_scale);
 
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
@@ -34,7 +37,11 @@ fn main() -> Result<(), String> {
 
     let mut all = dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?;
     let dr = 0..all.len();
-    all.extend(rustris::theme::all_themes(&mut canvas, &texture_creator, config)?);
+    all.extend(rustris::theme::all_themes(
+        &mut canvas,
+        &texture_creator,
+        config,
+    )?);
     let rustris_range = dr.end..all.len();
 
     println!(

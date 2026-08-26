@@ -1,6 +1,6 @@
-use crate::config::AudioConfig;
-use crate::audio::Sound;
 use crate::audio::theme::{LoadSound, StructuredMusic};
+use crate::audio::Sound;
+use crate::config::AudioConfig;
 use std::rc::Rc;
 
 // const CHIME: &[u8] = include_bytes!("retro/chime.ogg");

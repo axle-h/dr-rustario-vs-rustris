@@ -68,7 +68,8 @@ impl VariableQuantity<Vec2D> {
 impl VariableQuantity<ParticleColor> {
     pub fn next(&mut self) -> ParticleColor {
         self.quantity
-            + self.variance * ParticleColor::rgb(self.rng.random(), self.rng.random(), self.rng.random())
+            + self.variance
+                * ParticleColor::rgb(self.rng.random(), self.rng.random(), self.rng.random())
     }
 }
 

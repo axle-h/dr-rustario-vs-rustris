@@ -1,17 +1,17 @@
 //! The genetic algorithm: generic over genome size and over how a genome is scored.
 //! Each game supplies a [Fitness] that plays its own headless game.
 
-use std::time::{Duration, Instant};
-use rayon::prelude::*;
 use crate::ai::end_game::EndGame;
 use crate::ai::game_result::GameResult;
+use crate::ai::generation_record::GenerationRecord;
 use crate::ai::generation_stats::GenerationStatistics;
 use crate::ai::genome::Genome;
 use crate::ai::mutation::GenomeMutation;
 use crate::ai::objective::{Objective, Phase};
 use crate::ai::organism::Organism;
-use crate::ai::generation_record::GenerationRecord;
 use crate::ai::seed::Seed;
+use rayon::prelude::*;
+use std::time::{Duration, Instant};
 
 /// how a genome is turned into a score: play it and report how the game went.
 /// This is the whole game-specific half of training.
@@ -32,11 +32,10 @@ pub trait Fitness<const GENOME: usize>: Send + Sync {
     fn set_end_game(&mut self, end_game: EndGame);
 }
 
-
 #[derive(Debug, Clone, Copy)]
 pub struct HyperParameters {
     population_size: usize,
-    elite_count: usize, // elites are passed onto the next generation unchanged
+    elite_count: usize,    // elites are passed onto the next generation unchanged
     survivor_count: usize, // only survivors are selected to breed
     parent_count: usize, // the number of breeding pairs each generation, the parents are selected from the surviving population weighted by fitness
 }
@@ -44,14 +43,20 @@ pub struct HyperParameters {
 impl HyperParameters {
     pub fn new(population_size: usize, elite_rate: f64, survival_rate: f64) -> Self {
         fn rate_to_count(population_size: usize, rate: f64) -> usize {
-            assert!(rate >= 0.0 && rate <= 1.0, "rates must be between 0.0 and 1.0");
+            assert!(
+                rate >= 0.0 && rate <= 1.0,
+                "rates must be between 0.0 and 1.0"
+            );
             (population_size as f64 * rate) as usize
         }
 
         let elite_count = rate_to_count(population_size, elite_rate);
         let survivor_count = rate_to_count(population_size, survival_rate);
 
-        assert!(elite_count + survivor_count < population_size, "too many elites and survivors");
+        assert!(
+            elite_count + survivor_count < population_size,
+            "too many elites and survivors"
+        );
         assert!(survivor_count >= 2, "need at least two survivors to breed");
 
         Self {
@@ -93,7 +98,8 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
         assert!(!phases.is_empty(), "at least one phase is required");
         Self::apply_phase(&phases[0], &mut fitness, &mut mutation);
 
-        let population = Self::initial_population(&hyper_parameters, &mut mutation, population_seed);
+        let population =
+            Self::initial_population(&hyper_parameters, &mut mutation, population_seed);
 
         Self {
             population,
@@ -110,21 +116,25 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
     fn apply_phase(phase: &Phase, fitness: &mut F, mutation: &mut GenomeMutation<N>) {
         fitness.set_end_game(phase.end_game);
         fitness.set_seeds_per_game(phase.seeds_per_game);
-        mutation.set_rates(phase.mutation_rate.clone(), phase.crossover_rate.clone(), phase.mutation_step);
+        mutation.set_rates(
+            phase.mutation_rate.clone(),
+            phase.crossover_rate.clone(),
+            phase.mutation_step,
+        );
     }
 
     /// a seeded population keeps one pristine copy of the seed, the rest are mutations of it
     fn initial_population(
         hyper_parameters: &HyperParameters,
         mutation: &mut GenomeMutation<N>,
-        population_seed: Option<Genome<N>>
+        population_seed: Option<Genome<N>>,
     ) -> Vec<Organism<N>> {
         let mut population = Vec::with_capacity(hyper_parameters.population_size);
-        for i in 0 .. hyper_parameters.population_size {
+        for i in 0..hyper_parameters.population_size {
             let genome = match population_seed {
                 Some(seed) if i == 0 => seed,
                 Some(seed) => mutation.mutate(seed),
-                None => mutation.random()
+                None => mutation.random(),
             };
             population.push(Organism::new(genome));
         }
@@ -156,7 +166,9 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
         loop {
             let stats = self.evolve();
             println!("{}", stats);
-            record.add(&stats).expect("Failed to write to generation record");
+            record
+                .add(&stats)
+                .expect("Failed to write to generation record");
 
             let phase_over = self.phase().is_complete(&stats.max().result())
                 || self.phase_generations >= self.phase().max_generations;
@@ -178,10 +190,15 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
         self.phase_index += 1;
         self.phase_generations = 0;
         let phase = self.phases[self.phase_index].clone();
-        println!("{} phase complete after generation {}, switching to {} phase", 
-                 self.phases[self.phase_index - 1].objective, self.generations.len(), phase.objective);
+        println!(
+            "{} phase complete after generation {}, switching to {} phase",
+            self.phases[self.phase_index - 1].objective,
+            self.generations.len(),
+            phase.objective
+        );
         Self::apply_phase(&phase, &mut self.fitness, &mut self.mutation);
-        self.population = Self::initial_population(&self.hyper_parameters, &mut self.mutation, Some(best));
+        self.population =
+            Self::initial_population(&self.hyper_parameters, &mut self.mutation, Some(best));
     }
 
     /// evaluate the population on fresh seeds and sort it best first, but do not breed
@@ -194,16 +211,17 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
 
         // Calculate fitness in parallel
         let generation_start = Instant::now();
+        self.population.par_iter_mut().for_each(|member| {
+            member.set_result(|genome| self.fitness.evaluate(genome));
+        });
         self.population
-            .par_iter_mut()
-            .for_each(|member| {
-                member.set_result(|genome| self.fitness.evaluate(genome));
-            });
-        self.population.sort_by(|s1, s2| objective.cmp(&s2.result(), &s1.result()));
+            .sort_by(|s1, s2| objective.cmp(&s2.result(), &s1.result()));
         let generation_duration = generation_start.elapsed();
 
         // Calculate total gameplay time
-        let total_gameplay_time: Duration = self.population.iter()
+        let total_gameplay_time: Duration = self
+            .population
+            .iter()
             .map(|organism| organism.result().time() * self.fitness.seeds_per_game() as u32)
             .sum();
 
@@ -227,7 +245,7 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
             self.mutation.current_crossover_rate(),
             total_gameplay_time,
             generation_duration,
-            game_seconds_per_second
+            game_seconds_per_second,
         );
         self.generations.push(stats);
         self.phase_generations += 1;
@@ -238,23 +256,34 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
 
     fn next_generation(&mut self) {
         let objective = self.objective();
-        let surviving_population: Vec<_> = self.population.iter()
+        let surviving_population: Vec<_> = self
+            .population
+            .iter()
             .take(self.hyper_parameters.survivor_count)
             .copied()
             .collect();
 
         self.population.clear();
 
-        for elite in surviving_population.iter().take(self.hyper_parameters.elite_count) {
+        for elite in surviving_population
+            .iter()
+            .take(self.hyper_parameters.elite_count)
+        {
             self.population.push(*elite);
         }
 
-        let parents = self.mutation.parents(&surviving_population, self.hyper_parameters.parent_count, objective);
+        let parents = self.mutation.parents(
+            &surviving_population,
+            self.hyper_parameters.parent_count,
+            objective,
+        );
 
         let mut required_children = self.hyper_parameters.population_size - self.population.len();
         while required_children > 0 {
             for [parent1, parent2] in parents.iter() {
-                let [child1, child2] = self.mutation.crossover(*parent1, *parent2)
+                let [child1, child2] = self
+                    .mutation
+                    .crossover(*parent1, *parent2)
                     .map(Organism::new);
                 self.population.push(child1);
                 required_children -= 1;

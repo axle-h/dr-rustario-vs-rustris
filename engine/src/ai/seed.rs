@@ -52,8 +52,8 @@ impl AddAssign for Seed {
 
         // Process 8 bytes at a time using u64
         for i in (0..32).step_by(8) {
-            let a = u64::from_le_bytes(self[i..i+8].try_into().unwrap());
-            let b = u64::from_le_bytes(rhs[i..i+8].try_into().unwrap());
+            let a = u64::from_le_bytes(self[i..i + 8].try_into().unwrap());
+            let b = u64::from_le_bytes(rhs[i..i + 8].try_into().unwrap());
 
             // Add previous carry to first number
             let sum = a.wrapping_add(b).wrapping_add(carry);
@@ -66,7 +66,7 @@ impl AddAssign for Seed {
                 0
             };
 
-            self[i..i+8].copy_from_slice(&sum.to_le_bytes());
+            self[i..i + 8].copy_from_slice(&sum.to_le_bytes());
         }
     }
 }
@@ -79,7 +79,7 @@ impl Default for Seed {
 
 impl Distribution<Seed> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Seed {
-        Seed(rng.random())   
+        Seed(rng.random())
     }
 }
 
@@ -118,7 +118,9 @@ impl From<i32> for Seed {
 
 impl From<String> for Seed {
     fn from(value: String) -> Self {
-        BigUint::from_str_radix(&value, 10).expect("not a valid seed string").into()
+        BigUint::from_str_radix(&value, 10)
+            .expect("not a valid seed string")
+            .into()
     }
 }
 
@@ -148,16 +150,24 @@ mod tests {
 
     #[test]
     fn serialize_seed() {
-        let bigint = BigUint::parse_bytes(b"111000000000000000000000000000000000000222", 10).unwrap();
+        let bigint =
+            BigUint::parse_bytes(b"111000000000000000000000000000000000000222", 10).unwrap();
         let result: BigUint = Seed::from(bigint.clone()).into();
         assert_eq!(result, bigint);
     }
 
     #[test]
     fn display_seed() {
-        let bigint = BigUint::parse_bytes(b"34028236692093846346337460743176821145500000000000000000000000000000000000000", 10).unwrap();
+        let bigint = BigUint::parse_bytes(
+            b"34028236692093846346337460743176821145500000000000000000000000000000000000000",
+            10,
+        )
+        .unwrap();
         let result = format!("{}", Seed::from(bigint.clone()));
-        assert_eq!(result, "34028236692093846346337460743176821145500000000000000000000000000000000000000");
+        assert_eq!(
+            result,
+            "34028236692093846346337460743176821145500000000000000000000000000000000000000"
+        );
     }
 
     #[test]
@@ -169,6 +179,9 @@ mod tests {
         let next1: u128 = rng1.random();
         let next2: u128 = rng2.random();
 
-        assert_eq!(next1, next2, "RNGs should produce the same sequence with the same seed");
+        assert_eq!(
+            next1, next2,
+            "RNGs should produce the same sequence with the same seed"
+        );
     }
 }

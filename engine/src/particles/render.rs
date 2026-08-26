@@ -102,8 +102,8 @@ impl<'a> ParticleRender<'a> {
         canvas: &mut WindowCanvas,
         texture_creator: &'a TextureCreator<WindowContext>,
     ) -> Result<Texture<'a>, String> {
-        let mut texture =
-            texture_creator.create_texture_target_blended(LINK_TEXTURE_WIDTH, LINK_TEXTURE_HEIGHT)?;
+        let mut texture = texture_creator
+            .create_texture_target_blended(LINK_TEXTURE_WIDTH, LINK_TEXTURE_HEIGHT)?;
         let mut result = Ok(());
         canvas
             .with_texture_canvas(&mut texture, |c| {
@@ -243,7 +243,14 @@ impl<'a> ParticleRender<'a> {
 
         // the emitted groups: fire and forget bursts, and everything the menus draw
         for particle in particles.group_particles() {
-            Self::draw_particle(canvas, scale, sprites, sprite_snips, theme_sprites, particle)?;
+            Self::draw_particle(
+                canvas,
+                scale,
+                sprites,
+                sprite_snips,
+                theme_sprites,
+                particle,
+            )?;
         }
 
         // then each pool, once, clipped to the area it owns. A field spanning two players is
@@ -266,7 +273,14 @@ impl<'a> ParticleRender<'a> {
                 canvas.set_blend_mode(BlendMode::None);
             }
             for particle in pool.particles() {
-                Self::draw_particle(canvas, scale, sprites, sprite_snips, theme_sprites, particle)?;
+                Self::draw_particle(
+                    canvas,
+                    scale,
+                    sprites,
+                    sprite_snips,
+                    theme_sprites,
+                    particle,
+                )?;
             }
         }
         canvas.set_clip_rect(None);

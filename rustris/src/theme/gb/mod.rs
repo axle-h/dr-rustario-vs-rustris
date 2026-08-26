@@ -80,7 +80,14 @@ pub fn game_boy_theme<'a>(
             previews: previews(),
             mascot: None,
         },
-        geometry: BoardGeometry::new(BLOCK_PIXELS, 0, (8, 0), BOARD_WIDTH, TOTAL_HEIGHT, VISIBLE_HEIGHT),
+        geometry: BoardGeometry::new(
+            BLOCK_PIXELS,
+            0,
+            (8, 0),
+            BOARD_WIDTH,
+            TOTAL_HEIGHT,
+            VISIBLE_HEIGHT,
+        ),
         audio: audio(
             config.audio,
             Sounds {
@@ -100,8 +107,18 @@ pub fn game_boy_theme<'a>(
             },
         )?,
         font: FontThemeOptions::simple(
-            retro_font(SPRITES, 2, |i| char_snip(3, i), |i| char_snip(i / 10, i % 10)),
-            hud(buffer, right((50, 25), 6), right((39, 52), 3), right((39, 78), 4)),
+            retro_font(
+                SPRITES,
+                2,
+                |i| char_snip(3, i),
+                |i| char_snip(i / 10, i % 10),
+            ),
+            hud(
+                buffer,
+                right((50, 25), 6),
+                right((39, 52), 3),
+                right((39, 78), 4),
+            ),
         ),
         board_file: BOARD_FILE,
         board_alpha: 0xbb,

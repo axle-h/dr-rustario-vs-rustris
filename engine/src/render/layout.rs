@@ -33,7 +33,11 @@ impl Margins {
 /// The biggest cell `themes` can reach with the window to themselves. A theme that renders
 /// its art at its final size is built to this, so it can match them however many players end
 /// up sharing the screen: it is drawn at its built size or smaller, but never larger.
-pub fn reference_block_size(themes: &[&Theme], window_size: (u32, u32), config: VideoConfig) -> u32 {
+pub fn reference_block_size(
+    themes: &[&Theme],
+    window_size: (u32, u32),
+    config: VideoConfig,
+) -> u32 {
     let area = player_area(0, 1, window_size);
     themes
         .iter()
@@ -51,7 +55,9 @@ fn max_block_size(theme: &Theme, area: Rect, config: VideoConfig) -> u32 {
         theme.scale_mode(),
         config.integer_scale,
     );
-    (theme.geometry().block_size() as f64 * scale).floor().max(1.0) as u32
+    (theme.geometry().block_size() as f64 * scale)
+        .floor()
+        .max(1.0) as u32
 }
 
 /// The themes one player cycles through, laid out together: they take the largest cell pitch

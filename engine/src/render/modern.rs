@@ -17,7 +17,9 @@ use crate::render::metrics_table::{metric_label, GameMetricsTable};
 use crate::render::scene::{ClearParticles, SceneType};
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
-use crate::render::{HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme, ThemeFamily};
+use crate::render::{
+    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme, ThemeFamily,
+};
 use crate::scale::ScaleMode;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
@@ -156,7 +158,8 @@ pub fn modern_theme<'a>(
     );
 
     let mut sprite_data = options.sprites;
-    if let (Some(mascot), Some((_, height_in_blocks))) = (sprite_data.mascot.as_mut(), options.mascot)
+    if let (Some(mascot), Some((_, height_in_blocks))) =
+        (sprite_data.mascot.as_mut(), options.mascot)
     {
         // the mascot is scaled to a height in blocks, taking its tallest strip as reference
         let reference = mascot
@@ -173,38 +176,39 @@ pub fn modern_theme<'a>(
     let side_y = skyline as i32;
     let side_x = board_bg_snip.right() + vertical_gutter as i32;
 
-    let (mascot_layout, mascot_meta, side_width, hand_point) = match (sprites.mascot(), options.mascot)
-    {
-        (Some(mascot), Some((types, _))) => {
-            let sizes = [
-                MascotKind::Spawn,
-                MascotKind::GameOver,
-                MascotKind::Victory,
-                MascotKind::Idle,
-            ]
-            .map(|kind| mascot.sheet(kind).frame_size());
-            let width = sizes.iter().map(|(w, _)| *w).max().unwrap();
-            let height = sizes.iter().map(|(_, h)| *h).max().unwrap();
-            let point = |kind_height: u32| Point::new(side_x, side_y + (height - kind_height) as i32);
-            // HACK the hand point is empirical... how else would we find it?!
-            let hand_point = Point::new(side_x, side_y + 10 * height as i32 / 19);
-            let layout = MascotLayout {
-                hand_point,
-                spawn_point: point(sizes[0].1),
-                game_over_point: point(sizes[1].1),
-                victory_point: point(sizes[2].1),
-                draw_first: true,
-            };
-            let meta = types.with_frames(
-                mascot.sheet(MascotKind::Idle).frame_count(),
-                mascot.sheet(MascotKind::Spawn).frame_count(),
-                mascot.sheet(MascotKind::Victory).frame_count(),
-                mascot.sheet(MascotKind::GameOver).frame_count(),
-            );
-            (Some(layout), Some(meta), width, hand_point)
-        }
-        _ => (None, None, big_slot_size, Point::new(side_x, side_y)),
-    };
+    let (mascot_layout, mascot_meta, side_width, hand_point) =
+        match (sprites.mascot(), options.mascot) {
+            (Some(mascot), Some((types, _))) => {
+                let sizes = [
+                    MascotKind::Spawn,
+                    MascotKind::GameOver,
+                    MascotKind::Victory,
+                    MascotKind::Idle,
+                ]
+                .map(|kind| mascot.sheet(kind).frame_size());
+                let width = sizes.iter().map(|(w, _)| *w).max().unwrap();
+                let height = sizes.iter().map(|(_, h)| *h).max().unwrap();
+                let point =
+                    |kind_height: u32| Point::new(side_x, side_y + (height - kind_height) as i32);
+                // HACK the hand point is empirical... how else would we find it?!
+                let hand_point = Point::new(side_x, side_y + 10 * height as i32 / 19);
+                let layout = MascotLayout {
+                    hand_point,
+                    spawn_point: point(sizes[0].1),
+                    game_over_point: point(sizes[1].1),
+                    victory_point: point(sizes[2].1),
+                    draw_first: true,
+                };
+                let meta = types.with_frames(
+                    mascot.sheet(MascotKind::Idle).frame_count(),
+                    mascot.sheet(MascotKind::Spawn).frame_count(),
+                    mascot.sheet(MascotKind::Victory).frame_count(),
+                    mascot.sheet(MascotKind::GameOver).frame_count(),
+                );
+                (Some(layout), Some(meta), width, hand_point)
+            }
+            _ => (None, None, big_slot_size, Point::new(side_x, side_y)),
+        };
 
     let mut borders = vec![];
     let step = BOARD_BORDER_SHADOW / border_weight.max(1) as u8;
@@ -276,9 +280,7 @@ pub fn modern_theme<'a>(
     });
 
     let animation_meta = AnimationMeta {
-        destroy: options
-            .destroy_style
-            .unwrap_or_else(|| sprites.pop_style()),
+        destroy: options.destroy_style.unwrap_or_else(|| sprites.pop_style()),
         game_over: options
             .game_over_style
             .unwrap_or(GameOverStyle::Screen { frames: 1 }),

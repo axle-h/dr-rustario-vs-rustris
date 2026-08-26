@@ -96,14 +96,22 @@ impl<'a> HighScoreViewScreen<'a> {
             match key {
                 MenuInputKey::Left | MenuInputKey::Up if self.tables.len() > 1 => {
                     self.index = (self.index + self.tables.len() - 1) % self.tables.len();
-                    self.view =
-                        Self::build(self.texture_creator, &self.tables, self.window_size, self.index)?;
+                    self.view = Self::build(
+                        self.texture_creator,
+                        &self.tables,
+                        self.window_size,
+                        self.index,
+                    )?;
                     app.menu_sound.play_chime()?;
                 }
                 MenuInputKey::Right | MenuInputKey::Down if self.tables.len() > 1 => {
                     self.index = (self.index + 1) % self.tables.len();
-                    self.view =
-                        Self::build(self.texture_creator, &self.tables, self.window_size, self.index)?;
+                    self.view = Self::build(
+                        self.texture_creator,
+                        &self.tables,
+                        self.window_size,
+                        self.index,
+                    )?;
                     app.menu_sound.play_chime()?;
                 }
                 _ => return Ok(Some(())),

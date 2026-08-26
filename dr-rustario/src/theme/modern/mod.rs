@@ -102,7 +102,12 @@ fn color_animations(
         color,
         AnimationSpriteSheetData::exclusive_square_linear(virus_idle),
         AnimationSpriteSheetData::static_first_square_frame(virus_idle),
-        strip(sprites::VITAMINS, block(garbage_i, 3), 1, sprites::SRC_BLOCK_SIZE),
+        strip(
+            sprites::VITAMINS,
+            block(garbage_i, 3),
+            1,
+            sprites::SRC_BLOCK_SIZE,
+        ),
     )
 }
 
@@ -113,8 +118,12 @@ pub fn modern_dr_theme<'a>(
     block_size: u32,
 ) -> Result<Theme<'a>, String> {
     let mascot_types = MascotAnimationTypes {
-        idle: FrameAnimationType::Linear { fps: sprites::DR_FPS },
-        spawn: FrameAnimationType::Linear { fps: sprites::DR_FPS },
+        idle: FrameAnimationType::Linear {
+            fps: sprites::DR_FPS,
+        },
+        spawn: FrameAnimationType::Linear {
+            fps: sprites::DR_FPS,
+        },
         victory: FrameAnimationType::LinearWithPause {
             fps: sprites::DR_FPS,
             pause_for: Duration::from_secs(3),

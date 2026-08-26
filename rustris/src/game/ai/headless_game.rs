@@ -1,8 +1,8 @@
 use crate::game::ai::action_evaluator::ActionEvaluator;
 use crate::game::ai::agent::AiAgent;
-use engine::ai::{EndGame, GameResult};
 use crate::game::random::{RandomMode, RandomTetromino, Seed, MIN_GARBAGE_PER_HOLE};
 use crate::game::Game;
+use engine::ai::{EndGame, GameResult};
 use engine::game::{Game as _, GameEvent};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -39,10 +39,10 @@ impl HeadlessGame {
             tetris_lines: 0,
             lines: 0,
             options,
-            end_game
+            end_game,
         }
     }
-    
+
     pub fn play(&mut self) -> GameResult {
         loop {
             if let Some(result) = self.update() {
@@ -96,7 +96,7 @@ impl HeadlessGame {
             self.game_over,
             self.duration,
         )
-            .with_pieces(self.pieces, self.tetris_lines)
+        .with_pieces(self.pieces, self.tetris_lines)
     }
 }
 
@@ -116,8 +116,8 @@ impl Default for HeadlessGameOptions {
             step: Duration::from_millis(16), // 60hz
             line_clear_delay: LINE_CLEAR_DURATION,
             look_ahead: DEFAULT_LOOKAHEAD,
-            record: false
-        }   
+            record: false,
+        }
     }
 }
 
@@ -172,14 +172,14 @@ impl HeadlessGameFixture {
     pub fn next_seed(&mut self) {
         self.seed += Seed::from(self.seeds_per_game as u128);
     }
-    
+
     pub fn current_seed(&self) -> Seed {
         self.seed
     }
 
     /// play one game per seed and return the averaged result
     pub fn play(&self, action_evaluate: ActionEvaluator) -> GameResult {
-        let total: GameResult = (0 .. self.seeds_per_game as u128)
+        let total: GameResult = (0..self.seeds_per_game as u128)
             .map(|i| self.play_seed(action_evaluate, self.seed + Seed::from(i)))
             .sum();
         total / self.seeds_per_game
@@ -201,28 +201,29 @@ impl HeadlessGameFixture {
                 .expect("Time went backwards");
             // TODO return this somehow
             let path = format!("game-{}.json", system_time.as_secs());
-            game.agent.save_recording(path).expect("Failed to save recording");
+            game.agent
+                .save_recording(path)
+                .expect("Failed to save recording");
         }
 
         result
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::game::ai::linear::LinearCoefficients;
     use super::*;
+    use crate::game::ai::linear::LinearCoefficients;
 
     fn test_fixture() -> HeadlessGameFixture {
         HeadlessGameFixture::new(
             RandomMode::Bag,
             100.into(),
             HeadlessGameOptions::default(),
-            EndGame::of_seconds(5)
+            EndGame::of_seconds(5),
         )
     }
-    
+
     #[test]
     fn runs_headless_game() {
         let fixture = test_fixture();
@@ -237,7 +238,7 @@ mod tests {
             RandomMode::Bag,
             100.into(),
             HeadlessGameOptions::default(),
-            EndGame::of_cleared(3)
+            EndGame::of_cleared(3),
         );
         let result = fixture.play(ActionEvaluator::Linear(LinearCoefficients::default()));
         assert!(result.cleared() >= 3);
@@ -250,7 +251,7 @@ mod tests {
             RandomMode::Bag,
             100.into(),
             HeadlessGameOptions::default(),
-            EndGame::of_pieces(100)
+            EndGame::of_pieces(100),
         );
         let result = fixture.play(ActionEvaluator::Linear(LinearCoefficients::default()));
         assert_eq!(result.pieces(), 100);
@@ -265,8 +266,9 @@ mod tests {
             RandomMode::Bag,
             100.into(),
             HeadlessGameOptions::default(),
-            EndGame::of_pieces(50)
-        ).with_seeds_per_game(2);
+            EndGame::of_pieces(50),
+        )
+        .with_seeds_per_game(2);
         let evaluator = ActionEvaluator::Linear(LinearCoefficients::default());
         let averaged = fixture.play(evaluator);
         let a = fixture.play_seed(evaluator, 100.into());

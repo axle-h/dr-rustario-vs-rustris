@@ -1,8 +1,8 @@
 use crate::game::bottle::{BOTTLE_HEIGHT, BOTTLE_WIDTH};
 use crate::game::pill::VirusColor;
 use crate::theme::data::{
-    animations, audio, cells, hud, mascot, previews, retro_mascot, spawn_cell, strip,
-    ColorLayout, Sounds, NES_SNES_VICTORY,
+    animations, audio, cells, hud, mascot, previews, retro_mascot, spawn_cell, strip, ColorLayout,
+    Sounds, NES_SNES_VICTORY,
 };
 use engine::animate::frames::FrameAnimationType;
 use engine::config::Config;
@@ -73,7 +73,13 @@ fn layout(j: i32) -> ColorLayout {
     }
 }
 
-fn color_animations(color: VirusColor, j: i32) -> Vec<(Vec<engine::game::CellId>, engine::render::sprite_sheet::CellAnimationData)> {
+fn color_animations(
+    color: VirusColor,
+    j: i32,
+) -> Vec<(
+    Vec<engine::game::CellId>,
+    engine::render::sprite_sheet::CellAnimationData,
+)> {
     animations(
         color,
         strip(sprites::VITAMINS, block(6, j), 2, BLOCK_SIZE),

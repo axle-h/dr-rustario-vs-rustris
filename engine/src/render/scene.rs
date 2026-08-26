@@ -6,11 +6,11 @@ use crate::particles::prescribed::{
 use crate::render::helper::TextureFactory;
 use crate::scale::Scale;
 use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::Rect;
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
-use sdl2::pixels::PixelFormatEnum::RGBA8888;
 
 /// How a particle scene shows cleared cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -62,7 +62,12 @@ impl From<DrCell> for CellId {
                 color,
                 rotation,
                 ordinal,
-            } => (KIND_VITAMIN, color, rotation_index(rotation), ordinal as u16),
+            } => (
+                KIND_VITAMIN,
+                color,
+                rotation_index(rotation),
+                ordinal as u16,
+            ),
             DrCell::Garbage(color) => (KIND_GARBAGE, color, 0, 0),
             DrCell::Virus(color) => (KIND_VIRUS, color, 0, 0),
         };
@@ -205,7 +210,12 @@ mod tests {
         for color in [VirusColor::Yellow, VirusColor::Blue, VirusColor::Red] {
             cells.push(DrCell::Garbage(color));
             cells.push(DrCell::Virus(color));
-            for rotation in [Rotation::North, Rotation::East, Rotation::South, Rotation::West] {
+            for rotation in [
+                Rotation::North,
+                Rotation::East,
+                Rotation::South,
+                Rotation::West,
+            ] {
                 for ordinal in [VitaminOrdinal::Left, VitaminOrdinal::Right] {
                     cells.push(DrCell::Vitamin {
                         color,
@@ -229,7 +239,12 @@ mod tests {
 
     #[test]
     fn garbage_colors_round_trip() {
-        let colors = vec![VirusColor::Red, VirusColor::Yellow, VirusColor::Yellow, VirusColor::Blue];
+        let colors = vec![
+            VirusColor::Red,
+            VirusColor::Yellow,
+            VirusColor::Yellow,
+            VirusColor::Blue,
+        ];
         assert_eq!(decode_garbage(encode_garbage(&colors)), colors);
         assert_eq!(decode_garbage(encode_garbage(&[])), vec![]);
     }

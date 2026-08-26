@@ -1,13 +1,13 @@
+use crate::ai::generation_stats::GenerationStatistics;
 use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::ai::generation_stats::GenerationStatistics;
 
 pub struct GenerationRecord {
     file: File,
-    path: PathBuf
+    path: PathBuf,
 }
 
 impl GenerationRecord {
@@ -24,7 +24,7 @@ impl GenerationRecord {
         writeln!(record.file, "Generation,Phase,Fitness,Score,Cleared,Bonus,Pieces,Fitness P95,Score P95,Cleared P95,Bonus P95,Fitness P50,Score P50,Cleared P50,Bonus P50,Seed,Genome")?;
         Ok(record)
     }
-    
+
     pub fn path(&self) -> &Path {
         self.path.as_path()
     }
@@ -52,6 +52,4 @@ impl GenerationRecord {
             stats.max().genome()
         )
     }
-
-
 }

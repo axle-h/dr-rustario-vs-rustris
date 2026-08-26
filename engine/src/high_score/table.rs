@@ -197,7 +197,11 @@ impl HighScoreStore {
             }
             Err(error) => return Err(error.to_string()),
         };
-        for table in store.tables.values_mut().flat_map(|modes| modes.values_mut()) {
+        for table in store
+            .tables
+            .values_mut()
+            .flat_map(|modes| modes.values_mut())
+        {
             table.normalise();
         }
         Ok(store)
@@ -286,14 +290,21 @@ mod tests {
         assert!(table.is_high_score(75_000));
         table.add_high_score(HighScore::new("new", 75_000));
         assert_eq!(
-            table.entries().iter().map(|s| s.score).collect::<Vec<u32>>(),
+            table
+                .entries()
+                .iter()
+                .map(|s| s.score)
+                .collect::<Vec<u32>>(),
             vec![60_000, 75_000, 90_000, 120_000, 150_000]
         );
     }
 
     #[test]
     fn a_time_table_sorts_ascending_when_loaded() {
-        let table = times(vec![HighScore::new("B", 90_000), HighScore::new("A", 60_000)]);
+        let table = times(vec![
+            HighScore::new("B", 90_000),
+            HighScore::new("A", 60_000),
+        ]);
         assert_eq!(table.entries()[0].name, "A");
     }
 
@@ -316,7 +327,10 @@ mod tests {
         store.set(&key, table);
         let stored = store.table(&key);
         assert_eq!(stored.entries()[0], HighScore::new("A", 60_000));
-        assert_eq!(stored.entries()[1..], HighScoreTable::new(Ranking::LowestTime).entries()[..4]);
+        assert_eq!(
+            stored.entries()[1..],
+            HighScoreTable::new(Ranking::LowestTime).entries()[..4]
+        );
         let all = store.all().collect::<Vec<_>>();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].0, "Rustris");
@@ -337,8 +351,14 @@ mod tests {
         let scores = HighScoreKey::new("versus", "theme race, easy", Ranking::HighestScore);
         store.set(&scores, HighScoreTable::new(Ranking::HighestScore));
         let times = HighScoreKey::new("versus", "theme race, easy", Ranking::LowestTime);
-        assert_eq!(store.table(&times), HighScoreTable::new(Ranking::LowestTime));
-        assert_eq!(store.table(&scores), HighScoreTable::new(Ranking::HighestScore));
+        assert_eq!(
+            store.table(&times),
+            HighScoreTable::new(Ranking::LowestTime)
+        );
+        assert_eq!(
+            store.table(&scores),
+            HighScoreTable::new(Ranking::HighestScore)
+        );
     }
 
     #[test]

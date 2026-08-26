@@ -115,7 +115,9 @@ impl<'a> MatchEndSprites<'a> {
     fn dest(&self, snip: Rect, game_snip: Rect) -> Rect {
         match self.fit {
             OverlayFit::Stretch => game_snip,
-            OverlayFit::Center => Rect::from_center(game_snip.center(), snip.width(), snip.height()),
+            OverlayFit::Center => {
+                Rect::from_center(game_snip.center(), snip.width(), snip.height())
+            }
         }
     }
 }
@@ -281,11 +283,10 @@ impl<'a> Theme<'a> {
 
     fn draw_hold(&self, canvas: &mut WindowCanvas, piece: PieceId) -> Result<(), String> {
         match &self.hold {
-            Some(HoldLayout::Point { point, scale }) => {
-                self.sprites
-                    .previews()
-                    .draw_piece(canvas, piece, *point, None, *scale)
-            }
+            Some(HoldLayout::Point { point, scale }) => self
+                .sprites
+                .previews()
+                .draw_piece(canvas, piece, *point, None, *scale),
             Some(HoldLayout::Slot { slot, max_scale }) => self
                 .sprites
                 .previews()

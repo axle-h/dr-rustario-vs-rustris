@@ -1,12 +1,12 @@
+use crate::audio::MAX_VOLUME;
 use crate::game_input::GameInputKey;
 use crate::menu_input::MenuInputKey;
+use confy::ConfyError;
 use sdl2::keyboard::Keycode;
-use crate::audio::MAX_VOLUME;
+use sdl2::sys;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use confy::ConfyError;
-use sdl2::sys;
 use strum::IntoEnumIterator;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,13 +72,22 @@ impl InputConfig {
             (self.quit.into(), GameInputKey::ReturnToMenu),
             (self.pause.into(), GameInputKey::Pause),
             (self.next_theme.into(), GameInputKey::NextTheme),
-            (self.player1.move_left.into(), GameInputKey::MoveLeft { player: 0 }),
+            (
+                self.player1.move_left.into(),
+                GameInputKey::MoveLeft { player: 0 },
+            ),
             (
                 self.player1.move_right.into(),
                 GameInputKey::MoveRight { player: 0 },
             ),
-            (self.player1.soft_drop.into(), GameInputKey::SoftDrop { player: 0 }),
-            (self.player1.hard_drop.into(), GameInputKey::HardDrop { player: 0 }),
+            (
+                self.player1.soft_drop.into(),
+                GameInputKey::SoftDrop { player: 0 },
+            ),
+            (
+                self.player1.hard_drop.into(),
+                GameInputKey::HardDrop { player: 0 },
+            ),
             (
                 self.player1.rotate_anticlockwise.into(),
                 GameInputKey::RotateAnticlockwise { player: 0 },
@@ -264,10 +273,14 @@ impl Default for Config {
                     hold: GameKey::LShift,
                 },
                 player2: None,
-                #[cfg(feature = "portmaster")] pause: GameKey::Return,
-                #[cfg(not(feature = "portmaster"))] pause: GameKey::F1,
-                #[cfg(feature = "portmaster")] next_theme: GameKey::RShift,
-                #[cfg(not(feature = "portmaster"))] next_theme: GameKey::F2,
+                #[cfg(feature = "portmaster")]
+                pause: GameKey::Return,
+                #[cfg(not(feature = "portmaster"))]
+                pause: GameKey::F1,
+                #[cfg(feature = "portmaster")]
+                next_theme: GameKey::RShift,
+                #[cfg(not(feature = "portmaster"))]
+                next_theme: GameKey::F2,
                 quit: GameKey::Escape,
             },
         }
@@ -289,8 +302,7 @@ pub fn config_path(name: &str) -> Result<PathBuf, String> {
 
 #[cfg(not(any(feature = "portmaster", feature = "browser")))]
 pub fn config_path(name: &str) -> Result<PathBuf, String> {
-    confy::get_configuration_file_path(crate::app_info::get().name, name)
-        .map_err(|e| e.to_string())
+    confy::get_configuration_file_path(crate::app_info::get().name, name).map_err(|e| e.to_string())
 }
 
 impl Config {
@@ -303,7 +315,11 @@ impl Config {
         match confy::load_path(&config_path) {
             Ok(config) => Ok(config),
             Err(ConfyError::BadYamlData(error)) => {
-                println!("Bad config file at {}, {}, loading defaults", config_path.to_str().unwrap(), error);
+                println!(
+                    "Bad config file at {}, {}, loading defaults",
+                    config_path.to_str().unwrap(),
+                    error
+                );
                 Ok(Self::default())
             }
             Err(error) => Err(format!("{}", error)),
@@ -551,11 +567,12 @@ pub enum GameKey {
     Sleep = sys::SDL_KeyCode::SDLK_SLEEP as i32,
 }
 
-
 impl From<Keycode> for GameKey {
     fn from(value: Keycode) -> Self {
         let code = value.into_i32();
-        Self::iter().find(|&e| code == e as i32).expect("Invalid keycode")
+        Self::iter()
+            .find(|&e| code == e as i32)
+            .expect("Invalid keycode")
     }
 }
 

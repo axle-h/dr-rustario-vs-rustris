@@ -1,16 +1,16 @@
 pub mod sound;
 
+use crate::draw::CanvasExt;
 use crate::font::{FontTexture, FontType};
 use crate::menu_input::MenuInputKey;
-use crate::draw::CanvasExt;
 
+use crate::app_info;
+use crate::font::Font;
+use crate::render::helper::TextureFactory;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
-use crate::font::Font;
 use sdl2::video::WindowContext;
-use crate::app_info;
-use crate::render::helper::TextureFactory;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuAction {
@@ -143,7 +143,8 @@ impl<'a> MenuRow<'a> {
             name_text.width + font.height() as u32,
             font.height() as u32 + 10,
         );
-        let mut texture = texture_creator.create_texture_target_blended(rect.width(), rect.height())?;
+        let mut texture =
+            texture_creator.create_texture_target_blended(rect.width(), rect.height())?;
         canvas
             .with_texture_canvas(&mut texture, |c| {
                 c.set_draw_color(Color::RGBA(0, 0, 0, 0));
@@ -217,7 +218,8 @@ impl<'a> Body<'a> {
             y += row_height as i32 + vertical_gutter as i32;
         }
 
-        let body_texture = texture_creator.create_texture_target_blended(body_width, body_height)?;
+        let body_texture =
+            texture_creator.create_texture_target_blended(body_width, body_height)?;
 
         let mut select_list_background =
             texture_creator.create_texture_target_blended(body_width, row_height)?;
@@ -285,7 +287,12 @@ impl<'a> Menu<'a> {
 
         let watermark_font_size = 3 * font_size / 5;
         let watermark_font = FontType::Retro.load(watermark_font_size)?;
-        let watermark = format!("{} v{} by {}", app_info::get().name, app_info::get().version, app_info::get().authors);
+        let watermark = format!(
+            "{} v{} by {}",
+            app_info::get().name,
+            app_info::get().version,
+            app_info::get().authors
+        );
         let watermark_texture =
             FontTexture::from_string(&watermark_font, texture_creator, &watermark, Color::WHITE)?;
         let watermark_rect = Rect::new(
@@ -484,11 +491,8 @@ impl<'a> Menu<'a> {
                         // right-aligned at its natural size (stretching to the row distorts
                         // the text), inset half a row height for the rounded bg
                         let rect = Rect::new(
-                            row_rect.right()
-                                - texture.width as i32
-                                - row_rect.height() as i32 / 2,
-                            row_rect.y()
-                                + (row_rect.height() as i32 - texture.height as i32) / 2,
+                            row_rect.right() - texture.width as i32 - row_rect.height() as i32 / 2,
+                            row_rect.y() + (row_rect.height() as i32 - texture.height as i32) / 2,
                             texture.width,
                             texture.height,
                         );

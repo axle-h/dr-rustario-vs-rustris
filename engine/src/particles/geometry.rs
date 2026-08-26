@@ -236,9 +236,15 @@ mod tests {
         let whole = RectF::new(0.0, 0.0, 1.0, 1.0);
         let half = RectF::new(0.5, 0.0, 0.5, 1.0);
         // dead centre of the window is dead centre of the right half
-        assert_eq!(whole.remap(Vec2D::new(0.5, 0.5), &half), Vec2D::new(0.75, 0.5));
+        assert_eq!(
+            whole.remap(Vec2D::new(0.5, 0.5), &half),
+            Vec2D::new(0.75, 0.5)
+        );
         // and back again
-        assert_eq!(half.remap(Vec2D::new(0.75, 0.5), &whole), Vec2D::new(0.5, 0.5));
+        assert_eq!(
+            half.remap(Vec2D::new(0.75, 0.5), &whole),
+            Vec2D::new(0.5, 0.5)
+        );
     }
 
     #[test]

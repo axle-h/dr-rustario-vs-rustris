@@ -1,7 +1,7 @@
-use std::fmt::{Display, Formatter};
 use crate::ai::game_result::GameResult;
 use crate::ai::genome::Genome;
 use crate::ai::objective::Objective;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Organism<const GENOME: usize> {
@@ -11,7 +11,10 @@ pub struct Organism<const GENOME: usize> {
 
 impl<const GENOME: usize> Organism<GENOME> {
     pub fn new(genome: Genome<GENOME>) -> Self {
-        Self { genome, result: None }
+        Self {
+            genome,
+            result: None,
+        }
     }
 
     pub fn genome(&self) -> Genome<GENOME> {
@@ -21,17 +24,20 @@ impl<const GENOME: usize> Organism<GENOME> {
     pub fn result(&self) -> GameResult {
         self.result.unwrap()
     }
-    
+
     pub fn fitness(&self, objective: Objective) -> f64 {
         objective.fitness(&self.result())
     }
 
-    pub fn set_result<F>(&mut self, f: F) where F : FnOnce(&Genome<GENOME>) -> GameResult {
+    pub fn set_result<F>(&mut self, f: F)
+    where
+        F: FnOnce(&Genome<GENOME>) -> GameResult,
+    {
         if self.result.is_none() {
             self.result = Some(f(&self.genome));
         }
     }
-    
+
     pub fn unset_result(&mut self) {
         self.result = None;
     }

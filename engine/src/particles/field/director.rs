@@ -342,7 +342,9 @@ mod tests {
             .count();
         assert!(features >= 2, "{transitions:?}");
         // every gather is followed by a hold, a shatter and a return to ambient
-        let mut iter = transitions.iter().skip_while(|t| !matches!(t, Transition::Gather(_)));
+        let mut iter = transitions
+            .iter()
+            .skip_while(|t| !matches!(t, Transition::Gather(_)));
         let Some(Transition::Gather(feature)) = iter.next() else {
             panic!("{transitions:?}")
         };
@@ -362,10 +364,7 @@ mod tests {
             })
             .collect::<Vec<Feature>>();
         assert!(features.len() > 5, "{features:?}");
-        assert!(
-            features.windows(2).all(|w| w[0] != w[1]),
-            "{features:?}"
-        );
+        assert!(features.windows(2).all(|w| w[0] != w[1]), "{features:?}");
     }
 
     #[test]

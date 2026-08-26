@@ -68,9 +68,7 @@ impl Scorer {
     pub fn evaluate(&self, features: BottleFeatures) -> f64 {
         match self {
             Scorer::Linear => linear(features),
-            Scorer::Network(network) => {
-                network.forward(&Tensor::vector(inputs(features))).value()
-            }
+            Scorer::Network(network) => network.forward(&Tensor::vector(inputs(features))).value(),
         }
     }
 }
@@ -81,8 +79,7 @@ fn linear(features: BottleFeatures) -> f64 {
     let delta = features.delta();
 
     // delta.viruses() is negative when the placement killed some
-    -1000.0 * delta.viruses() as f64
-        - 40.0 * delta.virus_work() as f64
+    -1000.0 * delta.viruses() as f64 - 40.0 * delta.virus_work() as f64
         + 60.0 * delta.virus_near_3() as f64
         + 12.0 * delta.virus_near_2() as f64
         + 6.0 * delta.block_near_3() as f64

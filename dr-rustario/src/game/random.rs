@@ -2,8 +2,8 @@ use crate::game::block::Block;
 use crate::game::bottle::{BOTTLE_HEIGHT, BOTTLE_WIDTH, TOTAL_BLOCKS};
 use crate::game::geometry::BottlePoint;
 use crate::game::pill::{PillShape, VirusColor};
-pub use engine::game::random::{RandomMode, Seed};
 use engine::game::random::BagRandom;
+pub use engine::game::random::{RandomMode, Seed};
 use rand::distr::StandardUniform;
 use rand::prelude::*;
 use rand_chacha::ChaChaRng;
@@ -17,7 +17,11 @@ pub const MAX_VIRUSES: u32 = 99;
 /// how many viruses a bottle at `virus_level` is dealt
 pub const fn viruses_at_level(virus_level: u32) -> u32 {
     let target = virus_level * 4 + 4;
-    if target > MAX_VIRUSES { MAX_VIRUSES } else { target }
+    if target > MAX_VIRUSES {
+        MAX_VIRUSES
+    } else {
+        target
+    }
 }
 
 impl Distribution<VirusColor> for StandardUniform {

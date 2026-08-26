@@ -1,13 +1,13 @@
-use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet, VecDeque};
-use itertools::Itertools;
-use Translation::{HardDrop, Left, Right, RotateAnticlockwise, RotateClockwise};
 use crate::game::ai::apply_inputs::ApplyInputs;
-use crate::game::ai::input_sequence::{InputSequence, ResolvedInputSequence, Translation};
 use crate::game::ai::input_sequence::Translation::SoftDrop;
+use crate::game::ai::input_sequence::{InputSequence, ResolvedInputSequence, Translation};
 use crate::game::board::Board;
 use crate::game::geometry::Pose;
 use crate::game::tetromino::{Minos, TetrominoShape};
+use itertools::Itertools;
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet, VecDeque};
+use Translation::{HardDrop, Left, Right, RotateAnticlockwise, RotateClockwise};
 
 pub trait InputSearch {
     fn search_all_inputs(self, shape: TetrominoShape) -> Vec<InputSequenceResult>;
@@ -40,7 +40,7 @@ impl InputSequenceResult {
     pub fn board(&self) -> Board {
         self.board
     }
-    
+
     pub fn board_mut(&mut self) -> &mut Board {
         &mut self.board
     }
@@ -54,7 +54,7 @@ struct Search {
     board: Board,
     visited: HashSet<Pose>,
     results: HashMap<Minos, InputSequenceResult>,
-    visit_queue: VecDeque<InputSequence>
+    visit_queue: VecDeque<InputSequence>,
 }
 
 impl Search {
@@ -83,7 +83,7 @@ impl Search {
                 continue;
             }
             self.next_translations(&inputs);
-            
+
             // soft drop is emulated with hard drop on a model-less board
             let inputs = if current_board.hard_drop().is_some() {
                 inputs.clone() + drop_type
@@ -93,13 +93,14 @@ impl Search {
             self.try_insert_result(&current_board, &inputs);
         }
     }
-    
+
     pub fn search_translations_from_current_results(&mut self) {
         // `results` is a HashMap with randomised iteration order. The order in which poses are
         // expanded decides which input sequence first claims a pose in `visited`, so the seeds
         // must be expanded in a deterministic order or the chosen inputs (and via the tie-break
         // in the agent, the chosen placement) change from run to run.
-        let seeds: Vec<InputSequence> = self.results
+        let seeds: Vec<InputSequence> = self
+            .results
             .values()
             .map(|result| {
                 let mut inputs = result.inputs.clone();
@@ -115,7 +116,7 @@ impl Search {
             self.next_translations(&inputs);
         }
     }
-    
+
     pub fn into_results(self) -> Vec<InputSequenceResult> {
         let mut values: Vec<InputSequenceResult> = self.results.into_values().sorted().collect();
         for result in values.iter_mut() {
@@ -127,7 +128,7 @@ impl Search {
     fn try_insert_result(&mut self, board: &Board, inputs: &InputSequence) {
         let mut minos = board.tetromino().unwrap().minos();
         minos.sort(); // keying by sorted minos disregards mirrored Poses
-        
+
         let existing = self.results.get(&minos);
         let should_set = if let Some(existing) = existing {
             inputs < &existing.inputs
@@ -135,13 +136,21 @@ impl Search {
             true
         };
         if should_set {
-            self.results.insert(minos, InputSequenceResult { board: *board, inputs: inputs.clone(), minos });
+            self.results.insert(
+                minos,
+                InputSequenceResult {
+                    board: *board,
+                    inputs: inputs.clone(),
+                    minos,
+                },
+            );
         }
     }
 
     fn next_translations(&mut self, inputs: &InputSequence) {
         for next_translation in [Left, Right, RotateClockwise, RotateAnticlockwise] {
-            self.visit_queue.push_back(inputs.clone() + next_translation);
+            self.visit_queue
+                .push_back(inputs.clone() + next_translation);
         }
     }
 }
@@ -154,12 +163,12 @@ impl InputSearch for Board {
                 self.clear_tetromino();
             }
         }
-        
+
         if self.tetromino().is_none() && self.try_spawn_tetromino(shape).is_none() {
             // cannot even spawn the shape, no possible inputs
             return vec![];
         }
-        
+
         let mut search = Search::new(self);
         search.search_after_drop(HardDrop);
         search.search_translations_from_current_results();
@@ -170,9 +179,9 @@ impl InputSearch for Board {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::game::block::BlockState;
     use crate::game::geometry::Rotation;
-    use super::*;
 
     #[test]
     fn searches() {
@@ -184,7 +193,10 @@ mod tests {
     #[test]
     fn searches_with_open_hole() {
         let mut board = Board::new();
-        board.set_block((0, 1), BlockState::Stack(TetrominoShape::I, Rotation::North, 0));
+        board.set_block(
+            (0, 1),
+            BlockState::Stack(TetrominoShape::I, Rotation::North, 0),
+        );
         let inputs = board.search_all_inputs(TetrominoShape::I);
         assert_eq!(inputs.len(), 18); // 7 flat positions + 10 upright positions + 1 open hole position
     }
@@ -211,21 +223,34 @@ mod tests {
             for (y, row) in rows.iter().enumerate() {
                 for (x, c) in row.chars().enumerate() {
                     if c == 'S' {
-                        board.set_block((x as i32, y as i32), BlockState::Stack(TetrominoShape::S, Rotation::North, 0));
+                        board.set_block(
+                            (x as i32, y as i32),
+                            BlockState::Stack(TetrominoShape::S, Rotation::North, 0),
+                        );
                     }
                 }
             }
             board
         }
 
-        let expected: Vec<InputSequence> = board().search_all_inputs(TetrominoShape::S)
-            .into_iter().map(|r| r.inputs().clone()).collect();
+        let expected: Vec<InputSequence> = board()
+            .search_all_inputs(TetrominoShape::S)
+            .into_iter()
+            .map(|r| r.inputs().clone())
+            .collect();
         let tuck = InputSequence::new(vec![Left, SoftDrop, RotateClockwise, RotateClockwise]);
-        assert!(expected.contains(&tuck), "expected the canonical tuck sequence, got {:?}", expected);
+        assert!(
+            expected.contains(&tuck),
+            "expected the canonical tuck sequence, got {:?}",
+            expected
+        );
         assert_eq!(expected.len(), 18);
         for _ in 0..100 {
-            let again: Vec<InputSequence> = board().search_all_inputs(TetrominoShape::S)
-                .into_iter().map(|r| r.inputs().clone()).collect();
+            let again: Vec<InputSequence> = board()
+                .search_all_inputs(TetrominoShape::S)
+                .into_iter()
+                .map(|r| r.inputs().clone())
+                .collect();
             assert_eq!(again, expected);
         }
     }
@@ -233,8 +258,11 @@ mod tests {
     #[test]
     fn searches_from_non_spawn_position() {
         let mut board = Board::new();
-        board.set_block((0, 1), BlockState::Stack(TetrominoShape::I, Rotation::North, 0));
-        
+        board.set_block(
+            (0, 1),
+            BlockState::Stack(TetrominoShape::I, Rotation::North, 0),
+        );
+
         board.try_spawn_tetromino(TetrominoShape::L).unwrap();
         for _ in 0..10 {
             board.step_down();
@@ -242,7 +270,7 @@ mod tests {
         board.rotate(true);
         board.right();
         board.right();
-        
+
         let inputs = board.search_all_inputs(TetrominoShape::L);
         assert_eq!(inputs.len(), 35);
     }

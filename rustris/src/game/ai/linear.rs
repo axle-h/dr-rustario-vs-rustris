@@ -1,5 +1,5 @@
-use std::fmt::{Display, Formatter};
 use engine::ai::{Coefficient, Genome};
+use std::fmt::{Display, Formatter};
 
 pub const LINEAR_GENOME_SIZE: usize = 10;
 pub type LinearGenome = Genome<LINEAR_GENOME_SIZE>;
@@ -21,24 +21,28 @@ pub struct LinearCoefficients {
 impl Default for LinearCoefficients {
     fn default() -> Self {
         LinearCoefficients::from_f64(
-            -0.842758,
-            -0.937491,
-            0.031847,
-            -0.086589,
-            0.040224,
-            -0.050854,
-            0.773208,
-            -0.039745,
-            -0.459028,
-            -0.977903
+            -0.842758, -0.937491, 0.031847, -0.086589, 0.040224, -0.050854, 0.773208, -0.039745,
+            -0.459028, -0.977903,
         )
     }
 }
 
 impl Display for LinearCoefficients {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}]",
-               self.open_holes, self.closed_holes, self.max_stack_height, self.sum_stack_roughness, self.max_stack_roughness, self.line_clear, self.tetris_clear, self.max_tetromino_y, self.pillars, self.hole_cover)
+        write!(
+            f,
+            "[{:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}, {:.2}]",
+            self.open_holes,
+            self.closed_holes,
+            self.max_stack_height,
+            self.sum_stack_roughness,
+            self.max_stack_roughness,
+            self.line_clear,
+            self.tetris_clear,
+            self.max_tetromino_y,
+            self.pillars,
+            self.hole_cover
+        )
     }
 }
 
@@ -66,7 +70,7 @@ impl LinearCoefficients {
         tetris_clear: f64,
         max_tetromino_y: f64,
         pillars: f64,
-        hole_cover: f64
+        hole_cover: f64,
     ) -> Self {
         Self {
             open_holes: open_holes.into(),
@@ -92,7 +96,7 @@ impl LinearCoefficients {
         tetris_clear: i64,
         max_tetromino_y: i64,
         pillars: i64,
-        hole_cover: i64
+        hole_cover: i64,
     ) -> Self {
         Self {
             open_holes: open_holes.into(),
@@ -151,37 +155,25 @@ impl LinearCoefficients {
 
 impl Into<LinearGenome> for LinearCoefficients {
     fn into(self) -> LinearGenome {
-        LinearGenome::new(
-            [
-                self.open_holes,
-                self.closed_holes,
-                self.max_stack_height,
-                self.sum_stack_roughness,
-                self.max_stack_roughness,
-                self.line_clear,
-                self.tetris_clear,
-                self.max_tetromino_y,
-                self.pillars,
-                self.hole_cover
-            ]
-        )
+        LinearGenome::new([
+            self.open_holes,
+            self.closed_holes,
+            self.max_stack_height,
+            self.sum_stack_roughness,
+            self.max_stack_roughness,
+            self.line_clear,
+            self.tetris_clear,
+            self.max_tetromino_y,
+            self.pillars,
+            self.hole_cover,
+        ])
     }
 }
 
 impl From<LinearGenome> for LinearCoefficients {
     fn from(genome: LinearGenome) -> Self {
-        let [
-            open_holes,
-            closed_holes,
-            max_stack_height,
-            sum_stack_roughness,
-            max_stack_roughness,
-            line_clear,
-            tetris_clear,
-            max_tetromino_y,
-            pillars,
-            hole_cover,
-        ] = genome.chromosome();
+        let [open_holes, closed_holes, max_stack_height, sum_stack_roughness, max_stack_roughness, line_clear, tetris_clear, max_tetromino_y, pillars, hole_cover] =
+            genome.chromosome();
         Self {
             open_holes,
             closed_holes,

@@ -1,7 +1,7 @@
 use super::tetromino::TetrominoShape;
 use crate::game::board::BOARD_WIDTH;
-pub use engine::game::random::RandomMode;
 use engine::game::random::BagRandom;
+pub use engine::game::random::RandomMode;
 use rand::RngExt;
 use rand_chacha::ChaChaRng;
 
@@ -11,7 +11,6 @@ pub const MIN_GARBAGE_PER_HOLE: u32 = 10;
 
 /// the seed a training run counts through, shared with the Dr. Rustario trainer
 pub use engine::ai::Seed;
-
 
 pub fn random_tetrominos(mode: RandomMode, count: usize) -> Vec<RandomTetromino> {
     let seed: Seed = rand::random();
@@ -136,5 +135,4 @@ mod tests {
         let observed: [u32; 100] = next_n_holes(&mut random, 100).try_into().unwrap();
         assert!(HashSet::from(observed).len() > 1);
     }
-    
 }

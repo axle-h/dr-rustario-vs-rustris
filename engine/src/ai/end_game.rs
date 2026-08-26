@@ -23,7 +23,7 @@ impl EndGame {
         score: u32::MAX,
         cleared: u32::MAX,
         pieces: u32::MAX,
-        duration: Duration::MAX
+        duration: Duration::MAX,
     };
 
     pub fn of_score(score: u32) -> Self {

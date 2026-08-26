@@ -14,7 +14,9 @@ use crate::render::helper::{TextureFactory, TextureQuery};
 use crate::render::scene::SceneType;
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
-use crate::render::{HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme, ThemeFamily};
+use crate::render::{
+    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme, ThemeFamily,
+};
 use crate::scale::ScaleMode;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
@@ -70,8 +72,12 @@ pub fn retro_theme<'a>(
     options: RetroThemeOptions,
 ) -> Result<Theme<'a>, String> {
     let sprites = BlockSpriteSheet::new(canvas, texture_creator, &options.sprites, None)?;
-    let mut board_texture =
-        padded_texture(canvas, texture_creator, options.board_file, options.top_padding)?;
+    let mut board_texture = padded_texture(
+        canvas,
+        texture_creator,
+        options.board_file,
+        options.top_padding,
+    )?;
     if options.board_alpha < 0xff {
         // written verbatim into the transparent board target (no blend) so the scene
         // is blended through exactly once, when the board target is composited
@@ -128,9 +134,7 @@ pub fn retro_theme<'a>(
     };
 
     let animation_meta = AnimationMeta {
-        destroy: options
-            .destroy_style
-            .unwrap_or_else(|| sprites.pop_style()),
+        destroy: options.destroy_style.unwrap_or_else(|| sprites.pop_style()),
         game_over: options.game_over_style.unwrap_or(GameOverStyle::Screen {
             frames: options.game_over_points.len().max(1),
         }),

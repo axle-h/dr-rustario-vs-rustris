@@ -358,10 +358,7 @@ impl<G: Game> Match<G> {
         }
 
         // only human players can enter the high score table
-        let humans = self
-            .players
-            .iter()
-            .filter(|p| !self.is_ai_player(p.player));
+        let humans = self.players.iter().filter(|p| !self.is_ai_player(p.player));
         let high_score = if self.rules.is_sprint() {
             // a sprint's table is the quickest finishes, so only a player who finished may
             // enter it: not one who merely outlasted an opponent, nor one who topped out.
@@ -438,10 +435,7 @@ impl<G: Game> Match<G> {
     }
 
     fn highest_score(&self) -> &Player<G> {
-        self.players
-            .iter()
-            .max_by_key(|p| p.game.score())
-            .unwrap()
+        self.players.iter().max_by_key(|p| p.game.score()).unwrap()
     }
 
     fn most_stages(&self) -> &Player<G> {
@@ -692,7 +686,10 @@ mod tests {
     fn only_marathons_rank_by_score() {
         assert_eq!(MatchRules::Marathon.ranking(), Ranking::HighestScore);
         assert_eq!(MatchRules::ONE_STAGE_SPRINT.ranking(), Ranking::LowestTime);
-        assert_eq!(MatchRules::DEFAULT_SCORE_SPRINT.ranking(), Ranking::LowestTime);
+        assert_eq!(
+            MatchRules::DEFAULT_SCORE_SPRINT.ranking(),
+            Ranking::LowestTime
+        );
         assert_eq!(MatchRules::ThemeSprint.ranking(), Ranking::LowestTime);
     }
 }

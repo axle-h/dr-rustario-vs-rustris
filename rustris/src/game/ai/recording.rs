@@ -1,11 +1,10 @@
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use std::fs::{File};
+use crate::game::ai::input_sequence::{InputSequence, Translation};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
+use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
 use std::path::Path;
-use std::fmt;
 use std::str::FromStr;
-use crate::game::ai::input_sequence::{InputSequence, Translation};
-
 
 /// Represents a single recorded game input with decision index information
 #[derive(Debug, Clone)]
@@ -25,9 +24,7 @@ impl Serialize for RecordedInput {
         match &self.keys {
             Some(keys) => {
                 // Format keys as comma-separated list
-                let keys_str: Vec<String> = keys.iter()
-                    .map(|key| key.to_string())
-                    .collect();
+                let keys_str: Vec<String> = keys.iter().map(|key| key.to_string()).collect();
                 let keys_part = keys_str.join(",");
 
                 // For alt decisions: "alt:{key1},{key2}"
@@ -38,7 +35,7 @@ impl Serialize for RecordedInput {
                     keys_part
                 };
                 serializer.serialize_str(&serialized)
-            },
+            }
             None => {
                 // For "null" decisions use "null"
                 serializer.serialize_str("null")
@@ -68,7 +65,10 @@ impl<'de> Deserialize<'de> for RecordedInput {
             {
                 if value == "null" {
                     // Null decision
-                    return Ok(RecordedInput { keys: None, is_alt: false });
+                    return Ok(RecordedInput {
+                        keys: None,
+                        is_alt: false,
+                    });
                 }
 
                 let (is_alt, key_part) = if value.starts_with("alt:") {
@@ -79,7 +79,10 @@ impl<'de> Deserialize<'de> for RecordedInput {
 
                 // Empty key_part (either "" or "alt:") means empty keys vector
                 if key_part.is_empty() {
-                    return Ok(RecordedInput { keys: Some(InputSequence::empty()), is_alt });
+                    return Ok(RecordedInput {
+                        keys: Some(InputSequence::empty()),
+                        is_alt,
+                    });
                 }
 
                 // Parse keys
@@ -92,7 +95,10 @@ impl<'de> Deserialize<'de> for RecordedInput {
                     }
                 }
 
-                Ok(RecordedInput { keys: Some(InputSequence::new(keys)), is_alt })
+                Ok(RecordedInput {
+                    keys: Some(InputSequence::new(keys)),
+                    is_alt,
+                })
             }
         }
 
@@ -109,9 +115,7 @@ pub struct GameRecording {
 impl GameRecording {
     /// Create a new GameRecorder in inactive state
     pub fn new() -> Self {
-        Self {
-            inputs: Vec::new(),
-        }
+        Self { inputs: Vec::new() }
     }
 
     /// Record a complete decision made by the agent
@@ -138,7 +142,8 @@ impl GameRecording {
         let writer = BufWriter::new(file);
 
         // Serialize the entire inputs vector using serde_json
-        serde_json::to_writer(writer, &self.inputs).map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        serde_json::to_writer(writer, &self.inputs)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
         Ok(())
     }
@@ -164,7 +169,8 @@ impl GamePlayback {
         let reader = BufReader::new(file);
 
         // Deserialize the inputs vector from the file using serde_json
-        let inputs: Vec<RecordedInput> = serde_json::from_reader(reader).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let inputs: Vec<RecordedInput> = serde_json::from_reader(reader)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
 
         Ok(Self {
             inputs,
@@ -185,10 +191,10 @@ impl GamePlayback {
 
         // Get the current decision and clone it
         let result = self.inputs[self.current_index].clone();
-        
+
         // Move to the next decision
         self.current_index += 1;
-        
+
         Some(result)
     }
 
@@ -207,10 +213,13 @@ mod tests {
     // Helper function to create a temporary file path
     fn temp_file_path() -> PathBuf {
         let mut path = std::env::temp_dir();
-        path.push(format!("rustris_test_{}.json", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis()));
+        path.push(format!(
+            "rustris_test_{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        ));
         path
     }
 
@@ -226,14 +235,23 @@ mod tests {
 
         // Record some decisions
         recorder.record_decision(InputSequence::new(vec![Translation::Left]), false);
-        recorder.record_decision(InputSequence::new(vec![Translation::RotateClockwise]), false);
+        recorder.record_decision(
+            InputSequence::new(vec![Translation::RotateClockwise]),
+            false,
+        );
 
         // Inputs should now be in the inputs vector
         assert_eq!(recorder.inputs.len(), 2);
         assert_eq!(recorder.inputs[0].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(recorder.inputs[0].keys.as_ref().unwrap()[0], Translation::Left);
+        assert_eq!(
+            recorder.inputs[0].keys.as_ref().unwrap()[0],
+            Translation::Left
+        );
         assert_eq!(recorder.inputs[1].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(recorder.inputs[1].keys.as_ref().unwrap()[0], Translation::RotateClockwise);
+        assert_eq!(
+            recorder.inputs[1].keys.as_ref().unwrap()[0],
+            Translation::RotateClockwise
+        );
     }
 
     #[test]
@@ -254,7 +272,10 @@ mod tests {
 
         // Record some inputs with timing
         recorder.record_decision(InputSequence::new(vec![Translation::Left]), false);
-        recorder.record_decision(InputSequence::new(vec![Translation::RotateClockwise]), false);
+        recorder.record_decision(
+            InputSequence::new(vec![Translation::RotateClockwise]),
+            false,
+        );
         recorder.record_decision(InputSequence::new(vec![Translation::HardDrop]), false);
 
         // Save to a temporary file
@@ -267,11 +288,20 @@ mod tests {
         // Check that the loaded inputs match what we recorded
         assert_eq!(player.inputs.len(), 3);
         assert_eq!(player.inputs[0].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(player.inputs[0].keys.as_ref().unwrap()[0], Translation::Left);
+        assert_eq!(
+            player.inputs[0].keys.as_ref().unwrap()[0],
+            Translation::Left
+        );
         assert_eq!(player.inputs[1].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(player.inputs[1].keys.as_ref().unwrap()[0], Translation::RotateClockwise);
+        assert_eq!(
+            player.inputs[1].keys.as_ref().unwrap()[0],
+            Translation::RotateClockwise
+        );
         assert_eq!(player.inputs[2].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(player.inputs[2].keys.as_ref().unwrap()[0], Translation::HardDrop);
+        assert_eq!(
+            player.inputs[2].keys.as_ref().unwrap()[0],
+            Translation::HardDrop
+        );
 
         // Clean up
         fs::remove_file(&file_path)?;
@@ -358,12 +388,10 @@ mod tests {
     #[test]
     fn test_game_player_is_finished() {
         let mut player = GamePlayback {
-            inputs: vec![
-                RecordedInput {
-                    keys: Some(InputSequence::new(vec![Translation::Left])),
-                    is_alt: false,
-                },
-            ],
+            inputs: vec![RecordedInput {
+                keys: Some(InputSequence::new(vec![Translation::Left])),
+                is_alt: false,
+            }],
             current_index: 0,
         };
 
@@ -394,11 +422,20 @@ mod tests {
         // All three inputs should be in separate RecordedInput instances
         assert_eq!(recorder.inputs.len(), 3);
         assert_eq!(recorder.inputs[0].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(recorder.inputs[0].keys.as_ref().unwrap()[0], Translation::Left);
+        assert_eq!(
+            recorder.inputs[0].keys.as_ref().unwrap()[0],
+            Translation::Left
+        );
         assert_eq!(recorder.inputs[1].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(recorder.inputs[1].keys.as_ref().unwrap()[0], Translation::Right);
+        assert_eq!(
+            recorder.inputs[1].keys.as_ref().unwrap()[0],
+            Translation::Right
+        );
         assert_eq!(recorder.inputs[2].keys.as_ref().unwrap().len(), 1);
-        assert_eq!(recorder.inputs[2].keys.as_ref().unwrap()[0], Translation::HardDrop);
+        assert_eq!(
+            recorder.inputs[2].keys.as_ref().unwrap()[0],
+            Translation::HardDrop
+        );
 
         // Create a player with this input
         let mut player = GamePlayback {

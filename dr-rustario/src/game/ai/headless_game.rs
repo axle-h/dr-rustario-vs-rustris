@@ -226,9 +226,14 @@ impl HeadlessGameFixture {
     /// one game, played from the first bottle up until it is buried or runs out of bottles
     pub fn play_seed(&self, network: DrNeuralNetwork, seed: Seed) -> GameResult {
         let random = GameRandom::from_seed(seed.into(), self.random_mode);
-        let game =
-            Game::new(0, self.game_options.speed, random).expect("could not deal a bottle");
+        let game = Game::new(0, self.game_options.speed, random).expect("could not deal a bottle");
 
-        HeadlessGame::new(game, DrAiAgent::new(network), self.game_options, self.end_game).play()
+        HeadlessGame::new(
+            game,
+            DrAiAgent::new(network),
+            self.game_options,
+            self.end_game,
+        )
+        .play()
     }
 }

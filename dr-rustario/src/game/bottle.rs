@@ -3,10 +3,10 @@ use crate::game::event::ColoredBlock;
 use crate::game::geometry::BottlePoint;
 use crate::game::pill::{Garbage, Pill, PillShape, VirusColor, Vitamin, Vitamins};
 use crate::game::random::BottleSeed;
+use rand::seq::SliceRandom;
 #[cfg(test)]
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
-use rand::seq::SliceRandom;
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::ops::Range;

@@ -2,18 +2,18 @@
 //! playing a match. `cargo run --example field_preview -- <seconds> <out.png> [players]`
 
 use engine::config::{Config, ParticleDensity};
+use engine::font::FontType;
 use engine::game::GameId;
 use engine::particles::field::context::{Palette, PlayerRegion, SceneContext};
 use engine::particles::field::director::Feature;
 use engine::particles::field::reaction::{words, FieldEvent};
 use engine::particles::field::shapes::{ShapeBank, Verdict};
-use engine::font::FontType;
-use engine::render::font::FontRender;
-use engine::particles::particle::Particle;
 use engine::particles::geometry::RectF;
+use engine::particles::particle::Particle;
 use engine::particles::render::ParticleRender;
 use engine::particles::scale::Scale as ParticleScale;
 use engine::particles::Particles;
+use engine::render::font::FontRender;
 use engine::render::Theme;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
@@ -73,7 +73,11 @@ fn main() -> Result<(), String> {
 
     let mut all = dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?;
     let dr_count = all.len();
-    all.extend(rustris::theme::all_themes(&mut canvas, &texture_creator, config)?);
+    all.extend(rustris::theme::all_themes(
+        &mut canvas,
+        &texture_creator,
+        config,
+    )?);
     // the modern theme is the last of each game's set
     let dr_modern = dr_count - 1;
     let rustris_modern = all.len() - 1;
@@ -99,13 +103,22 @@ fn main() -> Result<(), String> {
             let game = if index < dr_count { "dr" } else { "rustris" };
             let mut flat = theme.sprites().flatten(&mut canvas, &texture_creator)?;
             let audited = ShapeBank::audit(&mut canvas, &mut flat, ParticleDensity::High)?;
-            let used = audited.iter().filter(|a| a.verdict == Verdict::Used).count();
+            let used = audited
+                .iter()
+                .filter(|a| a.verdict == Verdict::Used)
+                .count();
             println!(
                 "{game:>7} {:>8}: {} sprites, {used} used, {} duplicates, {} too few",
                 theme.name(),
                 audited.len(),
-                audited.iter().filter(|a| a.verdict == Verdict::Duplicate).count(),
-                audited.iter().filter(|a| a.verdict == Verdict::TooFew).count(),
+                audited
+                    .iter()
+                    .filter(|a| a.verdict == Verdict::Duplicate)
+                    .count(),
+                audited
+                    .iter()
+                    .filter(|a| a.verdict == Verdict::TooFew)
+                    .count(),
             );
             pages.push((
                 format!(
@@ -137,7 +150,8 @@ fn main() -> Result<(), String> {
                         .unwrap();
                     for (i, audit) in audited.iter().enumerate() {
                         let left = (i % COLS) as i32 * CELL as i32;
-                        let cell_top = top + HEADER as i32 + (i / COLS) as i32 * (CELL + LABEL) as i32;
+                        let cell_top =
+                            top + HEADER as i32 + (i / COLS) as i32 * (CELL + LABEL) as i32;
                         c.set_draw_color(Color::RGB(0x22, 0x22, 0x2A));
                         c.draw_rect(Rect::new(left + 2, cell_top + 2, CELL - 4, CELL - 4))
                             .unwrap();
@@ -165,8 +179,8 @@ fn main() -> Result<(), String> {
                         )
                         .unwrap();
                     }
-                    top += HEADER as i32
-                        + audited.len().div_ceil(COLS) as i32 * (CELL + LABEL) as i32;
+                    top +=
+                        HEADER as i32 + audited.len().div_ceil(COLS) as i32 * (CELL + LABEL) as i32;
                 }
                 pixels = c
                     .read_pixels(Rect::new(0, 0, width, height), PixelFormatEnum::ABGR8888)
@@ -228,7 +242,14 @@ fn main() -> Result<(), String> {
         ),
     };
     let regions = vec![
-        region(0, RectF::new(0.0, 0.0, 0.5, 1.0), left.0, left.1, true, left.2),
+        region(
+            0,
+            RectF::new(0.0, 0.0, 0.5, 1.0),
+            left.0,
+            left.1,
+            true,
+            left.2,
+        ),
         region(
             1,
             RectF::new(0.5, 0.0, 0.5, 1.0),
@@ -279,7 +300,11 @@ fn main() -> Result<(), String> {
                 .flat_map(|pool| pool.particles())
                 .filter(|p| p.target().is_some())
                 .count();
-            let total = particles.pools().iter().map(|p| p.particles().len()).sum::<usize>();
+            let total = particles
+                .pools()
+                .iter()
+                .map(|p| p.particles().len())
+                .sum::<usize>();
             println!("{feature:?}: {targeted} of {total} on targets");
             let out = format!("{prefix}-{}.png", format!("{feature:?}").to_lowercase());
             snapshot(&mut canvas, &texture_creator, &mut particles, &out)?;
@@ -294,7 +319,10 @@ fn main() -> Result<(), String> {
             for _ in 0..170 {
                 particles.update_scene(frame, &mut canvas, &scene)?;
             }
-            let out = format!("{prefix}-word-{}.png", word.to_lowercase().replace(' ', "-"));
+            let out = format!(
+                "{prefix}-word-{}.png",
+                word.to_lowercase().replace(' ', "-")
+            );
             snapshot(&mut canvas, &texture_creator, &mut particles, &out)?;
             println!("wrote {out}");
         }
@@ -305,9 +333,7 @@ fn main() -> Result<(), String> {
     let last = *times.last().unwrap();
     let frames = (last / frame.as_secs_f64()).round() as u32;
     for i in 0..=frames {
-        while next < times.len()
-            && i as f64 * frame.as_secs_f64() >= times[next]
-        {
+        while next < times.len() && i as f64 * frame.as_secs_f64() >= times[next] {
             let out = format!("{prefix}-{}.png", times[next]);
             report(&particles, &scene);
             snapshot(&mut canvas, &texture_creator, &mut particles, &out)?;
@@ -429,7 +455,12 @@ fn region(
     PlayerRegion {
         player,
         clip,
-        board: RectF::new(clip.x() + clip.width() * 0.28, 0.18, clip.width() * 0.34, 0.62),
+        board: RectF::new(
+            clip.x() + clip.width() * 0.28,
+            0.18,
+            clip.width() * 0.34,
+            0.62,
+        ),
         theme,
         game,
         palette,
