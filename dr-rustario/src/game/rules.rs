@@ -1,5 +1,4 @@
-use crate::game::ai::models;
-use crate::game::ai::DrNeuralNetwork;
+use crate::game::ai::DrAiKind;
 use crate::game::random::RandomMode;
 use crate::game::GameSpeed;
 use std::time::Duration;
@@ -39,8 +38,8 @@ impl MatchThemes {
 
 pub use engine::session::MatchRules;
 
-/// How fast the ai is allowed to play. There is one Dr. Rustario model, trained to clear the
-/// viruses as quickly as it can, so a difficulty only decides how quickly it may press keys.
+/// How fast the ai is allowed to play. Every difficulty plays the same brain - Dr. Mario 64's
+/// own deterministic opponent - so a difficulty only decides how quickly it may press keys.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AiDifficulty {
     /// The most speed limited
@@ -80,9 +79,9 @@ impl AiDifficulty {
         }
     }
 
-    /// every difficulty plays the one trained model
-    pub fn network(&self) -> DrNeuralNetwork {
-        models::virus_clear_trained()
+    /// every difficulty plays the same brain
+    pub fn brain(&self) -> DrAiKind {
+        DrAiKind::default()
     }
 }
 
@@ -144,13 +143,14 @@ impl GameConfig {
         }
     }
 
-    /// The ai controlled players (0-indexed), the key delay they play at and the model they play
-    pub fn ai_players(&self) -> Vec<(u32, Duration, DrNeuralNetwork)> {
+    /// The ai controlled players (0-indexed), the key delay they play at and the brain they
+    /// think with
+    pub fn ai_players(&self) -> Vec<(u32, Duration, DrAiKind)> {
         match self.ai {
             AiMode::Off => vec![],
-            AiMode::Demo => vec![(0, Duration::ZERO, models::virus_clear_trained())],
+            AiMode::Demo => vec![(0, Duration::ZERO, DrAiKind::default())],
             AiMode::Opponent(difficulty) => {
-                vec![(1, difficulty.key_delay(), difficulty.network())]
+                vec![(1, difficulty.key_delay(), difficulty.brain())]
             }
         }
     }

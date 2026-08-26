@@ -1,6 +1,6 @@
 //! The match options Dr. Rustario offers on the main menu.
 
-use crate::game::ai::DrNeuralNetwork;
+use crate::game::ai::DrAiKind;
 use crate::game::random::{random, RandomMode};
 use crate::game::rules::{
     AiDifficulty, AiMode, GameConfig, MatchRules, MatchThemes, MAX_VIRUS_LEVEL,
@@ -97,8 +97,8 @@ impl Options {
         self.config.ai()
     }
 
-    /// the players the ai plays for, how fast, and the model they play
-    pub fn ai_players(&self) -> Vec<(u32, Duration, DrNeuralNetwork)> {
+    /// the players the ai plays for, how fast, and the brain they think with
+    pub fn ai_players(&self) -> Vec<(u32, Duration, DrAiKind)> {
         self.config.ai_players()
     }
 

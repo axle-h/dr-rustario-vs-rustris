@@ -5,7 +5,7 @@
 | crate | what it is |
 |---|---|
 | `engine/` | everything that is not game rules: SDL app shell, menus, high scores, config, input, rendering (sprite sheets, themes, fonts, particles, animations), audio mixer, the match session, and the shared AI core (`ai/`: neural network, genetic algorithm, key pacing) |
-| `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), theme data and its neural AI |
+| `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), theme data, its neural AI and the deterministic one (`game/ai/n64/`) that actually plays |
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), theme data and its neural AI |
 | `launcher/` | the `dr-rustario-vs-rustris` binary: picks games and options and runs a match |
 
@@ -16,7 +16,15 @@ two hidden layers deep - sized to their own feature count (Rustris `FeatureNetwo
 1281 weights; Dr. Rustario `BottleFeatureNetwork`: 22 features, 1541), declared by the
 `feature_network!` macro in `engine/src/ai/neural.rs` because the genome conversions belong to
 neither game. Models are embedded as raw weight arrays in each game's
-`ai/models.rs`; Dr. Rustario's are random until a `ga dr auto` run replaces them.
+`ai/models.rs`; Dr. Rustario's are random until a `ga dr auto` run replaces them, which is why
+its opponent and demo play `game/ai/n64/` instead - a port of `aiset.c` from the N64 game's
+decompilation. That is a deterministic scorer: `field.rs` is the bottle in the ai's own 17x8
+`(st, co)` grid, `score.rs` measures the runs the two halves land in, `chain.rs` asks whether
+the placement leaves a chain, `routes.rs` measures how much room the pill has left, `params.rs`
+holds the weights and `mod.rs` picks the skill row and situation column that select them.
+`DrAiAgent` chooses between the two through `DrAiKind`; `ga dr play <seed> <level> <cap>
+<every> <brain>` runs either headless, where a brain is `n64`, `n64:0`..`n64:5`, `neural` or
+`linear`.
 
 The particle engine has two models. `particles/source.rs` is the original fire-and-forget
 emitter: a source emits a group and then has no further say, which is right for a burst and is
