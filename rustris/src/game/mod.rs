@@ -11,7 +11,6 @@ use engine::game::timing::{lock_move, LockMove, LockPlacements, Timing};
 use engine::game::{
     Attack, Cell, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState, StageTransition,
 };
-use std::cmp::max;
 use std::time::Duration;
 
 pub mod ai;
@@ -60,6 +59,19 @@ const PERFECT_CLEAR_POINTS: [u32; 5] = [0, 800, 1_200, 1_800, 2_000];
 const PERFECT_CLEAR_BACK_TO_BACK_TETRIS_POINTS: u32 = 3_200;
 /// rows a perfect clear sends on top of the rows its lines sent
 const PERFECT_CLEAR_GARBAGE: u32 = 10;
+/// What a clear is worth to a player of the *other* game, in garbage blocks, since that is
+/// what an attack is over there. A Dr. Rustario bottle is eight wide and its blocks are only
+/// cleared by matching four of a colour, so a row of them is nothing like a row of Rustris
+/// garbage: a Rustris player who sent one row per row would bury a bottle in seconds. Only the
+/// clears worth working for cross at all - a tetris, a T-spin that took two lines or more, and
+/// a perfect clear - and a tetris crosses as two blocks, the size of the combo a Dr. Rustario
+/// player sends most often. A clear that qualifies more than one way sends the larger of them,
+/// and combos and back to back stay at home
+const FOREIGN_TETRIS_GARBAGE: u32 = 2;
+/// blocks a T-spin sends abroad, by the lines it cleared: a single is routine, so it does not
+const FOREIGN_T_SPIN_GARBAGE: [u32; 4] = [0, 0, 2, 3];
+/// blocks a perfect clear sends abroad, as much as a Dr. Rustario combo ever sends
+const FOREIGN_PERFECT_CLEAR_GARBAGE: u32 = 4;
 const SOFT_DROP_POINTS_PER_ROW: u32 = 1;
 const HARD_DROP_POINTS_PER_ROW: u32 = 2;
 
@@ -145,6 +157,28 @@ impl ClearAction {
             perfect_clear: detail & DETAIL_PERFECT_CLEAR != 0,
         }
     }
+}
+
+/// What a clear sends to a player of the other game, in its units: see
+/// [`FOREIGN_TETRIS_GARBAGE`]. Nothing else a Rustris player does crosses.
+fn foreign_attack(action: ClearAction) -> u32 {
+    let spin_index = (action.lines as usize).min(FOREIGN_T_SPIN_GARBAGE.len() - 1);
+    let tetris = if action.lines as usize == MAX_DESTROYED_LINES {
+        FOREIGN_TETRIS_GARBAGE
+    } else {
+        0
+    };
+    let spin = match action.spin {
+        // a mini is not the trick the full spin is, so it stays at home with the rest
+        Some(Spin::Full) => FOREIGN_T_SPIN_GARBAGE[spin_index],
+        Some(Spin::Mini) | None => 0,
+    };
+    let perfect_clear = if action.perfect_clear {
+        FOREIGN_PERFECT_CLEAR_GARBAGE
+    } else {
+        0
+    };
+    tetris.max(spin).max(perfect_clear)
 }
 
 /// The reasons a game ends, as named by the Tetris guideline.
@@ -637,8 +671,9 @@ impl Game {
         let attack =
             garbage_lines + difficult_garbage_lines + combo_garbage + perfect_clear_garbage;
         if attack > 0 {
-            self.events
-                .push(GameEvent::AttackSent(Attack::new(GAME_ID, attack)));
+            self.events.push(GameEvent::AttackSent(
+                Attack::new(GAME_ID, attack).with_foreign(foreign_attack(action)),
+            ));
         }
 
         // update level: every ten lines is a level and a stage
@@ -797,7 +832,7 @@ impl engine::game::Game for Game {
     }
 
     fn receive_attack(&mut self, attack: Attack) {
-        self.send_garbage(max(attack.strength, 0));
+        self.send_garbage(attack.strength_for(GAME_ID));
     }
 }
 
@@ -1118,6 +1153,89 @@ mod tests {
         assert_eq!(game.combo, None);
         // the single broke back to back, and the spin that cleared nothing did not restore it
         assert_eq!(clear(&mut game, 4), TETRIS_POINTS);
+    }
+
+    /// the garbage the events drained so far would send to a player of the *other* game
+    fn foreign_attack_sent(game: &mut Game) -> u32 {
+        std::mem::take(&mut game.events)
+            .into_iter()
+            .filter_map(|event| match event {
+                GameEvent::AttackSent(attack) => Some(attack.foreign),
+                _ => None,
+            })
+            .sum()
+    }
+
+    #[test]
+    fn only_the_clears_worth_working_for_cross_to_the_other_game() {
+        for (count, expected) in [(1, 0), (2, 0), (3, 0), (4, FOREIGN_TETRIS_GARBAGE)] {
+            let mut game = game();
+            clear(&mut game, count);
+            assert_eq!(foreign_attack_sent(&mut game), expected, "{count} lines");
+        }
+    }
+
+    #[test]
+    fn a_t_spin_crosses_to_the_other_game_from_two_lines_up() {
+        for lines in 0..=3 {
+            let mut full = game();
+            spin_clear_at(&mut full, 0, Spin::Full, lines);
+            assert_eq!(
+                foreign_attack_sent(&mut full),
+                FOREIGN_T_SPIN_GARBAGE[lines as usize],
+                "{lines} lines"
+            );
+
+            // a mini is not the trick a full spin is, and never crosses
+            let mut mini = game();
+            spin_clear_at(&mut mini, 0, Spin::Mini, lines);
+            assert_eq!(foreign_attack_sent(&mut mini), 0, "mini, {lines} lines");
+        }
+    }
+
+    #[test]
+    fn a_perfect_clear_crosses_whatever_cleared_it() {
+        for lines in 1..=4 {
+            let mut game = game();
+            perfect_clear_at(&mut game, 0, lines);
+            assert_eq!(
+                foreign_attack_sent(&mut game),
+                FOREIGN_PERFECT_CLEAR_GARBAGE,
+                "{lines} lines"
+            );
+        }
+    }
+
+    #[test]
+    fn combos_and_back_to_back_stay_at_home() {
+        let mut game = game();
+        // a combo of singles sends rows at home and nothing abroad
+        for _ in 0..4 {
+            clear(&mut game, 1);
+        }
+        assert!(attack_sent(&mut game) > 0);
+        assert_eq!(foreign_attack_sent(&mut game), 0);
+
+        // ... and back to back tetrises cross as a plain tetris each
+        let mut game = super::tests::game();
+        clear(&mut game, 4);
+        assert_eq!(foreign_attack_sent(&mut game), FOREIGN_TETRIS_GARBAGE);
+        clear(&mut game, 4);
+        assert_eq!(foreign_attack_sent(&mut game), FOREIGN_TETRIS_GARBAGE);
+    }
+
+    #[test]
+    fn a_foreign_attack_lands_in_the_receivers_own_units() {
+        let mut game = game();
+        engine::game::Game::receive_attack(&mut game, Attack::new(GAME_ID, 8).with_foreign(2));
+        assert_eq!(game.garbage_buffer, 8, "another Rustris player sends rows");
+
+        let mut game = super::tests::game();
+        engine::game::Game::receive_attack(
+            &mut game,
+            Attack::new(GameId(u16::MAX), 8).with_foreign(2),
+        );
+        assert_eq!(game.garbage_buffer, 2, "another game sends what it says");
     }
 
     #[test]

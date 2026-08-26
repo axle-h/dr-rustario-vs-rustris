@@ -170,6 +170,7 @@ pub struct Match<G: Game> {
 pub struct AttackRoute {
     pub from: u32,
     pub to: u32,
+    /// the attack as it landed, in the receiving game's own units
     pub strength: u32,
 }
 
@@ -398,10 +399,10 @@ impl<G: Game> Match<G> {
         self.players.get_mut(player as usize).unwrap()
     }
 
-    /// route an attack to a random other player
-    pub fn send_attack(&mut self, from_player: u32, attack: Attack) {
+    /// route an attack to a random other player, reporting whether anything landed
+    pub fn send_attack(&mut self, from_player: u32, attack: Attack) -> bool {
         if self.players.len() < 2 {
-            return;
+            return false;
         }
 
         let other_players = (0..self.players.len())
@@ -413,16 +414,20 @@ impl<G: Game> Match<G> {
         } else {
             other_players[self.rng.random_range(0..other_players.len())]
         };
+        let victim = self.players.get_mut(pid).unwrap();
+        let strength = attack.strength_for(victim.game.game_id());
+        if strength == 0 {
+            // the clear was not worth anything to somebody playing the other game: nothing
+            // lands, so nothing flies across and nothing is heard either
+            return false;
+        }
+        victim.game.receive_attack(attack);
         self.attack_routes.push(AttackRoute {
             from: from_player,
             to: pid as u32,
-            strength: attack.strength,
+            strength,
         });
-        self.players
-            .get_mut(pid)
-            .unwrap()
-            .game
-            .receive_attack(attack);
+        true
     }
 
     /// the attacks routed since the last drain, oldest first
@@ -459,6 +464,8 @@ mod tests {
         score: u32,
         speed: u32,
         stages: u32,
+        /// every attack this game has been handed, as it read it
+        received: Vec<u32>,
     }
 
     impl Game for Counter {
@@ -524,7 +531,9 @@ mod tests {
             self.stages += 1;
             Ok(())
         }
-        fn receive_attack(&mut self, _: Attack) {}
+        fn receive_attack(&mut self, attack: Attack) {
+            self.received.push(attack.strength_for(self.game_id()));
+        }
     }
 
     fn counter(score: u32, speed: u32, stages: u32) -> Counter {
@@ -533,7 +542,53 @@ mod tests {
             score,
             speed,
             stages,
+            received: vec![],
         }
+    }
+
+    /// a two player match of two different games
+    fn mixed() -> Match<Counter> {
+        let mut other = counter(0, 0, 0);
+        other.id = 1;
+        Match {
+            players: vec![Player::new(0, counter(0, 0, 0)), Player::new(1, other)],
+            high_scores: HighScoreTable::default(),
+            state: MatchState::Normal,
+            rules: MatchRules::Marathon,
+            theme_count: 1,
+            ai_players: vec![],
+            play_time: Duration::ZERO,
+            attack_routes: vec![],
+            rng: rng(),
+        }
+    }
+
+    #[test]
+    fn an_attack_lands_in_the_units_of_the_game_it_lands_on() {
+        let mut fixture = mixed();
+        assert!(fixture.send_attack(0, Attack::new(GameId(0), 6).with_foreign(2)));
+        assert_eq!(fixture.players[1].game.received, vec![2]);
+        assert_eq!(
+            fixture.drain_attack_routes(),
+            vec![AttackRoute {
+                from: 0,
+                to: 1,
+                strength: 2
+            }]
+        );
+
+        // ... and its own kind take it whole
+        let mut fixture = mixed();
+        assert!(fixture.send_attack(1, Attack::new(GameId(0), 6).with_foreign(2)));
+        assert_eq!(fixture.players[0].game.received, vec![6]);
+    }
+
+    #[test]
+    fn an_attack_worth_nothing_to_the_other_game_never_leaves() {
+        let mut fixture = mixed();
+        assert!(!fixture.send_attack(0, Attack::new(GameId(0), 6).with_foreign(0)));
+        assert!(fixture.players[1].game.received.is_empty());
+        assert!(fixture.drain_attack_routes().is_empty());
     }
 
     #[test]

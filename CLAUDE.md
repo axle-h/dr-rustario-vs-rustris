@@ -58,8 +58,14 @@ A game implements `engine::game::Game` (a headless board of `Cell`s with game-pr
 `CellId`s, producing engine `GameEvent`s) and `engine::render::GameRender`; its themes are
 data handed to the engine's `retro_theme` and `modern_theme` builders (a theme says which it
 is through `Theme::family`, which is what lets the vs. mode's retro and particle playlists pick
-their themes out). Attacks between players are a neutral strength plus game-private detail, so Dr. Rustario garbage keeps its colours
-between two Dr. Rustario players and becomes random colours when it comes from Rustris.
+their themes out). An attack between players carries two sizes and a game-private detail: a
+`strength` in the sending game's own units and a `foreign` size in the other game's, since a
+Rustris row and a Dr. Rustario block are not the same thing and neither are the clears that
+earn them. Only the sender knows what the clear took, so only it can price the crossing
+(`foreign_attack` in each game's `game/mod.rs`); the session hands the receiver
+`Attack::strength_for` its own game id and drops an attack worth nothing over there. So
+Dr. Rustario garbage keeps its colours between two Dr. Rustario players and becomes random
+colours when it comes from Rustris.
 
 A menu's items are built once, so a list whose options depend on another item - the mode
 list, which loses the theme sprint as soon as a single theme is picked - is refreshed by
