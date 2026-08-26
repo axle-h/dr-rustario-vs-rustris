@@ -207,14 +207,21 @@ impl Shell {
             }
             Screen::ModeMenu { mode, menu } => {
                 let m = choose_mode(rustris, dr_rustario, versus, *mode);
+                let mut selected = false;
                 let exit = menu.update::<()>(app, bg_particles, |name, value| match name {
                     START => Some(MenuExit::Start),
                     BACK => Some(MenuExit::Back),
                     _ => {
                         m.menu_select(name, value);
+                        selected = true;
                         None
                     }
                 })?;
+                // one option can change what another offers: a single theme takes the
+                // theme sprint off the mode list
+                if selected {
+                    menu.set_items(app, &m.menu_items())?;
+                }
                 Ok(exit.map(|exit| match exit {
                     MenuExit::Start | MenuExit::Custom(()) => Transition::StartMatch(*mode),
                     MenuExit::Back => Transition::ToTitle(*mode),

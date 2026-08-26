@@ -22,9 +22,9 @@ The particle engine has two models. `particles/source.rs` is the original fire-a
 emitter: a source emits a group and then has no further say, which is right for a burst and is
 what every foreground effect and every menu uses. `particles/field/` is a retained pool
 (`particles/pool.rs`) that owns its particles for the life of a match and steers them every
-frame: it is the modern themes' background, and it is the only thing that can retarget a
-particle that already exists. The field spans a *canvas* - the union of the clips of the
-players on a particle scene - and its routines are authored in canvas-normalised coordinates,
+frame: it is the particle themes' background (built by `modern_theme`), and it is the only
+thing that can retarget a particle that already exists. The field spans a *canvas* - the
+union of the clips of the players on a particle scene - and its routines are authored in canvas-normalised coordinates,
 so one written once fits the whole window or half of it. It observes the match through a
 `SceneContext` built by the match screen and reacts to queued `FieldEvent`s; it never reads or
 writes game state and shares no RNG with the games. What it is doing at any moment is a
@@ -39,6 +39,13 @@ labelled png, and `<seconds>` snapshots a running field.
 
 A game implements `engine::game::Game` (a headless board of `Cell`s with game-private
 `CellId`s, producing engine `GameEvent`s) and `engine::render::GameRender`; its themes are
-data handed to the engine's `retro_theme` and `modern_theme` builders. Attacks between players
-are a neutral strength plus game-private detail, so Dr. Rustario garbage keeps its colours
+data handed to the engine's `retro_theme` and `modern_theme` builders (a theme says which it
+is through `Theme::family`, which is what lets the vs. mode's retro and particle playlists pick
+their themes out). Attacks between players are a neutral strength plus game-private detail, so Dr. Rustario garbage keeps its colours
 between two Dr. Rustario players and becomes random colours when it comes from Rustris.
+
+A menu's items are built once, so a list whose options depend on another item - the mode
+list, which loses the theme sprint as soon as a single theme is picked - is refreshed by
+`MenuScreen::set_items` after every selection, from the launcher's `Shell`.
+`cargo run --example menu_shot` draws both games' menus to pngs headless, walking the theme
+and mode rows, which is how that is checked without a display.

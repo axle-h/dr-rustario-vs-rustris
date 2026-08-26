@@ -120,8 +120,17 @@ impl<'a> MatchEndSprites<'a> {
     }
 }
 
+/// Which family a theme belongs to: the retro themes rebuild a console's look, the
+/// particle themes are the engine's own modern look with a background particle field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThemeFamily {
+    Retro,
+    Particle,
+}
+
 pub struct Theme<'a> {
     pub(crate) name: &'static str,
+    pub(crate) family: ThemeFamily,
     pub(crate) scenes: Vec<SceneRender<'a>>,
     pub(crate) sprites: BlockSpriteSheet<'a>,
     pub(crate) geometry: BoardGeometry,
@@ -158,6 +167,10 @@ pub struct Theme<'a> {
 impl<'a> Theme<'a> {
     pub fn name(&self) -> &'static str {
         self.name
+    }
+
+    pub fn family(&self) -> ThemeFamily {
+        self.family
     }
 
     pub fn sprites(&self) -> &BlockSpriteSheet<'a> {

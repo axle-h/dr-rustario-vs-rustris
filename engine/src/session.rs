@@ -25,17 +25,23 @@ pub enum MatchRules {
 impl MatchRules {
     pub const ONE_STAGE_SPRINT: Self = Self::StageSprint { stages: 1 };
     pub const DEFAULT_SCORE_SPRINT: Self = Self::ScoreSprint { score: 10_000 };
-    pub const VS_MODES: [Self; 3] = [
-        Self::ONE_STAGE_SPRINT,
-        Self::ThemeSprint,
-        Self::DEFAULT_SCORE_SPRINT,
-    ];
-    pub const SINGLE_PLAYER_MODES: [Self; 4] = [
+    /// every mode a match can be played under, one or two players alike: a marathon and
+    /// the three sprints
+    pub const MODES: [Self; 4] = [
         Self::Marathon,
         Self::ONE_STAGE_SPRINT,
         Self::ThemeSprint,
         Self::DEFAULT_SCORE_SPRINT,
     ];
+
+    /// the modes a match may be played under when the players run through `theme_count`
+    /// themes: a theme sprint is one stage per theme, so it takes more than one theme
+    pub fn modes(theme_count: usize) -> Vec<Self> {
+        Self::MODES
+            .into_iter()
+            .filter(|rules| theme_count > 1 || rules != &Self::ThemeSprint)
+            .collect()
+    }
 
     pub fn name(&self, stage_noun: &str) -> String {
         match self {

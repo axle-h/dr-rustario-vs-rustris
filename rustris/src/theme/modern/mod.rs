@@ -72,7 +72,7 @@ pub fn modern_rustris_theme<'a>(
         engine::game::geometry::Point::new(p.x, TOTAL_HEIGHT as i32 - 1 - p.y)
     };
     let options = ModernThemeOptions {
-        name: "modern",
+        name: "particle",
         sprites: BlockSpriteSheetData {
             file: SPRITES,
             source_block_size: SRC_BLOCK_SIZE,
