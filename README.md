@@ -120,9 +120,11 @@ playlist, and the 3, 5 and 10 level random sprints, which deal a random game and
 each level) race a single clock, shown in the bottom-left corner (single player) or
 bottom-centre (multiplayer), and their tables rank the fastest times. The interleaved,
 back to back, retro, particle and random marathon vs. playlists are marathons: the first
-two cycle their playlist endlessly, the retro playlist alternates the games through their
-retro themes only and the particle playlist alternates them on their particle themes, the
-random marathon deals random games and themes forever, and all rank scores. Every vs.
+two cycle their playlist endlessly, the interleaved playlist carrying each game on through
+its own themes as its turn comes round again, the retro playlist alternates the games
+through their retro themes only and the particle playlist alternates them on their
+particle themes, the random marathon deals random games and themes forever, and all rank
+scores. Every vs.
 playlist shares one difficulty dial, 0 (default) to 10: it sets
 Dr. Rustario's virus level and fall speed and Rustris's starting level together, from no
 viruses at low speed on level 0 up to virus level 10 at high speed on level 10. In a

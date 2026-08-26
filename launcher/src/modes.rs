@@ -629,16 +629,18 @@ impl Playlist {
         let order = [GameKind::Rustris, GameKind::DrRustario];
         let slots = themes.slots();
         match self {
-            // theme by theme, the games taking turns: the race runs the playlist once,
-            // the retro and particle marathons cycle their own family of themes forever
-            Playlist::ThemeRace | Playlist::Retro | Playlist::Particle => (0..slots)
-                .flat_map(|slot| {
-                    order.map(|game| (game, ThemeMode::Fixed(themes.theme(game, slot))))
-                })
-                .collect(),
-            Playlist::Interleaved => (0..slots)
-                .flat_map(|_| order.map(|game| (game, ThemeMode::All)))
-                .collect(),
+            // theme by theme, the games taking turns: the race runs the playlist once, the
+            // interleaved, retro and particle marathons cycle theirs forever. A stage names
+            // the theme it wants rather than asking for the next one, since the game the
+            // playlist has just dealt has been away and would otherwise start over on its
+            // first theme every time its turn came round again
+            Playlist::ThemeRace | Playlist::Interleaved | Playlist::Retro | Playlist::Particle => {
+                (0..slots)
+                    .flat_map(|slot| {
+                        order.map(|game| (game, ThemeMode::Fixed(themes.theme(game, slot))))
+                    })
+                    .collect()
+            }
             Playlist::BackToBack => order
                 .into_iter()
                 .flat_map(|game| {
@@ -1286,6 +1288,23 @@ mod tests {
             Playlist::ThemeRace.stage(0, 0, &PlaylistThemes::default()),
             None
         );
+    }
+
+    #[test]
+    fn the_interleaved_marathon_advances_each_games_themes() {
+        let stages: Vec<(GameKind, ThemeMode)> = (0..10)
+            .map(|i| Playlist::Interleaved.stage(0, i, &all_themes()).unwrap())
+            .collect();
+        // a pair of stages per theme: each game carries on through its own themes as its
+        // turn comes round again, rather than starting over on the first every time
+        assert_eq!(stages[0], (GameKind::Rustris, ThemeMode::Fixed(0)));
+        assert_eq!(stages[1], (GameKind::DrRustario, ThemeMode::Fixed(0)));
+        assert_eq!(stages[2], (GameKind::Rustris, ThemeMode::Fixed(1)));
+        assert_eq!(stages[3], (GameKind::DrRustario, ThemeMode::Fixed(1)));
+        assert_eq!(stages[7], (GameKind::DrRustario, ThemeMode::Fixed(3)));
+        // ... and then it cycles
+        assert_eq!(stages[8], stages[0]);
+        assert_eq!(stages[9], stages[1]);
     }
 
     #[test]
