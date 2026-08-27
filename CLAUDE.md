@@ -84,6 +84,18 @@ fires on every clear. It costs a theme no art and no opt-in, because whether the
 at all is the game's decision: Puyo Rusto counts its chain out from the first step, and the
 other two games return `None`.
 
+A theme may offer more than one track for a match. `AudioTheme` keeps them in a list with the
+pick in a `Cell` (themes are built once and lived on as `&'static`, so every play site holds a
+`&self`), and the one place a pick is made is `ThemeContext::sync_music` - which is reached
+only when the theme the music belongs to has changed, so a match keeps the track it opened on
+through a pause, a stage clear and a game over, and is dealt another when the theme moves under
+it. What a match asks for is `MatchSettings::music`: `MusicChoice::Random`, which every game
+with a single tune passes and which means the same thing there, or `Track(i)` indexing the
+tracks that theme was given. Puyo Rusto is the game this is for - `GameMusic` in its
+`game/rules.rs` names its four in the order `theme::GAME_MUSIC` embeds them, and its `music`
+menu row pins one - and it is also the only game with menu music of its own besides Rustris,
+through `Mode::menu_sounds`.
+
 A game that can hold an attack rather than take it as it arrives reports what is still
 waiting through `Game::pending_attacks`, as its own `CellId`s, and a theme that declares a
 `PendingLayout` draws them as a strip from its own cell sprites - so a player can see what is
@@ -116,7 +128,15 @@ quite land on its own grid - see `repair`, which repeats the last row or column 
 to the cell edge, since a neck is a prism and that is exactly what is missing. Two skins draw
 their art four pixels inside the cell rather than out to its edge, so `repair` measures each
 skin's own inset off the colours the block boundary did not clip and fills only as far as
-that; repairing to the edge regardless smears a puyo's antennae up the cell. `puyo-rusto/art/audio.py` synthesises the sixteen oggs.
+that; repairing to the edge regardless smears a puyo's antennae up the cell. The music is a
+rip too: `puyo-rusto/art/music.py` cuts `src/theme/menu/` and `src/theme/music/` out of a
+directory of converted tracks and a `loops.json` of their loop points that is **also not in
+the repository** (`~/Downloads/pp/ogg` by default). It resamples, because the mixer takes
+44,100 Hz and nothing else, and it *splits* each track at its loop point, because the mixer
+has no loop marker - `StructuredMusic::new(intro, repeating)` plays one file once and loops
+the other forever - cutting the raw pcm rather than seeking with ffmpeg so the seam lands on
+the sample the loop point names. `puyo-rusto/art/audio.py` synthesises the fifteen sound
+effect oggs and the two stings, and no longer the music.
 Re-run them rather than editing their output. `art/sprites.py` is the procedural art the rip
 replaced - eighty puyos as signed distance fields - kept because it owes the rip nothing and
 because it is the only description in the repository of what the sheet has to contain; it now

@@ -9,3 +9,7 @@ procedural-sprites.png
 # the Puyo Puyo Tetris rip `puyo-rusto/art/rip.py` cuts that sheet out of, kept locally
 # rather than carried: it is 12 MiB and the 317 KiB it yields is committed
 /puyo-rusto/art/PC _ Computer - Puyo Puyo Tetris - Gameplay Elements - Puyo Puyo Elements.png
+
+# `puyo-rusto/art/music.py`'s source is the same kind of thing and is not here either: a
+# directory of converted rips and a `loops.json` of their loop points, `~/Downloads/pp/ogg`
+# by default. Point the script at wherever it is to re-cut theme/{menu,music}/*.ogg

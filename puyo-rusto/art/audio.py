@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Draws puyo-rusto/src/theme/modern/*.ogg.
 
-The particle theme's audio is original the way its art is: a small chiptune synthesiser, so
-the sounds are generated rather than ripped. Everything lands as OGG Vorbis at exactly
-44,100 Hz, which is what the engine's decoder accepts and nothing else.
+The particle theme's sound effects are original the way its art was: a small chiptune
+synthesiser, so they are generated rather than ripped. Everything lands as OGG Vorbis at
+exactly 44,100 Hz, which is what the engine's decoder accepts and nothing else. The music a
+match is played on is *not* here - `puyo-rusto/art/music.py` cuts that out of a rip.
 
     python3 puyo-rusto/art/audio.py       # needs ffmpeg with libvorbis
 
@@ -109,13 +110,11 @@ def normalise(sound, peak=0.86):
     return sound * (peak / high) if high > 0 else sound
 
 
-def save(name, sound, loop=False):
-    """write one ogg; `loop` trims the tail so a repeat joins seamlessly"""
+def save(name, sound):
+    """write one ogg, fading its last few ms so nothing clicks as it stops"""
     sound = normalise(sound)
-    if not loop:
-        # a few ms of fade so nothing clicks as it stops
-        fade = min(len(sound), int(0.004 * RATE))
-        sound[-fade:] *= np.linspace(1, 0, fade)
+    fade = min(len(sound), int(0.004 * RATE))
+    sound[-fade:] *= np.linspace(1, 0, fade)
     pcm = (np.clip(sound, -1, 1) * 32767).astype("<i2")
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         path = tmp.name
@@ -210,75 +209,9 @@ def sfx_pause():
 
 # ------------------------------------------------------------------ music
 
-BPM = 148
-BEAT = 60.0 / BPM
-
-# i - VI - III - VII in A minor: four bars of four beats, twice through with a lift
-CHORDS = [(0, 3, 7), (-4, 0, 3), (-9, -5, -2), (-2, 2, 5)]
-
-# (degree, start beat, beats) over the sixteen beat cycle, as semitones from A4
-LEAD = [
-    (0, 0.0, 0.5), (3, 0.5, 0.5), (7, 1.0, 1.0), (5, 2.0, 0.5), (3, 2.5, 0.5), (0, 3.0, 1.0),
-    (-1, 4.0, 0.5), (3, 4.5, 0.5), (5, 5.0, 1.0), (3, 6.0, 0.5), (0, 6.5, 0.5), (-4, 7.0, 1.0),
-    (-2, 8.0, 0.5), (3, 8.5, 0.5), (7, 9.0, 0.5), (10, 9.5, 0.5), (12, 10.0, 1.5),
-    (10, 11.5, 0.5),
-    (7, 12.0, 0.5), (5, 12.5, 0.5), (3, 13.0, 1.0), (2, 14.0, 0.5), (0, 14.5, 0.5),
-    (-2, 15.0, 1.0),
-]
-
-
-def music_loop(cycles=2):
-    beats = 16
-    track = silence(beats * cycles * BEAT + 0.5)
-    for cycle in range(cycles):
-        base = cycle * beats * BEAT
-        lift = 0 if cycle == 0 else 12
-        for beat in range(beats):
-            chord = CHORDS[(beat // 4) % len(CHORDS)]
-            # bass: root on the beat, fifth on the off beat
-            root = chord[0] - 24
-            track = at(
-                track,
-                base + beat * BEAT,
-                tone(note(root), BEAT * 0.9, "triangle", 0.30, adsr=(0.004, 0.08, 0.5, 0.10)),
-            )
-            track = at(
-                track,
-                base + (beat + 0.5) * BEAT,
-                tone(note(chord[2] - 24), BEAT * 0.4, "triangle", 0.18,
-                     adsr=(0.004, 0.05, 0.4, 0.06)),
-            )
-            # pad: the chord, quietly, once a bar
-            if beat % 4 == 0:
-                for degree in chord:
-                    track = at(
-                        track,
-                        base + beat * BEAT,
-                        tone(note(degree - 12), BEAT * 3.6, "square", 0.055,
-                             adsr=(0.02, 0.30, 0.5, 0.40)),
-                    )
-            # hats on every eighth, a snare on two and four
-            for half in (0.0, 0.5):
-                track = at(
-                    track,
-                    base + (beat + half) * BEAT,
-                    noise(0.035, 0.045 if half else 0.065, (0.001, 0.012, 0.05, 0.02),
-                          lowpass=9000),
-                )
-            if beat % 4 in (1, 3):
-                track = at(
-                    track,
-                    base + beat * BEAT,
-                    noise(0.10, 0.10, (0.001, 0.04, 0.15, 0.06), lowpass=4200),
-                )
-        for degree, start, length in LEAD:
-            track = at(
-                track,
-                base + start * BEAT,
-                tone(note(degree + lift), length * BEAT * 0.95, "pulse", 0.17,
-                     adsr=(0.004, 0.06, 0.55, 0.06)),
-            )
-    return track[: int(beats * cycles * BEAT * RATE)]
+# The music a match is played on is not here: it is a Puyo Puyo Tetris rip, cut into an intro
+# and a loop by `puyo-rusto/art/music.py`. What is left is the two stings, which are the
+# theme's own.
 
 
 def music_victory():
@@ -318,7 +251,6 @@ def main():
     save("garbage.ogg", sfx_garbage())
     save("speed-up.ogg", sfx_speed_up())
     save("pause.ogg", sfx_pause())
-    save("music.ogg", music_loop(), loop=True)
     save("victory.ogg", music_victory())
     save("game-over.ogg", music_game_over())
 

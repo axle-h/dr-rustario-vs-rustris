@@ -4,6 +4,7 @@
 
 use crate::animate::event::AnimationEvent;
 use crate::animate::PlayerAnimations;
+use crate::app::MusicChoice;
 use crate::config::VideoConfig;
 use crate::game::geometry::Point as CellPoint;
 use crate::game::{Game, PieceId, PlacedCell};
@@ -13,6 +14,8 @@ use crate::render::sound::AudioTheme;
 use crate::render::Theme;
 use crate::scale::{Scale, ScaleMode};
 use crate::session::MatchState;
+use rand::prelude::ThreadRng;
+use rand::rng;
 use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{
@@ -218,6 +221,11 @@ pub struct ThemeContext<'a> {
     music_player: u32,
     /// the theme index whose music is playing
     music_theme: Option<usize>,
+    /// which of that theme's tracks the match asked for
+    music: MusicChoice,
+    /// dealing a random track is the only thing this rolls for, and it is shared with
+    /// nothing: no game reads it and no replay depends on it
+    music_rng: ThreadRng,
 }
 
 impl<'a> ThemeContext<'a> {
@@ -255,6 +263,8 @@ impl<'a> ThemeContext<'a> {
             fades: vec![None; players],
             music_player: 0,
             music_theme: None,
+            music: MusicChoice::default(),
+            music_rng: rng(),
         })
     }
 
@@ -543,6 +553,12 @@ impl<'a> ThemeContext<'a> {
         Ok(())
     }
 
+    /// which of the theme's tracks this match is played on: read once, when the music
+    /// starts, and again whenever the theme it belongs to changes
+    pub fn set_music_choice(&mut self, music: MusicChoice) {
+        self.music = music;
+    }
+
     /// keep the music on the theme of the winning player. the leader is only re-evaluated when
     /// `reevaluate_leader` is set (between stages), otherwise only the theme itself is checked
     /// i.e. the music owner changed theme. returns true if the music was (re)started.
@@ -562,6 +578,10 @@ impl<'a> ThemeContext<'a> {
         self.music_theme = Some(wanted);
 
         let audio = self.themes[wanted].theme.audio();
+        // the one place a random track is dealt: this is reached only when the theme the
+        // music belongs to has changed, so a match keeps the track it opened on through a
+        // pause, a stage clear and a game over, and picks another when the theme moves
+        audio.choose_game_music(self.music, &mut self.music_rng);
         match state {
             // Only single player uses next-stage *music*; in multiplayer the stage clear is a
             // jingle and game music must keep playing, otherwise another player's still-open

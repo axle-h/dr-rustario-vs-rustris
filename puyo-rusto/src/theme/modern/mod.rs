@@ -1,10 +1,13 @@
 //! The particle theme: puyos cut out of the Puyo Puyo Tetris rip by `puyo-rusto/art/rip.py`,
-//! and original audio, synthesised by `puyo-rusto/art/audio.py`. Everything else - the
-//! background, the board frame, the HUD and the cards - the engine draws procedurally.
+//! sound effects synthesised by `puyo-rusto/art/audio.py`, and the game's own music cut out
+//! of the same rip by `puyo-rusto/art/music.py` - four tracks, of which a match is dealt one.
+//! Everything else - the background, the board frame, the HUD and the cards - the engine
+//! draws procedurally.
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, SPAWN, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
 use crate::theme::data::{audio, cells, previews, Sounds, HUD_MAX};
+use crate::theme::GAME_MUSIC;
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -50,7 +53,6 @@ mod sound {
     pub const HARD_DROP: &[u8] = include_bytes!("hard-drop.ogg");
     pub const LOCK: &[u8] = include_bytes!("lock.ogg");
     pub const MOVE: &[u8] = include_bytes!("move.ogg");
-    pub const MUSIC: &[u8] = include_bytes!("music.ogg");
     pub const PAUSE: &[u8] = include_bytes!("pause.ogg");
     pub const POP: [&[u8]; 4] = [
         include_bytes!("pop-1.ogg"),
@@ -128,7 +130,7 @@ pub fn modern_puyo_theme<'a>(
         audio: audio(
             config.audio,
             Sounds {
-                music: sound::MUSIC,
+                music: &GAME_MUSIC,
                 move_pair: sound::MOVE,
                 rotate: sound::ROTATE,
                 lock: sound::LOCK,
