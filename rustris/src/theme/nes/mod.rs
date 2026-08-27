@@ -144,6 +144,8 @@ pub fn nes_theme<'a>(
         destroy_style: Some(DestroyStyle::Sweep),
         game_over_style: Some(curtain(true)),
         curtain_cell: Some(Mino::garbage()),
+        // Dr. Rustario and Rustris take a hit as it arrives, so nothing ever waits
+        pending: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: HARD_DROP_ROWS_PER_FRAME,
     };

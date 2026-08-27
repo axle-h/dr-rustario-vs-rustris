@@ -71,16 +71,32 @@ fn main() -> Result<(), String> {
     let texture_creator = canvas.texture_creator();
     let config = Config::default();
 
-    let mut all = dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?;
-    let dr_count = all.len();
-    all.extend(rustris::theme::all_themes(
-        &mut canvas,
-        &texture_creator,
-        config,
-    )?);
-    // the modern theme is the last of each game's set
-    let dr_modern = dr_count - 1;
-    let rustris_modern = all.len() - 1;
+    let mut all = vec![];
+    let mut games_built: Vec<PreviewGame> = vec![];
+    for (name, id, palette) in PREVIEW_GAMES {
+        let start = all.len();
+        all.extend(match name {
+            "dr" => dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?,
+            _ => rustris::theme::all_themes(&mut canvas, &texture_creator, config)?,
+        });
+        games_built.push(PreviewGame {
+            name,
+            id,
+            palette: palette(),
+            themes: start..all.len(),
+            // the modern theme is the last of each game's set
+            modern: all.len() - 1,
+        });
+    }
+    let games_built = games_built;
+    // which game a theme in the shared list belongs to
+    let game_of = |index: usize| {
+        games_built
+            .iter()
+            .find(|g| g.themes.contains(&index))
+            .map(|g| g.name)
+            .unwrap_or("?")
+    };
 
     if sheet {
         // every sprite of every theme, outlined and labelled with what the bank made of it,
@@ -100,7 +116,7 @@ fn main() -> Result<(), String> {
         // outline everything first, so the page can be sized before it is drawn
         let mut pages = vec![];
         for (index, theme) in all.iter().enumerate() {
-            let game = if index < dr_count { "dr" } else { "rustris" };
+            let game = game_of(index);
             let mut flat = theme.sprites().flatten(&mut canvas, &texture_creator)?;
             let audited = ShapeBank::audit(&mut canvas, &mut flat, ParticleDensity::High)?;
             let used = audited
@@ -205,7 +221,7 @@ fn main() -> Result<(), String> {
             bank.build(&mut canvas, &mut sheets, &indices)?;
         }
         for (index, theme) in all.iter().enumerate() {
-            let game = if index < dr_count { "dr" } else { "rustris" };
+            let game = game_of(index);
             let shapes = bank.shapes(index);
             let points = shapes.iter().map(|s| s.len()).collect::<Vec<usize>>();
             println!(
@@ -227,44 +243,35 @@ fn main() -> Result<(), String> {
         ParticleDensity::High,
     )?;
 
-    let (left, right) = match games.as_str() {
-        "dr" => (
-            (dr_modern, GameId(1), dr_palette()),
-            (dr_modern, GameId(1), dr_palette()),
-        ),
-        "rustris" => (
-            (rustris_modern, GameId(2), rustris_palette()),
-            (rustris_modern, GameId(2), rustris_palette()),
-        ),
-        _ => (
-            (dr_modern, GameId(1), dr_palette()),
-            (rustris_modern, GameId(2), rustris_palette()),
-        ),
-    };
+    // one game named puts both players on it; anything else deals them the first two, which
+    // is what "mixed" means whatever the compendium grows to
+    let named = games_built.iter().find(|g| g.name == games);
+    let left = named.unwrap_or(&games_built[0]);
+    let right = named.unwrap_or(&games_built[1 % games_built.len()]);
     let regions = vec![
         region(
             0,
             RectF::new(0.0, 0.0, 0.5, 1.0),
-            left.0,
-            left.1,
+            left.modern,
+            left.id,
             true,
-            left.2,
+            left.palette.clone(),
         ),
         region(
             1,
             RectF::new(0.5, 0.0, 0.5, 1.0),
-            right.0,
-            right.1,
+            right.modern,
+            right.id,
             both_modern,
-            right.2,
+            right.palette.clone(),
         ),
     ];
     // what the match screen offers: the games in play, the level, and VS in a 2-player match
     let scene = SceneContext::with_captions(
         regions,
-        ["DR. RUSTARIO", "RUSTRIS", "LEVEL 8", "VS"]
+        [left.title().to_string(), right.title().to_string()]
             .into_iter()
-            .map(String::from)
+            .chain(["LEVEL 8".to_string(), "VS".to_string()])
             .collect(),
     )
     .unwrap();
@@ -468,6 +475,33 @@ fn region(
         danger: 0.0,
         speed_index: 3,
         held_up: false,
+    }
+}
+
+/// Every game a preview can put a player on: its short name (what the `games` argument
+/// takes), its [`GameId`] and the colours it radiates into the field. One entry per game.
+const PREVIEW_GAMES: [(&str, GameId, fn() -> Palette); 2] = [
+    ("dr", engine::game::ids::DR_RUSTARIO, dr_palette),
+    ("rustris", engine::game::ids::RUSTRIS, rustris_palette),
+];
+
+/// one of [`PREVIEW_GAMES`], with its themes located in the shared list
+struct PreviewGame {
+    name: &'static str,
+    id: GameId,
+    palette: Palette,
+    themes: std::ops::Range<usize>,
+    /// the particle theme: the last of the game's own set
+    modern: usize,
+}
+
+impl PreviewGame {
+    /// what the field spells out for this game
+    fn title(&self) -> &'static str {
+        match self.name {
+            "dr" => "DR. RUSTARIO",
+            _ => "RUSTRIS",
+        }
     }
 }
 

@@ -6,7 +6,7 @@ use crate::game::geometry::Rotation;
 use crate::game::pill::{Garbage, PillShape, VirusColor, Vitamin, VitaminOrdinal, Vitamins};
 use engine::game::{Cell, CellId, GameId, PieceId, PlacedCell};
 
-pub const GAME_ID: GameId = GameId(1);
+pub const GAME_ID: GameId = engine::game::ids::DR_RUSTARIO;
 
 /// The game-specific meaning of a [`CellId`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

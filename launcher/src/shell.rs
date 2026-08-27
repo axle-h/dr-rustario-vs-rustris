@@ -1,10 +1,8 @@
 //! The launcher's per-frame state machine: which screen is showing, and how one screen
 //! hands over to the next. [`Shell::tick`] runs one frame; `engine::main_loop` drives it.
 
-use crate::games::AnyGame;
-use crate::modes::{
-    DrRustarioMode, Mode, RustrisMode, Themes, VersusMode, BACK, HIGH_SCORES, START,
-};
+use crate::games::{AnyGame, GameKind, PerGame};
+use crate::modes::{game_mode, Mode, Themes, VersusMode, BACK, HIGH_SCORES, START};
 use engine::app::screens::{
     HighScoreViewScreen, MatchScreen, MenuScreen, NameEntryExit, NameEntryScreen,
 };
@@ -23,25 +21,28 @@ const MAX_PLAYERS: u32 = 2;
 
 const QUIT: &str = "quit";
 
-/// The pre-menu: which of the three modes to run.
+/// The pre-menu: which mode to run - one of the games on its own, or the versus playlist
+/// over all of them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModeChoice {
-    Rustris,
-    DrRustario,
+    Game(GameKind),
     Versus,
 }
 
 impl ModeChoice {
-    const ALL: [ModeChoice; 3] = [
-        ModeChoice::Rustris,
-        ModeChoice::DrRustario,
-        ModeChoice::Versus,
-    ];
+    /// every game as it is billed, then the versus mode
+    fn all() -> Vec<ModeChoice> {
+        GameKind::RUNNING_ORDER
+            .into_iter()
+            .map(ModeChoice::Game)
+            .chain([ModeChoice::Versus])
+            .collect()
+    }
 
     fn name(&self) -> &'static str {
         match self {
-            ModeChoice::Rustris => "rustris",
-            ModeChoice::DrRustario => "dr. rustario",
+            ModeChoice::Game(game) => game.name(),
+            // the compendium's own title: a game joining it does not retitle it
             ModeChoice::Versus => "dr. rustario vs. rustris",
         }
     }
@@ -104,8 +105,8 @@ pub struct Shell {
     themes: &'static Themes<'static>,
     fg_particles: ParticleRender<'static>,
     bg_particles: ParticleRender<'static>,
-    rustris: RustrisMode,
-    dr_rustario: DrRustarioMode,
+    /// each game played on its own, one per [`GameKind`]
+    games: PerGame<Box<dyn Mode>>,
     versus: VersusMode,
     screen: Screen,
 }
@@ -118,14 +119,20 @@ impl Shell {
         let tc: &'static TextureCreator<WindowContext> =
             Box::leak(Box::new(app.canvas().texture_creator()));
         let config = app.config();
-        let mut all = dr_rustario::theme::all_themes(app.canvas(), tc, config)?;
-        let dr_range = 0..all.len();
-        all.extend(rustris::theme::all_themes(app.canvas(), tc, config)?);
-        let themes: &'static Themes<'static> = Box::leak(Box::new(Themes {
-            rustris: dr_range.end..all.len(),
-            dr_rustario: dr_range,
-            all,
-        }));
+        // every game's themes in one list, each game's slice of it recorded: built in
+        // GameKind::ALL order, so a game's themes keep one place in the list
+        let mut all = vec![];
+        let mut ranges = vec![];
+        for game in GameKind::ALL {
+            let start = all.len();
+            all.extend(match game {
+                GameKind::DrRustario => dr_rustario::theme::all_themes(app.canvas(), tc, config)?,
+                GameKind::Rustris => rustris::theme::all_themes(app.canvas(), tc, config)?,
+            });
+            ranges.push(start..all.len());
+        }
+        let themes: &'static Themes<'static> =
+            Box::leak(Box::new(Themes::new(all, PerGame::from_values(ranges))));
 
         let fg_particles =
             app.particle_render(tc, MAX_PARTICLES_PER_PLAYER * MAX_PLAYERS as usize, vec![])?;
@@ -139,8 +146,7 @@ impl Shell {
             themes,
             fg_particles,
             bg_particles,
-            rustris: RustrisMode::new(),
-            dr_rustario: DrRustarioMode::new(),
+            games: PerGame::new(game_mode),
             versus: VersusMode::new(),
             screen,
         })
@@ -164,8 +170,7 @@ impl Shell {
             themes,
             fg_particles,
             bg_particles,
-            rustris,
-            dr_rustario,
+            games,
             versus,
             screen,
             ..
@@ -180,10 +185,10 @@ impl Shell {
                     if name == HIGH_SCORES {
                         return Some(MenuExit::Custom(PreMenuAction::ViewHighScores));
                     }
-                    ModeChoice::ALL
-                        .iter()
+                    ModeChoice::all()
+                        .into_iter()
                         .find(|m| m.name() == name)
-                        .map(|m| MenuExit::Custom(PreMenuAction::Play(*m)))
+                        .map(|m| MenuExit::Custom(PreMenuAction::Play(m)))
                 })?;
                 Ok(exit.map(|exit| match exit {
                     MenuExit::Custom(PreMenuAction::Play(mode)) => Transition::ToTitle(mode),
@@ -194,7 +199,7 @@ impl Shell {
                 }))
             }
             Screen::Title { mode, menu } => {
-                let m = choose_mode(rustris, dr_rustario, versus, *mode);
+                let m = choose_mode(games, versus, *mode);
                 let exit = menu.update::<()>(app, bg_particles, |name, value| match name {
                     START => Some(MenuExit::Start),
                     BACK => Some(MenuExit::Back),
@@ -210,7 +215,7 @@ impl Shell {
                 }))
             }
             Screen::ModeMenu { mode, menu } => {
-                let m = choose_mode(rustris, dr_rustario, versus, *mode);
+                let m = choose_mode(games, versus, *mode);
                 let mut selected = false;
                 let exit = menu.update::<()>(app, bg_particles, |name, value| match name {
                     START => Some(MenuExit::Start),
@@ -233,7 +238,7 @@ impl Shell {
                 }))
             }
             Screen::Playing { mode, key, screen } => {
-                let m: &dyn Mode = choose_mode(rustris, dr_rustario, versus, *mode);
+                let m: &dyn Mode = choose_mode(games, versus, *mode);
                 let exit =
                     screen.update(app, fg_particles, bg_particles, |player, completed| {
                         m.next_stage(themes, player, completed)
@@ -269,12 +274,12 @@ impl Shell {
             }
             Transition::ToHighScores => {
                 // every table of every game and mode, at its defaults until played
-                let keys = [
-                    self.rustris.all_high_score_keys(),
-                    self.dr_rustario.all_high_score_keys(),
-                    self.versus.all_high_score_keys(),
-                ]
-                .concat();
+                let keys = self
+                    .games
+                    .values()
+                    .flat_map(|mode| mode.all_high_score_keys())
+                    .chain(self.versus.all_high_score_keys())
+                    .collect::<Vec<HighScoreKey>>();
                 match HighScoreViewScreen::new(
                     &mut self.app,
                     self.tc,
@@ -345,8 +350,7 @@ impl Shell {
 
     fn mode(&self, choice: ModeChoice) -> &dyn Mode {
         match choice {
-            ModeChoice::Rustris => &self.rustris,
-            ModeChoice::DrRustario => &self.dr_rustario,
+            ModeChoice::Game(game) => self.games.get(game).as_ref(),
             ModeChoice::Versus => &self.versus,
         }
     }
@@ -400,7 +404,7 @@ fn pre_menu(
     bg_particles: &mut ParticleRender,
 ) -> Result<Screen, String> {
     app.set_menu_sound(MenuSounds::MODERN)?;
-    let items = ModeChoice::ALL
+    let items = ModeChoice::all()
         .iter()
         .map(|m| MenuItem::select(m.name()))
         .chain([MenuItem::select(HIGH_SCORES), MenuItem::select(QUIT)])
@@ -419,14 +423,12 @@ fn pre_menu(
 }
 
 fn choose_mode<'m>(
-    rustris: &'m mut RustrisMode,
-    dr_rustario: &'m mut DrRustarioMode,
+    games: &'m mut PerGame<Box<dyn Mode>>,
     versus: &'m mut VersusMode,
     choice: ModeChoice,
 ) -> &'m mut dyn Mode {
     match choice {
-        ModeChoice::Rustris => rustris,
-        ModeChoice::DrRustario => dr_rustario,
+        ModeChoice::Game(game) => games.get_mut(game).as_mut(),
         ModeChoice::Versus => versus,
     }
 }

@@ -126,6 +126,8 @@ pub fn modern_rustris_theme<'a>(
         spawn_cell,
         cell_idle_type: FrameAnimationType::Static,
         queue_max: 5,
+        // nothing waits: an attack lands the moment it arrives
+        pending_max: 0,
         particle_color: Color::WHITE,
         particle_palette: TETROMINO_PALETTE.to_vec(),
         clear_particles: ClearParticles::Rows {

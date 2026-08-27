@@ -215,6 +215,8 @@ pub fn modern_dr_theme<'a>(
         spawn_cell: spawn_cell(),
         cell_idle_type: FrameAnimationType::Linear { fps: 30 },
         queue_max: 2,
+        // nothing waits: an attack lands the moment it arrives
+        pending_max: 0,
         particle_color: Color::WHITE,
         particle_palette: VITAMIN_PALETTE.to_vec(),
         clear_particles: ClearParticles::Masked {

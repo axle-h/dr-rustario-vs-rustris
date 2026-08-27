@@ -35,14 +35,18 @@ fn main() -> Result<(), String> {
         ..Config::default().video
     };
 
-    let mut all = dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?;
-    let dr = 0..all.len();
-    all.extend(rustris::theme::all_themes(
-        &mut canvas,
-        &texture_creator,
-        config,
-    )?);
-    let rustris_range = dr.end..all.len();
+    // every game's themes in one list, each game's slice of it recorded; one entry per game
+    const GAMES: [&str; 2] = ["dr-rustario", "rustris"];
+    let mut all = vec![];
+    let mut ranges = vec![];
+    for game in GAMES {
+        let start = all.len();
+        all.extend(match game {
+            "dr-rustario" => dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?,
+            _ => rustris::theme::all_themes(&mut canvas, &texture_creator, config)?,
+        });
+        ranges.push((game, start..all.len()));
+    }
 
     println!(
         "window {}x{} players {} integer {} area {:?}",
@@ -52,7 +56,7 @@ fn main() -> Result<(), String> {
         integer_scale,
         player_area(0, players, (width, height))
     );
-    for (game, range) in [("dr-rustario", dr), ("rustris", rustris_range)] {
+    for (game, range) in ranges {
         let group = all[range].iter().collect::<Vec<&Theme>>();
         let layout = BoardLayout::new(&group, players, (width, height), config.video);
         println!("  {game}");
