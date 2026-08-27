@@ -16,8 +16,12 @@ pub mod genetic;
 pub mod harness;
 #[cfg(all(not(test), not(target_os = "emscripten")))]
 mod headless_game;
+#[cfg(all(not(test), not(target_os = "emscripten")))]
+pub mod imitation;
 pub mod input_sequence;
 pub mod models;
+#[cfg(all(not(test), not(target_os = "emscripten")))]
+pub mod probe;
 
 pub use models::{DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
 pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};

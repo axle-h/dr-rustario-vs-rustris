@@ -5,7 +5,7 @@
 //! rotates before dropping: tucking sideways under an overhang after a soft drop is not
 //! searched, since the agent has no single step soft drop to execute it with.
 
-use crate::game::ai::features::{wasted_halves, BottleAnalysis, BottleFeatures, BottleStats};
+use crate::game::ai::features::{placement_stats, BottleFeatures, BottleStats, Grid};
 use crate::game::ai::input_sequence::{InputSequence, Translation};
 use crate::game::bottle::Bottle;
 use crate::game::geometry::{BottlePoint, Rotation};
@@ -23,6 +23,7 @@ pub struct Placement {
     inputs: InputSequence,
     features: BottleFeatures,
     landing: Landing,
+    settled: Bottle,
 }
 
 impl Placement {
@@ -32,6 +33,13 @@ impl Placement {
 
     pub fn features(&self) -> BottleFeatures {
         self.features
+    }
+
+    /// the bottle this placement leaves behind, cleared and cascaded out. [BottleFeatures] is
+    /// the reading of it the scorers take; anything measuring the bottle some other way - the
+    /// feature probe - reads it here.
+    pub fn settled(&self) -> &Bottle {
+        &self.settled
     }
 
     /// where the two halves come to rest, in the pill's own order: the left hand vitamin of
@@ -45,7 +53,11 @@ impl Placement {
 pub trait PlacementSearch {
     fn placements(&self, stats_before: BottleStats) -> Vec<Placement>;
 
-    /// the placements the bottle would offer if `shape` were the pill in play instead
+    /// The placements the bottle would offer if `shape` were the pill in play instead, which
+    /// is what an agent with a hold to reach for needs. Nothing uses it today - see
+    /// [`crate::game::ai::agent::DrAiAgent`] for the measurement that took hold away from the
+    /// scored agent - and it is kept because putting hold back needs it.
+    #[allow(dead_code)]
     fn placements_of(&self, shape: PillShape, stats_before: BottleStats) -> Vec<Placement>;
 }
 
@@ -130,14 +142,13 @@ fn drop_and_settle(
     stats_before: BottleStats,
 ) -> Placement {
     let landing = landing(bottle);
+    let before = bottle;
     let mut bottle = bottle.clone();
     bottle.hard_drop();
     let placed: Vec<BottlePoint> = bottle
         .lock()
         .map(|vitamins| vitamins.map(|v| v.position()).to_vec())
         .unwrap_or_default();
-
-    let wasted = wasted_halves(&bottle, &placed);
 
     let mut patterns_cleared = 0;
     loop {
@@ -151,16 +162,24 @@ fn drop_and_settle(
         while bottle.step_down_garbage() {}
     }
 
+    // the settled bottle is read once and then asked everything: the stats it leaves behind,
+    // and what the placement itself did to get there
+    let grid = Grid::of(&bottle);
+    let stats = grid.stats();
+    let placement = placement_stats(before, &bottle, &grid, &placed, patterns_cleared);
+
     Placement {
         inputs: inputs.with(Translation::HardDrop),
-        features: BottleFeatures::new(bottle.stats(), stats_before, wasted, patterns_cleared),
+        features: BottleFeatures::new(stats, stats_before, placement),
         landing,
+        settled: bottle,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::ai::features::BottleAnalysis;
     use crate::game::block::Block;
     use crate::game::bottle::{BOTTLE_FLOOR, BOTTLE_WIDTH};
     use crate::game::pill::{PillShape, VirusColor};
@@ -216,7 +235,7 @@ mod tests {
         let clearing: Vec<_> = bottle
             .placements(before)
             .into_iter()
-            .filter(|p| p.features().patterns_cleared() > 0)
+            .filter(|p| p.features().placement().patterns_cleared() > 0)
             .collect();
 
         assert!(!clearing.is_empty(), "no placement cleared the row");
@@ -237,7 +256,7 @@ mod tests {
         );
         // whatever it picks, the bottle it reports is quiescent: a run of four would have gone
         for placement in bottle.placements(bottle.stats()) {
-            assert!(placement.features().global().virus_near_3() >= 0);
+            assert!(placement.features().global().virus_3_row() >= 0);
         }
     }
 
