@@ -132,14 +132,12 @@ fn build_pool(rng: &mut ChaChaRng, colors: usize) -> Vec<PuyoColor> {
     // after that are the four-colour pool's
     let opening = OPENING_PAIRS * 2;
     for larger in 1..pools.len() {
-        for i in 0..opening {
-            pools[larger][i] = pools[0][i];
-        }
+        let held = pools[0][..opening].to_vec();
+        pools[larger][..opening].copy_from_slice(&held);
     }
     if pools.len() > 2 {
-        for i in opening..2 * opening {
-            pools[2][i] = pools[1][i];
-        }
+        let held = pools[1][opening..2 * opening].to_vec();
+        pools[2][opening..2 * opening].copy_from_slice(&held);
     }
 
     pools.swap_remove(colors - MIN_COLORS)

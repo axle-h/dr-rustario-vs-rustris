@@ -115,11 +115,6 @@ impl NuisancePoints {
     pub fn leftover(&self) -> u32 {
         self.leftover
     }
-
-    /// a placement that clears nothing does not spend the carry
-    pub fn reset(&mut self) {
-        self.leftover = 0;
-    }
 }
 
 #[cfg(test)]
@@ -271,18 +266,66 @@ mod tests {
         assert_eq!(points.leftover(), 10);
     }
 
-    /// ... and the published totals for the first few chain lengths, in nuisance
+    /// Puyo Nexus's *List of Chain Scores*, every row of it.
+    ///
+    /// The published table runs to a nineteen chain - which is also the longest chain the game
+    /// can be made to produce - and gives the running total in points and the nuisance it
+    /// buys, for a chain made entirely of four-puyo links. Reproducing all nineteen from the
+    /// tables in this module is the strongest check there is that the chain power curve, the
+    /// clamp, the target points and the carry are all the game's own and not something that
+    /// merely agrees with it for the first few links.
+    ///
+    /// (The page says it assumes the single player attack powers. It does not: its own
+    /// figures - 40, 320, 640, 1280, 2560 - are `10 * 4 *` this module's multiplayer curve,
+    /// and the single player one would open at 160. The numbers are what is being followed
+    /// here, not the caption.)
     #[test]
-    fn published_chain_totals_send_the_published_nuisance() {
-        for (length, expected_score, expected_nuisance) in
-            [(1, 40, 0), (2, 360, 5), (3, 1000, 14), (4, 2280, 32)]
-        {
+    fn the_whole_published_table_of_chain_scores_comes_back_out() {
+        const PUBLISHED: [(u32, u32, u32); 19] = [
+            // chain length, total points, total nuisance
+            (1, 40, 0),
+            (2, 360, 5),
+            (3, 1000, 14),
+            (4, 2280, 32),
+            (5, 4840, 69),
+            (6, 8680, 124),
+            (7, 13800, 197),
+            (8, 20200, 288),
+            (9, 27880, 398),
+            (10, 36840, 526),
+            (11, 47080, 672),
+            (12, 58600, 837),
+            (13, 71400, 1020),
+            (14, 85480, 1221),
+            (15, 100840, 1440),
+            (16, 117480, 1678),
+            (17, 135400, 1934),
+            (18, 154600, 2208),
+            (19, 175080, 2501),
+        ];
+        for (length, expected_score, expected_nuisance) in PUBLISHED {
             let score: u32 = (1..=length)
                 .map(|chain| step_score(chain, &[group(PuyoColor::Red, 4)]))
                 .sum();
-            assert_eq!(score, expected_score, "{length} chain");
+            assert_eq!(score, expected_score, "{length} chain, points");
             let mut points = NuisancePoints::default();
-            assert_eq!(points.take(score), expected_nuisance, "{length} chain");
+            assert_eq!(
+                points.take(score),
+                expected_nuisance,
+                "{length} chain, nuisance"
+            );
         }
+    }
+
+    /// the group bonus is per group and the colour bonus is per colour, so a step with two
+    /// unequal groups of different colours pays one of each
+    #[test]
+    fn group_bonuses_add_up_over_the_groups_of_a_step() {
+        let groups = [group(PuyoColor::Red, 5), group(PuyoColor::Blue, 6)];
+        // 10 * 11 * clamp(0 + 3 + (2 + 3)) = 880
+        assert_eq!(step_score(1, &groups), 880);
+        // ... and the same two sizes in one colour lose only the colour bonus
+        let one_colour = [group(PuyoColor::Red, 5), group(PuyoColor::Red, 6)];
+        assert_eq!(step_score(1, &one_colour), 10 * 11 * 5);
     }
 }

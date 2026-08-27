@@ -475,6 +475,17 @@ pub mod tests {
         assert!(board.is_empty());
     }
 
+    /// a nuisance puyo caught between two groups that both pop goes once, not twice
+    #[test]
+    fn nuisance_beside_two_groups_at_once_is_only_cleared_once() {
+        let mut board = board(&["rrrr..", "o.....", "bbbb.."]);
+        let step = board.pop().expect("both rows pop");
+        assert_eq!(step.groups.len(), 2);
+        assert_eq!(step.nuisance, 1, "the one puyo between them, once");
+        assert_eq!(step.count(), 9, "four, four and the nuisance");
+        assert!(board.is_empty());
+    }
+
     /// ... but nuisance out of reach of the group stays
     #[test]
     fn nuisance_away_from_the_group_stays() {
@@ -645,6 +656,24 @@ pub mod tests {
         assert!(!board.is_dead());
         board.set(DEATH_SQUARE, Some(PuyoCell::loose(PuyoColor::Red)));
         assert!(board.is_dead());
+    }
+
+    /// The death square is the top *visible* row, not the ghost row above it.
+    ///
+    /// Puyo Nexus, *Basic rules*: the game acts as if there were a red X "in the square on the
+    /// first row, third column", and the first row is the first one a player can see. Nothing
+    /// can rest in the ghost row above it without the death square being taken first anyway,
+    /// but the two are different squares and the game must not read the wrong one.
+    #[test]
+    fn the_ghost_row_above_the_death_square_is_not_the_death_square() {
+        let mut board = Board::new();
+        board.set(
+            Point::new(DEATH_SQUARE.x, 0),
+            Some(PuyoCell::loose(PuyoColor::Red)),
+        );
+        assert!(is_ghost(Point::new(DEATH_SQUARE.x, 0)));
+        assert!(!board.is_dead(), "the ghost row is not the death square");
+        assert!(!is_ghost(DEATH_SQUARE));
     }
 
     /// a full column that is *not* the third does not end the game
