@@ -44,6 +44,16 @@ const VERIFY_SEEDS: u128 = 5;
 /// candidate proves itself on bottles it has never been shown.
 const VERIFY_SEED_BLOCK: u128 = 1 << 96;
 
+/// How many candidates a generation holds. Every one of them plays [`SEEDS_PER_GAME`] whole
+/// games, and a good model's game runs to thousands of pills, so this is what a generation
+/// costs: at a thousand candidates over three seeds a generation took minutes.
+const POPULATION: usize = 250;
+
+/// Whole games each candidate plays per generation. Fewer is a noisier measure of a genome,
+/// which the seeds changing every generation already guards against, and it is the other half
+/// of what a generation costs.
+const SEEDS_PER_GAME: usize = 2;
+
 /// The pills the efficiency stage gives a candidate to finish as many bottles as it can in.
 /// Enough for a good model to get well up the levels, so that dawdling over the early ones
 /// costs it something.
@@ -133,8 +143,7 @@ fn clear_phase(seeded: bool) -> Phase {
         objective: Objective::Progress,
         // reaching this means every bottle up to the top training level came out
         end_game: EndGame::of_cleared(VIRUSES_TO_CLEAR),
-        // three whole games to a genome
-        seeds_per_game: 3,
+        seeds_per_game: SEEDS_PER_GAME,
         mutation_rate: RateLimits::new(rates.clone()),
         crossover_rate: RateLimits::new(rates),
         mutation_step: step,
@@ -151,7 +160,7 @@ fn efficiency_phase() -> Phase {
     Phase {
         objective: Objective::Score,
         end_game: EndGame::of_pieces(PILL_BUDGET),
-        seeds_per_game: 3,
+        seeds_per_game: SEEDS_PER_GAME,
         mutation_rate: RateLimits::new(0.01..=0.05),
         crossover_rate: RateLimits::new(0.01..=0.05),
         mutation_step: 0.02,
@@ -163,7 +172,7 @@ fn run(phase: Phase, population_seed: Option<DrNeuralGenome>) -> DrNeuralGenome 
     GeneticAlgorithm::new(
         neural_fitness(),
         neural_mutation(),
-        HyperParameters::default(),
+        HyperParameters::new(POPULATION, 0.005, 0.5),
         vec![phase],
         population_seed,
     )
@@ -179,35 +188,39 @@ fn verify(genome: DrNeuralGenome) -> bool {
     for (seed, result) in verify_results(genome).iter().enumerate() {
         let cleared = !result.game_over() && result.cleared() >= VIRUSES_TO_CLEAR;
         println!(
-            "  verify seed {}: {} bottles, {} viruses, {} pills - {}",
+            "  seed {}: {} bottles, {} viruses, {} pills {}",
             seed + 1,
             result.bonus(),
             result.cleared(),
             result.pieces(),
-            if cleared { "cleared" } else { "buried" }
+            if cleared { "✅" } else { "❌" }
         );
         verified &= cleared;
     }
     verified
 }
 
-/// Stage two, run to its finish: train until a candidate clears every bottle on its training
-/// seeds and then does it again on seeds it has never played. A candidate that fails
-/// verification is the population's new seed.
-fn survive(mut population_seed: Option<DrNeuralGenome>) -> DrNeuralGenome {
-    loop {
-        let candidate = run(clear_phase(population_seed.is_some()), population_seed);
-        println!(
-            "a candidate cleared every bottle up to level {} on its training seeds, \
-             checking it on {} it has never played",
-            TOP_TRAINING_LEVEL, VERIFY_SEEDS
-        );
-        if verify(candidate) {
-            return candidate;
-        }
-        println!("not verified, training on from this candidate");
-        population_seed = Some(candidate);
-    }
+/// Stage two, run to its finish. The phase's own test - every bottle cleared on every seed it
+/// played - is not enough on its own, since a genome can clear the two seeds in front of it
+/// without generalising, so a candidate that passes it is put through [`VERIFY_SEEDS`] games it
+/// has never seen before the phase is allowed to end.
+///
+/// A candidate that fails that carries on in the same population. Starting again from it would
+/// reseed every member from one genome and throw away every other line the search has found.
+fn survive(population_seed: Option<DrNeuralGenome>) -> DrNeuralGenome {
+    GeneticAlgorithm::new(
+        neural_fitness(),
+        neural_mutation(),
+        HyperParameters::new(POPULATION, 0.005, 0.5),
+        vec![clear_phase(population_seed.is_some())],
+        population_seed,
+    )
+    .run_confirmed(|stats| {
+        println!("validating on {} unseen seeds", VERIFY_SEEDS);
+        verify(stats.max().genome())
+    })
+    .max()
+    .genome()
 }
 
 /// `ga dr pretrain [pills] [threshold]`: stage one on its own. Teaches networks from the
@@ -223,7 +236,7 @@ pub fn ga_main_pretrain(args: &[String]) -> Result<(), String> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(TAUGHT_ENOUGH);
     let genome = pretrain(pills, threshold);
-    print_weights("the taught network", genome);
+    print_weights("taught model", genome);
     Ok(())
 }
 
@@ -236,18 +249,15 @@ pub fn ga_main_pretrain(args: &[String]) -> Result<(), String> {
 /// So the corpus is gathered once - it is deterministic, and re-gathering it would only cost
 /// time - and only the initial weights are drawn again.
 fn pretrain(pills: usize, threshold: u32) -> DrNeuralGenome {
-    println!(
-        "gathering lessons from the deterministic ai ({} pills)",
-        pills
-    );
+    println!("lessons: {} pills from the n64 ai", pills);
     let corpus = imitation::lessons(pills);
     println!(
-        "teaching networks to rank them, {} passes over {} pills apiece, until one plays {} \
-         viruses over {} whole games",
+        "training: {} epochs over {} pills, target {} viruses in {} games, {} attempts",
         imitation::EPOCHS,
         corpus.len(),
         threshold,
-        VERIFY_SEEDS
+        VERIFY_SEEDS,
+        PRETRAIN_ATTEMPTS
     );
 
     let mut best: Option<(u32, DrNeuralGenome)> = None;
@@ -259,8 +269,7 @@ fn pretrain(pills: usize, threshold: u32) -> DrNeuralGenome {
         let viruses: u32 = results.iter().map(|r| r.cleared()).sum();
         let bottles: u32 = results.iter().map(|r| r.bonus()).sum();
         println!(
-            "  clone {}: agrees with the ai on {:.1}% of {} pills it was never taught, \
-             and plays {} viruses over {} bottles",
+            "  attempt {}: agreement {:.1}% of {} held out pills, {} viruses, {} bottles",
             clone + 1,
             100.0 * report.agreement,
             report.lessons,
@@ -278,12 +287,11 @@ fn pretrain(pills: usize, threshold: u32) -> DrNeuralGenome {
     let (viruses, genome) = best.expect("no clone was taught");
     if viruses < threshold {
         println!(
-            "none of {} clones reached {} viruses; going on with the best of them, which is \
-             a worse start than stage two should be given",
-            PRETRAIN_ATTEMPTS, threshold
+            "no attempt reached {} viruses in {}; taking the best at {}",
+            threshold, PRETRAIN_ATTEMPTS, viruses
         );
     }
-    report_play("the taught model", genome);
+    report_play("taught model", genome);
     genome
 }
 
@@ -293,10 +301,7 @@ fn pretrain(pills: usize, threshold: u32) -> DrNeuralGenome {
 /// body of `virus_clear_trained`, ready to paste over the one that is there.
 fn print_weights(what: &str, genome: DrNeuralGenome) {
     let weights: [f64; DR_NEURAL_GENOME_SIZE] = genome.into();
-    println!(
-        "\n// {}: paste this over the body of models::virus_clear_trained",
-        what
-    );
+    println!("\n// {}, for models::virus_clear_trained", what);
     println!("    DrNeuralNetwork::new(&[");
     for line in weights.chunks(8) {
         let numbers: Vec<String> = line.iter().map(|w| format!("{:.6}", w)).collect();
@@ -314,9 +319,8 @@ fn report_play(what: &str, genome: DrNeuralGenome) {
     let pills: u32 = results.iter().map(|r| r.pieces()).sum();
     let buried = results.iter().filter(|r| r.game_over()).count();
     println!(
-        "{} plays {} whole games from the first bottle: {} viruses, {} bottles, {} pills, \
-         buried {} times",
-        what, VERIFY_SEEDS, viruses, bottles, pills, buried
+        "{}: {} viruses, {} bottles, {} pills, {} buried, over {} games",
+        what, viruses, bottles, pills, buried, VERIFY_SEEDS
     );
 }
 
@@ -338,31 +342,28 @@ fn verify_results(genome: DrNeuralGenome) -> Vec<GameResult> {
 
 /// Every stage in order, which is what a training run is.
 pub fn ga_main_auto() -> Result<(), String> {
-    println!("== stage one: learning to play from the deterministic ai ==");
+    println!("== stage 1: imitation ==");
     let taught = pretrain(imitation::LESSON_PILLS, TAUGHT_ENOUGH);
 
-    println!("\n== stage two: surviving the whole game ==");
+    println!("\n== stage 2: survival ==");
     let survivor = survive(Some(taught));
-    report_play("the surviving model", survivor);
+    report_play("stage 2 model", survivor);
+
+    println!("\n== stage 3: efficiency, {} pill budget ==", PILL_BUDGET);
+    let sharpened = run(efficiency_phase(), Some(survivor));
+    report_play("stage 3 model", sharpened);
 
     println!(
-        "\n== stage three: finishing more bottles in {} pills ==",
-        PILL_BUDGET
+        "\nvalidating the stage 3 model on {} unseen seeds",
+        VERIFY_SEEDS
     );
-    let sharpened = run(efficiency_phase(), Some(survivor));
-    report_play("the sharpened model", sharpened);
-
-    println!("\nchecking that it still clears every bottle");
     if verify(sharpened) {
-        print_weights("the model to embed", sharpened);
+        print_weights("stage 3 model", sharpened);
     } else {
-        println!(
-            "efficiency training cost it the clean sweep, so the model to embed is the one \
-             stage two left behind"
-        );
-        print_weights("the model to embed", survivor);
+        println!("stage 3 model failed validation, embedding the stage 2 model");
+        print_weights("stage 2 model", survivor);
         print_weights(
-            "the faster one, which does not clear every bottle",
+            "stage 3 model, which does not clear every bottle",
             sharpened,
         );
     }
@@ -372,20 +373,20 @@ pub fn ga_main_auto() -> Result<(), String> {
 /// the same three stages, seeded from the built in model rather than taught from scratch
 pub fn ga_main_tune() -> Result<(), String> {
     let seed: DrNeuralGenome = models::virus_clear_trained().into();
-    report_play("the built in model", seed);
+    report_play("embedded model", seed);
     let survivor = survive(Some(seed));
-    report_play("the surviving model", survivor);
+    report_play("stage 2 model", survivor);
     let sharpened = run(efficiency_phase(), Some(survivor));
-    report_play("the sharpened model", sharpened);
-    print_weights("the model to embed", sharpened);
+    report_play("stage 3 model", sharpened);
+    print_weights("stage 3 model", sharpened);
     Ok(())
 }
 
 /// `ga dr survive`: stage two on its own, from scratch, which is what training used to be
 pub fn ga_main_survive() -> Result<(), String> {
     let survivor = survive(None);
-    report_play("the surviving model", survivor);
-    print_weights("the surviving model", survivor);
+    report_play("stage 2 model", survivor);
+    print_weights("stage 2 model", survivor);
     Ok(())
 }
 
@@ -413,13 +414,17 @@ pub fn ga_main_trial(args: &[String]) -> Result<(), String> {
     phase.max_generations = generations;
 
     println!(
-        "\na population of {} over {} generations, {}",
+        "\npopulation {}, {} generations, {} phase, seeded from {}",
         population,
         generations,
         match stage {
-            "efficiency" => "finishing as many bottles as it can on a pill budget",
-            "taught" => "clearing bottles from the first up, taught first",
-            _ => "clearing bottles from the first up, from random weights",
+            "efficiency" => "efficiency",
+            _ => "survival",
+        },
+        if seed.is_some() {
+            "imitation"
+        } else {
+            "random weights"
         }
     );
     let stats = GeneticAlgorithm::new(
@@ -429,11 +434,15 @@ pub fn ga_main_trial(args: &[String]) -> Result<(), String> {
         vec![phase],
         seed,
     )
-    .run();
+    .run_confirmed(|stats| {
+        // the same gate stage two really uses, so a trial walks the path production does
+        println!("validating on {} unseen seeds", VERIFY_SEEDS);
+        verify(stats.max().genome())
+    });
 
     let best = stats.max().result();
     println!(
-        "best after {} generations: {} viruses over {} bottles in {} pills",
+        "best after {} generations: {} viruses, {} bottles, {} pills",
         generations,
         best.cleared(),
         best.bonus(),
@@ -445,7 +454,7 @@ pub fn ga_main_trial(args: &[String]) -> Result<(), String> {
 /// play the built in model on a few seeds and report how far it gets
 pub fn ga_diagnose() -> Result<(), String> {
     println!(
-        "built in neural network, bottles 0 to {} ({} viruses in all)",
+        "embedded model, bottles 0 to {}, {} viruses in all",
         TOP_TRAINING_LEVEL, VIRUSES_TO_CLEAR
     );
     verify(models::virus_clear_trained().into());
