@@ -1,6 +1,7 @@
 //! The particle theme: puyos cut out of the Puyo Puyo Tetris rip by `puyo-rusto/art/rip.py`,
-//! sound effects synthesised by `puyo-rusto/art/audio.py`, and the game's own music cut out
-//! of the same rip by `puyo-rusto/art/music.py` - four tracks, of which a match is dealt one.
+//! sound effects cut out of a Puyo Puyo Tetris 2 one by `puyo-rusto/art/sfx.py`, and the
+//! game's own music cut out of the first rip by `puyo-rusto/art/music.py` - four tracks, of
+//! which a match is dealt one.
 //! Everything else - the background, the board frame, the HUD and the cards - the engine
 //! draws procedurally.
 
@@ -12,12 +13,13 @@ use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
 use engine::config::Config;
+use engine::render::font::PopupSpriteData;
 use engine::render::modern::{modern_theme, ModernThemeOptions};
 use engine::render::scene::ClearParticles;
 use engine::render::sprite_sheet::{BlockSpriteSheetData, GhostStyle};
 use engine::render::Theme;
 use sdl2::pixels::Color;
-use sdl2::rect::Point;
+use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
@@ -46,6 +48,54 @@ const SKIN_ROWS: i32 = EXTRAS_ROW + 1;
 pub const SKINS: usize = PuyoSkin::COUNT;
 
 const SPRITES: &[u8] = include_bytes!("sprites.png");
+
+/// The caption a chain step says over the puyos it just took, cut from the same rip by
+/// `puyo-rusto/art/rip.py`: the ten digits along the top row and the word underneath.
+///
+/// Its layout is the script's `POPUP_CELL` and `POPUP_WORD_CELL` and nothing else. Every cell
+/// is the same height whatever it draws, because each glyph was cut against its row's own
+/// baseline rather than its own bounding box - the round digits hang a little below the line
+/// and the word sits well above it, exactly as the game drew them - so the whole caption is
+/// drawn at one y.
+const POPUP: &[u8] = include_bytes!("popup.png");
+const POPUP_PAD: i32 = 4;
+const POPUP_CELL: (u32, u32) = (64, 100);
+const POPUP_WORD_CELL: (u32, u32) = (132, 100);
+/// the gap between the number and the word, in the sheet's own pixels. Small, because the
+/// digits are on a fixed pitch and a narrow one - the `1` - already carries most of a gap of
+/// its own on either side
+const POPUP_SPACE: u32 = 8;
+
+/// The sheet, as the ten digits on a fixed pitch and the word under them.
+///
+/// Fixed pitch because a counter climbing from 9 to 10 that shifted its digits about as it
+/// went would read worse than one that does not; and the word is one sprite rather than five
+/// letters, because that is how the rip drew it.
+fn popup_sprites() -> PopupSpriteData {
+    const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    let pitch = POPUP_CELL.0 as i32 + 2 * POPUP_PAD;
+    let digits = DIGITS.iter().enumerate().map(|(index, digit)| {
+        let at = Rect::new(
+            POPUP_PAD + pitch * index as i32,
+            POPUP_PAD,
+            POPUP_CELL.0,
+            POPUP_CELL.1,
+        );
+        (*digit, at)
+    });
+    let word = Rect::new(
+        POPUP_PAD,
+        POPUP_PAD + POPUP_CELL.1 as i32 + 2 * POPUP_PAD,
+        POPUP_WORD_CELL.0,
+        POPUP_WORD_CELL.1,
+    );
+    PopupSpriteData {
+        file: POPUP,
+        cell_height: POPUP_CELL.1,
+        space: POPUP_SPACE,
+        glyphs: digits.chain(std::iter::once(("chain", word))).collect(),
+    }
+}
 
 mod sound {
     pub const ATTACK: &[u8] = include_bytes!("attack.ogg");
@@ -179,6 +229,10 @@ pub fn modern_puyo_theme<'a>(
         }),
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
+        // "2 chain" in the game's own face rather than the engine's, which is worth the one
+        // extra sheet: the chain count is the only thing a Puyo player is reading while the
+        // board goes off, and `clear_popup` says it on every step of one
+        popup_sprites: Some(popup_sprites()),
     };
     modern_theme(canvas, texture_creator, options)
 }
@@ -216,6 +270,29 @@ mod tests {
         let last = block(3, extras_row(PuyoSkin::all().last().unwrap()));
         assert!(last.x + SRC_BLOCK_SIZE as i32 <= width as i32);
         assert!(last.y + SRC_BLOCK_SIZE as i32 <= height as i32);
+    }
+
+    /// the caption's sheet is `rip.py`'s too, and the same argument holds: a layout that has
+    /// drifted from the script's would draw the wrong half of a glyph rather than fail
+    #[test]
+    fn the_caption_sheet_is_the_shape_the_layout_reads_it_as() {
+        let (width, height) = png_size(POPUP);
+        assert_eq!(width, (POPUP_CELL.0 as i32 + 2 * POPUP_PAD) as u32 * 10);
+        assert_eq!(height, (POPUP_CELL.1 as i32 + 2 * POPUP_PAD) as u32 * 2);
+        for (_, at) in popup_sprites().glyphs {
+            assert!(at.right() <= width as i32, "{at:?} runs off the sheet");
+            assert!(at.bottom() <= height as i32, "{at:?} runs off the sheet");
+        }
+    }
+
+    /// what the sheet has to spell is what `clear_popup` says, and a caption it cannot spell
+    /// is quietly written in the engine's face instead - so nothing but a test notices
+    #[test]
+    fn the_sheet_spells_every_chain_a_game_can_count_to() {
+        let sprites = popup_sprites();
+        for chain in 1..100 {
+            assert!(sprites.spells(&format!("{chain} chain")), "{chain} chain");
+        }
     }
 
     /// every skin has to key a *different* band, or two players dealt different sets would

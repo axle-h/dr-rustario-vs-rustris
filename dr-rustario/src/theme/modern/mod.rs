@@ -226,6 +226,8 @@ pub fn modern_dr_theme<'a>(
         game_over_style: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
+        // no art for a caption, and no captions: see `clear_popup`
+        popup_sprites: None,
     };
     modern_theme(canvas, texture_creator, options)
 }

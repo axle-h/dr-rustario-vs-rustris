@@ -21,8 +21,11 @@ The rip's link index is *not* this game's: it counts down 1, up 2, right 4, left
 swap, and it is one of the two reasons this is a script rather than a crop. The other is
 `repair`.
 
-    python3 puyo-rusto/art/rip.py            # cut the sheet
-    python3 puyo-rusto/art/rip.py check      # ... and check every join in it
+    python3 puyo-rusto/art/rip.py            # cut both sheets
+    python3 puyo-rusto/art/rip.py check      # ... and check every join in the puyos
+
+It writes a second, much smaller sheet beside that one: `popup.png`, the caption a chain
+step says over the puyos it just took. See `POPUP_ROWS`.
 
 The output layout is `sprites.py`'s, one skin under the next, so `theme/modern/mod.rs`
 addresses either the same way:
@@ -46,6 +49,9 @@ SHEET = os.path.join(
     HERE, "PC _ Computer - Puyo Puyo Tetris - Gameplay Elements - Puyo Puyo Elements.png"
 )
 OUT = os.path.normpath(os.path.join(HERE, "..", "src", "theme", "modern", "sprites.png"))
+POPUP_OUT = os.path.normpath(
+    os.path.join(HERE, "..", "src", "theme", "modern", "popup.png")
+)
 
 # the rip's grid. A neck runs exactly to its cell's edge, so two linked puyos meet flush
 # only if the cut is on these lines and nowhere near them
@@ -251,6 +257,97 @@ def check():
     print(f"{CHECK_OUT} {page.size[0]}x{page.size[1]} {len(SKINS)} skins, all 16 masks")
 
 
+# ---------------------------------------------------------------- the chain caption
+
+# Where the caption's face is on the rip: the digits and the word "Chain!", one size of one
+# face, laid out as two rows with a "+" between the 9 and the word that this game has no use
+# for. Each row is (top, bottom, left, right) of a window around it; `popup_row` finds the
+# glyphs inside one by their alpha, so nothing here has to name a column.
+POPUP_ROWS = [
+    (4240, 4380, 2580, 3120),  # 0 1 2 3 4 5 6 7
+    (4370, 4500, 2580, 2930),  # 8 9 + Chain!
+]
+# how many glyphs each row is expected to hold, and which of them are wanted: the second row
+# is the two digits and then the word, with the "+" skipped
+POPUP_DIGITS = [8, 2]
+POPUP_WORD = (1, 3)  # (row, glyph): "Chain!"
+
+# One glyph cell of the output. Everything is drawn against the row's own baseline rather
+# than its own bounding box - the word sits above it and the round digits hang a little below
+# it - so a run of cells drawn at one y keeps exactly the relationship the rip drew.
+POPUP_CELL = (64, 100)  # the widest digit, and a line of the face
+POPUP_WORD_CELL = (132, 100)
+# where the baseline sits in a cell. The digits overhang it by two or three pixels, which is
+# the overshoot every round glyph of every face has
+POPUP_BASELINE = 96
+
+
+def popup_row(source, window):
+    """the glyphs of one row of the caption's face, in reading order
+
+    A row of a rip is a row of a rip: the only thing that says where one glyph stops and the
+    next starts is a column of nothing between them. Returns each glyph's own left and right
+    and the row's baseline, which is as far down as any of them reach.
+    """
+    top, bottom, left, right = window
+    alpha = np.array(source.crop((left, top, right, bottom)))[:, :, 3] > 20
+    columns = alpha.any(axis=0)
+    glyphs, start = [], None
+    for x in range(len(columns) + 1):
+        if x < len(columns) and columns[x]:
+            start = x if start is None else start
+        elif start is not None:
+            glyphs.append((left + start, left + x - 1))
+            start = None
+    return glyphs, top + int(np.nonzero(alpha.any(axis=1))[0].max())
+
+
+def popup_glyph(source, glyph, baseline, cell):
+    """one glyph, centred in its cell and sitting on the row's baseline"""
+    left, right = glyph
+    width, height = cell
+    top = baseline - POPUP_BASELINE + 1
+    art = source.crop((left, top, right + 1, top + height))
+    tile = Image.new("RGBA", cell, (0, 0, 0, 0))
+    tile.paste(art, ((width - art.width) // 2, 0))
+    return tile
+
+
+def popup(source):
+    """Cut `popup.png`: the ten digits on one row and the word "Chain!" under them.
+
+    A chain step says how far into the chain it is over the puyos it just took, and what it
+    says it in is the game's own face rather than the engine's - which is the whole of why
+    this is worth cutting. The two cell sizes are the only layout `theme/modern/mod.rs` has
+    to know: digits on a fixed pitch, because a counter that jumps about as it climbs from 9
+    to 10 reads worse than one that does not, and the word on its own wider one.
+    """
+    rows = [popup_row(source, window) for window in POPUP_ROWS]
+    for (glyphs, _), expected in zip(rows, POPUP_DIGITS):
+        if len(glyphs) < expected:
+            raise SystemExit(f"the caption's face has moved: {len(glyphs)} glyphs, not {expected}")
+
+    digits = []
+    for (glyphs, baseline), count in zip(rows, POPUP_DIGITS):
+        for glyph in glyphs[:count]:
+            digits.append(popup_glyph(source, glyph, baseline, POPUP_CELL))
+    word_glyphs, word_baseline = rows[POPUP_WORD[0]]
+    word = popup_glyph(source, word_glyphs[POPUP_WORD[1]], word_baseline, POPUP_WORD_CELL)
+
+    pitch = POPUP_CELL[1] + 2 * PAD
+    sheet = Image.new(
+        "RGBA",
+        ((POPUP_CELL[0] + 2 * PAD) * len(digits), pitch * 2),
+        (0, 0, 0, 0),
+    )
+    for index, digit in enumerate(digits):
+        sheet.paste(digit, (PAD + (POPUP_CELL[0] + 2 * PAD) * index, PAD))
+    sheet.paste(word, (PAD, PAD + pitch))
+    sheet.save(POPUP_OUT)
+    print(f"{POPUP_OUT} {sheet.size[0]}x{sheet.size[1]} {len(digits)} digits and a word")
+
+
+
 def main():
     source = Image.open(SHEET).convert("RGBA")
     sheet = Image.new(
@@ -268,6 +365,7 @@ def main():
             paste(sheet, cut(source, skin, row, col), 1 + column, base + 5)
     sheet.save(OUT)
     print(f"{OUT} {sheet.size[0]}x{sheet.size[1]} {len(SKINS)} skins")
+    popup(source)
 
 
 if __name__ == "__main__":

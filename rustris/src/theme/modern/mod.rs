@@ -141,6 +141,8 @@ pub fn modern_rustris_theme<'a>(
             color: Color::WHITE,
         },
         hard_drop_rows_per_frame: HARD_DROP_ROWS_PER_FRAME,
+        // no art for a caption, and no captions: see `clear_popup`
+        popup_sprites: None,
     };
     let _ = SEND_GARBAGE_ALT_SOUND;
     modern_theme(canvas, texture_creator, options)

@@ -15,7 +15,8 @@ game is never two boards of the same puyos and no two matches look alike; the ti
 sends all fourteen past. It has a soundtrack the same way: one track over its menus, and four
 more that a match is dealt one of. The **music** row on its menu pins one instead - the deal
 is what `random`, its default, means, and a track dealt at the start of a match plays to the
-end of it, changing only if the theme does.
+end of it, changing only if the theme does. Every step of a chain counts itself out over the
+puyos it just took, in the game's own face rather than the engine's.
 
 Rustris follows the guideline: the Super Rotation System and its wall kicks, a seven bag
 randomiser, hold, extended placement lock down, and guideline scoring. A T rotated into a slot

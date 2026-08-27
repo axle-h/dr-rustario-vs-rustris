@@ -17,13 +17,17 @@ use sdl2::video::WindowContext;
 /// the source block size every theme's race sprites are scaled relative to
 pub const RACE_REFERENCE_BLOCK_SIZE: u32 = modern::SRC_BLOCK_SIZE;
 
-/// The music, cut out of a Puyo Puyo Tetris rip by `puyo-rusto/art/music.py`.
+/// What the menus and a match are played over: the music cut out of a Puyo Puyo Tetris rip
+/// by `puyo-rusto/art/music.py`, and the two menu clicks cut out of a Puyo Puyo Tetris 2 one
+/// by `puyo-rusto/art/sfx.py`.
 ///
-/// Every one of them is a pair: the mixer has no loop marker, so a track is split at the
-/// point it loops back to and the second half is what repeats. They sit here rather than in
-/// the particle theme's own directory because phase 3's retro themes are the same game's
-/// music and will want the same five.
-mod music {
+/// Every track is a *pair*: the mixer has no loop marker, so one is split at the point it
+/// loops back to and the second half is what repeats. All of it sits here rather than in the
+/// particle theme's own directory because phase 3's retro themes are the same game's music
+/// and walk the same menus, so they will want the same five and the same two clicks.
+mod sound {
+    pub const CHIME: &[u8] = include_bytes!("menu/chime.ogg");
+    pub const SELECT: &[u8] = include_bytes!("menu/select.ogg");
     pub const MENU: (&[u8], &[u8]) = (
         include_bytes!("menu/menu-intro.ogg"),
         include_bytes!("menu/menu-repeat.ogg"),
@@ -49,21 +53,22 @@ mod music {
 /// the tracks a match may be played on, **in [`GameMusic::ALL`] order** - a track's place in
 /// this table is the number the menu's choice turns into
 pub const GAME_MUSIC: [(&[u8], &[u8]); GameMusic::ALL.len()] = [
-    music::KOROBEINIKI,
-    music::DECISIVE,
-    music::MAGICAL,
-    music::TETRO_MIX,
+    sound::KOROBEINIKI,
+    sound::DECISIVE,
+    sound::MAGICAL,
+    sound::TETRO_MIX,
 ];
 
 /// Puyo Rusto's own menu sounds: the one menu track over both menu screens, as Rustris does
-/// with its. `MenuSound` plays a track that is already playing rather than restarting it, so
-/// walking the title screen into the options menu does not interrupt it. The chime and the
-/// high score music stay the engine's, which is what every other menu here uses.
+/// with its, and the same game's two clicks over the top of it. `MenuSound` plays a track
+/// that is already playing rather than restarting it, so walking the title screen into the
+/// options menu does not interrupt it. Only the high score music stays the engine's, since
+/// the rip has nothing that belongs under a table of names.
 pub const MENU_SOUNDS: MenuSounds = MenuSounds {
-    chime: MenuSounds::MODERN.chime,
-    select: MenuSounds::MODERN.select,
-    title: MenuMusic::IntroLoop(music::MENU.0, music::MENU.1),
-    menu: MenuMusic::IntroLoop(music::MENU.0, music::MENU.1),
+    chime: sound::CHIME,
+    select: Some(sound::SELECT),
+    title: MenuMusic::IntroLoop(sound::MENU.0, sound::MENU.1),
+    menu: MenuMusic::IntroLoop(sound::MENU.0, sound::MENU.1),
     high_score: MenuSounds::MODERN.high_score,
 };
 
@@ -125,8 +130,19 @@ pub fn race_themes(themes: &[Theme]) -> Vec<RaceTheme> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine::audio::Sound;
     use engine::render::sprite_sheet::PreviewData;
     use std::collections::HashSet;
+
+    /// `puyo-rusto/art/sfx.py` writes the two clicks and nothing else reads them until a
+    /// menu is opened, which no test opens - so this is where a rip that came out at the
+    /// wrong rate or was never re-cut is caught
+    #[test]
+    fn the_menus_two_clicks_decode() {
+        for bytes in [sound::CHIME, sound::SELECT] {
+            Sound::load(bytes, 100).expect("a menu click did not decode");
+        }
+    }
 
     /// the race is where the whole sheet is on show, so every set of puyos has to be in it -
     /// and every piece it offers has to be one the theme's preview sheet keys, or it goes
