@@ -32,6 +32,7 @@ pub mod ids {
 
     pub const DR_RUSTARIO: GameId = GameId(1);
     pub const RUSTRIS: GameId = GameId(2);
+    pub const PUYO: GameId = GameId(3);
 }
 
 /// A game-private key for how a cell should be drawn, e.g. "red virus" or "left half of a
@@ -355,7 +356,7 @@ mod tests {
 
     #[test]
     fn every_game_has_its_own_id() {
-        let all = [ids::DR_RUSTARIO, ids::RUSTRIS];
+        let all = [ids::DR_RUSTARIO, ids::RUSTRIS, ids::PUYO];
         for (i, id) in all.iter().enumerate() {
             assert!(!all[..i].contains(id), "{id:?} is used twice");
             assert!(

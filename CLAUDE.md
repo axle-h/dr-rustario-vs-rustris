@@ -7,6 +7,7 @@
 | `engine/` | everything that is not game rules: SDL app shell, menus, high scores, config, input, rendering (sprite sheets, themes, fonts, particles, animations), audio mixer, the match session, and the shared AI core (`ai/`: neural network, genetic algorithm, key pacing) |
 | `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), theme data, its neural AI and the deterministic one (`game/ai/n64/`) that actually plays |
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), theme data and its neural AI |
+| `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, the nuisance queue). Rules only so far - no themes, no ai, and the launcher does not deal it yet |
 | `launcher/` | the `dr-rustario-vs-rustris` binary: picks games and options and runs a match |
 
 Each game's AI supplies the game-specific half - board features, placement search and the agent -
@@ -69,7 +70,23 @@ labelled png, and `<seconds>` snapshots a running field.
 A game that can hold an attack rather than take it as it arrives reports what is still
 waiting through `Game::pending_attacks`, as its own `CellId`s, and a theme that declares a
 `PendingLayout` draws them as a strip from its own cell sprites - so a player can see what is
-hanging over them. Neither existing game has one: they both take a hit immediately.
+hanging over them. Dr. Rustario and Rustris both take a hit immediately and have none; Puyo
+Rusto is the game this is for.
+
+Puyo Rusto is being built in phases against [docs/puyo-puyo-plan.md](docs/puyo-puyo-plan.md),
+which is the shared memory for that work - read it before touching the crate. It is faithful
+Puyo Puyo Tsu, and every table in it (chain power, colour and group bonus, 70 target points,
+the 30 nuisance all clear, the pair pool) is sourced from Puyo Nexus rather than guessed, with
+the page named in each module's doc comment. `board.rs` owns the chain loop, which reports
+itself in the same grammar `bottle.rs` uses for a combo - one `Clear` per chain step with a
+`Settle` between - so the particle field reacts to a chain without knowing what one is.
+`nuisance.rs` is the part that makes the game what it is: an attack waits in a visible tray,
+a chain cancels it before sending anything on, and whatever is left drops as the chain ends.
+A Puyo `CellId` carries its colour *and* a four bit mask of which neighbours match, because
+puyos of a colour that touch are drawn joined; `board.rs` recomputes the masks after every
+lock, pop and settle. The hidden thirteenth row is not merely invisible: a *ghost puyo* there
+cannot pop and does not count towards the four a group needs (`Board::is_ghost`), so a chain
+with a foot in it is held back until that puyo drops into view.
 
 A game implements `engine::game::Game` (a headless board of `Cell`s with game-private
 `CellId`s, producing engine `GameEvent`s) and `engine::render::GameRender`; its themes are
