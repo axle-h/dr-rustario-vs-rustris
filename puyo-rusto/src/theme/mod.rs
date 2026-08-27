@@ -3,7 +3,7 @@
 pub mod data;
 pub mod modern;
 
-use crate::game::cell::{PuyoColor, PuyoPiece};
+use crate::game::cell::{PuyoColor, PuyoPiece, PuyoSkin};
 use engine::config::Config;
 use engine::game::PieceId;
 use engine::particles::prescribed::RaceTheme;
@@ -38,15 +38,25 @@ pub fn all_themes<'a>(
     )?])
 }
 
+/// one pair per colour of every set of puyos there is, which is what the race sends past
+fn race_pieces() -> Vec<PieceId> {
+    PuyoSkin::all()
+        .flat_map(|skin| {
+            PuyoColor::ALL
+                .into_iter()
+                .map(move |color| PuyoPiece::new(color, color).id(skin))
+        })
+        .collect()
+}
+
 /// the themes' contributions to the title screen piece race
 ///
 /// One pair per colour rather than all twenty five: the race wants a handful of recognisable
-/// shapes going past, not every combination of two.
+/// shapes going past, not every combination of two. Every *skin* though - the race is not a
+/// board and owes no player consistency, so it is the one place all fifteen sets of puyos go
+/// by together, which is the whole sheet on show before a match picks two out of it.
 pub fn race_themes(themes: &[Theme]) -> Vec<RaceTheme> {
-    let pieces = PuyoColor::ALL
-        .into_iter()
-        .map(|color| PieceId::from(PuyoPiece::new(color, color)))
-        .collect::<Vec<PieceId>>();
+    let pieces = race_pieces();
     themes
         .iter()
         .enumerate()
@@ -58,4 +68,34 @@ pub fn race_themes(themes: &[Theme]) -> Vec<RaceTheme> {
             theme.race_theme(index, pieces.clone(), scale)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use engine::render::sprite_sheet::PreviewData;
+    use std::collections::HashSet;
+
+    /// the race is where the whole sheet is on show, so every set of puyos has to be in it -
+    /// and every piece it offers has to be one the theme's preview sheet keys, or it goes
+    /// past as nothing at all
+    #[test]
+    fn the_race_sends_every_set_of_puyos_past() {
+        let pieces = race_pieces();
+        assert_eq!(pieces.len(), PuyoSkin::COUNT * PuyoColor::N);
+        let skins: HashSet<PuyoSkin> = pieces.iter().map(|p| PuyoSkin::from(*p)).collect();
+        assert_eq!(
+            skins.len(),
+            PuyoSkin::COUNT,
+            "a set is missing from the race"
+        );
+
+        let PreviewData::Compose { pieces: keyed } = data::previews() else {
+            panic!("the previews are composed from the cells");
+        };
+        let keyed: HashSet<PieceId> = keyed.into_iter().map(|(piece, _)| piece).collect();
+        for piece in pieces {
+            assert!(keyed.contains(&piece), "{piece:?} is not on the sheet");
+        }
+    }
 }

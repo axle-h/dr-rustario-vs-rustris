@@ -9,7 +9,10 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 
 Puyo Rusto is the newest of them and is not finished: it is playable by one or two people on
 its own theme, with its own high score tables, but its ai is a placeholder that drops pairs at
-random and it does not take a turn in the vs. playlists yet.
+random and it does not take a turn in the vs. playlists yet. Its theme carries fifteen sets of
+puyos and deals a different one to each player at the start of every match, so a two player
+game is never two boards of the same puyos and no two matches look alike; the title screen
+sends all fifteen past.
 
 Rustris follows the guideline: the Super Rotation System and its wall kicks, a seven bag
 randomiser, hold, extended placement lock down, and guideline scoring. A T rotated into a slot

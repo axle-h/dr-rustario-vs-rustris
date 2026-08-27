@@ -10,7 +10,7 @@ pub mod rules;
 pub mod score;
 
 use crate::game::board::{Board, ChainStep, COLUMNS, ROWS, SPAWN, VISIBLE_ROWS};
-use crate::game::cell::PuyoCell;
+use crate::game::cell::{PuyoCell, PuyoSkin};
 use crate::game::nuisance::Nuisance;
 use crate::game::pair::Pair;
 use crate::game::random::GameRandom;
@@ -108,16 +108,27 @@ pub struct Game {
     chain_score: u32,
     soft_drop: bool,
     fall: Duration,
+    /// which of the theme's sprite sets this player's cells are drawn from - see
+    /// [`PuyoSkin`]. Every [`CellId`] and [`PieceId`] this game reports carries it
+    skin: PuyoSkin,
 }
 
 impl Game {
-    pub fn new(difficulty: Difficulty, speed_index: u32, random: GameRandom) -> Self {
+    /// `skin` is which of the theme's sprite sets this board draws itself from, which is the
+    /// player's slot rather than a choice of art - see [`PuyoSkin`]. It reaches every cell id
+    /// this game hands out and nothing else: the rules are the same whoever is playing.
+    pub fn new(
+        difficulty: Difficulty,
+        speed_index: u32,
+        random: GameRandom,
+        skin: PuyoSkin,
+    ) -> Self {
         let mut queue = Nuisance::new(random.seed());
-        let mut board = Board::new();
+        let mut board = Board::new(skin);
         // the two harder settings start you already buried
         let rows = difficulty.starting_nuisance_rows();
         if rows > 0 {
-            queue.drop_onto(&mut board, rows * nuisance::ROW);
+            queue.drop_onto(&mut board, rows * nuisance::ROW, skin);
         }
         let mut game = Self {
             board,
@@ -135,6 +146,7 @@ impl Game {
             chain_score: 0,
             soft_drop: false,
             fall: Duration::ZERO,
+            skin,
         };
         game.spawn();
         game
@@ -170,8 +182,8 @@ impl Game {
         let piece = self.random.next_pair();
         let pair = Pair::new(SPAWN, piece);
         self.events.push(GameEvent::Spawn {
-            piece: PieceId::from(piece),
-            cells: pair.cells(),
+            piece: piece.id(self.skin),
+            cells: pair.cells(self.skin),
             is_hold: false,
         });
         self.events.push(GameEvent::Spawned);
@@ -185,7 +197,7 @@ impl Game {
     /// put the pair down and start the chain loop
     fn lock_pair(&mut self, dropped: bool) {
         let Some(pair) = self.pair.take() else { return };
-        let cells = pair.cells();
+        let cells = pair.cells(self.skin);
         pair.lock(&mut self.board);
         self.events.push(GameEvent::Lock { cells, dropped });
         self.chain_score = 0;
@@ -266,7 +278,7 @@ impl Game {
 
         let dropping = self.queue.take_drop();
         if dropping > 0 {
-            let cells = self.queue.drop_onto(&mut self.board, dropping);
+            let cells = self.queue.drop_onto(&mut self.board, dropping, self.skin);
             self.events.push(GameEvent::AttackReceived { cells });
             self.state = State::Dropping(rules::NUISANCE_DELAY);
         } else {
@@ -400,7 +412,7 @@ impl engine::game::Game for Game {
         let Some(mut pair) = self.pair else { return };
         // where it started, not where it lands: the trail animation smears down from these
         // cells towards the landing point, so handing it the landing point draws it below.
-        let cells = pair.cells();
+        let cells = pair.cells(self.skin);
         let dropped_rows = pair.hard_drop(&self.board);
         self.pair = Some(pair);
         self.events.push(GameEvent::HardDrop {
@@ -433,12 +445,12 @@ impl engine::game::Game for Game {
 
     fn cell(&self, point: Point) -> Cell {
         if let Some(pair) = self.pair {
-            for (at, id) in pair.cells() {
+            for (at, id) in pair.cells(self.skin) {
                 if at == point {
                     return Cell::Active(id);
                 }
             }
-            for (at, id) in pair.ghost(&self.board).cells() {
+            for (at, id) in pair.ghost(&self.board).cells(self.skin) {
                 if at == point {
                     return Cell::Ghost(id);
                 }
@@ -447,13 +459,17 @@ impl engine::game::Game for Game {
         match self.board.get(point) {
             None => Cell::Empty,
             // nuisance is not something the player put there, which is what Garbage means
-            Some(PuyoCell::Nuisance) => Cell::Garbage(CellId::from(PuyoCell::Nuisance)),
-            Some(cell) => Cell::Stack(CellId::from(cell)),
+            Some(PuyoCell::Nuisance) => Cell::Garbage(PuyoCell::Nuisance.id(self.skin)),
+            Some(cell) => Cell::Stack(cell.id(self.skin)),
         }
     }
 
     fn queue(&self) -> Vec<PieceId> {
-        self.random.peek().into_iter().map(PieceId::from).collect()
+        self.random
+            .peek()
+            .into_iter()
+            .map(|piece| piece.id(self.skin))
+            .collect()
     }
 
     fn held(&self) -> Option<PieceId> {
@@ -528,7 +544,7 @@ impl engine::game::Game for Game {
     }
 
     fn pending_attacks(&self) -> Vec<CellId> {
-        self.queue.tray()
+        self.queue.tray(self.skin)
     }
 }
 
@@ -561,6 +577,7 @@ mod tests {
             difficulty,
             0,
             GameRandom::from_seed(Seed::from_u64(42), difficulty.colors()),
+            PuyoSkin::FIRST,
         )
     }
 
@@ -676,7 +693,7 @@ mod tests {
     #[test]
     fn a_hard_drop_reports_where_the_pair_fell_from() {
         let mut game = game();
-        let before = game.pair.expect("a pair").cells();
+        let before = game.pair.expect("a pair").cells(PuyoSkin::FIRST);
         game.drain_events();
         game.hard_drop();
         let hard_drop = game
@@ -948,7 +965,7 @@ mod tests {
     fn resting_on_the_death_square_ends_the_game() {
         let mut game = game();
         game.pair = None;
-        game.board = Board::new();
+        game.board = Board::new(PuyoSkin::FIRST);
         // fill the spawn column to the death square
         for _ in 0..VISIBLE_ROWS {
             game.board.drop_into(SPAWN.x, PuyoCell::Nuisance);
@@ -968,7 +985,7 @@ mod tests {
     fn filling_another_column_to_the_top_is_survivable() {
         let mut game = game();
         game.pair = None;
-        game.board = Board::new();
+        game.board = Board::new(PuyoSkin::FIRST);
         for _ in 0..ROWS {
             game.board.drop_into(0, PuyoCell::Nuisance);
         }
@@ -1007,6 +1024,7 @@ mod tests {
                     Difficulty::Hard,
                     0,
                     GameRandom::from_seed(seed, Difficulty::Hard.colors()),
+                    PuyoSkin::FIRST,
                 );
                 for _ in 0..20 {
                     game.hard_drop();

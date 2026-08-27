@@ -133,7 +133,7 @@ fn shoot<'a, G: Game + GameRender>(
     players: u32,
     out: &str,
     game_name: &str,
-    new_game: fn() -> G,
+    new_game: fn(usize) -> G,
 ) -> Result<(), String> {
     for (index, theme) in all.iter().enumerate() {
         let mut themes = ThemeContext::new(
@@ -145,7 +145,9 @@ fn shoot<'a, G: Game + GameRender>(
             (width, height),
             config.video,
         )?;
-        let mut games = (0..players).map(|_| new_game()).collect::<Vec<G>>();
+        let mut games = (0..players)
+            .map(|player| new_game(player as usize))
+            .collect::<Vec<G>>();
         // Replay the caption a game asked for over its last clear, exactly as the match
         // screen does - it is part of the frame and this is the only way to see one without
         // a display. Games that ask for none (Dr. Rustario and Rustris) are untouched, down
@@ -229,7 +231,7 @@ fn shoot<'a, G: Game + GameRender>(
 }
 
 /// a game part way through: a stack, a piece in flight and something on hold
-fn rustris_game() -> rustris::game::Game {
+fn rustris_game(_player: usize) -> rustris::game::Game {
     let random =
         rustris::game::random::random_tetrominos(rustris::game::random::RandomMode::Bag, 1)
             .pop()
@@ -263,15 +265,21 @@ fn rustris_game() -> rustris::game::Game {
 
 /// a board part way through: a stack with groups linked up in it, an attack in the tray and,
 /// so the shot carries a clear to replay, play stopped the moment something popped
-fn puyo_game() -> puyo_rusto::game::Game {
+fn puyo_game(player: usize) -> puyo_rusto::game::Game {
     use engine::game::Game as _;
     // three colours make a group turn up in a handful of placements, which is what this shot
     // wants; a five colour board would usually be a tidy heap and nothing more
     let difficulty = puyo_rusto::game::rules::Difficulty::VeryEasy;
-    let random = puyo_rusto::game::random::random(1, difficulty.colors())
+    // one seed for the whole shot, since the players are built one at a time and the sets of
+    // puyos they are dealt are only different if they come out of the same deal
+    static SEED: std::sync::OnceLock<puyo_rusto::game::random::Seed> = std::sync::OnceLock::new();
+    let seed = *SEED.get_or_init(puyo_rusto::game::random::Seed::random);
+    let random = puyo_rusto::game::random::from_seed(seed, 1, difficulty.colors())
         .pop()
         .unwrap();
-    let mut game = puyo_rusto::game::Game::new(difficulty, 2, random);
+    // ... and a set of puyos per player, so a two player shot shows two of them
+    let skins = puyo_rusto::game::cell::PuyoSkin::deal(seed, player + 1);
+    let mut game = puyo_rusto::game::Game::new(difficulty, 2, random, skins[player]);
     // round the columns from the left, which stacks the board up without tidying it - the
     // point of the shot is the link masks, so it wants colours landing beside each other
     for column in (0..puyo_rusto::game::board::COLUMNS as i32)
@@ -301,7 +309,7 @@ fn puyo_game() -> puyo_rusto::game::Game {
     game
 }
 
-fn dr_rustario_game() -> dr_rustario::game::Game {
+fn dr_rustario_game(_player: usize) -> dr_rustario::game::Game {
     let random = dr_rustario::game::random::random(1, dr_rustario::game::random::RandomMode::Bag)
         .pop()
         .unwrap();

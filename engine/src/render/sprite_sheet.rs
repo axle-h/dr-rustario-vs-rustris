@@ -17,12 +17,40 @@ use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-const ALPHA_STRIDE: u8 = 4;
+/// how wide an atlas may get before it wraps onto another row.
+///
+/// A sheet is one texture with every cell side by side, and a game with a great many cells -
+/// Puyo Rusto keys a colour by sixteen link masks for each of fifteen sprite sets - runs off
+/// the end of what a driver will allocate in a single dimension. GLES parts commonly stop at
+/// 4096, so that is where this stops; laying the surplus on another row costs the same
+/// pixels and asks for no more of the driver than any other theme does.
+const MAX_ATLAS_WIDTH: u32 = 4096;
 
-fn alpha_stride(alpha_mod: u8) -> u8 {
-    ALPHA_STRIDE * (alpha_mod as f64 / ALPHA_STRIDE as f64).round() as u8
+/// nothing is faded at all
+const OPAQUE: u8 = 0xff;
+
+/// Lays sprites out left to right, onto another shelf once a row is [`MAX_ATLAS_WIDTH`] wide.
+///
+/// Every shelf is as tall as the tallest sprite, which wastes a little on a sheet of mixed
+/// sizes and keeps the arithmetic to one line. Returns where each went and how big the sheet
+/// has to be.
+fn shelve(sizes: &[(u32, u32)]) -> (Vec<Rect>, u32, u32) {
+    let row_height = sizes.iter().map(|(_, h)| *h).max().unwrap_or(1);
+    let (mut x, mut y, mut width) = (0, 0, 0);
+    let mut rects = Vec::with_capacity(sizes.len());
+    for (w, h) in sizes.iter().copied() {
+        if x > 0 && x + w > MAX_ATLAS_WIDTH {
+            x = 0;
+            y += row_height;
+        }
+        rects.push(Rect::new(x as i32, y as i32, w, h));
+        x += w;
+        width = width.max(x);
+    }
+    (rects, width.max(1), (y + row_height).max(1))
 }
 
 /// Where a cell's sprite is in the source file.
@@ -313,12 +341,26 @@ const OPAQUE_ENOUGH: u8 = 0x40;
 /// somebody would name if you pointed at the sprite. A sprite with no saturation anywhere
 /// (nuisance, a monochrome theme) falls back to the plain average of what is there.
 fn cell_colors(
+    pixels: &[u8],
+    atlas_width: u32,
+    cells: &HashMap<CellId, CellSnips>,
+) -> HashMap<CellId, Color> {
+    let mut colors = HashMap::new();
+    for (id, snips) in cells.iter() {
+        if let Some(color) = snip_color(pixels, atlas_width, snips.normal) {
+            colors.insert(*id, color);
+        }
+    }
+    colors
+}
+
+/// every pixel of a texture, `ARGB8888`, in one readback
+fn read_texture(
     canvas: &mut WindowCanvas,
     texture: &mut Texture,
-    cells: &HashMap<CellId, CellSnips>,
-) -> Result<HashMap<CellId, Color>, String> {
-    let query = texture.query();
-    let (width, height) = (query.width, query.height);
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, String> {
     let mut pixels = vec![];
     canvas
         .with_texture_canvas(texture, |c| {
@@ -327,14 +369,7 @@ fn cell_colors(
                 .unwrap_or_default()
         })
         .map_err(|e| e.to_string())?;
-
-    let mut colors = HashMap::new();
-    for (id, snips) in cells.iter() {
-        if let Some(color) = snip_color(&pixels, width, snips.normal) {
-            colors.insert(*id, color);
-        }
-    }
-    Ok(colors)
+    Ok(pixels)
 }
 
 fn snip_color(pixels: &[u8], atlas_width: u32, snip: Rect) -> Option<Color> {
@@ -376,8 +411,15 @@ fn snip_color(pixels: &[u8], atlas_width: u32, snip: Rect) -> Option<Color> {
 }
 
 pub struct BlockSpriteSheet<'a> {
-    texture: Texture<'a>,
-    alpha_textures: HashMap<u8, Texture<'a>>,
+    /// The atlas, every cell of it, drawn from at whatever alpha the caller asks for.
+    ///
+    /// Fading means [`Texture::set_alpha_mod`], which is a mutation behind a `&self` draw, so
+    /// it sits in a `RefCell` the same way the popup font's fill does for its tint. This used
+    /// to be a bank of sixty three whole copies of the atlas, one per alpha step, to keep the
+    /// draws behind a shared reference; that is a texture the size of every cell a theme has,
+    /// sixty three times over, and Puyo Rusto's fifteen sets of puyos would have made it most
+    /// of a gigabyte.
+    texture: RefCell<Texture<'a>>,
     ghost_alpha_mod: u8,
     cells: HashMap<CellId, CellSnips>,
     animations: Vec<CellAnimations<'a>>,
@@ -399,18 +441,28 @@ impl<'a> BlockSpriteSheet<'a> {
         let block_size = block_size.into().unwrap_or(data.source_block_size);
         let sprite_src = texture_creator.load_texture_bytes(data.file)?;
 
-        // one atlas row: normal then stack sprite of every cell
+        // the atlas: normal then stack sprite of every cell, along a row and onto the next
+        // once the row is as wide as a driver is asked to go
+        let per_row = (MAX_ATLAS_WIDTH / block_size.max(1)).max(1);
         let mut cells = HashMap::new();
-        let mut x = 0;
+        let mut slot = 0u32;
         let mut copies: Vec<(Rect, Rect, f64)> = vec![];
+        let place = |slot: &mut u32| {
+            let rect = Rect::new(
+                (*slot % per_row * block_size) as i32,
+                (*slot / per_row * block_size) as i32,
+                block_size,
+                block_size,
+            );
+            *slot += 1;
+            rect
+        };
         for (id, sprite) in data.cells.iter() {
-            let normal = Rect::new(x, 0, block_size, block_size);
-            x += block_size as i32;
+            let normal = place(&mut slot);
             copies.push((sprite.snip, normal, sprite.angle));
             let stack = match sprite.stack {
                 Some(stack_src) => {
-                    let stack = Rect::new(x, 0, block_size, block_size);
-                    x += block_size as i32;
+                    let stack = place(&mut slot);
                     copies.push((stack_src, stack, sprite.angle));
                     stack
                 }
@@ -418,8 +470,9 @@ impl<'a> BlockSpriteSheet<'a> {
             };
             cells.insert(*id, CellSnips { normal, stack });
         }
-        let width = (x as u32).max(1);
-        let mut texture = texture_creator.create_texture_target_blended(width, block_size)?;
+        let width = (slot.min(per_row) * block_size).max(1);
+        let height = (slot.div_ceil(per_row) * block_size).max(1);
+        let mut texture = texture_creator.create_texture_target_blended(width, height)?;
         canvas
             .with_texture_canvas(&mut texture, |c| {
                 c.set_draw_color(Color::RGBA(0, 0, 0, 0));
@@ -434,22 +487,6 @@ impl<'a> BlockSpriteSheet<'a> {
                 }
             })
             .map_err(|e| e.to_string())?;
-
-        let mut alpha_textures = HashMap::new();
-        for i in 0..0xff / ALPHA_STRIDE {
-            let alpha_mod = i * ALPHA_STRIDE;
-            let mut alpha_texture =
-                texture_creator.create_texture_target_blended(width, block_size)?;
-            alpha_texture.set_alpha_mod(alpha_mod);
-            canvas
-                .with_texture_canvas(&mut alpha_texture, |c| {
-                    c.set_draw_color(Color::RGBA(0, 0, 0, 0));
-                    c.clear();
-                    c.copy(&texture, None, None).unwrap();
-                })
-                .map_err(|e| e.to_string())?;
-            alpha_textures.insert(alpha_mod, alpha_texture);
-        }
 
         let mut animations = vec![];
         let mut animation_index = HashMap::new();
@@ -473,6 +510,10 @@ impl<'a> BlockSpriteSheet<'a> {
             animations.push(CellAnimations { idle, pop });
         }
 
+        // one readback for the whole atlas, which the masks and the colours are both cut out
+        // of. Reading a cell at a time is a pipeline stall per cell, and a theme with fifteen
+        // sprite sets has twelve hundred of them
+        let pixels = read_texture(canvas, &mut texture, width, height)?;
         let mut masks = HashMap::new();
         for (id, snips) in cells.iter() {
             let mask = match animation_index
@@ -480,12 +521,12 @@ impl<'a> BlockSpriteSheet<'a> {
                 .and_then(|i| animations[*i].idle.as_mut())
             {
                 Some(idle) => idle.block_mask(canvas, 0)?,
-                None => BlockMask::from_texture(canvas, &mut texture, snips.normal)?,
+                None => BlockMask::from_region(&pixels, width, snips.normal),
             };
             masks.insert(*id, mask);
         }
 
-        let colors = cell_colors(canvas, &mut texture, &cells)?;
+        let colors = cell_colors(&pixels, width, &cells);
 
         let previews = match &data.previews {
             PreviewData::Sprites { file, pieces, size } => {
@@ -493,17 +534,15 @@ impl<'a> BlockSpriteSheet<'a> {
                 let scale = block_size as f64 / data.source_block_size as f64;
                 let w = (size.0 as f64 * scale).round() as u32;
                 let h = (size.1 as f64 * scale).round() as u32;
+                let (dests, sheet_width, sheet_height) = shelve(&vec![(w, h); pieces.len()]);
                 let mut snips = HashMap::new();
                 let mut copies = vec![];
-                let mut x = 0;
-                for (piece, src_snip) in pieces.iter() {
-                    let dest = Rect::new(x, 0, w, h);
-                    x += w as i32;
+                for ((piece, src_snip), dest) in pieces.iter().zip(dests) {
                     snips.insert(*piece, dest);
                     copies.push((*src_snip, dest));
                 }
                 let mut preview_texture =
-                    texture_creator.create_texture_target_blended((x as u32).max(1), h.max(1))?;
+                    texture_creator.create_texture_target_blended(sheet_width, sheet_height)?;
                 canvas
                     .with_texture_canvas(&mut preview_texture, |c| {
                         c.set_draw_color(Color::RGBA(0, 0, 0, 0));
@@ -519,32 +558,41 @@ impl<'a> BlockSpriteSheet<'a> {
                 }
             }
             PreviewData::Compose { pieces } => {
-                let mut snips = HashMap::new();
-                let mut copies = vec![];
-                let mut x = 0;
-                let mut height = 1;
-                for (piece, piece_cells) in pieces.iter() {
+                // where each piece's cells sit relative to its own top left, and how big that
+                // makes it
+                let bounds = |piece_cells: &Vec<(CellPoint, CellId)>| {
                     let min_x = piece_cells.iter().map(|(p, _)| p.x).min().unwrap_or(0);
                     let min_y = piece_cells.iter().map(|(p, _)| p.y).min().unwrap_or(0);
                     let max_x = piece_cells.iter().map(|(p, _)| p.x).max().unwrap_or(0);
                     let max_y = piece_cells.iter().map(|(p, _)| p.y).max().unwrap_or(0);
-                    let w = (max_x - min_x + 1) as u32 * block_size;
-                    let h = (max_y - min_y + 1) as u32 * block_size;
-                    height = height.max(h);
-                    snips.insert(*piece, Rect::new(x, 0, w, h));
+                    (
+                        (min_x, min_y),
+                        (
+                            (max_x - min_x + 1) as u32 * block_size,
+                            (max_y - min_y + 1) as u32 * block_size,
+                        ),
+                    )
+                };
+                let sizes: Vec<(u32, u32)> =
+                    pieces.iter().map(|(_, c)| bounds(c).1).collect::<Vec<_>>();
+                let (dests, sheet_width, sheet_height) = shelve(&sizes);
+                let mut snips = HashMap::new();
+                let mut copies = vec![];
+                for ((piece, piece_cells), at) in pieces.iter().zip(dests) {
+                    let ((min_x, min_y), _) = bounds(piece_cells);
+                    snips.insert(*piece, at);
                     for (p, id) in piece_cells {
                         let dest = Rect::new(
-                            x + (p.x - min_x) * block_size as i32,
-                            (p.y - min_y) * block_size as i32,
+                            at.x() + (p.x - min_x) * block_size as i32,
+                            at.y() + (p.y - min_y) * block_size as i32,
                             block_size,
                             block_size,
                         );
                         copies.push((cells[id].normal, dest));
                     }
-                    x += w as i32;
                 }
                 let mut preview_texture =
-                    texture_creator.create_texture_target_blended((x as u32).max(1), height)?;
+                    texture_creator.create_texture_target_blended(sheet_width, sheet_height)?;
                 canvas
                     .with_texture_canvas(&mut preview_texture, |c| {
                         c.set_draw_color(Color::RGBA(0, 0, 0, 0));
@@ -581,9 +629,8 @@ impl<'a> BlockSpriteSheet<'a> {
         };
 
         Ok(Self {
-            texture,
-            alpha_textures,
-            ghost_alpha_mod: alpha_stride(data.ghost_alpha),
+            texture: RefCell::new(texture),
+            ghost_alpha_mod: data.ghost_alpha,
             cells,
             animations,
             animation_index,
@@ -673,13 +720,6 @@ impl<'a> BlockSpriteSheet<'a> {
         }
     }
 
-    fn alpha_texture(&self, alpha_mod: u8) -> &Texture<'a> {
-        self.alpha_textures
-            .get(&alpha_mod)
-            .or_else(|| self.alpha_textures.get(&alpha_stride(alpha_mod)))
-            .unwrap_or(&self.texture)
-    }
-
     fn offset_by_block_ratio(&self, rect: Rect, offset_y: f64) -> Rect {
         if offset_y == 0.0 {
             return rect;
@@ -706,11 +746,11 @@ impl<'a> BlockSpriteSheet<'a> {
             return Ok(());
         };
         let snip = if stacked { snips.stack } else { snips.normal };
-        let texture = match alpha_mod.into() {
-            Some(alpha_mod) => self.alpha_texture(alpha_mod),
-            None => &self.texture,
-        };
-        canvas.copy(texture, snip, self.offset_by_block_ratio(dest, offset_y))
+        // set every time rather than only when it changes: the atlas is shared by every cell
+        // on the board, so a fade left behind by the last draw would tint the next one
+        let mut texture = self.texture.borrow_mut();
+        texture.set_alpha_mod(alpha_mod.into().unwrap_or(OPAQUE));
+        canvas.copy(&texture, snip, self.offset_by_block_ratio(dest, offset_y))
     }
 
     /// draw a cell as it sits on the stack: its idle strip if it has one, else the still sprite

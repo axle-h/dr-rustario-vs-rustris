@@ -432,6 +432,40 @@ nuisance sprite and lose nothing but the shorthand.
 The **previews** are a separate table and bigger than it looks: a pair is two colours drawn
 from five, so `PuyoPiece::all()` is **25 pieces**, not five.
 
+### The skin, added after phase 2
+
+The particle theme's art turned out not to be original after all (see phase 2 below): it is a
+rip that carries **fifteen** whole sets of the same puyos, so every player is dealt a different
+one and a two player game is never two boards of the same puyos. That went into the `CellId`
+beside the link mask - bits 9-12, a `PuyoSkin` - and into the `PieceId` for the previews, since
+a queue drawn from the other player's art is exactly as wrong as a board would be. The warning
+above stands and was worth heeding: the retrofit was cheap only because the mask had already
+established that a `CellId` may carry drawing information, and because `PuyoCell` itself stayed
+skinless, so nothing in the rules can tell two players' puyos apart.
+
+It was first built as a *slot* - two of them, resolved to art by the theme when the theme was
+built - which is worth writing down because it was wrong and the reason is not obvious. A theme
+is built once for a whole session and bakes its sprites into an atlas at that point, so a slot
+resolved there can only be re-rolled by rebuilding the atlas: the puyos were fixed for the run,
+not per match. Keying **all fifteen** instead moves the choice to `PuyoSkin::deal`, which the
+game calls off the match seed, and the theme stops having an opinion. Off the seed rather than
+the thread's randomness so that a playlist swapping one board onto Puyo mid-match hands that
+player the puyos they already had, and so a replayed seed looks like it did.
+
+Three consequences to know about:
+
+* the sheet keys `PuyoSkin::COUNT × 84` cells and `PuyoSkin::COUNT × 25` previews - 1260 cells
+  and 375 previews. `BlockSpriteSheet` wraps its atlas onto another row at `MAX_ATLAS_WIDTH`,
+  and shelves its preview sheet the same way, since either in one line is past what a driver
+  will allocate. `field_preview sheet` writes one png per theme for the same reason.
+* the pre-built bank of alpha variants had to go, and its removal is what made fifteen skins
+  affordable at all. It was 63 whole copies of the atlas, one per fade step, so that a `&self`
+  draw could pick one without needing `&mut` for `set_alpha_mod` - roughly 106 MiB for a single
+  skin. The atlas is now one texture in a `RefCell` with the fade applied at draw time, which
+  is what the popup font already did for its tint: all fifteen skins come to about 27 MiB.
+* the race on the title screen is the one place the whole sheet is on show - `race_themes`
+  offers a pair per colour of every skin. It is not a board and owes nobody consistency.
+
 ### The ruleset
 
 Faithful Tsu, with the exact tables sourced rather than guessed.
@@ -703,6 +737,12 @@ Set it to 0 and no strip is drawn at all, which is how both existing games' part
 are left.
 
 ### The link mask is an art problem here
+
+**Settled differently in the end**: `art/sprites.py` did draw the eighty variants procedurally
+the way this section proposes, and then a Puyo Puyo Tetris rip turned up with the linked
+sprites already in it, fifteen skins over. `art/rip.py` cuts those and `art/sprites.py` is kept
+only as the description of what the sheet has to contain. The reasoning below is what it was
+weighed against.
 
 Phase 1's `CellId` carries a four-bit neighbour mask, so `sprites.png` is keyed on
 `colour × 16` — and unlike the retro themes in phase 3, which have the linked sprites in the
