@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["engine", "dr-rustario", "rustris", "launcher"]
+members = ["engine", "dr-rustario", "rustris", "puyo-rusto", "launcher"]
 default-members = ["launcher"]
 
 [workspace.package]

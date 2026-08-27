@@ -29,11 +29,11 @@ chaining back at it, which is what turns two people racing into two people fight
 * **Scope.** A full citizen of the compendium: four themes, an ai offering the same four
   difficulties and the same two demo models as the other games, high score tables, menus, and
   three-way attack pricing.
-* **Crate name.** Asked of Alex before phase 0: `rusto-rusto`, `oxo-oxo` and `rusty-beans` are
-  all out. Alex likes **`puyo-rusto`** or **`rusto-puyo`** and did not pick between the two,
-  so whoever starts phase 1 confirms which before creating the directory - but only between
-  those two. It takes `GameId(3)`, which is already reserved in `engine::game::ids` (see
-  phase 0's handover).
+* **Crate name: `puyo-rusto`**, displayed "Puyo Rusto". Settled with Alex at the start of
+  phase 1, out of `puyo-rusto` and `rusto-puyo`: the other two names in the compendium keep the
+  original title recognisable and let the rust land on the second beat, and "Puyo Puyo" is a
+  reduplication, so replacing the echo is where the joke goes. It takes `GameId(3)`, declared
+  as `engine::game::ids::PUYO`.
 * **Sources.** The exact tables come from Puyo Nexus at the time of writing the code — see
   the links in [next-game-ideas.md](next-game-ideas.md#sources). Those pages reject automated
   fetches; read them in a browser. Do not guess a table.
@@ -348,7 +348,7 @@ files.
 
 ## Phase 1 — rules, headless
 
-**Status:** `todo` — phase 0 is `done`, so this is next
+**Status:** `done`
 
 **Goal.** The rules simulate correctly with no rendering at all, checked by unit tests against
 known positions.
@@ -363,8 +363,13 @@ Mirror the existing crate shape (`dr-rustario/src/lib.rs` is six lines):
 | `game/nuisance.rs` | the queue, offset, and the drop pattern |
 | `game/score.rs` | the chain power, colour bonus and group bonus tables |
 | `game/random.rs` | the seeded colour sequence |
-| `game/rules.rs` | `GameConfig`, `MatchThemes`, `AiDifficulty`, `AiMode`, `ai_players()` |
+| `game/rules.rs` | the dials: `Difficulty` (how many colours), the fall speed curve, the stage length and the timings |
 | `game/cell.rs` | the `CellId` and `PieceId` space, including the link mask |
+
+`rules.rs` was **narrowed** while phase 1 was worked: it holds the game's own dials, and
+`GameConfig`, `MatchThemes`, `AiDifficulty`, `AiMode` and `ai_players()` moved to phase 2. None
+of them can be written here - `MatchThemes` names themes that do not exist, and `ai_players()`
+returns brains that do not either - and phase 2 is where the menu first needs all four.
 
 `GameId(3)` is **not** declared in `cell.rs`: phase 0 moved the ids to `engine::game::ids`,
 because pricing an attack means naming the game it crosses to and the game crates are siblings.
@@ -413,7 +418,12 @@ Rules worth writing down because they are easy to get subtly wrong:
 * Ghost cells follow the active piece: unlinked.
 
 There are `5 colours × 16 masks` plus nuisance to key, which is a big sprite table but a
-mechanical one.
+mechanical one. Phase 1 added three more on top of those: the nuisance tray's `Small`, `Large`
+and `Rock` symbols, standing for 1, 6 and 30 puyos. A theme may draw all three as its plain
+nuisance sprite and lose nothing but the shorthand.
+
+The **previews** are a separate table and bigger than it looks: a pair is two colours drawn
+from five, so `PuyoPiece::all()` is **25 pieces**, not five.
 
 ### The ruleset
 
@@ -480,13 +490,109 @@ rather than asserted.
 
 ### Handover notes
 
-_(to be filled in by the agent that completes this phase)_
+Done on 2026-08-27. The crate is `puyo-rusto`, a workspace member, **116 unit tests**, no
+warnings; `cargo test --workspace` is 669 tests and green. Nothing outside the crate changed
+except `engine::game::ids::PUYO` and the workspace member list - the launcher does not know
+this game exists yet, which is phase 2's job.
+
+**The tables are sourced, and the tests check them.** Everything came off Puyo Nexus in a
+browser on 2026-08-27, per this document's instruction not to guess: *Scoring*, *List of attack
+powers*, *Basic rules*, *Nuisance queue*, *Offset rule*, *All clear*, *Tsu (rule)*, *Rotation*,
+*Margin time* and *Puyo Puyo Tsu/Upcoming Pair Randomizer*. Each module's doc comment names the
+page it came from. The check that matters is
+`a_three_chain_scores_and_sends_what_the_published_table_says`: a staircase in two columns
+fires a real three chain and has to score **1000** points and send **14** nuisance, which are
+the published figures.
+
+**Decisions taken that the plan did not anticipate:**
+
+* **Chain power: the multiplayer table, in one player as well as two.** Tsu publishes two
+  (`0, 8, 16, 32, 64, 96, ...` and a stiffer single player `4, 20, 24, 32, 48, 96, ...`). One
+  table is one behaviour to test, and the attack economy is why the compendium took this game
+  on. The cost is that a solo marathon scores lower than the arcade would have shown. Swapping
+  in the single player curve for one-player modes is a small, contained change if it is wanted.
+* **The 999 ceiling cannot be reached.** The biggest step a 6x13 board can hold is five colours
+  in groups of eleven: `672 + 24 + 50 = 746`. `MAX_MULTIPLIER` is carried for fidelity to the
+  formula, and the test says so rather than pretending a match will meet it.
+* **The tray is three symbols, not one.** `NuisanceIcon::{Small, Large, Rock}` for 1, 6 and 30
+  puyos, which is the game's own tray. That is three cell keys beyond the `5 colours x 16
+  masks` plus nuisance. **A theme with no art for them may draw all three as its plain nuisance
+  sprite** and the tray still reads correctly - so this costs phases 2 and 3 nothing they do
+  not want to spend.
+* **`PUYOS_PER_STAGE = 30`** - a stage is a speed step, roughly seven or eight groups, chosen
+  to be a comparable stretch of play to Rustris's ten lines. Nothing measured it; it is a knob.
+
+**The ghost puyo rule is in.** The first pass through this phase left the hidden thirteenth row
+behaving like any other, because the "row 13 does not pop" rule was not on any page it had read;
+Alex pointed at [Special Maneuvers and
+Mechanics](https://puyonexus.com/wiki/Special_Maneuvers_and_Mechanics#The_13th_Row_and_Beyond),
+which has it, and it is now implemented and tested. It settles a question that would otherwise
+have had to be guessed:
+
+> "Puyo in the 13th row can't be cleared even if they 'connect' in a group of four... You can
+> use the 13th row's properties to make chains that **won't pop** until the Puyo in the 13th row
+> drops down."
+
+So a group of four with one member in the ghost row does not pop **at all** - rather than the
+three visible ones popping and leaving the ghost behind. The other reading would fire the chain
+immediately and there would be no technique to speak of. It is one function,
+`Board::grouping_color`, which reports a ghost as having no colour: a ghost is then neither the
+start of a group nor reachable from one, so it can neither pop nor make up the numbers. Ghost
+nuisance is not cleared either, and nothing draws itself joined across the boundary, because the
+link mask is the game telling a player what will pop together.
+
+The same section gives Tsu's **ceiling**: "there is a ceiling above the 13th row that prevents
+rotation into the 14th row". That falls out of the board having no such row - a rotation needing
+one is pushed back down, the way a floor kick pushes up - and there is a test for it.
+
+**Left out, deliberately, and each one is a real gap rather than an oversight:**
+
+* **Margin time.** Sourced but not built: Tsu's is 96 seconds, after which target points fall
+  to 3/4 and then halve every 16 seconds, for at most 14 iterations or until they reach 1.
+  It is the game's answer to matches that go on too long, and it is a *good* candidate for the
+  vs. difficulty dial in phase 5 - a match that cannot end is a real problem for a playlist.
+* **The nuisance scatter is not sourced, because it is not documented.** Puyo Nexus lists
+  "Distribution algorithm of ojama puyos across a row" as an open question on its own reverse
+  engineering page. What is built is full rows first, then the remainder over *distinct*
+  columns from a dedicated RNG - which honours the sourced parts (rows of six, a 30 cap) and
+  guesses only the part nobody has written down. Flagged rather than hidden.
+* **Tsu's opening-pair quirk.** The real game deals its first three pairs in reverse pool
+  order. It is an artefact of a triple buffer with no effect on what you are dealt overall, and
+  it is skipped.
+
+**One rules bug the tests caught**, and the kind this document warned about: the all clear
+bonus was being spent by the very chain that earned it. Tsu pays it out on the *next* chain, so
+`finish_chain` resolves against the tray first and earns afterwards. It would have looked like
+a tuning problem - every board-clearing chain sending 30 more than it should.
+
+**Shapes phase 2 will want:**
+
+* `ClearDetail { chain, all_clear }` is what `GameEvent::Clear`'s `detail` carries, with
+  `From`/`Into<u64>` both ways. `clear_class` and `clear_word` read it back out;
+  `BIG_CLEAR_PUYOS` and `LONG_CHAIN` are in `game/mod.rs` waiting to be used by them.
+  **Remember `clear_class` reserves 3 for the biggest clear**, or the particle field's
+  silhouette interrupt never fires.
+* The chain loop emits exactly the grammar this plan asked for: one `Clear` per step,
+  `is_combo` false on the first and true after, a `Settle` between steps, and `count` is the
+  puyos that went including nuisance.
+* `Game::pending_attacks` returns the tray, so a theme only has to declare where the strip goes
+  (`pending_max` on a particle theme, a `PendingLayout` on a retro one). Phase 0 built the rest.
+* `queue()` is two pairs; `held()` is always `None` and `hold()` is a no-op, so **no hold box**.
+* A preview needs **25 pieces** (five colours by five), not five: `PuyoPiece::all()`.
+* `Difficulty` is the game's own five settings (very easy to very hard) and sets the colour
+  count, the rows of nuisance you start buried under, and a speed bonus on the hardest. It is
+  *not* the four ai difficulty names, which are a different thing with the same word.
+
+**The colour count is fixed for a whole match**, as this plan insisted. `GameRandom` builds the
+whole 128-pair pool at construction from one seed, so nothing drawn later can put two players
+out of step - `one_seed_deals_every_player_the_same_game` plays three games twenty placements
+deep and compares the boards. `speed_index` drives fall speed and nothing else.
 
 ---
 
 ## Phase 2 — playable on the particle theme, human players
 
-**Status:** `todo` — blocked on phase 1
+**Status:** `todo` — phase 1 is `done`, so this is next
 
 **Goal.** Two people can sit down and play a Puyo match from the menu.
 
@@ -494,6 +600,18 @@ _(to be filled in by the agent that completes this phase)_
 `clear_class` and `clear_word`), the `modern` particle theme in **original art**,
 `options.rs`, a `Mode` impl in the launcher of about 110 lines modelled on `DrRustarioMode`,
 a `ModeChoice` variant, and the high score tables.
+
+Also here, moved down from phase 1 because nothing there could use them: `GameConfig`,
+`MatchThemes`, `AiDifficulty`, `AiMode` and the stub `ai_players()` in `game/rules.rs`, beside
+the `Difficulty` that phase 1 left there. Note the two are different things wearing the same
+word - `Difficulty` is the *game's* five settings (how many colours, how buried you start),
+while `AiDifficulty` is the four names every game's menu offers.
+
+`clear_class` and `clear_word` read back `ClearDetail { chain, all_clear }` out of the event's
+`detail`; `BIG_CLEAR_PUYOS` and `LONG_CHAIN` in `game/mod.rs` are there for them. The launcher
+`Mode` gets its brains through `puyo_brain()` in `games.rs`, beside the other two - see phase
+0's handover for the `AiBrain` shape. And a Puyo board has **no hold box**: `held()` is always
+`None`.
 
 Two engine contracts to honour:
 
@@ -508,8 +626,8 @@ The particle theme needs only `sprites.png`, the mascot strips and the oggs, plu
 drawn procedurally. Template: `dr-rustario/src/theme/modern/mod.rs`.
 
 **The nuisance tray is one number here.** Phase 0 built the attack-queue strip and put the
-placement inside `modern_theme`, so this theme sets `pending_max` to how many icons fit and
-nothing else: the strip is drawn a cell to an icon along the top of the playfield, from this
+placement inside `modern_theme`, and phase 1 filled it in, so this theme sets `pending_max` to
+how many icons fit and nothing else: the strip is drawn a cell to an icon along the top of the playfield, from this
 theme's own nuisance sprite, and the builder keeps the room back out of the board's top slack.
 Set it to 0 and no strip is drawn at all, which is how both existing games' particle themes
 are left.
@@ -577,7 +695,7 @@ in a directory beside that file:
 
 * `sprites.png` — one `source_block_size` grid holding the cells, the idle and pop strips and
   the previews. **The cells are the full `colour × 16` link grid** from phase 1, not one
-  sprite per colour. Unlike the particle theme these do not have to be authored: the rips
+  sprite per colour, plus nuisance and the three tray symbols; the previews are 25 pairs. Unlike the particle theme these do not have to be authored: the rips
   carry them, because the original games drew connected puyos the same way — Kirby's Avalanche
   is ripped as a sheet literally called "Blobs & Boulders". Budget the time in slicing and
   arithmetic rather than in drawing.
@@ -639,6 +757,12 @@ model alongside it, dispatched through a `PuyoAiKind`.
 Add `ga puyo play <seed> <level> <cap> <every> <brain>` mirroring `ga dr play`, so strength
 can be measured headlessly.
 
+**The ghost row is worth a feature of its own.** A puyo in the hidden thirteenth row cannot
+pop and does not count towards a group, so a chain with a foot up there is *held back* until it
+drops - which is a real technique and something a scorer can either exploit or blunder into.
+`Board::is_ghost` is the predicate; the top of the board is not worth what a naive height
+feature would say it is.
+
 **Read colours through the mask, not around it.** Every board feature above is about colour,
 and a `CellId` here is colour *and* link mask, so a feature that compares raw `CellId`s sees
 sixteen different reds and finds no chains at all. It will not fail loudly — it will train to
@@ -682,7 +806,14 @@ table from three rows to the six directed prices.
 
 Starting intuitions to test, not to ship: a four-chain is roughly the work of a tetris;
 routine two-chains are what a Puyo player throws constantly and should cross for little or
-nothing.
+nothing. Phase 1 leaves `puyo_rusto::game::foreign_attack` returning zero for every receiver,
+so today a Puyo attack is dropped at the border rather than mispriced - this phase is where it
+starts crossing at all.
+
+**Margin time is the knob to reach for if matches drag.** Phase 1 sourced it but left it out:
+Tsu's is 96 seconds, after which the 70 target points fall to 3/4 and then halve every 16
+seconds. It makes every chain send more as a match wears on, which is exactly what an endless
+marathon playlist needs and what nothing else in this game provides.
 
 **Price the two directions asymmetrically, because the two directions are not symmetric.**
 Attacks *into* Puyo land in the nuisance tray and can be answered — a Puyo player who chains

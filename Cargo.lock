@@ -569,6 +569,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "puyo-rusto"
+version = "1.0.0"
+dependencies = [
+ "engine",
+ "rand",
+ "rand_chacha",
+ "strum",
+ "strum_macros",
+]
+
+[[package]]
 name = "pxfm"
 version = "0.1.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
