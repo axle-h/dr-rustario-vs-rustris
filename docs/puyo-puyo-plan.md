@@ -853,6 +853,47 @@ first thing this crate has been charged real money for.
 `art/audio.py`'s `music_loop` went with it, and the chord and lead tables it was the only
 reader of; the two stings are still its own.
 
+**And the sound effects are a rip, 2026-08-27, so `art/audio.py` is gone.** A dump of Puyo
+Puyo Tetris 2's sound effects - twelve `.acb` banks of WAVs, 33 MiB, not in the repository and
+gitignored beside the other two sources - and `art/sfx.py` cuts the fifteen the theme keys out
+of it. The synthesiser is not kept the way `art/sprites.py` was: procedural art was a
+description of what the sheet had to contain, but a synthesised chain is just a wrong guess at
+the sound Puyo is known for, and the rip carries seven `ren` steps that are the real thing.
+
+The mapping is mostly the filenames doing the work - `se_puy07_move` is `move.ogg`,
+`se_puy08_rotate` is `rotate.ogg`, `se_puy09_down` is `lock.ogg`, `se_puy24_levelup` is
+`speed-up.ogg`, `se_puy19_win` and `se_puy20_lose` are the two stings. Four of them took a
+choice:
+
+* **`pop-1..4` are `se_puy00_ren1` to `se_puy03_ren4`.** 連 is the chain, and the rip has
+  seven of them, one per step. `clear_class` grades a step 0..3 - chain 1, 2, 3, then
+  everything from four up - so the first four are what is wanted, and `ren4` is what the
+  original plays on the step this game stops counting at. `ren5`, `ren6` and `ren7` are on the
+  shelf for a `CLEAR_CLASSES` that ever grows.
+* **`attack.ogg` is `oj_okuri1`, the smallest of four.** 送り is nuisance being sent, and it
+  fires on top of the `ren` that earned it, so it takes the one that will not bury it.
+* **`hard-drop.ogg` is `se_tet04_hdrop`,** the only borrowing from Tetris's half of the rip
+  besides `settle`. Tsu has no hard drop; this game does, so it takes the sound of the
+  mechanic it took.
+* **`settle.ogg` is `se_tet01_fall`,** which at 0.07s and a peak of 0.21 is the quietest thing
+  in the theme. It fires once per chain step under a `ren` four times its height, and a chain
+  that clatters is a chain you cannot hear climbing.
+
+Nothing is normalised - levelling them would put a landing thud on top of the win fanfare -
+and everything is resampled, since a third of the rip is 48 kHz and `decode.rs` takes 44,100
+and nothing else. Padding is trimmed off both ends, which is a quarter of a second of nothing
+after a chain step that has to land again before the next one, and key press latency at the
+head.
+
+Two more came out of `se_sys`: **`menu/chime.ogg` and `menu/select.ogg`**, from
+`se_sys05_cursor` and `se_sys02_decide`. `MENU_SOUNDS` was already Puyo Rusto's own for the
+music and borrowed the engine's clicks; now only the high score music is borrowed, since the
+rip has nothing that belongs under a table of names. They live in `theme/menu/` beside that
+music rather than in the particle theme, for the same reason it does: a menu is not a theme
+and phase 3's retro themes walk the same one.
+
+It costs 500 KiB where the synthesiser cost 144 KiB, against a 16 MiB theme.
+
 What else the rip has, and did not get used: the flash and burst frames a puyo pops with, which
 would want `DestroyStyle::Pop` - and that is a fixed 300 ms against `rules::POP_DELAY`'s 280,
 so a chain step would advance while the cells were still animating; and **fifteen more skins**,
@@ -1002,6 +1043,30 @@ nuisance puyo with it should still be its own colour.
 It is also a cell and a quarter tall now rather than three quarters, held to fifteen sixteenths
 of the board's width and clamped inside it - a six column board is narrow and a caption over
 the first column was hanging off the edge.
+
+**And the particle theme says it in the game's own face**, once the rip turned out to carry
+one: `theme/modern/popup.png`, cut by `rip.py`'s `popup` from the digits and the word `Chain!`
+that sit under the effects at the bottom of the sheet. A theme offers art through
+`PopupSpriteData` on `ModernThemeOptions` - a sheet and the *tokens* it can spell, each with
+its rect - and `PopupFont` uses it wherever it can and falls back to the face for anything it
+cannot spell, whole rather than in part. Three things are worth remembering:
+
+* A token is whatever the sheet drew as one piece: a digit here and a whole word there, so
+  `2 chain` is spelt from a `2` and a `chain` and not from six letters. The digits are on a
+  fixed pitch, because a counter climbing from 9 to 10 that shifted its digits about would
+  read worse than one that does not.
+* Every cell of the sheet is the same height whatever it draws, because `rip.py` cuts each
+  glyph against its *row's baseline* rather than its own bounding box. The round digits
+  overhang the line by two or three pixels and the word sits twelve above it, exactly as the
+  game drew them - so the whole caption is one row of cells drawn at one y, with no metrics
+  to carry.
+* It is **not tinted**. The colour of what popped is right for a caption written in a plain
+  face; modulating a gold glyph towards a blue puyo just gives a dark gold. The art carries
+  its own outline and shadow, which is also why it is drawn a cell and a half tall rather than
+  a cell and a quarter.
+
+Phase 3's retro themes still owe this nothing: without a sheet a theme gets the face, which is
+what every theme had.
 
 **One thing to know if you touch `PopupFont`:** tinting is `Texture::set_color_mod`, which is a
 mutation, and a theme draws through `&self` - so the fill font sits behind a `RefCell`. That

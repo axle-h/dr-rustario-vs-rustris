@@ -1,4 +1,5 @@
 /target
+__pycache__/
 .idea/
 desktop.ini
 /dist
@@ -8,10 +9,17 @@ generation-record-*.csv
 procedural-sprites.png
 # `puyo-rusto/art/rip.py check` writes this: every skin's joins, to be looked at
 alignment.png
+# and the `menu_shot` example writes these wherever it is pointed, which defaults to here
+menu-*.png
 # the Puyo Puyo Tetris rip `puyo-rusto/art/rip.py` cuts that sheet out of, kept locally
-# rather than carried: it is 12 MiB and the 317 KiB it yields is committed
+# rather than carried: it is 12 MiB, and the two sheets it yields - the puyos and the chain
+# caption's face - are committed
 /puyo-rusto/art/PC _ Computer - Puyo Puyo Tetris - Gameplay Elements - Puyo Puyo Elements.png
 
 # `puyo-rusto/art/music.py`'s source is the same kind of thing and is not here either: a
 # directory of converted rips and a `loops.json` of their loop points, `~/Downloads/pp/ogg`
 # by default. Point the script at wherever it is to re-cut theme/{menu,music}/*.ogg
+
+# and neither is `puyo-rusto/art/sfx.py`'s: the Puyo Puyo Tetris 2 sound effect rip, 33 MiB
+# of WAVs in twelve .acb folders, which the script expects to find beside itself
+/puyo-rusto/art/Nintendo Switch - Puyo Puyo Tetris 2 - Sound Effects - Sound Effects/

@@ -84,6 +84,19 @@ fires on every clear. It costs a theme no art and no opt-in, because whether the
 at all is the game's decision: Puyo Rusto counts its chain out from the first step, and the
 other two games return `None`.
 
+A theme with art for what its game says can offer it instead, as a `PopupSpriteData` on
+`ModernThemeOptions`: a sheet, and the *tokens* it can spell with the rect of each. A token is
+whatever the sheet drew as one piece, so Puyo Rusto's `2 chain` is spelt from a `2` and a
+`chain` rather than from six letters, and `spell` in `render/font.rs` takes the longest token
+that fits at each step. A caption the sheet cannot spell falls back to the face, whole - so a
+sheet need only carry what its game actually says, and nothing is ever half drawn. The art is
+drawn as it was cut and **not** tinted: modulating a gold glyph towards a blue puyo only makes
+it a dark gold. Puyo Rusto's is `theme/modern/popup.png`, cut from the same rip by
+`rip.py`'s `popup`: the ten digits on a fixed pitch and the word `Chain!` under them, every
+cell the same height because each glyph was cut against its row's baseline rather than its own
+bounding box - the round digits hang below the line and the word sits well above it - so the
+whole caption is drawn at one y.
+
 A theme may offer more than one track for a match. `AudioTheme` keeps them in a list with the
 pick in a `Cell` (themes are built once and lived on as `&'static`, so every play site holds a
 `&self`), and the one place a pick is made is `ThemeContext::sync_music` - which is reached
@@ -114,8 +127,8 @@ are numbered) and `RUNNING_ORDER` (how they are billed): a game is on the pre-me
 it can be played and takes a playlist turn only once it has the themes and the ai to hold up
 its end of one.
 
-Puyo Rusto's particle theme is puyos cut out of a Puyo Puyo Tetris rip and audio nobody
-recorded. `puyo-rusto/art/rip.py` writes `src/theme/modern/sprites.png` out of a sheet that
+Puyo Rusto's particle theme is puyos, music and sound effects all cut out of rips - three
+sources and three scripts, none of the sources carried here. `puyo-rusto/art/rip.py` writes `src/theme/modern/sprites.png` out of a sheet that
 is **not in the repository** - it is 12 MiB and gitignored, so re-running the script means
 finding the rip again - and the rip is sixteen skins on one 72 pixel grid, fifteen of them
 whole (the sixteenth is a grab bag on no grid) and fourteen of those cut, one band of six rows
@@ -143,8 +156,14 @@ the repository** (`~/Downloads/pp/ogg` by default). It resamples, because the mi
 44,100 Hz and nothing else, and it *splits* each track at its loop point, because the mixer
 has no loop marker - `StructuredMusic::new(intro, repeating)` plays one file once and loops
 the other forever - cutting the raw pcm rather than seeking with ffmpeg so the seam lands on
-the sample the loop point names. `puyo-rusto/art/audio.py` synthesises the fifteen sound
-effect oggs and the two stings, and no longer the music.
+the sample the loop point names. The sound effects are a third rip: `puyo-rusto/art/sfx.py`
+cuts the particle theme's fifteen out of a dump of Puyo Puyo Tetris 2's, and the menu's two
+clicks with them, from a directory that is **not in the repository** either (33 MiB, and it
+sits next to the script by default). Its `SOUNDS` table is the whole of it - one line per
+sound naming the bank and the name the game gave it - and everything else in the script is
+resampling to the mixer's 44,100 Hz and trimming the padding the rip leaves on both ends. It
+does **not** normalise: the levels are the original's mix and are meant to be uneven, a puyo
+settling a fifth the height of a nuisance landing because it is supposed to go unnoticed.
 Re-run them rather than editing their output. `art/sprites.py` is the procedural art the rip
 replaced - eighty puyos as signed distance fields - kept because it owes the rip nothing and
 because it is the only description in the repository of what the sheet has to contain; it now

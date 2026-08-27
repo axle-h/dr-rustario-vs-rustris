@@ -10,7 +10,7 @@ use crate::animate::AnimationMeta;
 use crate::font::FontType;
 use crate::game::geometry::Point as CellPoint;
 use crate::game::MetricKind;
-use crate::render::font::{FontRender, FontTheme, PopupFont, ThemedNumeric};
+use crate::render::font::{FontRender, FontTheme, PopupFont, PopupSpriteData, ThemedNumeric};
 use crate::render::geometry::BoardGeometry;
 use crate::render::helper::{TextureFactory, TextureQuery};
 use crate::render::metrics_table::{metric_label, GameMetricsTable};
@@ -91,6 +91,10 @@ pub struct ModernThemeOptions {
     pub ghost_style: GhostStyle,
     /// rows the hard drop trail falls per 4ms frame; see `animate::hard_drop`
     pub hard_drop_rows_per_frame: f64,
+    /// art for the captions a clear says over the board, when the theme has some. Without it
+    /// they are written in the engine's own face, which is what every theme did before one
+    /// had any - see [`PopupSpriteData`].
+    pub popup_sprites: Option<PopupSpriteData>,
 }
 
 pub fn modern_theme<'a>(
@@ -418,7 +422,10 @@ pub fn modern_theme<'a>(
         )
     };
 
-    let popup_font = PopupFont::new(canvas, texture_creator, block_size)?;
+    let mut popup_font = PopupFont::new(canvas, texture_creator, block_size)?;
+    if let Some(data) = options.popup_sprites.as_ref() {
+        popup_font = popup_font.with_sprites(texture_creator, data, block_size)?;
+    }
     Ok(Theme {
         name: options.name,
         scenes: vec![scene_type.build(canvas, texture_creator)?],

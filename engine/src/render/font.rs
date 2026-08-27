@@ -454,6 +454,77 @@ impl FontThemeOptions {
     }
 }
 
+/// Where a sprite popup face's glyphs are in its sheet.
+///
+/// A theme that has art for the captions its game says offers this instead of leaving them to
+/// the engine's own face. It is not a font: a token is whatever the sheet drew as one piece,
+/// which is a digit here and a whole word there, so a game whose caption reads "2 chain" is
+/// spelt from a `2` and a `chain` rather than from six letters. Anything the sheet cannot
+/// spell falls back to the face, so a sheet need only carry the captions its game actually
+/// says.
+#[derive(Clone, Debug)]
+pub struct PopupSpriteData {
+    pub file: &'static [u8],
+    /// how tall one glyph cell is in the file. Every glyph is this tall whatever it draws -
+    /// the sheet puts each on its own baseline within the cell - so a run of them drawn at
+    /// one y keeps the relationship the sheet was cut with.
+    pub cell_height: u32,
+    /// what a space between two tokens advances by, in sheet pixels
+    pub space: u32,
+    /// the tokens the sheet can spell and where each of them is, in any order. Lower case: a
+    /// caption is matched against them case insensitively.
+    pub glyphs: Vec<(&'static str, Rect)>,
+}
+
+impl PopupSpriteData {
+    /// Whether the sheet can spell `value` at all - which is what decides between the art and
+    /// the face, and what a theme's own tests can hold its game's captions to.
+    pub fn spells(&self, value: &str) -> bool {
+        spell(&self.glyphs, self.space, value).is_some()
+    }
+}
+
+/// The art behind a [`PopupFont`], when a theme gave it some.
+struct PopupSprites<'a> {
+    texture: Texture<'a>,
+    glyphs: Vec<(&'static str, Rect)>,
+    space: u32,
+    cell_height: u32,
+    /// theme pixels to a sheet pixel at scale 1
+    unit: f64,
+}
+
+/// Lays a caption out as sprite cells: where each one goes from the left of the run, and how
+/// wide the run is, both in sheet pixels. `None` if the sheet cannot spell it.
+///
+/// Free of the texture so it can be tested without a window, which is the whole of what can
+/// go wrong here.
+fn spell(
+    glyphs: &[(&'static str, Rect)],
+    space: u32,
+    value: &str,
+) -> Option<(Vec<(Rect, u32)>, u32)> {
+    let value = value.trim().to_ascii_lowercase();
+    let (mut at, mut x, mut run) = (0, 0, vec![]);
+    while at < value.len() {
+        if value.as_bytes()[at] == b' ' {
+            x += space;
+            at += 1;
+            continue;
+        }
+        // the longest token that fits, so a sheet carrying both `chain` and a `c` spells the
+        // word rather than starting to spell it out
+        let (token, snip) = glyphs
+            .iter()
+            .filter(|(token, _)| value[at..].starts_with(token))
+            .max_by_key(|(token, _)| token.len())?;
+        run.push((*snip, x));
+        x += snip.width();
+        at += token.len();
+    }
+    (!run.is_empty()).then_some((run, x))
+}
+
 /// Draws [`crate::animate::popup::Popup`]s: a caption over the board, outlined so it stays
 /// legible over the cells it is standing on.
 ///
@@ -466,6 +537,9 @@ pub struct PopupFont<'a> {
     fill: RefCell<FontRender<'a>>,
     shadow: FontRender<'a>,
     offset: i32,
+    /// what a theme would rather say it in, and the reason the face above is a fallback
+    /// rather than the only thing here
+    sprites: Option<PopupSprites<'a>>,
 }
 
 impl<'a> PopupFont<'a> {
@@ -494,15 +568,45 @@ impl<'a> PopupFont<'a> {
                 Color::RGB(0x10, 0x0C, 0x18),
             )?,
             offset: (block_size as i32 / 16).max(1),
+            sprites: None,
         })
+    }
+
+    /// Say it in the theme's own art rather than the face above, wherever the sheet can.
+    ///
+    /// A cell and a half tall: a caption drawn is bigger than one written, since the art
+    /// carries its own outline and shadow and has room for neither at the face's size.
+    pub fn with_sprites(
+        mut self,
+        texture_creator: &'a TextureCreator<WindowContext>,
+        data: &PopupSpriteData,
+        block_size: u32,
+    ) -> Result<Self, String> {
+        let height = (block_size * POPUP_SPRITE_BLOCKS_NUM / POPUP_SPRITE_BLOCKS_DEN).max(1);
+        self.sprites = Some(PopupSprites {
+            texture: texture_creator.load_texture_bytes_blended(data.file)?,
+            glyphs: data.glyphs.clone(),
+            space: data.space,
+            cell_height: data.cell_height.max(1),
+            unit: height as f64 / data.cell_height.max(1) as f64,
+        });
+        Ok(self)
     }
 
     /// how wide `value` is drawn at `scale`, so a caller can keep it inside the board
     pub fn width(&self, value: &str, scale: f64) -> u32 {
+        if let Some(sprites) = self.sprites.as_ref() {
+            if let Some((_, width)) = spell(&sprites.glyphs, sprites.space, value) {
+                return (width as f64 * sprites.unit * scale).round() as u32;
+            }
+        }
         let (width, _) = self.fill.borrow().string_size(value);
         (width as f64 * scale).round() as u32
     }
 
+    /// `color` is what the theme paints the cells the caption is about, and it is the face
+    /// that is tinted with it. Art is drawn as it was cut: the sheet's own colours are the
+    /// point of having one, and modulating a gold glyph towards a blue puyo only darkens it.
     pub fn draw(
         &self,
         canvas: &mut WindowCanvas,
@@ -511,6 +615,11 @@ impl<'a> PopupFont<'a> {
         scale: f64,
         color: Color,
     ) -> Result<(), String> {
+        if let Some(sprites) = self.sprites.as_ref() {
+            if let Some((run, width)) = spell(&sprites.glyphs, sprites.space, value) {
+                return sprites.draw(canvas, center, &run, width, scale);
+            }
+        }
         let shadow = center + Point::new(self.offset, self.offset);
         self.shadow
             .render_string_scaled_in_center(canvas, shadow, value, scale)?;
@@ -519,6 +628,35 @@ impl<'a> PopupFont<'a> {
         fill.render_string_scaled_in_center(canvas, center, value, scale)
     }
 }
+
+impl PopupSprites<'_> {
+    fn draw(
+        &self,
+        canvas: &mut WindowCanvas,
+        center: Point,
+        run: &[(Rect, u32)],
+        width: u32,
+        scale: f64,
+    ) -> Result<(), String> {
+        let unit = self.unit * scale;
+        let left = center.x() as f64 - width as f64 * unit / 2.0;
+        let top = center.y() as f64 - self.cell_height as f64 * unit / 2.0;
+        for (snip, x) in run.iter().copied() {
+            let dest = Rect::new(
+                (left + x as f64 * unit).round() as i32,
+                top.round() as i32,
+                (snip.width() as f64 * unit).round().max(1.0) as u32,
+                (snip.height() as f64 * unit).round().max(1.0) as u32,
+            );
+            canvas.copy(&self.texture, snip, dest)?;
+        }
+        Ok(())
+    }
+}
+
+/// how tall a sprite caption's cell is drawn, in blocks
+const POPUP_SPRITE_BLOCKS_NUM: u32 = 3;
+const POPUP_SPRITE_BLOCKS_DEN: u32 = 2;
 
 const MIN_POPUP_FONT: u32 = 8;
 
@@ -545,7 +683,74 @@ impl<'a> FontTheme<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::max_value;
+    use super::{max_value, spell};
+    use sdl2::rect::Rect;
+
+    const DIGIT: (u32, u32) = (64, 100);
+    const WORD: (u32, u32) = (136, 100);
+    const SPACE: u32 = 18;
+
+    fn sheet() -> Vec<(&'static str, Rect)> {
+        vec![
+            ("1", Rect::new(0, 0, DIGIT.0, DIGIT.1)),
+            ("2", Rect::new(72, 0, DIGIT.0, DIGIT.1)),
+            ("chain", Rect::new(0, 108, WORD.0, WORD.1)),
+        ]
+    }
+
+    /// a caption is spelt out of whatever the sheet drew as one piece, which here is a digit
+    /// and a whole word
+    #[test]
+    fn a_caption_is_laid_out_from_the_tokens_the_sheet_has() {
+        let (run, width) = spell(&sheet(), SPACE, "2 chain").unwrap();
+        assert_eq!(run.len(), 2);
+        assert_eq!(run[0].1, 0);
+        assert_eq!(run[1].1, DIGIT.0 + SPACE);
+        assert_eq!(width, DIGIT.0 + SPACE + WORD.0);
+    }
+
+    /// ... and the number climbs into two digits without needing any more of them
+    #[test]
+    fn a_two_digit_number_is_two_glyphs() {
+        let (run, width) = spell(&sheet(), SPACE, "12 chain").unwrap();
+        assert_eq!(run.len(), 3);
+        assert_eq!(width, 2 * DIGIT.0 + SPACE + WORD.0);
+    }
+
+    /// the case a game wrote its caption in is not the case the art was drawn in
+    #[test]
+    fn spelling_ignores_case() {
+        assert!(spell(&sheet(), SPACE, "2 CHAIN").is_some());
+    }
+
+    /// a trailing space would otherwise pay for a gap after the last glyph, and the caption
+    /// would sit off centre by half of it
+    #[test]
+    fn surrounding_space_costs_nothing() {
+        let (_, tight) = spell(&sheet(), SPACE, "2 chain").unwrap();
+        let (_, padded) = spell(&sheet(), SPACE, "  2 chain ").unwrap();
+        assert_eq!(tight, padded);
+    }
+
+    /// nothing is drawn from a sheet that cannot spell the whole caption - the face draws it
+    /// instead, which is what makes the art optional
+    #[test]
+    fn a_caption_the_sheet_cannot_spell_is_not_half_drawn() {
+        assert!(spell(&sheet(), SPACE, "3 chain").is_none());
+        assert!(spell(&sheet(), SPACE, "tetris").is_none());
+        assert!(spell(&sheet(), SPACE, "").is_none());
+        assert!(spell(&sheet(), SPACE, "   ").is_none());
+    }
+
+    /// a sheet carrying a word and a letter it starts with spells the word
+    #[test]
+    fn the_longest_token_wins() {
+        let mut glyphs = sheet();
+        glyphs.push(("c", Rect::new(0, 216, 20, DIGIT.1)));
+        let (run, _) = spell(&glyphs, SPACE, "1 chain").unwrap();
+        assert_eq!(run.len(), 2);
+        assert_eq!(run[1].0.width(), WORD.0);
+    }
 
     #[test]
     fn max_value_for_small_widths() {
