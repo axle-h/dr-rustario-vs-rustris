@@ -43,6 +43,7 @@ impl<'a> Themes<'a> {
         let mut race = match game {
             GameKind::DrRustario => dr_rustario::theme::race_themes(themes),
             GameKind::Rustris => rustris::theme::race_themes(themes),
+            GameKind::Puyo => puyo_rusto::theme::race_themes(themes),
         };
         for theme in race.iter_mut() {
             theme.theme += range.start;
@@ -85,10 +86,15 @@ impl PlaylistThemes {
         Self(themes)
     }
 
-    /// how many slots the playlist has: every game plays every slot, so it is the shortest
-    /// of the lists
+    /// how many slots the playlist has: every game the playlist deals plays every slot, so
+    /// it is the shortest of *their* lists. A game on the pre-menu but not yet in
+    /// [`GameKind::PLAYLIST_ORDER`] does not shorten anybody's playlist.
     pub fn slots(&self) -> usize {
-        self.0.values().map(Vec::len).min().unwrap_or(0)
+        GameKind::PLAYLIST_ORDER
+            .iter()
+            .map(|game| self.0.get(*game).len())
+            .min()
+            .unwrap_or(0)
     }
 
     /// the theme a game plays at a slot, as an index within that game's own set
@@ -135,6 +141,7 @@ pub fn game_mode(game: GameKind) -> Box<dyn Mode> {
     match game {
         GameKind::DrRustario => Box::new(DrRustarioMode::new()),
         GameKind::Rustris => Box::new(RustrisMode::new()),
+        GameKind::Puyo => Box::new(PuyoMode::new()),
     }
 }
 
@@ -372,6 +379,115 @@ impl Mode for RustrisMode {
     }
 }
 
+// ---------------------------------------------------------------- Puyo Rusto
+
+#[derive(Default)]
+pub struct PuyoMode {
+    options: puyo_rusto::options::Options,
+}
+
+impl PuyoMode {
+    pub fn new() -> Self {
+        let mut mode = Self::default();
+        mode.options.set_players(1);
+        mode
+    }
+}
+
+impl Mode for PuyoMode {
+    fn title(&self) -> String {
+        "Puyo Rusto".to_string()
+    }
+
+    fn menu_sounds(&self) -> MenuSounds {
+        MenuSounds::MODERN
+    }
+
+    fn race(&self, themes: &Themes) -> Vec<RaceTheme> {
+        themes.race(GameKind::Puyo)
+    }
+
+    fn title_items(&self, max_players: u32) -> Vec<MenuItem> {
+        let (players, current) = self.options.players_list(max_players);
+        vec![MenuItem::select_list(PLAYERS, players, current)]
+    }
+
+    fn title_select(&mut self, name: &str, value: &str) {
+        if name == PLAYERS {
+            self.options.select_players(value);
+        }
+    }
+
+    fn menu_items(&self) -> Vec<MenuItem> {
+        self.options.menu_items(false)
+    }
+
+    fn menu_select(&mut self, name: &str, value: &str) {
+        self.options.select(name, value);
+    }
+
+    fn subtitle(&self) -> String {
+        subtitle("", self.options.players()).trim().to_string()
+    }
+
+    fn high_score_key(&self) -> HighScoreKey {
+        let rules = self.options.rules();
+        HighScoreKey::new(
+            self.title(),
+            rules.name(puyo_rusto::options::STAGE_NOUN),
+            rules.ranking(),
+        )
+    }
+
+    fn all_high_score_keys(&self) -> Vec<HighScoreKey> {
+        game_high_score_keys(&self.title(), puyo_rusto::options::STAGE_NOUN)
+    }
+
+    fn settings(&self, themes: &Themes) -> MatchSettings {
+        MatchSettings {
+            rules: self.options.rules(),
+            players: (0..self.options.players())
+                .map(|_| PlayerSettings {
+                    themes: themes.range(GameKind::Puyo),
+                    theme_mode: self.options.theme_mode(),
+                })
+                .collect(),
+            high_score_key: self.high_score_key(),
+            playlist: false,
+        }
+    }
+
+    fn games(&self) -> Result<Vec<AnyGame>, String> {
+        Ok(self
+            .options
+            .games(self.options.players() as usize)
+            .into_iter()
+            .map(AnyGame::Puyo)
+            .collect())
+    }
+
+    fn next_stage(&self, _: &Themes, _: u32, _: u32) -> Option<StageChange<AnyGame>> {
+        None
+    }
+
+    fn controllers(&self) -> Vec<Controller> {
+        let mut controllers: Vec<Controller> = vec![];
+        for (player, key_delay, brain) in self.options.ai_players() {
+            let mut agent =
+                puyo_rusto::game::ai::agent::PuyoAiAgent::of(brain).with_key_delay(key_delay);
+            controllers.push((
+                player,
+                Box::new(move |game: &mut AnyGame, delta| {
+                    if let AnyGame::Puyo(game) = game {
+                        agent.act(game, delta);
+                    }
+                }),
+            ));
+        }
+        controllers
+    }
+}
+
 // ---------------------------------------------------------------- Versus
 
 const PLAYLIST: &str = "playlist";
@@ -436,6 +552,19 @@ impl VersusAi {
         }
     }
 
+    fn puyo(&self) -> puyo_rusto::game::rules::AiMode {
+        use puyo_rusto::game::rules::AiMode;
+        match self {
+            VersusAi::Off => AiMode::Off,
+            VersusAi::Demo => AiMode::Demo,
+            VersusAi::VsDemo => AiMode::VsDemo,
+            VersusAi::Opponent(difficulty) => AiMode::Opponent(
+                puyo_rusto::game::rules::AiDifficulty::from_name(difficulty.name())
+                    .expect("every game offers the same ai difficulties"),
+            ),
+        }
+    }
+
     /// the name this mode goes by in the players list
     fn name(&self) -> Option<String> {
         match self {
@@ -491,6 +620,19 @@ impl VersusAi {
                     .into_iter()
                     .map(|(player, key_delay, network)| {
                         (player, crate::games::rustris_brain(network, key_delay))
+                    })
+                    .collect()
+            }
+            GameKind::Puyo => {
+                let config = puyo_rusto::game::rules::GameConfig {
+                    ai: self.puyo(),
+                    ..Default::default()
+                };
+                config
+                    .ai_players()
+                    .into_iter()
+                    .map(|(player, key_delay, brain)| {
+                        (player, crate::games::puyo_brain(brain, key_delay))
                     })
                     .collect()
             }
@@ -612,7 +754,7 @@ impl Playlist {
             Playlist::RandomSprint { stages } => Some(*stages as usize),
             Playlist::RandomMarathon => None,
             // every game takes a turn at every slot
-            _ => Some(GameKind::COUNT * themes.slots()),
+            _ => Some(GameKind::PLAYLIST_COUNT * themes.slots()),
         }
     }
 
@@ -660,14 +802,14 @@ impl Playlist {
         match self {
             Playlist::RandomSprint { .. } | Playlist::RandomMarathon => random_game(seed, 0),
             // every fixed playlist starts on whichever game the turn order opens with
-            _ => GameKind::RUNNING_ORDER[0],
+            _ => GameKind::PLAYLIST_ORDER[0],
         }
     }
 
     /// the stages of the fixed playlists, as the game and theme of each; the random
     /// playlists are dealt by [`random_stage`] instead
     fn fixed_stages(&self, themes: &PlaylistThemes) -> Vec<(GameKind, ThemeMode)> {
-        let order = GameKind::RUNNING_ORDER;
+        let order = GameKind::PLAYLIST_ORDER;
         let slots = themes.slots();
         match self {
             // theme by theme, the games taking turns: the race runs the playlist once, the
@@ -678,14 +820,17 @@ impl Playlist {
             Playlist::ThemeRace | Playlist::Interleaved | Playlist::Retro | Playlist::Particle => {
                 (0..slots)
                     .flat_map(|slot| {
-                        order.map(|game| (game, ThemeMode::Fixed(themes.theme(game, slot))))
+                        order
+                            .iter()
+                            .map(move |game| (*game, ThemeMode::Fixed(themes.theme(*game, slot))))
+                            .collect::<Vec<(GameKind, ThemeMode)>>()
                     })
                     .collect()
             }
             Playlist::BackToBack => order
-                .into_iter()
+                .iter()
                 .flat_map(|game| {
-                    (0..slots).map(move |slot| (game, ThemeMode::Fixed(themes.theme(game, slot))))
+                    (0..slots).map(move |slot| (*game, ThemeMode::Fixed(themes.theme(*game, slot))))
                 })
                 .collect(),
             Playlist::RandomSprint { .. } | Playlist::RandomMarathon => vec![],
@@ -709,8 +854,8 @@ fn stage_roll(seed: u64, index: usize, salt: u64) -> u64 {
 /// the game dealt to a random playlist's stage; independent of the theme count, so the
 /// opening game is known before the themes are
 fn random_game(seed: u64, index: usize) -> GameKind {
-    let roll = stage_roll(seed, index, 0) % GameKind::COUNT as u64;
-    GameKind::RUNNING_ORDER[roll as usize]
+    let roll = stage_roll(seed, index, 0) % GameKind::PLAYLIST_COUNT as u64;
+    GameKind::PLAYLIST_ORDER[roll as usize]
 }
 
 /// the stage a random playlist deals: a random game and theme, never repeating the exact
@@ -775,6 +920,11 @@ impl Difficulty {
             // one Rustris starting level per step (the guideline fall speed curve runs to
             // level 14, so even 10 leaves headroom)
             GameKind::Rustris => self.0,
+            // one speed step per dial step. Phase 5 of `docs/puyo-puyo-plan.md` measures
+            // what this should really be, along with whether the colour count belongs on
+            // the dial too; until then Puyo is not in `GameKind::PLAYLIST_ORDER` and no
+            // playlist asks
+            GameKind::Puyo => self.0,
         }
     }
 
@@ -892,6 +1042,19 @@ impl VersusMode {
                     .into_iter()
                     .map(|rand| {
                         AnyGame::Rustris(rustris::game::Game::new(
+                            self.difficulty.level(kind),
+                            rand,
+                        ))
+                    })
+                    .collect()
+            }
+            GameKind::Puyo => {
+                let difficulty = puyo_rusto::game::rules::Difficulty::default();
+                puyo_rusto::game::random::from_seed(seed, count, difficulty.colors())
+                    .into_iter()
+                    .map(|rand| {
+                        AnyGame::Puyo(puyo_rusto::game::Game::new(
+                            difficulty,
                             self.difficulty.level(kind),
                             rand,
                         ))
@@ -1070,9 +1233,10 @@ mod tests {
         same_themes(vec![0, 1, 2, 3])
     }
 
-    /// how many stages a fixed playlist over `all_themes` deals before it repeats
+    /// how many stages a fixed playlist over `all_themes` deals before it repeats: one turn
+    /// per game the playlist deals, per theme slot
     const THEME_SLOTS: usize = 4;
-    const FIXED_STAGES: usize = GameKind::COUNT * THEME_SLOTS;
+    const FIXED_STAGES: usize = GameKind::PLAYLIST_COUNT * THEME_SLOTS;
 
     fn stages(playlist: Playlist, seed: u64, count: usize) -> Vec<(GameKind, ThemeMode)> {
         let themes = all_themes();
@@ -1081,11 +1245,11 @@ mod tests {
             .collect()
     }
 
-    /// one turn each, in the order the games are billed, all on the same theme slot
+    /// one turn each, in the order the playlist deals them, all on the same theme slot
     fn turns(slot: usize) -> Vec<(GameKind, ThemeMode)> {
-        GameKind::RUNNING_ORDER
-            .into_iter()
-            .map(|game| (game, ThemeMode::Fixed(slot)))
+        GameKind::PLAYLIST_ORDER
+            .iter()
+            .map(|game| (*game, ThemeMode::Fixed(slot)))
             .collect()
     }
 
@@ -1109,6 +1273,10 @@ mod tests {
                 .iter()
                 .map(|d| d.name())
                 .collect(),
+            GameKind::Puyo => puyo_rusto::game::rules::AiDifficulty::ALL
+                .iter()
+                .map(|d| d.name())
+                .collect(),
         }
     }
 
@@ -1116,7 +1284,7 @@ mod tests {
     fn theme_race_alternates_games_through_every_theme() {
         let stages = stages(Playlist::ThemeRace, 0, FIXED_STAGES);
         // every game takes a turn on a theme slot before the playlist moves on to the next
-        for (slot, turn) in stages.chunks(GameKind::COUNT).enumerate() {
+        for (slot, turn) in stages.chunks(GameKind::PLAYLIST_COUNT).enumerate() {
             assert_eq!(turn, turns(slot), "slot {slot}");
         }
         // ... and the race ends with the playlist rather than cycling it
@@ -1269,6 +1437,20 @@ mod tests {
         }
     }
 
+    /// a game played on its own deals boards of *its* game, one per player. It is the one
+    /// thing `game_mode` could get wrong that nothing else would notice, since every board
+    /// past the first is only ever seen through [`AnyGame`]
+    #[test]
+    fn a_game_played_on_its_own_deals_its_own_boards() {
+        for game in GameKind::ALL {
+            let mut mode = game_mode(game);
+            mode.title_select(PLAYERS, "2");
+            let games = mode.games().unwrap();
+            assert_eq!(games.len(), 2, "{game:?}");
+            assert!(games.iter().all(|g| g.kind() == game), "{game:?}");
+        }
+    }
+
     #[test]
     fn picking_an_ai_opponent_puts_the_agent_on_player_two() {
         for game in GameKind::ALL {
@@ -1412,15 +1594,22 @@ mod tests {
 
     #[test]
     fn the_interleaved_marathon_advances_each_games_themes() {
-        let stages = stages(Playlist::Interleaved, 0, FIXED_STAGES + GameKind::COUNT);
+        let stages = stages(
+            Playlist::Interleaved,
+            0,
+            FIXED_STAGES + GameKind::PLAYLIST_COUNT,
+        );
         // a turn each per theme: every game carries on through its own themes as its turn
         // comes round again, rather than starting over on the first every time
         for slot in 0..THEME_SLOTS {
-            let turn = slot * GameKind::COUNT;
-            assert_eq!(stages[turn..turn + GameKind::COUNT], turns(slot)[..]);
+            let turn = slot * GameKind::PLAYLIST_COUNT;
+            assert_eq!(
+                stages[turn..turn + GameKind::PLAYLIST_COUNT],
+                turns(slot)[..]
+            );
         }
         // ... and then it cycles
-        assert_eq!(stages[FIXED_STAGES..], stages[..GameKind::COUNT]);
+        assert_eq!(stages[FIXED_STAGES..], stages[..GameKind::PLAYLIST_COUNT]);
     }
 
     #[test]
@@ -1428,22 +1617,25 @@ mod tests {
         // as the themes are built: three retro themes each, then the particle theme
         let retro = same_themes(vec![0, 1, 2]);
         let slots = 3;
-        let cycle = GameKind::COUNT * slots;
+        let cycle = GameKind::PLAYLIST_COUNT * slots;
         assert_eq!(Playlist::Retro.theme_family(), Some(ThemeFamily::Retro));
         assert_eq!(Playlist::Retro.rules(&retro), MatchRules::Marathon);
 
-        let stages: Vec<(GameKind, ThemeMode)> = (0..cycle + GameKind::COUNT)
+        let stages: Vec<(GameKind, ThemeMode)> = (0..cycle + GameKind::PLAYLIST_COUNT)
             .map(|i| Playlist::Retro.stage(0, i, &retro).unwrap())
             .collect();
         for slot in 0..slots {
-            let turn = slot * GameKind::COUNT;
-            assert_eq!(stages[turn..turn + GameKind::COUNT], turns(slot)[..]);
+            let turn = slot * GameKind::PLAYLIST_COUNT;
+            assert_eq!(
+                stages[turn..turn + GameKind::PLAYLIST_COUNT],
+                turns(slot)[..]
+            );
         }
         // never the particle theme, and it cycles rather than ending
         assert!(stages
             .iter()
             .all(|(_, theme)| *theme != ThemeMode::Fixed(3)));
-        assert_eq!(stages[cycle..], stages[..GameKind::COUNT]);
+        assert_eq!(stages[cycle..], stages[..GameKind::PLAYLIST_COUNT]);
     }
 
     #[test]
@@ -1455,7 +1647,7 @@ mod tests {
         );
         assert_eq!(Playlist::Particle.rules(&particle), MatchRules::Marathon);
 
-        let stages: Vec<(GameKind, ThemeMode)> = (0..2 * GameKind::COUNT)
+        let stages: Vec<(GameKind, ThemeMode)> = (0..2 * GameKind::PLAYLIST_COUNT)
             .map(|i| Playlist::Particle.stage(0, i, &particle).unwrap())
             .collect();
         assert_eq!(stages, [turns(3).as_slice(), turns(3).as_slice()].concat());
@@ -1467,17 +1659,18 @@ mod tests {
         let mixed = PlaylistThemes::new(PerGame::new(|game| match game {
             GameKind::DrRustario => vec![2, 5],
             GameKind::Rustris => vec![0, 1],
+            // a game the playlist does not deal yet, with a list of its own
+            GameKind::Puyo => vec![0],
         }));
         assert_eq!(mixed.slots(), 2);
         for game in GameKind::ALL {
             let themes = mixed.0.get(game);
-            let turn = GameKind::RUNNING_ORDER
-                .iter()
-                .position(|g| *g == game)
-                .unwrap();
+            let Some(turn) = GameKind::PLAYLIST_ORDER.iter().position(|g| *g == game) else {
+                continue;
+            };
             // slot 1 of the playlist, as that game numbers it
             assert_eq!(
-                Playlist::Retro.stage(0, GameKind::COUNT + turn, &mixed),
+                Playlist::Retro.stage(0, GameKind::PLAYLIST_COUNT + turn, &mixed),
                 Some((game, ThemeMode::Fixed(themes[1])))
             );
         }
@@ -1485,6 +1678,7 @@ mod tests {
         let short = PlaylistThemes::new(PerGame::new(|game| match game {
             GameKind::DrRustario => vec![0],
             GameKind::Rustris => vec![0, 1, 2],
+            GameKind::Puyo => vec![0, 1, 2, 3],
         }));
         assert_eq!(short.slots(), 1);
     }
@@ -1493,7 +1687,7 @@ mod tests {
     fn back_to_back_plays_one_game_then_the_other() {
         let stages = stages(Playlist::BackToBack, 0, FIXED_STAGES);
         // all of one game's themes, then all of the next's, in the order they are billed
-        for (turn, game) in GameKind::RUNNING_ORDER.into_iter().enumerate() {
+        for (turn, game) in GameKind::PLAYLIST_ORDER.iter().copied().enumerate() {
             let run = &stages[turn * THEME_SLOTS..(turn + 1) * THEME_SLOTS];
             assert!(run.iter().all(|(g, _)| *g == game), "{game:?}");
             assert_eq!(
@@ -1529,7 +1723,7 @@ mod tests {
     #[test]
     fn random_playlists_pick_every_game_and_every_theme() {
         let stages = stages(Playlist::RandomMarathon, 7, 256);
-        for game in GameKind::ALL {
+        for game in GameKind::PLAYLIST_ORDER.iter().copied() {
             for theme in 0..THEME_SLOTS {
                 assert!(
                     stages.contains(&(game, ThemeMode::Fixed(theme))),

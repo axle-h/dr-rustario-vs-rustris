@@ -8,7 +8,7 @@ use crate::animate::mascot::MascotAnimationTypes;
 use crate::animate::spawn::SpawnArc;
 use crate::animate::AnimationMeta;
 use crate::game::CellId;
-use crate::render::font::FontThemeOptions;
+use crate::render::font::{FontThemeOptions, PopupFont};
 use crate::render::geometry::BoardGeometry;
 use crate::render::helper::{TextureFactory, TextureQuery};
 use crate::render::scene::SceneType;
@@ -160,12 +160,14 @@ pub fn retro_theme<'a>(
     }
     assert!(!scenes.is_empty(), "a theme needs at least one scene");
 
+    let popup_font = PopupFont::new(canvas, texture_creator, options.geometry.block_size())?;
     Ok(Theme {
         name: options.name,
         scenes,
         sprites,
         geometry: options.geometry,
         audio: options.audio,
+        popup_font,
         font,
         board_texture,
         board_snips,

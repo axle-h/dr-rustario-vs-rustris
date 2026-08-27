@@ -13,6 +13,7 @@ pub mod interstitial;
 pub mod lock;
 pub mod mascot;
 pub mod next_stage;
+pub mod popup;
 pub mod spawn;
 pub mod victory;
 
@@ -27,6 +28,7 @@ use crate::animate::interstitial::InterstitialAnimation;
 use crate::animate::lock::LockAnimation;
 use crate::animate::mascot::MascotMeta;
 use crate::animate::next_stage::NextStageAnimation;
+use crate::animate::popup::PopupAnimation;
 use crate::animate::spawn::{SpawnAnimation, SpawnArc};
 use crate::animate::victory::VictoryAnimation;
 use crate::game::{CellId, GameEvent};
@@ -70,6 +72,7 @@ pub struct PlayerAnimations {
     victory: VictoryAnimation,
     next_stage: NextStageAnimation,
     interstitial: InterstitialAnimation,
+    popup: PopupAnimation,
 }
 
 impl PlayerAnimations {
@@ -87,6 +90,7 @@ impl PlayerAnimations {
             victory: VictoryAnimation::new(meta.mascot),
             next_stage: NextStageAnimation::new(),
             interstitial: InterstitialAnimation::new(meta.interstitial_frames, meta.mascot),
+            popup: PopupAnimation::new(),
         }
     }
 
@@ -100,6 +104,7 @@ impl PlayerAnimations {
         self.lock.reset();
         self.hard_drop.reset();
         self.spawn.reset();
+        self.popup.reset();
     }
 
     pub fn update(&mut self, delta: Duration) -> Vec<AnimationEvent> {
@@ -126,6 +131,7 @@ impl PlayerAnimations {
         self.victory.update(delta);
         self.next_stage.update(delta);
         self.interstitial.update(delta);
+        self.popup.update(delta);
         events
     }
 
@@ -151,7 +157,8 @@ impl PlayerAnimations {
         }
     }
 
-    /// the game must not tick while one of these plays
+    /// the game must not tick while one of these plays. A popup is not among them: it is
+    /// decoration, and the board carries on underneath it
     pub fn blocks_tick(&self) -> bool {
         self.destroy.state().is_some()
             || self.lock.state().is_some()
@@ -250,5 +257,13 @@ impl PlayerAnimations {
 
     pub fn interstitial_mut(&mut self) -> &mut InterstitialAnimation {
         &mut self.interstitial
+    }
+
+    pub fn popup(&self) -> &PopupAnimation {
+        &self.popup
+    }
+
+    pub fn popup_mut(&mut self) -> &mut PopupAnimation {
+        &mut self.popup
     }
 }

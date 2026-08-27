@@ -138,7 +138,7 @@ pub struct ScaledTheme<'a> {
 
 impl<'a> ScaledTheme<'a> {
     fn new(
-        theme: &'a Theme,
+        theme: &'a Theme<'a>,
         index: usize,
         players: u32,
         window_size: (u32, u32),
@@ -362,6 +362,17 @@ impl<'a> ThemeContext<'a> {
                 .animations_mut(player)
                 .destroy_mut()
                 .add(cells.to_vec());
+        }
+    }
+
+    /// say `text` over the middle of `cells`, on whichever theme the player is on when it
+    /// is drawn
+    pub fn animate_popup(&mut self, player: u32, text: String, cells: &[PlacedCell]) {
+        for theme in self.themes.iter_mut() {
+            theme
+                .animations_mut(player)
+                .popup_mut()
+                .add(text.clone(), cells);
         }
     }
 
@@ -682,6 +693,32 @@ impl<'a> ThemeContext<'a> {
             }
         }
 
+        Ok(())
+    }
+
+    /// Every player's captions, on the window itself and over everything else.
+    ///
+    /// The board is drawn into a texture and composited, and the foreground particles go on
+    /// top of that - so a caption drawn with the board is under the very burst it is about.
+    /// This is called last instead, after the particles.
+    pub fn draw_popups(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
+        for player in 0..self.players() {
+            let current = self.current(player);
+            let themed = &current.player_themes[player as usize];
+            // the board shakes on an impact; a caption over it shakes with it
+            let (offset_x, offset_y) = themed.animations.impact().current_offset();
+            let board = current.scale.offset_proportional_to_block_size(
+                themed.board_snip,
+                offset_x,
+                offset_y,
+            );
+            current.theme.draw_popups(
+                canvas,
+                &themed.animations,
+                &current.scale,
+                Point::new(board.x(), board.y()),
+            )?;
+        }
         Ok(())
     }
 

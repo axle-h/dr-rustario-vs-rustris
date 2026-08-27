@@ -662,7 +662,7 @@ link masks after a plain lock; soft drop; and the three rotation rules above.
 
 ## Phase 2 — playable on the particle theme, human players
 
-**Status:** `todo` — phase 1 is `done`, so this is next
+**Status:** `done`
 
 **Goal.** Two people can sit down and play a Puyo match from the menu.
 
@@ -742,13 +742,207 @@ matching puyos are visibly joined.
 
 ### Handover notes
 
-_(to be filled in by the agent that completes this phase)_
+Done on 2026-08-27. Puyo Rusto is on the pre-menu, playable by two humans on its own particle
+theme, with its own high score tables. `cargo test --workspace` is **706 tests, 0 failures**
+(688 before); `puyo-rusto` is 152 of them and is clippy clean, and the workspace's clippy
+warning count is unchanged at 112.
+
+**The art and the audio are generated, and both generators are committed.** The plan said not
+to draw eighty sprites by hand and this is how that was avoided:
+
+* `puyo-rusto/art/sprites.py` draws `src/theme/modern/sprites.png` (93 KiB). A puyo is a
+  signed distance field: a body circle unioned with one *neck* per linked direction, joined by
+  a smooth minimum so the neck flows out of the body with a fillet rather than notching into
+  it. The necks run **past the cell edge**, which is the trick that matters - the rim is the
+  band just inside the field, so a shape that stops at the edge would draw a dark line across
+  every join. Layout is `colour x 16` on a 16x6 grid, 64px cells at a 72px pitch, with the
+  nuisance puyo and the tray's three symbols on the sixth row.
+* `puyo-rusto/art/audio.py` synthesises the sixteen oggs (340 KiB) - a small chiptune
+  synthesiser, everything OGG Vorbis at 44,100 Hz mono, which is what the decoder takes. The
+  four `pop-*.ogg` are the same flourish a whole tone apart, so a chain is *heard* climbing,
+  which is what `clear_class` grades a step for. Every one of them is decoded at theme build
+  time, so `frame_shot` running is proof they all load.
+
+The whole theme is **436 KiB** against `dr-rustario`'s 26 MiB, because none of it is a rip.
+
+**The previews cost nothing.** A pair is two colours from five, so the plan budgeted 25 preview
+sprites - but `PreviewData::Compose` builds a preview out of cells the sheet already has, and a
+pair is just its two cells stacked. `theme/data.rs::previews()` is fifteen lines and there is a
+test that every cell it names is keyed.
+
+**Decisions the plan did not anticipate:**
+
+* **`GameKind::PLAYLIST_ORDER`, a third list beside `ALL` and `RUNNING_ORDER`.** Adding
+  `GameKind::Puyo` puts Puyo in every versus playlist for free, and that is wrong two phases
+  early: with one theme, `PlaylistThemes::slots()` (a min over the games) would collapse the
+  theme race from eight stages to three, and the **retro playlist would have no stages at
+  all**, since Puyo has no retro themes until phase 3. So a game is now billed on the pre-menu
+  as soon as it can be played and joins the playlists separately. `slots()`, `stage_count`,
+  `first_game`, `fixed_stages` and `random_game` all read `PLAYLIST_ORDER`/`PLAYLIST_COUNT`;
+  every playlist deals exactly what it dealt before, seed for seed, and the tests say so.
+  **Phase 5 adds `GameKind::Puyo` to that list**, which is one line.
+* **`PerGame::default()` is one value per game, not an empty collection.** The derived `Default`
+  gave an empty `Vec`, which nothing noticed while `slots()` was a `min` over `values()` - it
+  is an out of bounds index the moment anything looks a game up by name. `PlaylistThemes::default()`
+  is used in a test, and that is what caught it.
+* **`ModernThemeOptions::visible_rows` counts the buffer rows in.** It is `ROWS` (13), not
+  `VISIBLE_ROWS` (12): the board frame covers `visible_rows - top_buffer_rows`, so passing 12
+  drew one of the twelve *playable* rows above the frame with the ghost row nowhere. Rustris
+  reads the same way (`VISIBLE_HEIGHT = BOARD_HEIGHT + VISIBLE_BUFFER`) and it is easy to get
+  backwards. Phase 3's retro themes want the same 13.
+* **No mascot, deliberately.** `mascot: None`, exactly as Rustris's particle theme is left, so
+  the queue is a column of slots. Puyo has no mascot art of its own and there is no honest way
+  to generate a four-strip character animation; **phase 3's retro themes bring the mascots**
+  (Robotnik and Kirby are both ripped), and the particle field's mascot silhouettes come with
+  them, since the field outlines the sprites of every theme in play rather than one.
+* **`MatchThemes` is two entries** - `all` and `particle` - so `MatchThemes::count()` is 1 and
+  the theme sprint is not offered. It comes back on its own the moment phase 3 adds a second
+  theme; `options.rs`'s test says exactly that, and `theme_mode()` goes through
+  `MatchThemes::initial_index()` rather than a hand-written match, so phase 3 adds an enum
+  variant, an arm of `initial_index` and an entry in `all_themes` and nothing else.
+* **`all_themes` builds the particle theme twice.** `reference_block_size` measures *built*
+  themes, and the other two games take their reference off their retro themes, which are built
+  first. With nothing to measure against, Puyo builds the theme once provisionally, measures it
+  and builds it again. **Phase 3 should delete that and take the reference off the retro themes**
+  like the other two.
+* **The menu's dials are themes / mode / level / difficulty.** `level` is the starting speed
+  step (0-9) and `STAGE_NOUN` is `"level"`, so the modes read "1 level sprint" as they do
+  everywhere else and the HUD row is the `Level` every game shows. There is no randomiser row:
+  Puyo has one pair pool and nothing to choose between. `difficulty` is the game's own five
+  settings from phase 1 - the colour count and how buried you start - which is *not* the four
+  ai difficulty names.
+
+**The stub ai shipped, as the plan allowed.** `puyo_rusto::game::ai` is `PuyoAiKind::Placeholder`
+and a `PuyoAiAgent` that drops the pair in a column picked at random; it is seeded from a fixed
+constant, so a demo replays the same game twice. All four difficulty names and both demos are
+on the menu and the gating tests pass, so **the menu surface phase 4 has to keep is already
+final**: a `puyo_brain()` in `games.rs`, an arm of `VersusAi::ai_players`, and
+`AiDifficulty::brain()` in `game/rules.rs` are the three places a real brain goes.
+
+**Every generic launcher test now covers Puyo**, because phase 0 keyed them on `GameKind::ALL`:
+the ai difficulty names, the players list, the high score keys, the per-game mode and the versus
+ai all picked it up with no new test. Two were added: `a_game_played_on_its_own_deals_its_own_boards`
+(the one thing `game_mode` could get wrong that nothing else would notice) and
+`every_game_a_playlist_deals_is_a_game`.
+
+**Examples.** `frame_shot` takes `puyo` and builds a board with groups linked up in it and an
+attack left in the tray; `scale_report` and `field_preview` list it, the latter with its
+palette. `menu_shot`'s theme walk used to be the literal `["all", "nes", "all"]` - it now asks
+each game for its own theme names, since Puyo has no `nes` and `MatchThemes::from_str` would
+have panicked. `field_preview sheet` reports Puyo as *"25 sprites, 1 used, 24 duplicates"* and
+that is correct rather than a fault: every pair is the same two-cell silhouette, so the shape
+bank keeps one.
+
+**Checked without a display:** `frame_shot` at 640x480 (1 player) and 900x700 (2 players),
+`menu_shot` at 960x720 walking the theme and mode rows, `field_preview sheet` and
+`field_preview 3 ... puyo`, and `scale_report` (Puyo's particle theme: scale 1.0, block 48,
+board 288x624, 49px of top slack cropped out of the 50 it keeps back for the tray). **Nobody
+has played it with a controller yet** - that is the last line of this document's verification
+list and it is Alex's.
+
+
+### Amended after review, 2026-08-27
+
+Alex played the phase 2 build and four things came back. Two were bugs, one was a decision
+taken, one is still open. All of them are in the code as described here.
+
+**The queue was ragged, and it was Rustris's bug too.** `modern_theme` lays the queue out as a
+column of slots, the first 2.5 blocks and the rest 1.5, all sharing a *left* edge - and a piece
+is drawn centred in its own slot, so the big slot's piece sat on a different axis from the
+rest. With tetrominoes that reads as a slightly untidy column; with Puyo, where every piece is
+one column wide, it is plainly wrong. The smaller slots are now centred on the big one. The big
+slot is untouched and Rustris's column is tidier for it.
+
+**The game over card did not fit a six column board**, and that was luck rather than design
+everywhere else: the card font is two blocks tall, so "game over" comes out 226px against
+Dr. Rustario's 256px board and 213px against Rustris's 300px one, and 340px against Puyo's
+288px. `modern_theme` now measures the widest card and shrinks the font to fit the board,
+never growing it - so Dr. Rustario stays at 63 and Rustris at 60 exactly as before, and Puyo
+drops 96 to 75.
+
+**The HUD is down to the score, and the chain announces itself over the puyos instead.** Tsu's
+HUD is the score and the nuisance tray; a chain is a thing that *happens*, and a running
+best-chain counter in the corner is not something the game has. `Level` went the same way in
+the same review - the speed step is something a player feels rather than reads, and on a board
+that changes it every thirty puyos the number just sat there. So Puyo's HUD is **the score,
+and nothing else**, in the side column under the queue; the left column is empty, since there
+is no hold box either. In place of the chain row is a new engine concept,
+`engine::animate::popup`:
+
+* `GameRender::clear_popup(&self, event) -> Option<String>` - a short caption to draw over the
+  cells a clear took. It is not `clear_word`: that writes across the whole window in particles
+  and is for the once-a-match moments, while this is small, local and fires on *every* clear.
+  Both existing games return `None` and are unaffected.
+* `PopupAnimation` on `PlayerAnimations` holds them, one per clear, each on its own clock - so
+  a chain leaves a trail of captions climbing the board rather than replacing one with the
+  next. It never blocks the tick; a popup is decoration.
+* `Theme::popup_font` is a `PopupFont` - two renders of the same face, one for the fill and one
+  near-black for the outline, because a `FontRender` bakes its colour into its texture and a
+  shadow is therefore a second font rather than a second draw colour. Every theme gets one,
+  sized to its own cell, since whether there are popups at all is the *game*'s decision and a
+  theme should not have to opt into a game's feedback. **Phase 3's retro themes owe this
+  nothing** - and their popup font comes out at source-pixel size and scales up with the rest
+  of the art, which is chunky and which is right for a retro theme.
+* **It is drawn last of all, on the window, after the foreground particles** -
+  `ThemeContext::draw_popups`, called by the match screen after `fg_particles.draw`. The first
+  attempt drew it into the board texture with everything else, which put it *under* the clear's
+  own particle burst - and the burst is precisely what is happening when a caption appears, so
+  it was being lost. Drawing on the window costs the clipping the board texture gave for free,
+  so the caption is held inside the board's own width instead, and the theme's `Scale` and the
+  board's window position are passed in so the geometry is still worked out in the theme's own
+  source pixels and mapped out at the end.
+* Puyo returns `"{n} chain"` from the first step, per Alex: a 1-chain saying "1 chain" is what
+  makes the second step reading "2 chain" mean anything.
+
+**The caption is drawn in the colour of what popped**, which was the second half of that
+review: a white caption over a busy board was getting lost. Where the colour comes from is the
+part worth writing down, because the obvious answers are both wrong. The *game* cannot say -
+it knows a `CellId`, not what a theme paints it. The *theme* cannot be asked to declare one per
+cell - that is eighty entries for Puyo alone and every retro theme would owe the same again. So
+`BlockSpriteSheet` **reads it off its own built atlas**: one pass at build time, averaging each
+cell's sprite with pixels weighted by saturation times brightness, so an outline and the white
+of a puyo's eyes do not wash the answer out. `cell_color(id)` is then right on any theme,
+including one sliced out of a rip, and costs a game no new contract at all. A `Popup` carries
+the *modal* cell of the group it is about rather than an average, since a group that took a
+nuisance puyo with it should still be its own colour.
+
+It is also a cell and a quarter tall now rather than three quarters, held to fifteen sixteenths
+of the board's width and clamped inside it - a six column board is narrow and a caption over
+the first column was hanging off the edge.
+
+**One thing to know if you touch `PopupFont`:** tinting is `Texture::set_color_mod`, which is a
+mutation, and a theme draws through `&self` - so the fill font sits behind a `RefCell`. That
+makes `Theme<'a>` **invariant** in `'a`, where it used to be covariant, and code that built
+themes in a local and handed out `&'a Theme<'a>` stops compiling. `Shell` was already leaking
+its texture creator for the life of the process and was unaffected; `frame_shot` now leaks both
+its texture creator and its theme list the same way, which is two lines and is what that
+example wants anyway.
+
+`MetricKind::Chain` stays in the engine. Phase 0 added it for this game *and* for Puzzle
+Fighter and Bombliss, both of which want the same counter; it is simply not on a HUD today.
+
+**Still open: how the speed step should work.** Tsu has no level that climbs with play. In 2P
+versus the drop speed is fixed for the whole match by the difficulty setting - 16 frames per
+cell from Easiest through Hard, 8 at Hardest (*Frame Data Tables, Drop speed*) - and never
+changes; the game's answer to a match that drags is **margin time**, not gravity. Solo mode
+does have stages and does speed up through them (the wiki notes that in the late solo stages
+the pair falls faster than soft drop, so it cannot be slowed), but a stage there is *an
+opponent beaten* and Puyo Nexus's solo drop-speed table is explicitly "(table to be
+completed)", with only level 1 recorded.
+
+So `PUYOS_PER_STAGE = 30` and the twelve step `FALL_DELAY_MS` curve are both invented, and this
+document should not leave them unremarked. The reason a stage exists at all is that the shared
+mode structure needs one - `MatchRules::StageSprint` and the level sprint are built on stages.
+The options are to keep the ramp as a documented house rule and add margin time in phase 5 as
+well; to drop the ramp for one fixed speed per difficulty, which costs the level sprint its
+meaning here; or to ramp in single player only, where Tsu also ramps, and hold versus at one
+speed. **Alex's call, and phase 5 is where margin time lands either way.**
 
 ---
 
 ## Phase 3 — retro themes
 
-**Status:** `todo` — blocked on phase 2
+**Status:** `todo` — phase 2 is `done`, so this is next
 
 **Goal.** Three retro themes alongside the particle one, so Puyo has the same four as the
 other games and can take its turn in the retro playlist.
@@ -788,7 +982,19 @@ in a directory beside that file:
 Template for the 34-field `RetroThemeOptions`: `dr-rustario/src/theme/nes/mod.rs`.
 
 Register each theme in three places: `theme/mod.rs::all_themes` (the order defines the theme
-sprint), the `MatchThemes` enum in `game/rules.rs`, and `theme_mode()` in `options.rs`.
+sprint), the `MatchThemes` enum in `game/rules.rs`, and that enum's `initial_index()`.
+`options.rs::theme_mode()` reads `initial_index` rather than matching the variants itself, so
+it needs no arm - that is a difference from the other two games, which do match by hand.
+
+Two things phase 2 left here, both in its handover notes and repeated because this is the phase
+that acts on them:
+
+* **`all_themes` builds the particle theme twice.** `reference_block_size` measures themes that
+  are already built, and with no retro themes there was nothing to measure. Delete the double
+  build and take the reference off the retro themes, the way `dr-rustario` and `rustris` do.
+* **`visible_rows` is `ROWS` (13), not `VISIBLE_ROWS` (12).** The frame covers
+  `visible_rows - top_buffer_rows`, so the hidden thirteenth row floats above it. Passing 12
+  puts a playable row outside the frame, which is what happened first time.
 
 **Done when:** `frame_shot` renders every theme correctly, `menu_shot` walks the theme rows,
 `field_preview sheet` outlines the new sprites cleanly, and matching puyos join up on all
@@ -868,7 +1074,16 @@ _(to be filled in by the agent that completes this phase)_
 all six directions.
 
 Playlists deal three games, `VersusAi` fields three brains, and — the real work — the **six
-directed attack prices** are set. Measure rather than guess, the way the README's existing
+directed attack prices** are set.
+
+**Puyo joins the playlists by being added to `GameKind::PLAYLIST_ORDER`** (`launcher/src/games.rs`),
+which is one line. Phase 2 introduced that list precisely so this could be a deliberate step:
+a game is billed on the pre-menu as soon as it is playable and deals a playlist turn only once
+it has the four themes and the ai to take one. Everything that sequences a playlist -
+`PlaylistThemes::slots`, `stage_count`, `first_game`, `fixed_stages`, `random_game` and the
+tests - already reads that list, so nothing else in the launcher changes. `Difficulty::level`
+already has a Puyo arm; it returns the dial unchanged as a placeholder and this is the phase
+that measures what it should be. Measure rather than guess, the way the README's existing
 table was built: run each game's own ai for the same protocol (five seeds at full speed for
 fifty minutes of game time, counting what it sent), then hand-tune *down* from the measurement
 so a Puyo chain does not bury a Rustris or Dr. Rustario player. Extend the README's measured

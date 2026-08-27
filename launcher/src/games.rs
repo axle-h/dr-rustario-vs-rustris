@@ -12,26 +12,42 @@ use std::time::Duration;
 pub enum GameKind {
     DrRustario,
     Rustris,
+    Puyo,
 }
 
 impl GameKind {
     /// every game the launcher can run, in the order they are numbered. This is the key of
     /// every per-game collection - see [`PerGame`] - and the order the themes are built in,
     /// so a game's themes keep one place in the shared list.
-    pub const ALL: [GameKind; 2] = [GameKind::DrRustario, GameKind::Rustris];
+    pub const ALL: [GameKind; 3] = [GameKind::DrRustario, GameKind::Rustris, GameKind::Puyo];
 
     /// the order the games are billed in: the pre-menu's list, and the turns a fixed versus
     /// playlist takes. Rustris opens, which is a decision about presentation rather than
     /// about how the games are numbered, so it is its own list.
-    pub const RUNNING_ORDER: [GameKind; 2] = [GameKind::Rustris, GameKind::DrRustario];
+    pub const RUNNING_ORDER: [GameKind; 3] =
+        [GameKind::Rustris, GameKind::DrRustario, GameKind::Puyo];
+
+    /// The games a versus playlist deals, in the order it deals them.
+    ///
+    /// A third list because it is a third thing: a game is on the pre-menu as soon as it can
+    /// be played, and joins the playlists once it has the themes and the ai to hold up its
+    /// end of one. Puyo Rusto is on the menu from phase 2 of `docs/puyo-puyo-plan.md` and
+    /// joins this list in phase 5, which is where its attack prices and its half of the
+    /// difficulty dial are measured. Until then every playlist deals exactly what it dealt
+    /// before, seed for seed.
+    pub const PLAYLIST_ORDER: &'static [GameKind] = &[GameKind::Rustris, GameKind::DrRustario];
 
     pub const COUNT: usize = Self::ALL.len();
+
+    /// how many games a versus playlist deals
+    pub const PLAYLIST_COUNT: usize = Self::PLAYLIST_ORDER.len();
 
     /// what this game is called on the pre-menu
     pub fn name(self) -> &'static str {
         match self {
             GameKind::DrRustario => "dr. rustario",
             GameKind::Rustris => "rustris",
+            GameKind::Puyo => "puyo rusto",
         }
     }
 
@@ -50,8 +66,17 @@ impl GameKind {
 /// themes each game contributes, the slots a playlist deals it, the brains an ai player thinks
 /// with - so that a third game is an *entry* in a collection rather than another field, and
 /// the compiler cannot be satisfied by leaving it out.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PerGame<T>(Vec<T>);
+
+/// an empty value for every game, not an empty collection: everything that indexes one
+/// indexes it by [`GameKind::index`], so a `PerGame` with no slots is not a smaller
+/// collection, it is a broken one
+impl<T: Default> Default for PerGame<T> {
+    fn default() -> Self {
+        Self::new(|_| T::default())
+    }
+}
 
 impl<T> PerGame<T> {
     /// one value for each of [`GameKind::ALL`], in that order
@@ -85,6 +110,7 @@ impl<T> PerGame<T> {
 pub enum AnyGame {
     DrRustario(dr_rustario::game::Game),
     Rustris(rustris::game::Game),
+    Puyo(puyo_rusto::game::Game),
 }
 
 macro_rules! delegate {
@@ -92,6 +118,7 @@ macro_rules! delegate {
         match $self {
             AnyGame::DrRustario($game) => $body,
             AnyGame::Rustris($game) => $body,
+            AnyGame::Puyo($game) => $body,
         }
     };
 }
@@ -103,6 +130,7 @@ impl AnyGame {
         match self {
             AnyGame::DrRustario(_) => GameKind::DrRustario,
             AnyGame::Rustris(_) => GameKind::Rustris,
+            AnyGame::Puyo(_) => GameKind::Puyo,
         }
     }
 }
@@ -161,6 +189,31 @@ pub fn rustris_brain(
     }
     Box::new(RustrisBrain(
         rustris::game::ai::agent::AiAgent::neural(network).with_key_delay(key_delay),
+    ))
+}
+
+/// a Puyo Rusto brain, playing only Puyo boards
+///
+/// It is the placeholder until phase 4 of `docs/puyo-puyo-plan.md`: see
+/// [`puyo_rusto::game::ai`]. The seam is the finished one, so that phase swaps the brain and
+/// leaves the menu, the controller and this function alone.
+pub fn puyo_brain(
+    brain: puyo_rusto::game::ai::PuyoAiKind,
+    key_delay: Duration,
+) -> Box<dyn AiBrain> {
+    struct PuyoBrain(puyo_rusto::game::ai::agent::PuyoAiAgent);
+    impl AiBrain for PuyoBrain {
+        fn act(&mut self, game: &mut AnyGame, delta: Duration) {
+            if let AnyGame::Puyo(game) = game {
+                self.0.act(game, delta);
+            }
+        }
+        fn reset(&mut self) {
+            self.0.reset();
+        }
+    }
+    Box::new(PuyoBrain(
+        puyo_rusto::game::ai::agent::PuyoAiAgent::of(brain).with_key_delay(key_delay),
     ))
 }
 
@@ -283,6 +336,10 @@ impl GameRender for AnyGame {
         delegate!(self, g => GameRender::clear_word(g, event))
     }
 
+    fn clear_popup(&self, event: &GameEvent) -> Option<String> {
+        delegate!(self, g => GameRender::clear_popup(g, event))
+    }
+
     fn spawn_cells(&self) -> Vec<Point> {
         delegate!(self, g => GameRender::spawn_cells(g))
     }
@@ -312,6 +369,24 @@ mod tests {
             );
         }
         assert_eq!(GameKind::RUNNING_ORDER.len(), GameKind::COUNT);
+    }
+
+    /// the playlist deals a subset of the games - a game joins it once it has the themes and
+    /// the ai to take a turn - but never a game that is not one of them
+    #[test]
+    fn every_game_a_playlist_deals_is_a_game() {
+        for game in GameKind::PLAYLIST_ORDER {
+            assert!(GameKind::ALL.contains(game), "{game:?}");
+            assert_eq!(
+                GameKind::PLAYLIST_ORDER
+                    .iter()
+                    .filter(|g| *g == game)
+                    .count(),
+                1,
+                "{game:?} takes two turns"
+            );
+        }
+        assert_eq!(GameKind::PLAYLIST_COUNT, GameKind::PLAYLIST_ORDER.len());
     }
 
     #[test]

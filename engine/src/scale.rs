@@ -122,6 +122,12 @@ impl Scale {
         )
     }
 
+    /// how much the theme's art is being scaled by, for something drawn on the window rather
+    /// than into a theme's own textures and so scaled by hand
+    pub fn factor(&self) -> f64 {
+        self.scale
+    }
+
     pub fn window_size(&self) -> (u32, u32) {
         (self.window_width, self.window_height)
     }

@@ -77,6 +77,7 @@ fn main() -> Result<(), String> {
         let start = all.len();
         all.extend(match name {
             "dr" => dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?,
+            "puyo" => puyo_rusto::theme::all_themes(&mut canvas, &texture_creator, config)?,
             _ => rustris::theme::all_themes(&mut canvas, &texture_creator, config)?,
         });
         games_built.push(PreviewGame {
@@ -480,9 +481,10 @@ fn region(
 
 /// Every game a preview can put a player on: its short name (what the `games` argument
 /// takes), its [`GameId`] and the colours it radiates into the field. One entry per game.
-const PREVIEW_GAMES: [(&str, GameId, fn() -> Palette); 2] = [
+const PREVIEW_GAMES: [(&str, GameId, fn() -> Palette); 3] = [
     ("dr", engine::game::ids::DR_RUSTARIO, dr_palette),
     ("rustris", engine::game::ids::RUSTRIS, rustris_palette),
+    ("puyo", engine::game::ids::PUYO, puyo_palette),
 ];
 
 /// one of [`PREVIEW_GAMES`], with its themes located in the shared list
@@ -510,6 +512,16 @@ fn dr_palette() -> Palette {
         Color::RGB(0xE8, 0x06, 0x06),
         Color::RGB(0x2E, 0x7B, 0xD6),
         Color::RGB(0xE1, 0xBE, 0x00),
+    ])
+}
+
+fn puyo_palette() -> Palette {
+    Palette::from_sdl(&[
+        Color::RGB(0xF0, 0x44, 0x2E),
+        Color::RGB(0x3C, 0xC6, 0x3C),
+        Color::RGB(0x2E, 0x6B, 0xF0),
+        Color::RGB(0xF0, 0xC4, 0x1E),
+        Color::RGB(0xB8, 0x45, 0xE0),
     ])
 }
 

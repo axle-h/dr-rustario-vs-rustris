@@ -473,13 +473,14 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             }
             // sound effects play through the theme of the player that caused them;
             // match-wide events (pause etc.) go through the theme whose music is playing
-            let (audio, clear_class, clear_word) = match event_player {
+            let (audio, clear_class, clear_word, clear_popup) = match event_player {
                 Some(player) => (
                     themes.theme(player).audio(),
                     fixture.player(player).game().clear_class(&event),
                     fixture.player(player).game().clear_word(&event),
+                    fixture.player(player).game().clear_popup(&event),
                 ),
-                None => (themes.music_audio(), 0, None),
+                None => (themes.music_audio(), 0, None, None),
             };
             audio.receive_event(&event, clear_class)?;
             if let Some(player) = event_player {
@@ -562,6 +563,10 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     // a tetris or a combo is worth spelling out
                     if let Some(word) = clear_word {
                         field_events.push(FieldEvent::Spell { word });
+                    }
+                    // ... and a game may also want a caption over the cells themselves
+                    if let Some(text) = clear_popup {
+                        themes.animate_popup(player, text, cells);
                     }
                     themes.animate_destroy(player, cells);
                 }
@@ -794,6 +799,10 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
 
                     // fg particles
                     fg_particles.draw(c)?;
+
+                    // ... and the captions over them, which is the point of drawing them
+                    // here rather than with the board they belong to
+                    themes.draw_popups(c)?;
 
                     if fixture.state().is_paused() {
                         paused_screen.draw(c)?;

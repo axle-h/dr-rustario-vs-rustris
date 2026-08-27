@@ -3,9 +3,10 @@
 //!
 //! `cargo run -p dr-rustario-vs-rustris --example frame_shot -- 640 480 1 out/ [game]`
 
+use engine::animate::popup::POPUP_DURATION;
 use engine::app_info::{init, AppInfo};
 use engine::config::{Config, VideoConfig, VideoMode};
-use engine::game::Game;
+use engine::game::{Game, GameEvent};
 use engine::render::context::{PlayerTextures, PlayerThemes, TextureMode, ThemeContext};
 use engine::render::{GameRender, Theme};
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -39,7 +40,10 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    let texture_creator = canvas.texture_creator();
+    // leaked for the life of the process, as `Shell::new` leaks its own: a `Theme` borrows
+    // the texture creator, and everything holding a theme has to outlive it
+    let texture_creator: &'static TextureCreator<WindowContext> =
+        Box::leak(Box::new(canvas.texture_creator()));
 
     let mut config = Config::default();
     config.video = VideoConfig {
@@ -53,11 +57,15 @@ fn main() -> Result<(), String> {
 
     match game.as_str() {
         "rustris" => {
-            let themes = rustris::theme::all_themes(&mut canvas, &texture_creator, config)?;
+            let themes = leak(rustris::theme::all_themes(
+                &mut canvas,
+                texture_creator,
+                config,
+            )?);
             shoot(
                 &mut canvas,
-                &texture_creator,
-                &themes,
+                texture_creator,
+                themes,
                 config,
                 (width, height),
                 players,
@@ -67,11 +75,15 @@ fn main() -> Result<(), String> {
             )
         }
         "dr-rustario" => {
-            let themes = dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?;
+            let themes = leak(dr_rustario::theme::all_themes(
+                &mut canvas,
+                texture_creator,
+                config,
+            )?);
             shoot(
                 &mut canvas,
-                &texture_creator,
-                &themes,
+                texture_creator,
+                themes,
                 config,
                 (width, height),
                 players,
@@ -80,10 +92,35 @@ fn main() -> Result<(), String> {
                 dr_rustario_game,
             )
         }
+        "puyo" => {
+            let themes = leak(puyo_rusto::theme::all_themes(
+                &mut canvas,
+                texture_creator,
+                config,
+            )?);
+            shoot(
+                &mut canvas,
+                texture_creator,
+                themes,
+                config,
+                (width, height),
+                players,
+                &out,
+                &game,
+                puyo_game,
+            )
+        }
         other => Err(format!(
-            "unknown game '{other}', expected rustris or dr-rustario"
+            "unknown game '{other}', expected rustris, dr-rustario or puyo"
         )),
     }
+}
+
+/// A `Theme` borrows the texture creator, which is leaked for the life of the process - so
+/// the themes are leaked with it rather than threading two lifetimes through everything that
+/// holds one. This is a shot tool that renders a handful of frames and exits.
+fn leak(themes: Vec<Theme<'static>>) -> &'static [Theme<'static>] {
+    Box::leak(themes.into_boxed_slice())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -108,7 +145,30 @@ fn shoot<'a, G: Game + GameRender>(
             (width, height),
             config.video,
         )?;
-        let games = (0..players).map(|_| new_game()).collect::<Vec<G>>();
+        let mut games = (0..players).map(|_| new_game()).collect::<Vec<G>>();
+        // Replay the caption a game asked for over its last clear, exactly as the match
+        // screen does - it is part of the frame and this is the only way to see one without
+        // a display. Games that ask for none (Dr. Rustario and Rustris) are untouched, down
+        // to the animation clock, which is why the shot only moves when there is a popup.
+        let mut has_popup = false;
+        for (player, game) in games.iter_mut().enumerate() {
+            let events = Game::drain_events(game);
+            let last_clear = events
+                .iter()
+                .rev()
+                .find(|event| matches!(event, GameEvent::Clear { .. }));
+            if let Some(event @ GameEvent::Clear { cells, .. }) = last_clear {
+                if let Some(text) = GameRender::clear_popup(&*game, event) {
+                    themes.animate_popup(player as u32, text, cells);
+                    has_popup = true;
+                }
+            }
+        }
+        if has_popup {
+            // a popup grows into place, so a frame taken the instant it is queued would draw
+            // it at nothing: hold the shot a quarter of the way through its life
+            themes.update_animations(POPUP_DURATION / 4);
+        }
         println!(
             "{game_name:12} {:8} board={:?}",
             theme.name(),
@@ -155,6 +215,8 @@ fn shoot<'a, G: Game + GameRender>(
             })
             .map_err(|e| e.to_string())?;
         themes.draw_players(canvas, &mut texture_refs, Duration::ZERO)?;
+        // last of all, as the match screen draws them: over the board and over the particles
+        themes.draw_popups(canvas)?;
 
         let pixels = canvas.read_pixels(None, PixelFormatEnum::ABGR8888)?;
         let path = format!("{out}/{width}x{height}-{game_name}-{}.png", theme.name());
@@ -196,6 +258,46 @@ fn rustris_game() -> rustris::game::Game {
     }
     game.left();
     game.update(Duration::from_millis(400));
+    game
+}
+
+/// a board part way through: a stack with groups linked up in it, an attack in the tray and,
+/// so the shot carries a clear to replay, play stopped the moment something popped
+fn puyo_game() -> puyo_rusto::game::Game {
+    use engine::game::Game as _;
+    // three colours make a group turn up in a handful of placements, which is what this shot
+    // wants; a five colour board would usually be a tidy heap and nothing more
+    let difficulty = puyo_rusto::game::rules::Difficulty::VeryEasy;
+    let random = puyo_rusto::game::random::random(1, difficulty.colors())
+        .pop()
+        .unwrap();
+    let mut game = puyo_rusto::game::Game::new(difficulty, 2, random);
+    // round the columns from the left, which stacks the board up without tidying it - the
+    // point of the shot is the link masks, so it wants colours landing beside each other
+    for column in (0..puyo_rusto::game::board::COLUMNS as i32)
+        .cycle()
+        .take(48)
+    {
+        for _ in 0..puyo_rusto::game::board::COLUMNS {
+            game.left();
+        }
+        for _ in 0..column {
+            game.right();
+        }
+        game.hard_drop();
+        game.update(Duration::from_millis(1200));
+        // the score only moves when something clears; stop on the first one so the clear the
+        // shot replays is the one the board is still settling out of
+        if game.score() > 0 {
+            break;
+        }
+    }
+    // an attack arriving after the last placement is still in the tray, which is where the
+    // pending strip is drawn from
+    game.receive_attack(
+        engine::game::Attack::new(puyo_rusto::game::GAME_ID, 9)
+            .with_foreign_for(puyo_rusto::game::GAME_ID, 9),
+    );
     game
 }
 

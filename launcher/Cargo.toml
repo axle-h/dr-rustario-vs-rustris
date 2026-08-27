@@ -24,6 +24,7 @@ embed-resource = "3.0.11"
 engine = { path = "../engine" }
 dr-rustario = { path = "../dr-rustario" }
 rustris = { path = "../rustris" }
+puyo-rusto = { path = "../puyo-rusto" }
 sdl2.workspace = true
 titlecase.workspace = true
 

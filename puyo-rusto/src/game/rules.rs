@@ -1,6 +1,9 @@
 //! The dials: how many colours a match deals, how fast puyos fall, and how long a stage is.
 
+use crate::game::ai::PuyoAiKind;
+pub use engine::session::MatchRules;
 use std::time::Duration;
+use strum::IntoEnumIterator;
 
 /// How hard the match is, in the game's own terms.
 ///
@@ -113,6 +116,184 @@ pub fn fall_delay(speed_index: u32) -> Duration {
         .get(speed_index as usize)
         .map(|ms| Duration::from_millis(*ms))
         .unwrap_or(MIN_FALL_DELAY)
+}
+
+/// The starting speed step the menu offers, which is what a Puyo "level" is.
+pub const MAX_START_LEVEL: u32 = 9;
+
+/// the biggest speed step the HUD ever has to show, so it can size the digits
+pub const MAX_LEVEL: u32 = 99;
+
+/// the biggest score the HUD ever has to show
+pub const MAX_SCORE: u32 = 9_999_999;
+
+/// Which themes a match runs through.
+///
+/// Phase 2 of the plan gives Puyo one theme; the retro ones join this list as they are built,
+/// and `all` is what runs through every one of them in the order
+/// [`crate::theme::all_themes`] builds them.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    strum::IntoStaticStr,
+    strum::EnumIter,
+    strum::EnumString,
+)]
+pub enum MatchThemes {
+    /// run every theme in order, switching at the next level
+    #[default]
+    #[strum(serialize = "all")]
+    All,
+    #[strum(serialize = "particle")]
+    Particle,
+}
+
+impl MatchThemes {
+    pub fn names() -> Vec<&'static str> {
+        Self::iter().map(|e| e.into()).collect()
+    }
+
+    /// how many themes there are, which is `all` less itself
+    pub fn count() -> usize {
+        Self::iter().filter(|i| *i as usize > 0).count()
+    }
+
+    /// the theme every player starts on
+    pub fn initial_index(&self) -> usize {
+        match self {
+            MatchThemes::All | MatchThemes::Particle => 0,
+        }
+    }
+}
+
+/// How well the ai plays, under the four names every game in the compendium offers.
+///
+/// The names and the key delays are the other games' exactly - see
+/// `ai_difficulties_agree` in the launcher, which holds every game to the same four. What is
+/// behind them is not yet: phase 4 of the plan replaces the placeholder brain with one that
+/// can play, and nothing on this menu surface changes when it does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AiDifficulty {
+    Easy,
+    Normal,
+    Hard,
+    Impossible,
+}
+
+impl AiDifficulty {
+    pub const ALL: [Self; 4] = [Self::Easy, Self::Normal, Self::Hard, Self::Impossible];
+    pub const EASY_KEY_DELAY: Duration = Duration::from_millis(500);
+    pub const NORMAL_KEY_DELAY: Duration = Duration::from_millis(400);
+    pub const HARD_KEY_DELAY: Duration = Duration::from_millis(300);
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            AiDifficulty::Easy => "easy",
+            AiDifficulty::Normal => "normal",
+            AiDifficulty::Hard => "hard",
+            AiDifficulty::Impossible => "impossible",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.name() == name)
+    }
+
+    /// the shortest time the agent may leave between two key presses
+    pub fn key_delay(&self) -> Duration {
+        match self {
+            AiDifficulty::Easy => Self::EASY_KEY_DELAY,
+            AiDifficulty::Normal => Self::NORMAL_KEY_DELAY,
+            AiDifficulty::Hard => Self::HARD_KEY_DELAY,
+            AiDifficulty::Impossible => Duration::ZERO,
+        }
+    }
+
+    /// the brain this difficulty thinks with. Every one of them is the placeholder until
+    /// phase 4, so today a harder setting is only a faster one - which is exactly what the
+    /// other two games' handover notes warned about and what phase 4 fixes.
+    pub fn brain(&self) -> PuyoAiKind {
+        PuyoAiKind::Placeholder
+    }
+}
+
+/// Who is playing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AiMode {
+    /// no ai players
+    #[default]
+    Off,
+    /// one board, played by the ai at full speed
+    Demo,
+    /// both boards played by the ai at full speed
+    VsDemo,
+    /// two players, the second of them the ai
+    Opponent(AiDifficulty),
+}
+
+/// The match options Puyo Rusto offers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GameConfig {
+    pub players: u32,
+    /// the game's own five settings: how many colours, and how buried you start
+    pub difficulty: Difficulty,
+    /// the speed step play opens on
+    pub level: u32,
+    pub rules: MatchRules,
+    pub themes: MatchThemes,
+    pub ai: AiMode,
+}
+
+impl GameConfig {
+    pub fn new(players: u32, level: u32, rules: MatchRules, themes: MatchThemes) -> Self {
+        Self {
+            players,
+            difficulty: Difficulty::default(),
+            level,
+            rules,
+            themes,
+            ai: AiMode::Off,
+        }
+    }
+
+    /// how many boards the match runs, which the ai mode may decide instead of the dial
+    pub fn effective_players(&self) -> u32 {
+        match self.ai {
+            AiMode::Off => self.players,
+            AiMode::Demo => 1,
+            AiMode::VsDemo | AiMode::Opponent(_) => 2,
+        }
+    }
+
+    /// the ai controlled players (0-indexed), the key delay they play at and the brain they
+    /// think with
+    pub fn ai_players(&self) -> Vec<(u32, Duration, PuyoAiKind)> {
+        match self.ai {
+            AiMode::Off => vec![],
+            AiMode::Demo => vec![(0, Duration::ZERO, PuyoAiKind::Placeholder)],
+            AiMode::VsDemo => vec![
+                (0, Duration::ZERO, PuyoAiKind::Placeholder),
+                (1, Duration::ZERO, PuyoAiKind::Placeholder),
+            ],
+            AiMode::Opponent(difficulty) => {
+                vec![(1, difficulty.key_delay(), difficulty.brain())]
+            }
+        }
+    }
+
+    pub fn is_ai_player(&self, player: u32) -> bool {
+        self.ai_players().iter().any(|(p, _, _)| *p == player)
+    }
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        Self::new(1, 0, MatchRules::Marathon, MatchThemes::All)
+    }
 }
 
 #[cfg(test)]

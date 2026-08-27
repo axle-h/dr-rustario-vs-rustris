@@ -7,6 +7,7 @@ use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{BlendMode, Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -256,6 +257,11 @@ impl<'a> FontRender<'a> {
         })
     }
 
+    /// Tint every glyph. The face is built white, so this is the colour it comes out.
+    pub fn set_color_mod(&mut self, color: Color) {
+        self.texture.set_color_mod(color.r, color.g, color.b);
+    }
+
     pub fn render_string(
         &self,
         canvas: &mut WindowCanvas,
@@ -268,6 +274,35 @@ impl<'a> FontRender<'a> {
             let rect = Rect::new(dest.x(), dest.y(), snip.width(), snip.height());
             canvas.copy(&self.texture, snip, rect)?;
             dest += Point::new((snip.width() + self.spacing) as i32, 0);
+        }
+        Ok(())
+    }
+
+    /// Draw a string centred on `center`, every glyph scaled by `scale`.
+    ///
+    /// The whole string is laid out at its natural size and then scaled about the centre, so a
+    /// caption can grow and shrink without the letters drifting apart.
+    pub fn render_string_scaled_in_center(
+        &self,
+        canvas: &mut WindowCanvas,
+        center: Point,
+        value: &str,
+        scale: f64,
+    ) -> Result<(), String> {
+        if scale <= 0.0 {
+            return Ok(());
+        }
+        // a glyph never scales away to nothing, but a spacing of zero stays zero
+        let glyph = |value: u32| ((value as f64 * scale).round() as u32).max(1);
+        let spacing = (self.spacing as f64 * scale).round() as u32;
+        let (width, height) = self.string_size(value);
+        let mut x = center.x() - glyph(width) as i32 / 2;
+        let y = center.y() - glyph(height) as i32 / 2;
+        for ch in value.chars() {
+            let snip = self.sprite(ch);
+            let rect = Rect::new(x, y, glyph(snip.width()), glyph(snip.height()));
+            canvas.copy(&self.texture, snip, rect)?;
+            x += (glyph(snip.width()) + spacing) as i32;
         }
         Ok(())
     }
@@ -418,6 +453,74 @@ impl FontThemeOptions {
         Ok(FontTheme::new(fonts, self.metrics.clone()))
     }
 }
+
+/// Draws [`crate::animate::popup::Popup`]s: a caption over the board, outlined so it stays
+/// legible over the cells it is standing on.
+///
+/// Two renders of the same face rather than one, because a [`FontRender`]'s colour is baked
+/// into its texture when it is built - so a shadow is a second font, not a draw call with a
+/// different colour.
+pub struct PopupFont<'a> {
+    /// behind a `RefCell` because the caption is tinted to whatever it is about, and SDL
+    /// colour modulation is a mutation of the texture - while a theme draws through `&self`
+    fill: RefCell<FontRender<'a>>,
+    shadow: FontRender<'a>,
+    offset: i32,
+}
+
+impl<'a> PopupFont<'a> {
+    /// A caption a cell and a quarter tall, which reads at any board size - and is then held
+    /// to the board's width by whoever draws it, since how wide a board is varies far more
+    /// than how tall a cell is.
+    pub fn new(
+        canvas: &mut WindowCanvas,
+        texture_creator: &'a TextureCreator<WindowContext>,
+        block_size: u32,
+    ) -> Result<Self, String> {
+        let size = (block_size * 5 / 4).max(MIN_POPUP_FONT);
+        Ok(Self {
+            fill: RefCell::new(FontRender::from_font(
+                canvas,
+                texture_creator,
+                FontType::Retro,
+                size,
+                Color::WHITE,
+            )?),
+            shadow: FontRender::from_font(
+                canvas,
+                texture_creator,
+                FontType::Retro,
+                size,
+                Color::RGB(0x10, 0x0C, 0x18),
+            )?,
+            offset: (block_size as i32 / 16).max(1),
+        })
+    }
+
+    /// how wide `value` is drawn at `scale`, so a caller can keep it inside the board
+    pub fn width(&self, value: &str, scale: f64) -> u32 {
+        let (width, _) = self.fill.borrow().string_size(value);
+        (width as f64 * scale).round() as u32
+    }
+
+    pub fn draw(
+        &self,
+        canvas: &mut WindowCanvas,
+        center: Point,
+        value: &str,
+        scale: f64,
+        color: Color,
+    ) -> Result<(), String> {
+        let shadow = center + Point::new(self.offset, self.offset);
+        self.shadow
+            .render_string_scaled_in_center(canvas, shadow, value, scale)?;
+        let mut fill = self.fill.borrow_mut();
+        fill.set_color_mod(color);
+        fill.render_string_scaled_in_center(canvas, center, value, scale)
+    }
+}
+
+const MIN_POPUP_FONT: u32 = 8;
 
 /// Draws a game's HUD numbers.
 pub struct FontTheme<'a> {

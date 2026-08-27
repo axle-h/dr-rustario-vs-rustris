@@ -36,13 +36,14 @@ fn main() -> Result<(), String> {
     };
 
     // every game's themes in one list, each game's slice of it recorded; one entry per game
-    const GAMES: [&str; 2] = ["dr-rustario", "rustris"];
+    const GAMES: [&str; 3] = ["dr-rustario", "rustris", "puyo"];
     let mut all = vec![];
     let mut ranges = vec![];
     for game in GAMES {
         let start = all.len();
         all.extend(match game {
             "dr-rustario" => dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?,
+            "puyo" => puyo_rusto::theme::all_themes(&mut canvas, &texture_creator, config)?,
             _ => rustris::theme::all_themes(&mut canvas, &texture_creator, config)?,
         });
         ranges.push((game, start..all.len()));

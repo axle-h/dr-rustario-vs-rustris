@@ -7,7 +7,7 @@
 | `engine/` | everything that is not game rules: SDL app shell, menus, high scores, config, input, rendering (sprite sheets, themes, fonts, particles, animations), audio mixer, the match session, and the shared AI core (`ai/`: neural network, genetic algorithm, key pacing) |
 | `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), theme data, its neural AI and the deterministic one (`game/ai/n64/`) that actually plays |
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), theme data and its neural AI |
-| `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, the nuisance queue). Rules only so far - no themes, no ai, and the launcher does not deal it yet |
+| `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, the nuisance queue), its particle theme and the placeholder ai that stands in until one is trained |
 | `launcher/` | the `dr-rustario-vs-rustris` binary: picks games and options and runs a match |
 
 Each game's AI supplies the game-specific half - board features, placement search and the agent -
@@ -67,6 +67,23 @@ since only it can name a game or its numbers. `cargo run --example field_preview
 `features` draws one png per routine, `sheet` outlines every sprite of every theme into a
 labelled png, and `<seconds>` snapshots a running field.
 
+A clear can say something over the cells it just took: `GameRender::clear_popup` returns a
+short caption, `animate/popup.rs` holds one per clear on its own clock - so a chain leaves a
+trail of them climbing the board - and `Theme::popup_font` draws it outlined, rising and
+shrinking away, **in the colour the theme paints the cells that went**. It goes on last of all,
+on the window after the foreground particles (`ThemeContext::draw_popups`), because a caption
+drawn with the board is underneath the very burst it is about.
+That colour is not declared anywhere: `BlockSpriteSheet::cell_color` reads it off the built
+atlas at theme build time, averaging a cell's sprite with pixels weighted by saturation times
+brightness so an outline and a puyo's white eyes do not wash it out. Tinting means
+`set_color_mod`, which is a mutation behind a `&self` draw, so the fill font sits in a
+`RefCell` - which makes `Theme<'a>` invariant in `'a`, so anything holding themes has to own
+them or leak them rather than shorten their lifetime. It is not `clear_word`, which spells one word across the
+whole window in background particles for the once-a-match moments; this is small, local and
+fires on every clear. It costs a theme no art and no opt-in, because whether there are popups
+at all is the game's decision: Puyo Rusto counts its chain out from the first step, and the
+other two games return `None`.
+
 A game that can hold an attack rather than take it as it arrives reports what is still
 waiting through `Game::pending_attacks`, as its own `CellId`s, and a theme that declares a
 `PendingLayout` draws them as a strip from its own cell sprites - so a player can see what is
@@ -74,7 +91,23 @@ hanging over them. Dr. Rustario and Rustris both take a hit immediately and have
 Rusto is the game this is for.
 
 Puyo Rusto is being built in phases against [docs/puyo-puyo-plan.md](docs/puyo-puyo-plan.md),
-which is the shared memory for that work - read it before touching the crate. It is faithful
+which is the shared memory for that work - read it before touching the crate. It is on the
+pre-menu and playable, on one theme, by humans; its retro themes are phase 3, its ai phase 4
+and its place in the vs. playlists phase 5. Two things follow from that. Its four ai
+difficulties are all backed by `PuyoAiKind::Placeholder`, which drops the pair in a column
+picked at random - the menu offers what every other game offers because the launcher's tests
+hold every game to that list, and phase 4 puts a real brain behind it. And a versus playlist
+deals the games in `GameKind::PLAYLIST_ORDER`, which is a *third* list beside `ALL` (how games
+are numbered) and `RUNNING_ORDER` (how they are billed): a game is on the pre-menu as soon as
+it can be played and takes a playlist turn only once it has the themes and the ai to hold up
+its end of one.
+
+Puyo Rusto's particle theme is the only art in the repository that is **generated rather than
+drawn or ripped**, because a `CellId` there is a colour and a link mask and that is eighty
+sprites before nuisance. `puyo-rusto/art/sprites.py` composites them out of a body and a neck
+per linked direction as a signed distance field, and `puyo-rusto/art/audio.py` synthesises the
+sixteen oggs; both are committed beside the theme and write into `src/theme/modern/`. Re-run
+them rather than editing their output. It is faithful
 Puyo Puyo Tsu, and every table in it (chain power, colour and group bonus, 70 target points,
 the 30 nuisance all clear, the pair pool) is sourced from Puyo Nexus rather than guessed, with
 the page named in each module's doc comment.

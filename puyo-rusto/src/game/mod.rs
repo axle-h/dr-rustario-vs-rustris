@@ -1,5 +1,6 @@
 //! Puyo Puyo Tsu's rules, simulated headlessly.
 
+pub mod ai;
 pub mod board;
 pub mod cell;
 pub mod nuisance;
