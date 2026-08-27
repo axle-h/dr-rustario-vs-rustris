@@ -33,7 +33,7 @@ use field::{
     colour, Cell, Field, COLS, ROWS, ST_HORIZONTAL_LEFT, ST_HORIZONTAL_RIGHT, ST_VERTICAL_BOTTOM,
     ST_VERTICAL_TOP,
 };
-use params::Params;
+pub use params::Params;
 pub use params::{DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 use score::{search_line_ms, Flag};
 
@@ -99,6 +99,17 @@ pub struct Candidate {
     ec: bool,
 }
 
+/// Everything the ai made of one pill: which situation it read off the bottle, which side it
+/// found stacked up, what it thought every placement was worth, and which one it picked.
+#[derive(Clone, Debug)]
+pub struct Reading {
+    pub situation: Situation,
+    pub wall: usize,
+    /// by placement index, `None` where the placement was not one of the ai's own candidates
+    pub priorities: Vec<Option<i32>>,
+    pub chosen: Option<usize>,
+}
+
 /// Dr. Mario 64's opponent: hand the pill's landing places to [`Self::choose`] and it names one.
 #[derive(Clone, Copy, Debug)]
 pub struct N64Ai {
@@ -134,32 +145,58 @@ impl N64Ai {
     /// Which of `placements` to play. `bottle` is the bottle those placements were found in,
     /// with the pill still in play; it is read for the stack alone.
     pub fn choose(&self, bottle: &Bottle, placements: &[Placement]) -> Option<usize> {
+        self.read(bottle, placements).chosen
+    }
+
+    /// What this ai made of every placement, not just which one it picked. This is what the
+    /// probe reads to ask what the scorer is actually paying for.
+    pub fn read(&self, bottle: &Bottle, placements: &[Placement]) -> Reading {
+        self.read_tweaked(bottle, placements, |_| {})
+    }
+
+    /// The same, with the weights for this pill nudged first, so a term can be taken out and
+    /// the ai asked what it would have played without it.
+    pub fn read_tweaked(
+        &self,
+        bottle: &Bottle,
+        placements: &[Placement],
+        tweak: impl Fn(&mut Params),
+    ) -> Reading {
+        let mut reading = Reading {
+            situation: Situation::Normal,
+            wall: 0,
+            priorities: vec![None; placements.len()],
+            chosen: None,
+        };
         if placements.is_empty() {
-            return None;
+            return reading;
         }
 
         let field = Field::of(bottle);
         let candidates = candidates(&field, placements);
         if candidates.is_empty() {
-            return None;
+            return reading;
         }
 
         let (situation, wall) =
             classify(&field, bottle.virus_count(), routes::average_route(&field));
-        let params = Params::of(self.skill, situation);
+        let mut params = Params::of(self.skill, situation);
+        tweak(&mut params);
         let wall = if params.wall { wall } else { 0 };
+        reading.situation = situation;
+        reading.wall = wall;
 
         let mut best = i32::MIN;
-        let mut chosen = None;
         for candidate in &candidates {
             let priority = self.priority(&field, &candidates, candidate, &params, wall);
+            reading.priorities[candidate.placement] = Some(priority);
             // a tie goes to whichever came first in the original's ordering
-            if chosen.is_none() || priority > best {
+            if reading.chosen.is_none() || priority > best {
                 best = priority;
-                chosen = Some(candidate.placement);
+                reading.chosen = Some(candidate.placement);
             }
         }
-        chosen
+        reading
     }
 
     /// What one candidate is worth. Original name: the body of `aiHiruAllPriSet`'s loop.

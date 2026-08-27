@@ -337,16 +337,23 @@ impl Game {
     }
 
     /// the shape holding, if any: what pressing hold would swap the pill in play for
+    /// What an agent with a hold to reach for would be choosing between. Nothing uses these
+    /// three today - see [`crate::game::ai::agent::DrAiAgent`] for why the scored agent does
+    /// not hold - and they are kept because putting hold back needs them. A human player's
+    /// hold goes through [`Self::hold`] and is unaffected.
+    #[allow(dead_code)]
     pub(crate) fn held_shape(&self) -> Option<PillShape> {
         self.hold.map(|h| h.piece)
     }
 
     /// the shape at the front of the queue, which is what hold takes when nothing is held
+    #[allow(dead_code)]
     pub(crate) fn next_shape(&self) -> PillShape {
         self.random.peek()[0]
     }
 
     /// hold is locked until the pill in play locks
+    #[allow(dead_code)]
     pub(crate) fn can_hold(&self) -> bool {
         !HoldState::is_locked(&self.hold)
     }

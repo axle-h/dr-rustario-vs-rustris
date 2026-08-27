@@ -687,7 +687,7 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
 pub const FEATURE_INPUTS: usize = 20;
 
 /// how many extracted bottle features Dr. Rustario feeds its network
-pub const BOTTLE_FEATURE_INPUTS: usize = 22;
+pub const BOTTLE_FEATURE_INPUTS: usize = 29;
 
 /// Declares a network shape a game can train and play: the alias, the genome size that goes
 /// with it, and the conversions between the two. The shapes live here rather than in the games

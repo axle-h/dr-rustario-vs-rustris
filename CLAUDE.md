@@ -13,7 +13,7 @@ Each game's AI supplies the game-specific half - board features, placement searc
 on top of `engine::ai`, which owns the network shapes, the genome, the genetic algorithm and its
 `Fitness` seam. Both games use the same architecture - as many neurons wide as it has features,
 two hidden layers deep - sized to their own feature count (Rustris `FeatureNetwork`: 20 features,
-1281 weights; Dr. Rustario `BottleFeatureNetwork`: 22 features, 1541), declared by the
+1281 weights; Dr. Rustario `BottleFeatureNetwork`: 29 features, 2640), declared by the
 `feature_network!` macro in `engine/src/ai/neural.rs` because the genome conversions belong to
 neither game. Models are embedded as raw weight arrays in each game's
 `ai/models.rs`; Dr. Rustario's are random until a `ga dr auto` run replaces them, which is why
@@ -28,6 +28,18 @@ holds the weights and `mod.rs` picks the skill row and situation column that sel
 ranks them worst to best (measured, not assumed - the rows are personalities, not a ladder):
 that is what Dr. Rustario's four ai difficulties and its 2-player demo pick from, so a harder
 setting is a better player as well as a faster one.
+
+Training the neural model is three stages, run in order by `ga dr auto` (see the readme's
+*Training Dr. Rustario*): `ai/imitation.rs` teaches a network by gradient descent to rank
+placements the way the n64 ai ranks them, since a genetic algorithm cannot select between
+members that all score zero and from random weights nearly all of them do; then `ai/genetic.rs`
+runs a survival phase (viruses destroyed before being buried) and an efficiency phase (bottles
+finished on a pill budget) off that seed. `ga dr trial` is a short bounded run that trains
+nothing, for checking a change has left something to climb, and `ga dr probe` (`ai/probe.rs`) is
+the diagnostic the features were chosen with: it records what the n64 ai made of every placement
+it was offered and measures how much of that opinion the features can express, cloning it onto
+them and sending the clone out to play. The scored agent has no hold - what it learns from has
+none, and a model taught to use one plays two orders of magnitude worse.
 
 Both games and the vs. mode offer the same ai modes - four difficulties and a 1- and 2-player
 demo - off the title screen's `players` list. Each game names its own models per mode in its

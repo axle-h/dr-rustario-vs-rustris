@@ -145,7 +145,6 @@ impl Bottle {
     }
 
     /// place a settled block directly, for tests and the ai's own fixtures
-    #[cfg(test)]
     pub fn place(&mut self, x: u32, y: u32, state: Block) {
         self.set_block_at(x, y, state);
     }

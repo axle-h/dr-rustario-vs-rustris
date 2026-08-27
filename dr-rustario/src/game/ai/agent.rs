@@ -2,10 +2,10 @@
 //! presses the keys to reach it, at whatever rate its difficulty allows.
 
 use crate::game::ai::evaluator::Scorer;
-use crate::game::ai::features::BottleAnalysis;
+use crate::game::ai::features::{BottleAnalysis, BottleFeatures};
 use crate::game::ai::input_sequence::Translation;
 use crate::game::ai::models::DrNeuralNetwork;
-use crate::game::ai::placement::{Placement, PlacementSearch};
+use crate::game::ai::placement::PlacementSearch;
 use crate::game::ai::{DrAiKind, N64Ai};
 use crate::game::Game;
 use engine::ai::KeyPacer;
@@ -96,44 +96,39 @@ impl DrAiAgent {
         }
     }
 
+    /// Choose between the placements of the pill in play, scoring them all in one call: the
+    /// network is shown what separates the candidates in front of it, so the scores mean
+    /// something against each other and nothing at all against another pill's.
+    ///
+    /// Reaching for the held pill is deliberately not on offer. The model learns to rank from
+    /// [`crate::game::ai::imitation`], and what it learns from has no hold: the N64 ai scores a
+    /// *placement* against the bottle, with no notion of what giving up the pill in play costs,
+    /// so asking it which of two pills to play gives an answer that sounds reasonable and is
+    /// not. Taught with hold on offer, a model plays 25 viruses over five games and buries
+    /// itself in every one; taught without it, the same model plays 3143 and finishes 80
+    /// bottles. Hold is worth having back, but only behind something that can judge it.
     fn decide_by_score(&mut self, game: &mut Game, scorer: Scorer) {
         let bottle = game.bottle();
-        let before = bottle.stats();
-        let placements = bottle.placements(before);
-        let Some((score, chosen)) = best(scorer, placements) else {
+        let placements = bottle.placements(bottle.stats());
+        if placements.is_empty() {
             return;
-        };
-
-        // Dr. Mario is a colour game, so which pill you play matters as much as where: if the
-        // one waiting in hold (or next up, when nothing is held) does better, swap for it.
-        if game.can_hold() {
-            let alternative = game.held_shape().unwrap_or_else(|| game.next_shape());
-            let alternative = best(scorer, bottle.placements_of(alternative, before));
-            if alternative.is_some_and(|(alt_score, _)| alt_score > score) {
-                // the bottle has no pill until the swap spawns, which is what resets the agent
-                game.hold();
-                return;
-            }
         }
 
-        self.keys.queue(chosen.inputs().clone());
+        let features: Vec<BottleFeatures> = placements.iter().map(|p| p.features()).collect();
+        let scores = scorer.rank(&features);
+        let Some(best) = (0..placements.len()).max_by(|a, b| {
+            scores[*a]
+                .total_cmp(&scores[*b])
+                // a tie goes to the simpler sequence
+                .then_with(|| placements[*b].inputs().cmp(placements[*a].inputs()))
+        }) else {
+            return;
+        };
+        self.keys.queue(placements[best].inputs().clone());
     }
 
     pub fn reset(&mut self) {
         self.keys.abandon();
         self.decided = false;
     }
-}
-
-/// the placement this model likes best, scored once each: the network is the expensive part
-fn best(scorer: Scorer, placements: Vec<Placement>) -> Option<(f64, Placement)> {
-    placements
-        .into_iter()
-        .map(|placement| (scorer.evaluate(placement.features()), placement))
-        .max_by(|(a_score, a), (b_score, b)| {
-            a_score
-                .total_cmp(b_score)
-                // a tie goes to the simpler sequence
-                .then_with(|| b.inputs().cmp(a.inputs()))
-        })
 }
