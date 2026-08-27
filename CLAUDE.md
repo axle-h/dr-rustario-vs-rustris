@@ -118,17 +118,25 @@ Puyo Rusto's particle theme is puyos cut out of a Puyo Puyo Tetris rip and audio
 recorded. `puyo-rusto/art/rip.py` writes `src/theme/modern/sprites.png` out of a sheet that
 is **not in the repository** - it is 12 MiB and gitignored, so re-running the script means
 finding the rip again - and the rip is sixteen skins on one 72 pixel grid, fifteen of them
-whole (the sixteenth is a grab bag on no grid) and all fifteen cut, one band of six rows
-under the next. The theme keys **all fifteen**; which two a match shows is `PuyoSkin::deal`'s
+whole (the sixteenth is a grab bag on no grid) and fourteen of those cut, one band of six rows
+under the next. The theme keys **all fourteen**; which two a match shows is `PuyoSkin::deal`'s
 answer at the start of it, so the two boards of a two player game are never the same puyos and
-no two matches look alike. It is a script rather
-than a crop because the rip numbers a puyo's links differently (down 1, up 2, right 4, left 8,
-against `LinkMask`'s up 1, down 2, left 4, right 8) and because three of its edges do not
-quite land on its own grid - see `repair`, which repeats the last row or column of a neck out
-to the cell edge, since a neck is a prism and that is exactly what is missing. Two skins draw
-their art four pixels inside the cell rather than out to its edge, so `repair` measures each
-skin's own inset off the colours the block boundary did not clip and fills only as far as
-that; repairing to the edge regardless smears a puyo's antennae up the cell. The music is a
+no two matches look alike. The fifteenth is dropped: its sixteen link variants are only eight,
+paired so that a puyo joined below draws exactly like one joined to nothing, so it has no
+downward neck to cut and nothing can make it meet the puyo underneath.
+
+It is a script rather than a crop because the rip numbers a puyo's links differently (down 1,
+up 2, right 4, left 8, against `LinkMask`'s up 1, down 2, left 4, right 8) and because almost
+none of its skins reach their own cell edges. Every skin was drawn on a pitch of its own and
+laid out on the common 72 pixel grid, so necks stop anywhere from one to eight pixels short
+and every join draws a seam - which is what `repair` is for. It finds a neck by *difference*,
+the linked tile against the same puyo unlinked, and runs the outermost line of that difference
+out to the cell edge: a neck is a prism, so its last line is exactly what is missing. Locating
+it by difference rather than by the tile's own outermost pixels is the part that matters - one
+skin wears antennae on the same line as its upward neck, and repeating those paints a band of
+antenna up the cell. `python3 puyo-rusto/art/rip.py check` writes `art/alignment.png`
+(gitignored): every skin drawn as a board that uses all sixteen masks, since a seam is a
+hairline and the only way to see one is to put two puyos side by side. The music is a
 rip too: `puyo-rusto/art/music.py` cuts `src/theme/menu/` and `src/theme/music/` out of a
 directory of converted tracks and a `loops.json` of their loop points that is **also not in
 the repository** (`~/Downloads/pp/ogg` by default). It resamples, because the mixer takes
@@ -155,21 +163,21 @@ A Puyo `CellId` carries its colour, a four bit mask of which neighbours match an
 `PuyoSkin` - because puyos of a colour that touch are drawn joined, and because each player's
 board is drawn from its own set of puyos. `board.rs` recomputes the masks after every lock,
 pop and settle. The skin is dealt by the *game*, not chosen by the theme: `PuyoSkin::deal`
-takes the match seed and hands every player a different one of the fifteen, `Game::new` is
+takes the match seed and hands every player a different one of the fourteen, `Game::new` is
 handed theirs, and every `CellId` and `PieceId` it reports carries it. Off the seed rather
 than the thread's randomness so a playlist swapping one board onto Puyo mid-match hands that
 player the puyos they already had; and `PuyoCell` itself has no skin on it, so nothing in the
 rules can tell two players' puyos apart and `board_of` in `launcher/src/modes.rs` reads the
 skin back off before comparing two players' boards. The theme therefore keys `PuyoSkin::COUNT`
-sets of all eighty four cells and of all twenty five previews - twelve hundred and sixty cells
+sets of all eighty four cells and of all twenty five previews - eleven hundred and seventy six
 - and two things follow. `BlockSpriteSheet` wraps its atlas onto another row past
 `MAX_ATLAS_WIDTH`, and its preview sheet onto shelves the same way, rather than laying
 everything in one line that no driver would allocate. And the pre-built bank of alpha
 variants had to go: it was sixty three whole copies of the atlas, one per fade step, so a
 `&self` draw could pick one without a `&mut` - about 106 MiB for a *single* skin, and most of
-a gigabyte for fifteen. The atlas now sits in a `RefCell` and a fade is `set_alpha_mod` at
+a gigabyte for fourteen. The atlas now sits in a `RefCell` and a fade is `set_alpha_mod` at
 draw time, which is the same trick the popup font's tint already used, and puts the whole
-fifteen at around 27 MiB. Whether it is the race or a match asking, they share the one sheet:
+fourteen at around 25 MiB. Whether it is the race or a match asking, they share the one sheet:
 `race_themes` offers a pair per colour of every skin, so the title screen is the whole rip
 going past before a match picks two out of it. The hidden thirteenth row is not merely invisible: a *ghost puyo* there
 cannot pop and does not count towards the four a group needs (`Board::is_ghost`), so a chain

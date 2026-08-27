@@ -9,10 +9,10 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 
 Puyo Rusto is the newest of them and is not finished: it is playable by one or two people on
 its own theme, with its own high score tables, but its ai is a placeholder that drops pairs at
-random and it does not take a turn in the vs. playlists yet. Its theme carries fifteen sets of
-puyos and deals a different one to each player at the start of every match, so a two player
+random and it does not take a turn in the vs. playlists yet. Its theme carries fourteen sets
+of puyos and deals a different one to each player at the start of every match, so a two player
 game is never two boards of the same puyos and no two matches look alike; the title screen
-sends all fifteen past. It has a soundtrack the same way: one track over its menus, and four
+sends all fourteen past. It has a soundtrack the same way: one track over its menus, and four
 more that a match is dealt one of. The **music** row on its menu pins one instead - the deal
 is what `random`, its default, means, and a track dealt at the start of a match plays to the
 end of it, changing only if the theme does.

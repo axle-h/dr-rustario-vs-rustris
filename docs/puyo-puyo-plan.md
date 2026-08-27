@@ -435,8 +435,8 @@ from five, so `PuyoPiece::all()` is **25 pieces**, not five.
 ### The skin, added after phase 2
 
 The particle theme's art turned out not to be original after all (see phase 2 below): it is a
-rip that carries **fifteen** whole sets of the same puyos, so every player is dealt a different
-one and a two player game is never two boards of the same puyos. That went into the `CellId`
+rip that carries **fourteen** usable sets of the same puyos, so every player is dealt a
+different one and a two player game is never two boards of the same puyos. That went into the `CellId`
 beside the link mask - bits 9-12, a `PuyoSkin` - and into the `PieceId` for the previews, since
 a queue drawn from the other player's art is exactly as wrong as a board would be. The warning
 above stands and was worth heeding: the retrofit was cheap only because the mask had already
@@ -454,8 +454,8 @@ player the puyos they already had, and so a replayed seed looks like it did.
 
 Three consequences to know about:
 
-* the sheet keys `PuyoSkin::COUNT × 84` cells and `PuyoSkin::COUNT × 25` previews - 1260 cells
-  and 375 previews. `BlockSpriteSheet` wraps its atlas onto another row at `MAX_ATLAS_WIDTH`,
+* the sheet keys `PuyoSkin::COUNT × 84` cells and `PuyoSkin::COUNT × 25` previews - 1176 cells
+  and 350 previews. `BlockSpriteSheet` wraps its atlas onto another row at `MAX_ATLAS_WIDTH`,
   and shelves its preview sheet the same way, since either in one line is past what a driver
   will allocate. `field_preview sheet` writes one png per theme for the same reason.
 * the pre-built bank of alpha variants had to go, and its removal is what made fifteen skins
@@ -465,6 +465,18 @@ Three consequences to know about:
   is what the popup font already did for its tint: all fifteen skins come to about 27 MiB.
 * the race on the title screen is the one place the whole sheet is on show - `race_themes`
   offers a pair per colour of every skin. It is not a board and owes nobody consistency.
+
+**Cutting fifteen skins is not cutting one fifteen times.** Only six of them reach their own
+cell edges; eight more were drawn on pitches of their own and laid out on the rip's common 72
+pixel grid, so a neck stops one to eight pixels short and every join draws a seam. `repair`
+finds a neck by *difference* - the linked tile against the same puyo unlinked - and runs the
+outermost line of that difference to the cell edge. Locating it by difference rather than by
+the tile's own outermost pixels is the whole trick: one skin wears antennae on the same line
+as its upward neck, and repeating those paints a band of antenna up the cell. One skin is
+dropped outright, because its sixteen link variants are only eight - paired so that a puyo
+joined below draws exactly like one joined to nothing - so it has no downward neck to cut.
+`rip.py check` is what found all of this and is the only way to see it: a seam is a hairline,
+and reading the sheet a cell at a time will not show one.
 
 ### The ruleset
 

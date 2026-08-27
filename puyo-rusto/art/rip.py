@@ -21,7 +21,8 @@ The rip's link index is *not* this game's: it counts down 1, up 2, right 4, left
 swap, and it is one of the two reasons this is a script rather than a crop. The other is
 `repair`.
 
-    python3 puyo-rusto/art/rip.py
+    python3 puyo-rusto/art/rip.py            # cut the sheet
+    python3 puyo-rusto/art/rip.py check      # ... and check every join in it
 
 The output layout is `sprites.py`'s, one skin under the next, so `theme/modern/mod.rs`
 addresses either the same way:
@@ -33,9 +34,10 @@ addresses either the same way:
 """
 
 import os
+import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -56,9 +58,14 @@ SKIN_ORIGIN = (-2, 53)
 SKIN_PITCH = (2048, 1024)
 SKIN_COLUMNS = 4
 
-# the fifteen whole skins, in the rip's own reading order. Skin 0 is the glossy Tsu one,
-# which is what the theme showed when it was the only one cut out
-SKINS = list(range(15))
+# The whole skins, in the rip's own reading order. Skin 0 is the glossy Tsu one, which is what
+# the theme showed when it was the only one cut out.
+#
+# Fifteen of the sixteen are whole - the sixteenth (row 3, column 3) is a grab bag on no grid.
+# Skin 7 is left out as well: its sixteen link variants are only eight, paired so that a puyo
+# joined below draws exactly like one joined to nothing. It has no downward neck to cut, so
+# nothing can make it meet the puyo underneath - see `check`, which is what found it.
+SKINS = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14]
 
 # the sheet's own eighty coloured cells are in the order this game numbers its colours
 COLOR_ROWS = [0, 1, 2, 3, 4]  # red, green, blue, yellow, purple
@@ -104,46 +111,144 @@ def cut(source, skin, row, col):
     return np.array(source.crop((x, y, x + SRC_BLOCK, y + SRC_BLOCK)))
 
 
-def first_row(tile):
-    rows = np.nonzero((tile[:, :, 3] > 0).any(axis=1))[0]
-    return int(rows[0]) if len(rows) else SRC_BLOCK
+# how many pixels of a line have to be neck before it counts as one, rather than a stray
+# pixel of shading that happens to differ from the unlinked puyo
+MIN_NECK = 8
 
 
-def inset(source, skin):
-    """how far below the top of its cell a skin's upward neck starts when nothing clipped it
+def neck(tile, plain):
+    """which pixels of `tile` are the necks its links added, against the same puyo unlinked"""
+    return (tile[:, :, 3] > 40) & ~(plain[:, :, 3] > 40)
 
-    Most skins draw the neck right out to the cell edge, so this is zero and a neck that
-    starts lower was cut short. Two of them (the blocky one and the one with antennae) sit
-    four pixels in all round, and there the same four pixels are the art rather than a
-    wound - repairing them would smear the antenna tips up the cell. Red is left out of
-    the measurement because red is the row this is here to fix.
+
+def stretch(tile, mask, direction):
+    """Run a neck out to the edge of its cell.
+
+    A neck is a prism, so its last line is exactly what is missing between where the art
+    stops and where the cell ends - and the rip has necks stopping anywhere from one to
+    eight pixels short, because its skins were drawn on their own pitches and laid out on a
+    common 72 pixel grid. Only the line's *neck* pixels are carried out: a skin whose puyo
+    wears antennae has them on the same line, and repeating those would draw a band of them
+    up the cell.
     """
-    return min(first_row(cut(source, skin, row, sheet_index(UP))) for row in COLOR_ROWS[1:])
+    lines = mask.any(axis=1) if direction in (UP, DOWN) else mask.any(axis=0)
+    wide = np.nonzero(
+        (mask.sum(axis=1) if direction in (UP, DOWN) else mask.sum(axis=0)) >= MIN_NECK
+    )[0]
+    if not lines.any() or not len(wide):
+        return
+    if direction == DOWN and wide[-1] < SRC_BLOCK - 1:
+        at = wide[-1]
+        tile[at + 1 :, mask[at]] = tile[at, mask[at]]
+    elif direction == UP and wide[0] > 0:
+        at = wide[0]
+        tile[: at, mask[at]] = tile[at, mask[at]]
+    elif direction == RIGHT and wide[-1] < SRC_BLOCK - 1:
+        at = wide[-1]
+        tile[mask[:, at], at + 1 :] = tile[mask[:, at], at][:, None]
+    elif direction == LEFT and wide[0] > 0:
+        at = wide[0]
+        tile[mask[:, at], : at] = tile[mask[:, at], at][:, None]
 
 
-def repair(tile, links, top):
+def repair(tile, plain, links):
     """the two places the rip does not line up on its own grid
 
-    * Every skin's top row is flush with its red puyos, so red is the one colour whose
-      upward neck the crop took the top four pixels off. A neck is a prism, so its first
-      surviving row is exactly what is missing and repeating that up to `top` - where the
-      skin's other colours start their necks - restores it, and for the four colours that
-      were not cropped there is nothing to repeat.
+    * A neck that stops short of its cell draws a seam between two puyos that are supposed
+      to be one shape. Every skin has some: the sheet's own top row clips red's upward neck
+      in all of them, and most skins were drawn on a pitch of their own and stop short at
+      the bottom besides. `stretch` runs each one out to the edge it belongs at.
     * An upward neck starts one pixel *above* its own cell, landing in the bottom row of
       the puyo above: a line of the wrong colour under a puyo linked to nothing below. A
       puyo that *is* linked below fills that row itself, so only the rest are cleared.
     """
     if not links & DOWN:
         tile[-3:] = 0
-    if links & UP:
-        start = first_row(tile)
-        if top < start < SRC_BLOCK:
-            tile[top:start] = tile[start]
+    mask = neck(tile, plain)
+    for direction in (UP, DOWN, LEFT, RIGHT):
+        if links & direction:
+            stretch(tile, mask, direction)
     return tile
 
 
 def paste(sheet, tile, col, row):
     sheet.paste(Image.fromarray(tile, "RGBA"), (PAD + PITCH * col, PAD + PITCH * row))
+
+
+# ---------------------------------------------------------------- checking the cut
+
+CHECK_OUT = os.path.join(HERE, "alignment.png")
+
+# A board that uses all sixteen masks, so every join a game can ask for is on the page: a
+# solid block (corners, edges and interior), a plus (four arms joined one way each), a row of
+# three and a column of three (the two ends and a middle), and a puyo joined to nothing.
+CHECK_BOARD = [
+    "..####...#...",
+    "..####..###..",
+    "..####...#...",
+    "..####.......",
+    ".............",
+    ".#...###.....",
+    ".#......#....",
+    ".#...........",
+]
+
+
+def check_masks(rows):
+    """the link mask of every puyo of `rows`, worked out the way `board.rs` works them out"""
+    height, width = len(rows), len(rows[0])
+
+    def filled(x, y):
+        return 0 <= x < width and 0 <= y < height and rows[y][x] == "#"
+
+    masks = {}
+    for y in range(height):
+        for x in range(width):
+            if not filled(x, y):
+                continue
+            links = 0
+            if filled(x, y - 1):
+                links |= UP
+            if filled(x, y + 1):
+                links |= DOWN
+            if filled(x - 1, y):
+                links |= LEFT
+            if filled(x + 1, y):
+                links |= RIGHT
+            masks[(x, y)] = links
+    return masks
+
+
+def check():
+    """Draw every skin's joins, so a neck that does not meet its neighbour is visible.
+
+    This is the only way to see the thing `repair` exists to fix. A seam is a hairline and
+    reading it off the sheet a cell at a time will not show it: two puyos have to be put
+    side by side. Reads the sheet that was written rather than the rip, so what it checks
+    is what the game will draw.
+    """
+    sheet = Image.open(OUT).convert("RGBA")
+    masks = check_masks(CHECK_BOARD)
+    missing = set(range(16)) - set(masks.values())
+    if missing:
+        raise SystemExit(f"CHECK_BOARD never uses masks {sorted(missing)}")
+    width = len(CHECK_BOARD[0]) * BLOCK
+    height = len(CHECK_BOARD) * BLOCK
+    header = 26
+    page = Image.new("RGBA", (width, (height + header) * len(SKINS)), (16, 16, 22, 255))
+    label = ImageDraw.Draw(page)
+    for index, skin in enumerate(SKINS):
+        top = (height + header) * index
+        label.text((6, top + 6), f"skin {index} (rip {skin})", fill=(255, 235, 0, 255))
+        for (x, y), links in masks.items():
+            # the block and the plus in one colour, the rows and the lone puyo in another,
+            # since a seam shows differently on a dark colour than a light one
+            color = 0 if y >= 5 else 1
+            at = (PAD + PITCH * links, PAD + PITCH * (SKIN_ROWS * index + color))
+            cell = sheet.crop((at[0], at[1], at[0] + BLOCK, at[1] + BLOCK))
+            page.alpha_composite(cell, (x * BLOCK, top + header + y * BLOCK))
+    page.convert("RGB").save(CHECK_OUT)
+    print(f"{CHECK_OUT} {page.size[0]}x{page.size[1]} {len(SKINS)} skins, all 16 masks")
 
 
 def main():
@@ -153,11 +258,11 @@ def main():
     )
     for index, skin in enumerate(SKINS):
         base = SKIN_ROWS * index
-        top = inset(source, skin)
         for row, source_row in enumerate(COLOR_ROWS):
+            plain = cut(source, skin, source_row, sheet_index(0))
             for links in range(16):
                 tile = cut(source, skin, source_row, sheet_index(links))
-                paste(sheet, repair(tile, links, top), links, base + row)
+                paste(sheet, repair(tile, plain, links), links, base + row)
         paste(sheet, cut(source, skin, *NUISANCE), 0, base + 5)
         for column, (row, col) in enumerate(TRAY):
             paste(sheet, cut(source, skin, row, col), 1 + column, base + 5)
@@ -166,4 +271,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "check":
+        check()
+    else:
+        main()

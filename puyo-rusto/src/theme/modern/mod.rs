@@ -38,8 +38,9 @@ const SKIN_ROWS: i32 = EXTRAS_ROW + 1;
 
 /// how many skins the sheet carries, which is `SKINS` in `puyo-rusto/art/rip.py`.
 ///
-/// The rip is sixteen skins of the same puyos and fifteen of them are whole; the sheet is all
-/// fifteen, one band under the next, and the theme keys **every** one of them. Which two a
+/// The rip is sixteen skins of the same puyos, fifteen of them whole and fourteen of those
+/// able to join a puyo below; the sheet is all fourteen, one band under the next, and the
+/// theme keys **every** one of them. Which two a
 /// match shows is not the theme's to decide: [`PuyoSkin::deal`] hands each player one when the
 /// match starts, so the choice can change without rebuilding an atlas.
 pub const SKINS: usize = PuyoSkin::COUNT;
