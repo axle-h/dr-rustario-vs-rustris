@@ -77,7 +77,10 @@ Puyo Rusto is being built in phases against [docs/puyo-puyo-plan.md](docs/puyo-p
 which is the shared memory for that work - read it before touching the crate. It is faithful
 Puyo Puyo Tsu, and every table in it (chain power, colour and group bonus, 70 target points,
 the 30 nuisance all clear, the pair pool) is sourced from Puyo Nexus rather than guessed, with
-the page named in each module's doc comment. `board.rs` owns the chain loop, which reports
+the page named in each module's doc comment.
+[docs/puyo-nexus-rules.md](docs/puyo-nexus-rules.md) is a local copy of every page of that wiki
+that carries a rule - search it before implementing one, and search for the mechanic rather
+than the page you expect it on, because the wiki files several rules outside `Category:Rules`. `board.rs` owns the chain loop, which reports
 itself in the same grammar `bottle.rs` uses for a combo - one `Clear` per chain step with a
 `Settle` between - so the particle field reacts to a chain without knowing what one is.
 `nuisance.rs` is the part that makes the game what it is: an attack waits in a visible tray,

@@ -34,9 +34,16 @@ chaining back at it, which is what turns two people racing into two people fight
   original title recognisable and let the rust land on the second beat, and "Puyo Puyo" is a
   reduplication, so replacing the echo is where the joke goes. It takes `GameId(3)`, declared
   as `engine::game::ids::PUYO`.
-* **Sources.** The exact tables come from Puyo Nexus at the time of writing the code — see
-  the links in [next-game-ideas.md](next-game-ideas.md#sources). Those pages reject automated
-  fetches; read them in a browser. Do not guess a table.
+* **Sources.** The exact tables are Puyo Nexus's. **[puyo-nexus-rules.md](puyo-nexus-rules.md)
+  is a local copy of every page of that wiki that carries a rule** — search it first. It exists
+  because the browser-only route below only finds the pages you think to look for: phase 1
+  implemented the hidden thirteenth row wrong because the ghost puyo rule is filed under
+  *Gameplay Guides* rather than `Category:Rules`, and Alex had to catch it.
+  The live wiki is still the authority and those pages reject automated fetches, so read them
+  in a browser when the local copy looks stale or thin — see the links in
+  [next-game-ideas.md](next-game-ideas.md#sources). Do not guess a table.
+  **That local copy is scaffolding and comes out once the rules are implemented**, so cite the
+  live page in code comments rather than the copy.
 * **Connected puyos are a `CellId` encoding, not an engine change.** Puyos of a colour that
   are orthogonally adjacent are drawn joined — the signature look of the game, and the thing
   that tells a player at a glance what is linked to what. That is a *sprite* concern and the
