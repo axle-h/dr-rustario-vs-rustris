@@ -134,7 +134,8 @@ The Puyo Nexus pages reject automated fetches (HTTP 403) — read them in a brow
 
 **Puyo Puyo**
 
-- Puyo Nexus Wiki: [Scoring](https://puyonexus.com/wiki/Scoring),
+- Puyo Nexus Wiki: [Basic rules](https://puyonexus.com/wiki/Basic_rules) (the field, the spawn
+  point and the death square), [Scoring](https://puyonexus.com/wiki/Scoring),
   [Nuisance queue](https://puyonexus.com/wiki/Nuisance_queue),
   [Offset rule](https://puyonexus.com/wiki/Offset_rule),
   [Tsu (rule)](https://puyonexus.com/wiki/Tsu_(rule)),
@@ -150,7 +151,9 @@ The Puyo Nexus pages reject automated fetches (HTTP 403) — read them in a brow
   ([IEEE](https://ieeexplore.ieee.org/document/6374140/))
 - Sprites: [Mean Bean Machine — Genesis](https://www.spriters-resource.com/genesis_32x_scd/drrobmbm/),
   [Master System](https://www.spriters-resource.com/master_system/drrobmbm/),
-  [Game Gear](https://www.spriters-resource.com/game_gear/drrobotniksmeanbeanmachine/)
+  [Game Gear](https://www.spriters-resource.com/game_gear/drrobotniksmeanbeanmachine/),
+  [Kirby's Avalanche — SNES](https://www.spriters-resource.com/snes/kirbysavalanche/) (its
+  "Blobs & Boulders" sheet is the puyos, including the joined-up variants)
 
 **The others**
 

@@ -4,6 +4,12 @@ The third game for the compendium, picked in [next-game-ideas.md](next-game-idea
 This document is the *how*: the phases, their status, and the notes each agent hands to the
 next. It is the shared memory for this piece of work — read it top to bottom before starting.
 
+Reviewed and amended on 2026-08-27, before phase 0 began. That pass added the connected-puyo
+sprite decision, the pending-nuisance surface in phase 0, the top-out rule and the chain event
+grammar in phase 1, and the stub `ai_players()` in phase 2; it corrected the colour count,
+which an earlier draft had driven by `speed_index`, and narrowed phase 0 to work that can be
+done before the crate exists. Each of those is amended in place, in the phase it belongs to.
+
 ## Why this game
 
 Puyo Puyo is the canonical 2-player falling block battle game and it fits this codebase
@@ -29,6 +35,34 @@ chaining back at it, which is what turns two people racing into two people fight
 * **Sources.** The exact tables come from Puyo Nexus at the time of writing the code — see
   the links in [next-game-ideas.md](next-game-ideas.md#sources). Those pages reject automated
   fetches; read them in a browser. Do not guess a table.
+* **Connected puyos are a `CellId` encoding, not an engine change.** Puyos of a colour that
+  are orthogonally adjacent are drawn joined — the signature look of the game, and the thing
+  that tells a player at a glance what is linked to what. That is a *sprite* concern and the
+  engine already supports it: a `CellId` is a game-private key the game recomputes whenever it
+  likes, and Dr. Rustario already rewrites one in place when a pill half is orphaned
+  (`set_garbage` in `dr-rustario/src/game/bottle.rs`). So a Puyo `CellId` carries its colour
+  *and a four-bit mask of which neighbours match*, and `board.rs` recomputes the masks of
+  every affected cell after each lock, pop and settle. Details in phase 1; art cost in phases
+  2 and 3. The falling pair draws unlinked (mask 0) and nuisance never links.
+* **No hold; hard drop stays.** Tsu has neither, but the engine's input model, every pad
+  mapping and the ghost piece are built around hard drop, and a Puyo without it would feel
+  broken next to the other two games. `hold()` is a no-op — adding it would change the
+  balance of the game and widen the ai's search for no fidelity gain. Both are legal against
+  `engine::game::Game`; this is a decision, not an accident, and the menu should not offer a
+  hold box on a Puyo board.
+* **The colour count is fixed for a whole match.** Not driven by `speed_index` — see the
+  divergence trap in phase 1. It is set once, from the vs. difficulty dial or the options
+  menu, both of which are match-wide.
+* **Cross-game garbage arriving at Puyo joins the nuisance queue.** A Rustris or Dr. Rustario
+  attack lands in the tray like any other, is visible, is offsettable by chaining back, and
+  drops when the chain finishes — rather than applying immediately the way the other two games
+  take a hit. Offset is the identity mechanic of this game and it would be strange for it to
+  work against one opponent and not another. It does make a tetris less frightening than its
+  raw number suggests, which phase 5's pricing has to account for.
+* **`pair.rs` is a sibling of `pill.rs`, not an extraction from it.** The two pieces rhyme —
+  two halves, a pivot, kicks, splitting on lock — but the kick tables, the double-rotate quick
+  turn and what happens to the halves afterwards all differ. A shared engine pair-piece would
+  be all parameters and no substance. Read `pill.rs` for the shape, then write the other one.
 
 ## Sizing
 
@@ -36,7 +70,9 @@ Each existing game crate is around 9-10k lines (`dr-rustario` 10,054; `rustris` 
 split roughly: rules 3,800-4,200, ai 2,000-4,000, theme Rust about 950, glue about 400. The
 art and audio is the real expense — `dr-rustario` ships 26 MiB of embedded assets and
 `rustris` 7.6 MiB. Launcher changes for a third game are about 300 lines plus a substantial
-test rewrite. The engine needs only the three small changes in phase 0.
+test rewrite. The engine needs the changes in phase 0: three small ones — the attack price
+table and the two closed enums — and one that is only small if it is answered the cheap way,
+the surface that draws the pending nuisance.
 
 ---
 
@@ -81,12 +117,47 @@ Then update the two senders: `foreign_attack` in `rustris/src/game/mod.rs` and i
 ### Two closed enums grow
 
 * `MetricKind` in `engine/src/game/mod.rs` is `{ Score, Level, Lines, Viruses }`, with
-  `metric_label` in `engine/src/render/metrics_table.rs`. Puyo wants a puyos-cleared or
-  max-chain counter — add one variant.
+  `metric_label` in `engine/src/render/metrics_table.rs`. Puyo wants a max-chain counter — add
+  one variant. **Name it `Chain`, not anything Puyo-flavoured**: this is a closed engine enum,
+  and Puzzle Fighter and Bombliss — both queued behind this game — want the same counter.
 * `words::ALL` in `engine/src/particles/field/reaction.rs` — add `CHAIN`. Words are outlined
   ahead of time by `ParticleRender::build_captions` in `engine/src/particles/render.rs`, and
   a word that was never outlined is silently dropped, so this must be done before any game
   returns it from `clear_word`.
+
+### The pending nuisance indicator — an engine decision to take here
+
+Puyo's battle play depends on *seeing* what is hanging over you: the row of nuisance icons
+above the board is how a player knows whether to answer an attack or take it. The engine has
+nowhere to put that. `GameRender` offers only `name`, `clear_class`, `clear_word`,
+`spawn_cells` and `stage_intro_cells`, and the only number surface a game has is `MetricKind`.
+The queue itself lives inside the game — `receive_attack` hands it over and the game holds it
+— but nothing draws it.
+
+Two ways out, and this phase picks one rather than leaving phase 2 to discover the problem:
+
+* **A "Pending" `MetricKind` row.** Nearly free, and honest. It is a number in the HUD rather
+  than the icons the game is known for, which undersells the mechanic.
+* **A small engine concept for an attack-queue strip** — a game reports a pending-attack count
+  and the theme draws it from its own sprites. More work, but Puzzle Fighter's countdown
+  counter gems want exactly this surface, so it would not be built once and used once.
+
+Take the second if the appetite is there; the first is not a wrong answer. Either way, record
+which in the handover notes, because phase 2's theme work depends on it.
+
+### What belongs to later phases, not this one
+
+Two bullets that read like phase 0 work cannot be done until the crate exists, and the agent
+doing this phase should not go hunting for them:
+
+* `VersusAi::brains()` becomes a three-way zip and its controller gains a third brain — but
+  the third brain is phase 4's. Here, make the zip and the controller *n*-way over whatever
+  games exist, with two entries in the list.
+* `Difficulty` gains the Puyo level and speed pair — but what those values should be is phase
+  5's measurement. Here, make the fan-out keyed by game rather than hardcoded to two.
+
+Same principle throughout this phase: **shape now, third entry later.** Nothing in phase 0
+should mention Puyo by name.
 
 ### Launcher — sites that break at compile time
 
@@ -113,10 +184,10 @@ These are the checklist; adding an enum variant surfaces them all.
   `slots() = dr_rustario.len().min(rustris.len())`; make it a collection and `slots()` a min
   over all games.
 * `VersusAi::brains()` returns `Vec<(u32, Duration, DrAiKind, TetrisNeuralNetwork)>` by
-  zipping two `ai_players()` lists — it becomes a three-way zip, and the controller gains a
-  third brain.
-* `Difficulty` fans the single 0-10 dial out to per-game settings; add the Puyo level and
-  speed pair.
+  zipping two `ai_players()` lists — make it *n*-way over the games that exist, so phase 4
+  adds a brain rather than a dimension. See "what belongs to later phases" above.
+* `Difficulty` fans the single 0-10 dial out to per-game settings — key that fan-out by game
+  instead of hardcoding two. The Puyo numbers themselves are phase 5's.
 * The playlist tests encode two-game stage sequences throughout and are the bulk of the
   mechanical work in this phase. Expect to rewrite essentially all of that module.
 * The examples enumerate games by hand too: `field_preview.rs` hardcodes `GameId(1)` and
@@ -163,10 +234,46 @@ Mirror the existing crate shape (`dr-rustario/src/lib.rs` is six lines):
 | `game/score.rs` | the chain power, colour bonus and group bonus tables |
 | `game/random.rs` | the seeded colour sequence |
 | `game/rules.rs` | `GameConfig`, `MatchThemes`, `AiDifficulty`, `AiMode`, `ai_players()` |
-| `game/cell.rs` | `GameId(3)`, the `CellId` and `PieceId` space |
+| `game/cell.rs` | `GameId(3)`, the `CellId` and `PieceId` space, including the link mask |
 
-The random sequence **must be reproducible from a seed**: every player in a match is dealt the
-same game from one seed, however far apart the playlist has moved them.
+`random.rs` is mostly *not* new machinery, and should not be written as if it were. The engine
+already owns the seed and the randomiser: `engine::game::random` has `Seed` over `ChaChaRng`
+and a `BagRandom<T>` with a look-ahead queue, which both existing games wrap in about the space
+it takes to name their piece type. What Puyo adds on top is small — a pair is two draws from
+the colour set, and Tsu deals the opening pairs from a reduced set so the first few placements
+cannot be a fourth colour. Source that opening rule rather than guessing it.
+
+The sequence **must be reproducible from a seed**: every player in a match is dealt the same
+game from one seed, however far apart the playlist has moved them. Note *how* that is achieved
+today, because it constrains what the sequence may depend on: `from_seed` builds `count`
+**independent** randomisers from one seed (`dr_rustario::game::random::from_seed`), one per
+player, and they stay in step only because nothing they draw depends on player-local state.
+`BagRandom` even fixes its piece set `all: &'static [T]` at construction. So anything that
+changes the *content* of the stream mid-match — a colour count that grows, a piece set that
+swaps — permanently desynchronises two players who reach the change at different moments. See
+the trap below.
+
+### The link mask
+
+Per the decision above, a `CellId` is colour plus a four-bit mask of which orthogonal
+neighbours share its colour. Reserve the bits in `cell.rs` from the start — retrofitting an
+encoding that every theme's sprite table is keyed on is miserable. `dr-rustario/src/game/cell.rs`
+is the model for the bit-packing: an enum, a `From<Cell> for CellId` that packs it and a
+`From<CellId>` that unpacks.
+
+Rules worth writing down because they are easy to get subtly wrong:
+
+* The **falling pair draws unlinked** — mask 0 for both halves, even when the two halves are
+  the same colour and even when one is resting against a matching puyo. Linking happens on
+  lock, not before.
+* **Nuisance never links**, to anything, including other nuisance.
+* Masks are recomputed after **every** lock, pop and settle — a pop changes the mask of every
+  survivor that was touching the group, and a settle changes the masks of everything the
+  fallen puyo left behind as well as everything it arrives next to.
+* Ghost cells follow the active piece: unlinked.
+
+There are `5 colours × 16 masks` plus nuisance to key, which is a big sprite table but a
+mechanical one.
 
 ### The ruleset
 
@@ -185,14 +292,47 @@ Faithful Tsu, with the exact tables sourced rather than guessed.
   get exactly one chain to answer an attack. Cap a single drop at 30 (five rows): full rows of
   six first, the remainder scattered.
 * An all clear (zenkeshi) carries its bonus.
+* **Top-out is the death square, not a blocked spawn.** Tsu marks one square — the spawn
+  point, the third column of the top visible row — and the game is lost when a puyo comes to
+  rest *there*, which is not the same rule as "the new pair has nowhere to go" and not the
+  same rule as either existing game's. Getting this subtly wrong is the classic way a Puyo
+  implementation ends up feeling off, so confirm it against Puyo Nexus's
+  [Basic rules](https://puyonexus.com/wiki/Basic_rules) rather than inferring it from play.
+* **No hold, hard drop yes** — per the decision above. `hold()` is a no-op and Puyo boards
+  show no hold box.
 * Leave margin time out for now; note it in the handover as a possible difficulty knob.
+
+### Emit the events Dr. Rustario already emits
+
+The chain loop should report itself in the same grammar `bottle.rs` uses for its combos: one
+`GameEvent::Clear` **per chain step** — not one for the whole chain — with `is_combo` false on
+the first step and true on every step after it, and a `Settle` between steps. That is the
+shape the rest of the engine is already listening for, so the particle field's clear wave, its
+big-clear silhouette interrupt and its words all work on a Puyo board without any of it
+learning what a chain is. `count` is the puyos cleared in that step and `detail` is the game's
+own grading, which phase 2's `clear_class` and `clear_word` read back out.
 
 ### Fitting the engine's stage model
 
 Puyo has no natural level, so map stages onto speed: a stage is a speed level with
 `StageTransition::Seamless`, the way Rustris advances every ten lines, triggered by a
-puyos-cleared count. `speed_index` drives fall speed and the colour count (four of five by
-default).
+puyos-cleared count. **`speed_index` drives fall speed and nothing else.**
+
+That last part is a correction to an earlier draft of this plan, which had `speed_index` drive
+the colour count as well (four of five by default). It cannot: it would break the promise that
+every player in a match is dealt the same game. Stages advance **per player** — a playlist
+starts each player's game as their own board reaches it — while the colour stream is dealt
+from one shared seed to independent randomisers. So the moment player 1 crosses the
+puyos-cleared threshold that adds a fifth colour, they draw a colour player 2 is not drawing
+yet, and from there the two are playing different games for the rest of the match. Rustris
+never hits this because its level touches its speed and its score but never its bag.
+
+The colour count is therefore **fixed for the whole match**, set from the vs. difficulty dial
+or the options menu — both match-wide, both known before the first draw. It stays a difficulty
+knob, just not a mid-match one.
+
+The general rule, worth keeping in mind for the games after this one: `speed_index` may change
+how a game *feels*, never what it *deals*.
 
 **Done when:** unit tests build known fields, fire known chains, and match the documented
 score and nuisance counts exactly. That test is the thing that makes "faithful" checkable
@@ -227,8 +367,43 @@ The particle theme needs only `sprites.png`, the mascot strips and the oggs, plu
 `particle_color` and a `particle_palette` — its background, board frame, HUD and cards are all
 drawn procedurally. Template: `dr-rustario/src/theme/modern/mod.rs`.
 
+### The link mask is an art problem here
+
+Phase 1's `CellId` carries a four-bit neighbour mask, so `sprites.png` is keyed on
+`colour × 16` — and unlike the retro themes in phase 3, which have the linked sprites in the
+rip, **this theme's art is original**, so somebody has to author eighty variants. Do not do
+that by hand.
+
+Draw a **body** per colour and four **bridge** overlays — up, down, left, right — and
+composite the sixteen masks out of them: five sprites per colour rather than sixteen. The four
+bridges are one shape rotated, so what actually has to be drawn is a body and a bridge per
+colour. This also keeps the sheet small, which matters — `dr-rustario` already ships 26 MiB of
+embedded assets.
+
+Whether the compositing happens ahead of time into a generated sheet or at draw time is the
+author's call; ahead of time keeps `CellSpriteData`'s one-snip-per-cell contract intact and
+costs nothing at runtime, which is the reason to prefer it.
+
+### The ai gating tests fire two phases early
+
+`every_mode_offers_the_same_ai_opponents_and_demos` and `ai_difficulties_agree` in
+`launcher/src/modes.rs` hold every mode to the same four difficulty names and the same two
+demos. They start applying the moment Puyo appears on the menu — which is *this* phase, while
+the ai is phase 4. So this phase ships a **stub `ai_players()`**: the four difficulty names
+and the two demo modes, all backed by a placeholder brain that picks a legal placement at
+random. The tests pass, the menu tells the truth about what it offers, and phase 4 replaces
+the brain without touching the menu surface.
+
+If the placeholder feels too dishonest to ship even briefly, the alternative is to swap phases
+3 and 4 — they have no dependency on each other, and doing the ai first shortens the window in
+which the menu offers an opponent that cannot play. That is a reordering of the plan, so it is
+Alex's call and not an agent's: if it is taken, renumber the phases and their `blocked on`
+lines here in the same commit, so the document never disagrees with the order being worked.
+Otherwise ship the stub and say so in the handover.
+
 **Done when:** Puyo is selectable from the pre-menu and playable by two humans on the particle
-theme, with high scores recorded, and the particle field picks up its pieces and mascot.
+theme, with high scores recorded, the particle field picks up its pieces and mascot, and
+matching puyos are visibly joined.
 
 ### Handover notes
 
@@ -254,7 +429,11 @@ tooling. Every rect is arithmetic written by hand in the theme's `mod.rs`. Per r
 in a directory beside that file:
 
 * `sprites.png` — one `source_block_size` grid holding the cells, the idle and pop strips and
-  the previews
+  the previews. **The cells are the full `colour × 16` link grid** from phase 1, not one
+  sprite per colour. Unlike the particle theme these do not have to be authored: the rips
+  carry them, because the original games drew connected puyos the same way — Kirby's Avalanche
+  is ripped as a sheet literally called "Blobs & Boulders". Budget the time in slicing and
+  arithmetic rather than in drawing.
 * `background.png`, and `board.png` either as one frame or as N frames side by side selected
   by `board_snips`, one per speed band
 * `background-tile*.png` if the theme uses `SceneType::Tile`, one per speed band
@@ -273,7 +452,8 @@ Register each theme in three places: `theme/mod.rs::all_themes` (the order defin
 sprint), the `MatchThemes` enum in `game/rules.rs`, and `theme_mode()` in `options.rs`.
 
 **Done when:** `frame_shot` renders every theme correctly, `menu_shot` walks the theme rows,
-and `field_preview sheet` outlines the new sprites cleanly.
+`field_preview sheet` outlines the new sprites cleanly, and matching puyos join up on all
+three themes the way they do on the particle one.
 
 ### Handover notes
 
@@ -286,8 +466,9 @@ _(to be filled in by the agent that completes this phase)_
 **Status:** `todo` — blocked on phase 3
 
 **Goal.** Puyo fields the same four difficulties and the same two demo models as the other
-games. This is not optional: `VersusAi` cannot deal a Puyo board without it, and there is a
-test asserting every mode offers identically named difficulties.
+games — for real this time. Phase 2 already put the four names on the menu behind a
+placeholder that plays at random, because the tests demanded it; this phase makes the menu
+honest. `VersusAi` cannot deal a Puyo board worth playing against until it does.
 
 Follow the Dr. Rustario precedent — a deterministic scorer that actually plays, with a neural
 model alongside it, dispatched through a `PuyoAiKind`.
@@ -306,6 +487,16 @@ model alongside it, dispatched through a `PuyoAiKind`.
 
 Add `ga puyo play <seed> <level> <cap> <every> <brain>` mirroring `ga dr play`, so strength
 can be measured headlessly.
+
+**Read colours through the mask, not around it.** Every board feature above is about colour,
+and a `CellId` here is colour *and* link mask, so a feature that compares raw `CellId`s sees
+sixteen different reds and finds no chains at all. It will not fail loudly — it will train to
+a mediocre plateau and look like a tuning problem. Unpack to the colour enum first, the way
+`DrCell::color()` does, and keep the mask for the one place it is genuinely useful: link
+counts come straight off it for free, since that is exactly what it counts.
+
+If phase 2 shipped the stub `ai_players()`, this phase is where the placeholder brain goes and
+the real one takes its slot. Nothing on the menu surface should change.
 
 **Done when:** the four difficulty names match the other games exactly, the 1- and 2-player
 demos run, and the weight set ranking is recorded in the handover notes with the numbers
@@ -334,6 +525,17 @@ table from three rows to the six directed prices.
 Starting intuitions to test, not to ship: a four-chain is roughly the work of a tetris;
 routine two-chains are what a Puyo player throws constantly and should cross for little or
 nothing.
+
+**Price the two directions asymmetrically, because the two directions are not symmetric.**
+Attacks *into* Puyo land in the nuisance tray and can be answered — a Puyo player who chains
+back cancels them outright, so a number that looks brutal on paper is often absorbed for free.
+Attacks *out of* Puyo land on a Rustris or Dr. Rustario player who has no offset at all and
+simply takes them. So the same raw measurement means different things in each direction, and
+tuning both ends from one table will get one of them wrong. Measure the six prices, then sanity
+check by playing each pairing rather than trusting the numbers.
+
+This is also the phase that sets the Puyo half of `Difficulty` — the level and speed the 0-10
+vs. dial maps to, left as a shape in phase 0.
 
 **Done when:** a 2-player vs. match on each playlist has the three games taking turns, garbage
 crossing sensibly in all six directions, and the README table updated with the measurements.
