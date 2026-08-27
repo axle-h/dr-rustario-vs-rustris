@@ -1,6 +1,6 @@
-//! The particle theme: original art, drawn by `puyo-rusto/art/sprites.py`, and original
-//! audio, synthesised by `puyo-rusto/art/audio.py`. Everything else - the background, the
-//! board frame, the HUD and the cards - the engine draws procedurally.
+//! The particle theme: puyos cut out of the Puyo Puyo Tetris rip by `puyo-rusto/art/rip.py`,
+//! and original audio, synthesised by `puyo-rusto/art/audio.py`. Everything else - the
+//! background, the board frame, the HUD and the cards - the engine draws procedurally.
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, SPAWN, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor};
@@ -20,8 +20,9 @@ use sdl2::video::WindowContext;
 use std::time::Duration;
 
 /// the sheet's cell, and the padding around it that keeps one snip from bleeding into the
-/// next as the sheet is rescaled. Both are `puyo-rusto/art/sprites.py`'s.
-pub const SRC_BLOCK_SIZE: u32 = 64;
+/// next as the sheet is rescaled. Both are `puyo-rusto/art/rip.py`'s, and the cell is the
+/// rip's own grid: a neck runs exactly to its edge, so two linked puyos meet flush.
+pub const SRC_BLOCK_SIZE: u32 = 72;
 const PAD: i32 = 4;
 const PITCH: i32 = SRC_BLOCK_SIZE as i32 + 2 * PAD;
 
@@ -55,11 +56,11 @@ mod sound {
 /// what the theme radiates into the background particle field: the five puyo colours, read
 /// off the sheet
 const PUYO_PALETTE: [Color; PuyoColor::N] = [
-    Color::RGB(0xF0, 0x44, 0x2E), // red
-    Color::RGB(0x3C, 0xC6, 0x3C), // green
-    Color::RGB(0x2E, 0x6B, 0xF0), // blue
-    Color::RGB(0xF0, 0xC4, 0x1E), // yellow
-    Color::RGB(0xB8, 0x45, 0xE0), // purple
+    Color::RGB(0xBC, 0x3F, 0x3E), // red
+    Color::RGB(0x64, 0xC9, 0x43), // green
+    Color::RGB(0x30, 0x69, 0xCF), // blue
+    Color::RGB(0xE7, 0xAA, 0x31), // yellow
+    Color::RGB(0x98, 0x47, 0xCC), // purple
 ];
 
 /// how long the popped puyos hold before the particles take over. Under the game's own

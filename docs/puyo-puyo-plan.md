@@ -763,7 +763,23 @@ to draw eighty sprites by hand and this is how that was avoided:
   which is what `clear_class` grades a step for. Every one of them is decoded at theme build
   time, so `frame_shot` running is proof they all load.
 
-The whole theme is **436 KiB** against `dr-rustario`'s 26 MiB, because none of it is a rip.
+The whole theme was **436 KiB** against `dr-rustario`'s 26 MiB, because none of it was a rip.
+
+**Superseded on 2026-08-27: the puyos are now a rip.** A Puyo Puyo Tetris sprite sheet sits
+in `puyo-rusto/art/` - gitignored, since 12 MiB of source for 317 KiB of output is not worth
+carrying - and `art/rip.py` cuts the theme's sheet out of it instead: the first of its sixteen
+skins, which is the glossy Tsu one. Everything above about the *layout* still
+holds, because the rip is on the same `colour x 16` grid this was: only the cell grew from 64
+to 72 and `SRC_BLOCK_SIZE` with it. The three things the rip needed fixing are in `repair`:
+its right hand necks stop two pixels short of their cell, red's upward neck was cropped off by
+the top of the sheet, and an upward neck starts one pixel above its own cell and so lands in
+the bottom row of the puyo above. `art/sprites.py` is kept, writing `art/procedural-sprites.png`
+(gitignored) rather than the theme's sheet. The sheet is 317 KiB, the theme 672 KiB.
+
+What else the rip has, and did not get used: the flash and burst frames a puyo pops with, which
+would want `DestroyStyle::Pop` - and that is a fixed 300 ms against `rules::POP_DELAY`'s 280,
+so a chain step would advance while the cells were still animating; and **fifteen more skins**,
+several of them pixel art, which is what phase 3's retro themes could be built out of.
 
 **The previews cost nothing.** A pair is two colours from five, so the plan budgeted 25 preview
 sprites - but `PreviewData::Compose` builds a preview out of cells the sheet already has, and a

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Draws puyo-rusto/src/theme/modern/sprites.png.
+"""Draws puyo-rusto/art/procedural-sprites.png, which is no longer what the theme ships.
 
-The particle theme's art is original, and a Puyo `CellId` carries a four bit mask of which
+The particle theme's puyos are now cut out of the Puyo Puyo Tetris rip beside this by
+`rip.py`, which writes `src/theme/modern/sprites.png`. This is the original art it replaced -
+kept because it owes the rip nothing, and because it is the only description in the
+repository of what the sheet has to contain.
+
+The art is original, and a Puyo `CellId` carries a four bit mask of which
 neighbours share its colour - so the sheet is keyed on `colour x 16` and there are eighty
 coloured variants before nuisance and the tray icons. Nobody draws eighty sprites by hand.
 
@@ -12,7 +17,7 @@ across a join and two linked puyos meet flush.
 
     python3 puyo-rusto/art/sprites.py
 
-Layout, which `theme/modern/mod.rs` mirrors in arithmetic:
+Layout, which `rip.py` reproduces and `theme/modern/mod.rs` mirrors in arithmetic:
 
     block (col, row) -> (PAD + PITCH * col, PAD + PITCH * row), BLOCK square
     rows 0-4  one colour each (red, green, blue, yellow, purple), column = link mask bits
@@ -41,9 +46,7 @@ NECK_HALF_WIDTH = 0.33
 FILLET = 0.14
 RIM = 3.0
 
-OUT = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "src", "theme", "modern", "sprites.png"
-)
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "procedural-sprites.png")
 
 # base, dark (rim), light (top of the gradient)
 COLORS = [

@@ -102,12 +102,19 @@ are numbered) and `RUNNING_ORDER` (how they are billed): a game is on the pre-me
 it can be played and takes a playlist turn only once it has the themes and the ai to hold up
 its end of one.
 
-Puyo Rusto's particle theme is the only art in the repository that is **generated rather than
-drawn or ripped**, because a `CellId` there is a colour and a link mask and that is eighty
-sprites before nuisance. `puyo-rusto/art/sprites.py` composites them out of a body and a neck
-per linked direction as a signed distance field, and `puyo-rusto/art/audio.py` synthesises the
-sixteen oggs; both are committed beside the theme and write into `src/theme/modern/`. Re-run
-them rather than editing their output. It is faithful
+Puyo Rusto's particle theme is puyos cut out of a Puyo Puyo Tetris rip and audio nobody
+recorded. `puyo-rusto/art/rip.py` writes `src/theme/modern/sprites.png` out of a sheet that
+is **not in the repository** - it is 12 MiB and gitignored, so re-running the script means
+finding the rip again - and the rip is sixteen skins on one 72 pixel grid of which only the
+first, the glossy Tsu one, is used. It is a script rather than a crop because the rip numbers a puyo's links
+differently (down 1, up 2, right 4, left 8, against `LinkMask`'s up 1, down 2, left 4, right
+8) and because three of its edges do not quite land on its own grid - see `repair`, which
+repeats the last row or column of a neck out to the cell edge, since a neck is a prism and
+that is exactly what is missing. `puyo-rusto/art/audio.py` synthesises the sixteen oggs.
+Re-run them rather than editing their output. `art/sprites.py` is the procedural art the rip
+replaced - eighty puyos as signed distance fields - kept because it owes the rip nothing and
+because it is the only description in the repository of what the sheet has to contain; it now
+writes `art/procedural-sprites.png`, which is gitignored, and not the theme's sheet. It is faithful
 Puyo Puyo Tsu, and every table in it (chain power, colour and group bonus, 70 target points,
 the 30 nuisance all clear, the pair pool) is sourced from Puyo Nexus rather than guessed, with
 the page named in each module's doc comment.
