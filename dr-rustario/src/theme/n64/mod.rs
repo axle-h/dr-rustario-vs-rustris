@@ -31,6 +31,8 @@ mod sprites {
     pub const FONT_LARGE: &[u8] = include_bytes!("font_lg.png");
     pub const MATCH_END: &[u8] = include_bytes!("match-end.png");
     pub const BACKGROUND_TILE: &[u8] = include_bytes!("background-tile.png");
+    pub const BACKGROUND_TILE_YELLOW: &[u8] = include_bytes!("background-tile-yellow.png");
+    pub const BACKGROUND_TILE_BLUE: &[u8] = include_bytes!("background-tile-blue.png");
 }
 mod sound {
     pub const FEVER_INTRO: &[u8] = include_bytes!("fever-intro.ogg");
@@ -96,12 +98,15 @@ pub fn n64_theme<'a>(
         BOTTLE_HEIGHT,
         BOTTLE_HEIGHT,
     );
-    let scene = SceneType::Tile {
-        texture: sprites::BACKGROUND_TILE,
-    };
+    // the bottle room is tiled in a different colour per speed band, as the n64 does per mode
+    let tile = |texture| SceneType::Tile { texture };
     let options = RetroThemeOptions {
         name: "n64",
-        scenes: vec![scene],
+        scenes: vec![
+            tile(sprites::BACKGROUND_TILE),
+            tile(sprites::BACKGROUND_TILE_YELLOW),
+            tile(sprites::BACKGROUND_TILE_BLUE),
+        ],
         sprites: BlockSpriteSheetData {
             file: sprites::VITAMINS,
             source_block_size: BLOCK_SIZE,
@@ -174,21 +179,21 @@ pub fn n64_theme<'a>(
                     MetricKind::Score,
                     ThemedNumeric::new(
                         0,
-                        MetricSnips::zero_fill((111, 105), crate::game::MAX_SCORE),
+                        MetricSnips::zero_fill((116, 104), crate::game::MAX_SCORE),
                     ),
                 ),
                 (
                     MetricKind::Level,
                     ThemedNumeric::new(
                         1,
-                        MetricSnips::zero_fill((131, 143), crate::game::rules::MAX_VIRUS_LEVEL),
+                        MetricSnips::zero_fill((134, 140), crate::game::rules::MAX_VIRUS_LEVEL),
                     ),
                 ),
                 (
                     MetricKind::Viruses,
                     ThemedNumeric::new(
                         1,
-                        MetricSnips::zero_fill((131, 183), crate::game::random::MAX_VIRUSES),
+                        MetricSnips::zero_fill((134, 180), crate::game::random::MAX_VIRUSES),
                     ),
                 ),
             ],
