@@ -542,6 +542,7 @@ pub fn foreign_attack(receiver: GameId, _nuisance: u32) -> u32 {
 mod tests {
     use super::*;
     use crate::game::board::tests::{board as build_board, render};
+    use crate::game::cell::PuyoColor;
     use crate::game::random::Seed;
     use engine::game::Game as _;
 
@@ -697,7 +698,7 @@ mod tests {
                 }
             )
         );
-        assert_eq!(clears[1].1, true, "the second step is a combo");
+        assert!(clears[1].1, "the second step is a combo");
         assert_eq!(clears[1].2.chain, 2);
         assert!(clears[1].2.all_clear, "and it emptied the board");
 
@@ -783,6 +784,88 @@ mod tests {
             "the tray emptied onto the board"
         );
         assert_eq!(game.board.occupied(), 6, "a whole row of it");
+    }
+
+    /// The other half of classic offset: garbage falls at the end of the turn whether or not
+    /// you chained. Puyo Nexus, *Tsu (rule)*: "No matter what the player creates a chain or
+    /// more, Garbage Puyos will still fall in board if not cleared."
+    #[test]
+    fn what_is_waiting_falls_even_after_a_placement_that_clears_nothing() {
+        let mut game = game_with(&["r....."]);
+        game.receive_attack(Attack::new(GAME_ID, 6));
+        let events = resolve(&mut game);
+        assert!(clears(&events).is_empty(), "nothing popped");
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, GameEvent::AttackReceived { .. })));
+        assert_eq!(game.pending_nuisance(), 0, "and it all landed anyway");
+        assert_eq!(game.board.occupied(), 7, "a row of it on top of the red");
+    }
+
+    /// no more than a rock lands in one turn, and the rest waits for the next
+    #[test]
+    fn only_five_rows_of_an_attack_land_in_one_turn() {
+        let mut game = game_with(&["......"]);
+        game.receive_attack(Attack::new(GAME_ID, 40));
+        resolve(&mut game);
+        assert_eq!(game.board.occupied(), nuisance::MAX_DROP);
+        assert_eq!(game.pending_nuisance(), 10, "the rest still hangs over you");
+
+        // ... and the next placement takes the remainder
+        game.chain_score = 0;
+        game.state = State::Resolving {
+            chain: 0,
+            timer: Duration::ZERO,
+        };
+        resolve(&mut game);
+        assert_eq!(game.board.occupied(), nuisance::MAX_DROP + 10);
+        assert_eq!(game.pending_nuisance(), 0);
+    }
+
+    /// A pair that lands flat clears nothing and settles nothing, so nothing in the chain loop
+    /// would recompute the link masks - the lock has to do it, or the puyos it just laid down
+    /// draw unjoined for the rest of the game.
+    #[test]
+    fn the_puyos_a_lock_lays_down_are_joined_to_what_they_land_beside() {
+        use crate::game::cell::LinkMask;
+        let mut game = game_with(&["r....."]);
+        game.pair = Some(pair::Pair::new(
+            Point::new(0, 1),
+            cell::PuyoPiece::new(PuyoColor::Red, PuyoColor::Blue),
+        ));
+        game.state = State::Falling {
+            lock: Duration::ZERO,
+        };
+        game.hard_drop();
+        resolve(&mut game);
+
+        let floor = ROWS as i32 - 1;
+        let links = |y: i32| game.board.get(Point::new(0, y)).unwrap().links();
+        assert_eq!(links(floor), LinkMask::UP, "the red on the floor joined up");
+        assert_eq!(links(floor - 1), LinkMask::DOWN, "and the red that landed");
+        assert_eq!(links(floor - 2), LinkMask::NONE, "the blue joined nothing");
+    }
+
+    /// holding soft drop is what makes a pair fall faster, and nothing else about it changes
+    #[test]
+    fn soft_drop_hurries_the_pair_along() {
+        let mut drifting = game();
+        let start = drifting.pair.unwrap().pivot().y;
+        run(&mut drifting, 20);
+        let drifted = drifting.pair.unwrap().pivot().y - start;
+
+        let mut hurried = game();
+        hurried.set_soft_drop(true);
+        run(&mut hurried, 20);
+        assert!(
+            hurried.pair.unwrap().pivot().y - start > drifted,
+            "soft drop did not hurry it along"
+        );
+        assert!(
+            hurried.fall_interval() < drifting.fall_interval(),
+            "by a factor of {}",
+            rules::SOFT_DROP_FACTOR
+        );
     }
 
     /// an attack that arrives with nothing in play still waits rather than landing
@@ -1018,7 +1101,7 @@ mod tests {
         assert_eq!(clears[0].2.chain, 1);
         assert_eq!(clears[1].2.chain, 2);
         assert_eq!(clears[2].2.chain, 3);
-        assert_eq!(clears[0].1, false, "the first step is not a combo");
+        assert!(!clears[0].1, "the first step is not a combo");
         assert!(clears[1].1 && clears[2].1, "the rest are");
         assert!(
             clears.iter().all(|(count, _, _)| *count == 4),

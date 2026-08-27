@@ -595,6 +595,69 @@ whole 128-pair pool at construction from one seed, so nothing drawn later can pu
 out of step - `one_seed_deals_every_player_the_same_game` plays three games twenty placements
 deep and compares the boards. `speed_index` drives fall speed and nothing else.
 
+### Rules audit, 2026-08-27
+
+The whole crate was read back against [puyo-nexus-rules.md](puyo-nexus-rules.md) after phase 1
+closed - every table, every rule, module by module. **135 unit tests, `cargo test --workspace`
+688 and green.** The tables all check out: the chain power curve, the colour and group bonus
+tables, the 70 target points and the carry, the 30 nuisance all clear, the five difficulty
+settings and their colours, starting rows and speed bonus, the pair pool's reduced opening, and
+the ghost row. Three things did not, and are fixed.
+
+**A pair that landed flat drew unjoined.** `Board::recompute_links` documents itself as running
+"after every lock, pop and settle", and it ran after two of the three: `Pair::lock` laid the two
+halves down loose, `Board::settle` only recomputes when something actually moved and
+`Board::pop` only when something actually popped. So every placement that landed flat and
+cleared nothing left its own puyos - and whatever they landed beside - with a mask of zero, and
+the signature joined look simply went missing for that placement. `Pair::lock` now recomputes.
+This was invisible to phase 1 because nothing draws yet, and would have read as an art bug in
+phase 2.
+
+**The quick turn slid the pair down instead of flipping it in place.** *Rotation, collision and
+push back* is explicit that after the double tap "a rotation pushes the pair's main puyo
+upwards, with the slave puyo taking its place at the bottom; or the slave puyo ends up at the
+top with the main puyo being pushed down by one cell" - either way the pair keeps the same two
+squares and the halves swap. The old code searched for somewhere to put the flipped pair and
+took the pair's own cell first, which moved it down a row in mid air; it only did the right
+thing against the floor, where that candidate failed. It is now the swap, which is also why the
+page can say that by this point "nothing will cancel the rotation": the two cells are the ones
+the pair is already standing on, so the quick turn cannot fail and no longer returns an
+`Option`.
+
+**A pair in the ghost row could be shoved about.** The same page's *current row check* -
+`if(current_row < 2) if(target_cell == bottom || target_cell == top) exit;` - refuses an upright
+rotation outright when the pivot is in a ghost row, rather than kicking the pair anywhere, and
+does not even arm the double tap. Phase 1 read Tsu's ceiling as falling out of the board having
+no fourteenth row, and pushed the pair *down* off it instead, which handed the player a free
+manoeuvre up there. Now refused. (The 13-row board is still right: the fourteenth row exists in
+the real game's memory but nothing can reach it, which is what the ceiling rule is.)
+
+Two smaller things: `NuisancePoints::reset` was dead and its doc comment described the opposite
+of what it did - the leftover carries and is never reset, per *Scoring* - so it is gone; and the
+crate is clippy-clean.
+
+**Tests added**: the whole of Puyo Nexus's published *List of Chain Scores* - all nineteen chain
+lengths, points and nuisance - rather than the first four; group bonuses adding over several
+groups of a step; nuisance caught between two groups clearing once; the ghost row above the
+death square not being the death square; garbage falling after a placement that clears nothing
+(the other half of classic offset, which nothing covered); the five-row cap end to end; the
+link masks after a plain lock; soft drop; and the three rotation rules above.
+
+**Known gaps, all deliberate and all sourced**, for whoever picks up phase 5's balance work:
+
+* **Margin time** is still out, and it is fully specified in the local copy (96 seconds, then
+  target points to 3/4 and halving every 16 seconds, at most 14 iterations or until they reach
+  1) - it is the game's own answer to a match that will not end, which a playlist wants.
+* **The soft drop bonus** is out. *Scoring* says Tsu adds the drop bonus to the nuisance a chain
+  sends, and *Special Maneuvers and Mechanics* calls it "charging up your 1 Chains" - but
+  neither page gives the points per cell, so implementing it means guessing a number, which this
+  document forbids. `GameEvent::SoftDrop` is already emitted if it is ever wanted.
+* **Soft dropping onto a blocked cell locks the pair immediately** in Tsu, skipping the grace
+  period entirely (*Soft Drop*). The game uses one `LOCK_DELAY` either way.
+* **The nuisance scatter** is still the honest guess phase 1 flagged: the wiki lists
+  "Distribution algorithm of ojama puyos across a row" as an open question on its own reverse
+  engineering page.
+
 ---
 
 ## Phase 2 — playable on the particle theme, human players
