@@ -170,6 +170,42 @@ impl MatchThemes {
     }
 }
 
+/// The tracks a match may be played on, in the order the theme offers them.
+///
+/// That order is the whole point: it is what `MusicChoice::Track` indexes, so a variant's
+/// position here and its position in `theme::GAME_MUSIC` are the same number - see the test
+/// in [`crate::theme`] that holds the two lists to the same length. The menu track is not one
+/// of these; it belongs to the menus rather than to a match.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameMusic {
+    Korobeiniki,
+    Decisive,
+    Magical,
+    TetroMix,
+}
+
+impl GameMusic {
+    pub const ALL: [Self; 4] = [
+        Self::Korobeiniki,
+        Self::Decisive,
+        Self::Magical,
+        Self::TetroMix,
+    ];
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            GameMusic::Korobeiniki => "korobeiniki",
+            GameMusic::Decisive => "decisive",
+            GameMusic::Magical => "magical",
+            GameMusic::TetroMix => "tetromix",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<GameMusic> {
+        GameMusic::ALL.into_iter().find(|m| m.name() == name)
+    }
+}
+
 /// How well the ai plays, under the four names every game in the compendium offers.
 ///
 /// The names and the key delays are the other games' exactly - see
@@ -245,6 +281,9 @@ pub struct GameConfig {
     pub level: u32,
     pub rules: MatchRules,
     pub themes: MatchThemes,
+    /// which track a match is played on; `None` deals one at random, which is the default and
+    /// what the menu calls it
+    pub music: Option<GameMusic>,
     pub ai: AiMode,
 }
 
@@ -256,6 +295,7 @@ impl GameConfig {
             level,
             rules,
             themes,
+            music: None,
             ai: AiMode::Off,
         }
     }

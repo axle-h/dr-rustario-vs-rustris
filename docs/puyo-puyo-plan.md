@@ -816,6 +816,31 @@ the top of the sheet, and an upward neck starts one pixel above its own cell and
 the bottom row of the puyo above. `art/sprites.py` is kept, writing `art/procedural-sprites.png`
 (gitignored) rather than the theme's sheet. The sheet is 317 KiB, the theme 672 KiB.
 
+**And the music is a rip, 2026-08-27.** `art/music.py` cuts the theme's soundtrack out of a
+directory of converted Puyo Puyo Tetris tracks and a `loops.json` of their loop points, which
+is not in the repository either - the same footing the sprite sheet is on. Five tracks: *It's
+Main Menu!* over both Puyo Rusto menu screens, through a `MENU_SOUNDS` of its own the way
+Rustris has one, and *Korobeiniki*, *Decisive Battle*, *Magical Confrontation* and
+*PuyoTetroMix* as the game music, one of them dealt per match.
+
+Two things had to give for that. The mixer takes 44,100 Hz and nothing else, so four of the
+five are resampled; and it has no loop marker, so each track is *split* at its loop point into
+`-intro.ogg` and `-repeat.ogg`, which is the pair `StructuredMusic::new` has always taken and
+Dr. Rustario's themes have always shipped. The split is cut on raw pcm rather than by seeking
+with ffmpeg, so the seam falls on the sample the loop point names.
+
+Dealing one per match needed the engine to hold more than one: `AudioTheme` keeps a list and a
+`Cell` for the pick, `MatchSettings::music` is what a match asks for (`Random`, or a `Track`
+indexing that list), and the pick is made in `ThemeContext::sync_music` - the one place that is
+reached only when the theme owning the music has changed, so nothing re-deals for a pause, a
+stage clear or a game over, and a second Puyo theme will re-deal of its own accord. The menu's
+`music` row is `random` plus `GameMusic::ALL`, whose order *is* the index into
+`theme::GAME_MUSIC`. It costs 12.3 MiB, which takes the theme from 672 KiB to 13 MiB - the
+first thing this crate has been charged real money for.
+
+`art/audio.py`'s `music_loop` went with it, and the chord and lead tables it was the only
+reader of; the two stings are still its own.
+
 What else the rip has, and did not get used: the flash and burst frames a puyo pops with, which
 would want `DestroyStyle::Pop` - and that is a fixed 300 ms against `rules::POP_DELAY`'s 280,
 so a chain step would advance while the cells were still animating; and **fifteen more skins**,
@@ -1031,9 +1056,13 @@ in a directory beside that file:
   leftwards or upwards. No sprite work: it draws the theme's own nuisance cell. Every existing
   retro theme passes `None`, so the field is there and empty to copy from
 * mascot strips `{idle,throw,victory,game-over}.png`
-* music and about twelve sound effects as **OGG Vorbis at exactly 44,100 Hz, mono or stereo**
-  — the decoder rejects anything else outright. Music may be split into `-intro.ogg` and
-  `-repeat.ogg` for the intro-then-loop chaining.
+* about twelve sound effects as **OGG Vorbis at exactly 44,100 Hz, mono or stereo** — the
+  decoder rejects anything else outright. Music is not among them: `theme::GAME_MUSIC` is
+  shared, since the four tracks are this game's whatever it is drawn as, and a retro theme
+  hands the same table to `data::audio`. A theme wanting its own soundtrack instead passes its
+  own table; the menu row indexes whatever it is given, so the two would have to stay the same
+  length. Music files are split into `-intro.ogg` and `-repeat.ogg` for the intro-then-loop
+  chaining — see `art/music.py`, which does the splitting.
 
 Template for the 34-field `RetroThemeOptions`: `dr-rustario/src/theme/nes/mod.rs`.
 

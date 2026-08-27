@@ -4,10 +4,11 @@ use crate::game::ai::PuyoAiKind;
 use crate::game::cell::PuyoSkin;
 use crate::game::random::from_seed;
 use crate::game::rules::{
-    AiDifficulty, AiMode, Difficulty, GameConfig, MatchRules, MatchThemes, MAX_START_LEVEL,
+    AiDifficulty, AiMode, Difficulty, GameConfig, GameMusic, MatchRules, MatchThemes,
+    MAX_START_LEVEL,
 };
 use crate::game::Game;
-use engine::app::ThemeMode;
+use engine::app::{MusicChoice, ThemeMode};
 use engine::game::random::Seed;
 use engine::menu::MenuItem;
 use std::str::FromStr;
@@ -21,6 +22,8 @@ const THEMES: &str = "themes";
 const MODE: &str = "mode";
 const LEVEL: &str = "level";
 const DIFFICULTY: &str = "difficulty";
+const MUSIC: &str = "music";
+const RANDOM_MUSIC: &str = "random";
 const VS_AI_PREFIX: &str = "vs ";
 const VS_AI_SUFFIX: &str = " ai";
 const AI_DEMO_1P: &str = "1-player ai demo";
@@ -155,11 +158,21 @@ impl Options {
                     .position(|d| *d == self.config.difficulty)
                     .unwrap_or(0),
             ),
+            MenuItem::select_list(
+                MUSIC,
+                music_names(),
+                match self.config.music {
+                    None => 0,
+                    Some(track) => track as usize + 1,
+                },
+            ),
         ];
         if compact {
+            // the mode goes because the other game names it, and the music goes with it: a
+            // match is played on one track, so a mixed match cannot take two games' answers
             items
                 .into_iter()
-                .filter(|item| item.name() != MODE)
+                .filter(|item| item.name() != MODE && item.name() != MUSIC)
                 .collect()
         } else {
             items
@@ -187,6 +200,7 @@ impl Options {
                     self.config.difficulty = difficulty;
                 }
             }
+            MUSIC => self.config.music = GameMusic::from_name(value),
             _ => return false,
         }
         true
@@ -216,6 +230,22 @@ impl Options {
     pub fn rules(&self) -> MatchRules {
         self.config.rules
     }
+
+    /// which track the match is played on: a pinned one by its place in the theme's table,
+    /// or the theme's own pick
+    pub fn music_choice(&self) -> MusicChoice {
+        match self.config.music {
+            None => MusicChoice::Random,
+            Some(track) => MusicChoice::Track(track as usize),
+        }
+    }
+}
+
+/// the music row's values: dealing one is the first of them, and the default
+fn music_names() -> Vec<String> {
+    std::iter::once(RANDOM_MUSIC.to_string())
+        .chain(GameMusic::ALL.iter().map(|m| m.name().to_string()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -257,6 +287,38 @@ mod tests {
         assert_eq!(options.config.difficulty, Difficulty::VeryHard);
         // a colour count of five is what that setting means to the game itself
         assert_eq!(options.config.difficulty.colors(), 5);
+    }
+
+    /// `random` is the first value and the default, and every track is pinned by the name it
+    /// is listed under - the same round trip the ai list is held to below
+    #[test]
+    fn every_track_is_picked_by_the_name_it_is_listed_under() {
+        let mut options = Options::default();
+        assert_eq!(options.music_choice(), MusicChoice::Random);
+        for (index, name) in music_names().into_iter().enumerate() {
+            options.select(MUSIC, &name);
+            let items = options.menu_items(false);
+            let row = items.iter().find(|item| item.name() == MUSIC).unwrap();
+            assert_eq!(
+                *row,
+                MenuItem::select_list(MUSIC, music_names(), index),
+                "{name} did not come back selected"
+            );
+        }
+        // ... and the last of them is a track rather than the deal
+        assert_eq!(
+            options.music_choice(),
+            MusicChoice::Track(GameMusic::ALL.len() - 1)
+        );
+    }
+
+    /// a mixed match's second game shows neither the mode nor the music: one match, one track
+    #[test]
+    fn a_compact_menu_leaves_the_music_to_the_other_game() {
+        let items = Options::default().menu_items(true);
+        assert!(!items
+            .iter()
+            .any(|item| item.name() == MUSIC || item.name() == MODE));
     }
 
     #[test]

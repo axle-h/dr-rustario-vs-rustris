@@ -81,7 +81,9 @@ pub fn previews() -> PreviewData {
 }
 
 pub struct Sounds {
-    pub music: &'static [u8],
+    /// every track the theme may play a match on, as `(intro, repeat)` pairs in
+    /// [`crate::game::rules::GameMusic`] order - see [`crate::theme::GAME_MUSIC`]
+    pub music: &'static [(&'static [u8], &'static [u8])],
     pub move_pair: &'static [u8],
     pub rotate: &'static [u8],
     pub lock: &'static [u8],
@@ -116,8 +118,11 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
             .enumerate()
             .map(|(class, sound)| (SfxKey::Clear(class as u16), *sound)),
     );
-    AudioTheme::new(config, &sfx)?
-        .with_looping_game_music(sounds.music)?
+    let mut audio = AudioTheme::new(config, &sfx)?;
+    for (intro, repeat) in sounds.music {
+        audio = audio.with_game_music_choice(Some(intro), repeat)?;
+    }
+    audio
         .with_game_over_music(sounds.game_over, None)?
         .with_victory_music(sounds.victory, None)
 }
