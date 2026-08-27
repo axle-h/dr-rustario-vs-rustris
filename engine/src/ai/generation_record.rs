@@ -30,6 +30,15 @@ impl GenerationRecord {
     }
 
     pub fn add<const N: usize>(&mut self, stats: &GenerationStatistics<N>) -> io::Result<()> {
+        // the weights the network is built from rather than the raw coefficients the algorithm
+        // works in, so the column is the model and not a step on the way to it
+        let genome: Vec<String> = stats
+            .max()
+            .genome()
+            .chromosome()
+            .iter()
+            .map(|c| format!("{:.6}", c.into_f64()))
+            .collect();
         writeln!(
             self.file,
             "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},\"{}\",\"{}\"",
@@ -49,7 +58,7 @@ impl GenerationRecord {
             stats.median().result().cleared(),
             stats.median().result().bonus(),
             stats.seed(),
-            stats.max().genome()
+            genome.join(", ")
         )
     }
 }

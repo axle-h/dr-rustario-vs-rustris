@@ -415,6 +415,11 @@ a taught model it mutates gently (3-8% of genes, by 0.05) rather than widely (10
 there is a great deal to preserve, and at the wide rates the median member of a taught
 population scores a twentieth of the model it came from.
 
+Clearing every bottle on the seeds in front of it is not enough to end the stage, since a genome
+can do that without generalising, so a candidate that manages it is put through five games it
+has never seen first. One that fails carries on in the same population - starting again from it
+would reseed every member from one genome and throw away every other line the search has found.
+
 **Stage three** asks a model that has stopped dying to stop dawdling. Same game, but the clock
 is a pill budget and the score is bottles finished, so taking the clear in front of it beats
 tidying, and finishing a bottle in three hundred pills beats nine hundred. Survival is not
@@ -453,17 +458,23 @@ of `virus_clear_trained`, ready to paste over the one in
     ])
 ```
 
-Nothing is written to disk except a `generation-record-<timestamp>.csv` of each generation's
-statistics, in the working directory.
+Nothing is written to disk except a `generation-record-<timestamp>.csv` in the working
+directory, one per phase, holding each generation's statistics and its best genome as the same
+weights.
 
-**The knobs**, all constants at the top of
+**What a generation costs** is `POPULATION` times `SEEDS_PER_GAME` whole games, and a good
+model's game runs to thousands of pills - so those two are the dials to reach for if training is
+too slow. At 250 candidates over 2 seeds a generation takes around half a minute on a desktop;
+at 1000 over 3, which is what it was, it took several minutes. Fewer seeds is a noisier measure
+of a genome, which the seeds changing every generation already guards against.
+
+**The other knobs**, all constants at the top of
 [dr-rustario/src/game/ai/genetic.rs](dr-rustario/src/game/ai/genetic.rs) and
 [imitation.rs](dr-rustario/src/game/ai/imitation.rs): `LESSON_PILLS` (how many pills stage one
 learns from), `TAUGHT_ENOUGH` and `PRETRAIN_ATTEMPTS` (how well a taught network has to play
 before stage two starts from it, and how many tries it gets), `PILL_BUDGET` and
 `EFFICIENCY_GENERATIONS` (stage three), `TOP_TRAINING_LEVEL` (the last bottle a training game
-plays) and `VERIFY_SEEDS` (how many unseen games a model has to clear to be believed). The
-population is `HyperParameters::default()`, a thousand.
+plays) and `VERIFY_SEEDS` (how many unseen games a model has to clear to be believed).
 
 ### Dr. Rustario vs. Rustris
 
