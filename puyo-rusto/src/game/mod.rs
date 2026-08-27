@@ -269,9 +269,12 @@ impl Game {
                 self.events
                     .push(GameEvent::AttackSent(Attack::new(GAME_ID, outgoing.sent)));
             }
+            // one event per stage the chain paid for, since a big enough chain pops more
+            // than a stage's worth of puyos at once and each step owed is a step faster
             while self.stage_puyos >= rules::PUYOS_PER_STAGE {
                 self.stage_puyos -= rules::PUYOS_PER_STAGE;
                 self.stage_complete = true;
+                self.events.push(GameEvent::StageComplete);
             }
         }
         self.chain_score = 0;
@@ -641,6 +644,14 @@ mod tests {
             .collect()
     }
 
+    /// how many times a game has announced it reached the stage goal
+    fn stage_completions(game: &Game) -> usize {
+        game.events
+            .iter()
+            .filter(|e| matches!(e, GameEvent::StageComplete))
+            .count()
+    }
+
     #[test]
     fn a_new_game_puts_a_pair_on_the_board() {
         let mut game = game();
@@ -1006,11 +1017,38 @@ mod tests {
         game.chain_score = 10;
         game.finish_chain(1);
         assert_eq!(game.stage_state(), StageState::StageComplete);
+        // the flag alone changes nothing: a seamless game is carried into its next stage
+        // by the event, and a game that only sets the flag never speeds up at all
+        assert_eq!(
+            stage_completions(&game),
+            1,
+            "reaching the goal has to announce itself"
+        );
 
         let speed = game.speed_index();
         game.next_stage().unwrap();
         assert_eq!(game.speed_index(), speed + 1, "pairs fall faster");
         assert_eq!(game.completed_stages(), 1);
+        assert_eq!(game.stage_state(), StageState::Playing);
+    }
+
+    #[test]
+    fn a_chain_worth_several_stages_owes_a_step_for_each_of_them() {
+        let mut game = game();
+        game.stage_puyos = rules::PUYOS_PER_STAGE * 3 + 1;
+        game.chain_score = 10;
+        game.finish_chain(1);
+        assert_eq!(stage_completions(&game), 3);
+        assert_eq!(game.stage_puyos, 1, "the remainder carries into the next");
+    }
+
+    #[test]
+    fn a_chain_short_of_the_goal_says_nothing() {
+        let mut game = game();
+        game.stage_puyos = rules::PUYOS_PER_STAGE - 1;
+        game.chain_score = 10;
+        game.finish_chain(1);
+        assert_eq!(stage_completions(&game), 0);
         assert_eq!(game.stage_state(), StageState::Playing);
     }
 

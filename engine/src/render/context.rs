@@ -504,16 +504,23 @@ impl<'a> ThemeContext<'a> {
     }
 
     /// advance a single player to their next theme, cross-fading only their side of the screen
+    ///
+    /// A player with one theme to their name has nowhere to go, and fading is a second of
+    /// the board dissolving into itself - so that player is left alone. A game with a single
+    /// theme still runs on `ThemeMode::All`, and its stage boundaries ask for the next one.
     pub fn fade_into_next_theme(
         &mut self,
         player: u32,
         canvas: &mut WindowCanvas,
         frame: &Texture,
     ) -> Result<(), String> {
+        let index = player as usize;
+        if self.ranges[index].len() < 2 {
+            return Ok(());
+        }
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).reset();
         }
-        let index = player as usize;
         let range = &self.ranges[index];
         let next = self.current[index] + 1;
         self.current[index] = if range.contains(&next) {
