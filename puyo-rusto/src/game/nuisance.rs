@@ -8,7 +8,7 @@
 //! what turns two people racing into two people fighting.
 
 use crate::game::board::{Board, COLUMNS};
-use crate::game::cell::{NuisanceIcon, PuyoCell};
+use crate::game::cell::{NuisanceIcon, PuyoCell, PuyoSkin};
 use crate::game::random::Seed;
 use crate::game::score::{NuisancePoints, ALL_CLEAR_NUISANCE};
 use engine::game::CellId;
@@ -145,11 +145,16 @@ impl Nuisance {
     ///
     /// A column with no room takes nothing and the puyo is simply lost, which is what the
     /// real game does with a bottle that is already full to the brim.
-    pub fn drop_onto(&mut self, board: &mut Board, count: u32) -> Vec<engine::game::PlacedCell> {
+    pub fn drop_onto(
+        &mut self,
+        board: &mut Board,
+        count: u32,
+        skin: PuyoSkin,
+    ) -> Vec<engine::game::PlacedCell> {
         let mut landed = vec![];
         for column in self.drop_columns(count) {
             if let Some(point) = board.drop_into(column, PuyoCell::Nuisance) {
-                landed.push((point, CellId::from(PuyoCell::Nuisance)));
+                landed.push((point, PuyoCell::Nuisance.id(skin)));
             }
         }
         if !landed.is_empty() {
@@ -162,10 +167,10 @@ impl Nuisance {
     ///
     /// This is what [`engine::game::Game::pending_attacks`] reports, and what a theme's
     /// pending strip draws.
-    pub fn tray(&self) -> Vec<CellId> {
+    pub fn tray(&self, skin: PuyoSkin) -> Vec<CellId> {
         NuisanceIcon::decompose(self.pending)
             .into_iter()
-            .map(|icon| CellId::from(PuyoCell::Tray(icon)))
+            .map(|icon| PuyoCell::Tray(icon).id(skin))
             .collect()
     }
 }
@@ -331,7 +336,7 @@ mod tests {
     fn nuisance_lands_on_top_of_the_stack() {
         let mut queue = nuisance();
         let mut field = board(&["rrrrrr"]);
-        let landed = queue.drop_onto(&mut field, ROW);
+        let landed = queue.drop_onto(&mut field, ROW, PuyoSkin::FIRST);
         assert_eq!(landed.len() as u32, ROW);
         for (point, _) in landed {
             assert_eq!(point.y, ROWS as i32 - 2, "the row above the stack");
@@ -342,21 +347,25 @@ mod tests {
     #[test]
     fn nuisance_with_nowhere_to_go_is_lost() {
         let mut queue = nuisance();
-        let mut field = Board::new();
+        let mut field = Board::new(PuyoSkin::FIRST);
         for column in 0..COLUMNS as i32 {
             for _ in 0..ROWS {
                 field.drop_into(column, PuyoCell::Nuisance);
             }
         }
-        assert!(queue.drop_onto(&mut field, ROW).is_empty());
+        assert!(queue.drop_onto(&mut field, ROW, PuyoSkin::FIRST).is_empty());
     }
 
     #[test]
     fn the_tray_shows_what_is_waiting() {
         let mut queue = nuisance();
-        assert!(queue.tray().is_empty());
+        assert!(queue.tray(PuyoSkin::FIRST).is_empty());
         queue.receive(37);
-        let tray: Vec<PuyoCell> = queue.tray().into_iter().map(PuyoCell::from).collect();
+        let tray: Vec<PuyoCell> = queue
+            .tray(PuyoSkin::FIRST)
+            .into_iter()
+            .map(PuyoCell::from)
+            .collect();
         assert_eq!(
             tray,
             vec![

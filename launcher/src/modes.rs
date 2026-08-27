@@ -1018,8 +1018,18 @@ impl VersusMode {
         engine::game::random::Seed::from_u64(splitmix64(self.seed.get() ^ splitmix64(salt)))
     }
 
-    /// `count` games of a kind at this difficulty, sharing a seed
-    fn new_games(&self, kind: GameKind, count: usize) -> Result<Vec<AnyGame>, String> {
+    /// `count` games of a kind at this difficulty, sharing a seed, for the players from
+    /// `first_player` on.
+    ///
+    /// Which player each is for matters only to Puyo Rusto, whose boards are drawn from a
+    /// sprite set per player: a playlist swapping one board over mid-match deals a single
+    /// game, and it has to be that player's puyos rather than the first player's.
+    fn new_games(
+        &self,
+        kind: GameKind,
+        count: usize,
+        first_player: usize,
+    ) -> Result<Vec<AnyGame>, String> {
         let seed = self.game_seed(kind);
         Ok(match kind {
             GameKind::DrRustario => {
@@ -1050,13 +1060,19 @@ impl VersusMode {
             }
             GameKind::Puyo => {
                 let difficulty = puyo_rusto::game::rules::Difficulty::default();
+                // one set of puyos per player, so two Puyo boards are never the same ones -
+                // and dealt off the match seed, so a player swapping onto Puyo three stages
+                // into a playlist is handed the set they had the last time round
+                let skins = puyo_rusto::game::cell::PuyoSkin::deal(seed, first_player + count);
                 puyo_rusto::game::random::from_seed(seed, count, difficulty.colors())
                     .into_iter()
-                    .map(|rand| {
+                    .zip(skins.into_iter().skip(first_player))
+                    .map(|(rand, skin)| {
                         AnyGame::Puyo(puyo_rusto::game::Game::new(
                             difficulty,
                             self.difficulty.level(kind),
                             rand,
+                            skin,
                         ))
                     })
                     .collect()
@@ -1160,13 +1176,14 @@ impl Mode for VersusMode {
         self.new_games(
             self.playlist.first_game(self.seed.get()),
             self.players as usize,
+            0,
         )
     }
 
     fn next_stage(
         &self,
         themes: &Themes,
-        _player: u32,
+        player: u32,
         completed: u32,
     ) -> Option<StageChange<AnyGame>> {
         let playlist_themes = self.playlist_themes(themes);
@@ -1182,7 +1199,7 @@ impl Mode for VersusMode {
         let game = if previous == Some(kind) {
             None
         } else {
-            Some(self.new_games(kind, 1).ok()?.pop()?)
+            Some(self.new_games(kind, 1, player as usize).ok()?.pop()?)
         };
         Some(StageChange {
             game,
@@ -1222,6 +1239,7 @@ impl Mode for VersusMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     /// the same list of themes for every game
     fn same_themes(themes: Vec<usize>) -> PlaylistThemes {
@@ -1421,8 +1439,8 @@ mod tests {
         // being taken away and given back
         let dealt = GameKind::ALL.into_iter().chain([GameKind::ALL[0]]);
         for kind in dealt {
-            let mut played = mode.new_games(kind, 1).unwrap().pop().unwrap();
-            let mut alone = mode.new_games(kind, 1).unwrap().pop().unwrap();
+            let mut played = mode.new_games(kind, 1, 0).unwrap().pop().unwrap();
+            let mut alone = mode.new_games(kind, 1, 0).unwrap().pop().unwrap();
             // the ai hard drops every piece, so a few seconds of it locks several; the same
             // few seconds of gravity alone at difficulty 0 locks at most one
             let with_ai = run(&mut played, 240, |game, delta| controller(game, delta));
@@ -1773,15 +1791,36 @@ mod tests {
         assert_eq!(Difficulty::names().len(), 11);
     }
 
-    /// a game's board and queue, for comparing two players' copies of it
+    /// A game's board and queue, for comparing two players' copies of it.
+    ///
+    /// Puyo cell and piece ids carry the player's sprite set as well as the puyo, and the two
+    /// players are deliberately dealt different sets - so those are read back onto the first
+    /// player's before comparing. What is being tested is the game, not the art.
     fn board_of(game: &AnyGame) -> (Vec<engine::game::Cell>, Vec<engine::game::PieceId>) {
         use engine::game::geometry::Point;
-        use engine::game::Game;
+        use engine::game::{Cell, CellId, Game, PieceId};
+        use puyo_rusto::game::cell::{PuyoCell, PuyoPiece, PuyoSkin};
+
+        let puyo = game.kind() == GameKind::Puyo;
+        let cell_id = |id: CellId| match puyo {
+            true => PuyoCell::from(id).id(PuyoSkin::FIRST),
+            false => id,
+        };
+        let piece_id = |id: PieceId| match puyo {
+            true => PuyoPiece::from(id).id(PuyoSkin::FIRST),
+            false => id,
+        };
         let cells = (0..game.board_height())
             .flat_map(|y| (0..game.board_width()).map(move |x| Point::new(x as i32, y as i32)))
-            .map(|p| game.cell(p))
+            .map(|p| match game.cell(p) {
+                Cell::Empty => Cell::Empty,
+                Cell::Active(id) => Cell::Active(cell_id(id)),
+                Cell::Ghost(id) => Cell::Ghost(cell_id(id)),
+                Cell::Stack(id) => Cell::Stack(cell_id(id)),
+                Cell::Garbage(id) => Cell::Garbage(cell_id(id)),
+            })
             .collect();
-        (cells, game.queue())
+        (cells, game.queue().into_iter().map(piece_id).collect())
     }
 
     fn versus_at(seed: u64, difficulty: u32) -> VersusMode {
@@ -1798,20 +1837,70 @@ mod tests {
         for kind in GameKind::ALL {
             let mode = versus_at(12345, 10);
             // both at once, as a match starts
-            let together = mode.new_games(kind, 2).unwrap();
+            let together = mode.new_games(kind, 2, 0).unwrap();
             assert_eq!(board_of(&together[0]), board_of(&together[1]), "{:?}", kind);
             // and one at a time, as a playlist swaps a board over
-            let apart = mode.new_games(kind, 1).unwrap();
+            let apart = mode.new_games(kind, 1, 0).unwrap();
             assert_eq!(board_of(&together[0]), board_of(&apart[0]), "{:?}", kind);
         }
+    }
+
+    /// every skin a Puyo game reports, off its board and out of its queue
+    fn skins_of(game: &AnyGame) -> HashSet<puyo_rusto::game::cell::PuyoSkin> {
+        use engine::game::Game;
+        use puyo_rusto::game::cell::PuyoSkin;
+        let mut skins: HashSet<PuyoSkin> = game.queue().into_iter().map(PuyoSkin::from).collect();
+        skins.extend(
+            (0..game.board_height())
+                .flat_map(|y| (0..game.board_width()).map(move |x| (x as i32, y as i32)))
+                .filter_map(|(x, y)| game.cell(engine::game::geometry::Point::new(x, y)).id())
+                .map(PuyoSkin::from),
+        );
+        skins
+    }
+
+    /// Puyo Rusto draws each player's board from its own set of puyos, so the two players of a
+    /// match must not be dealt the same one - and a board dealt on its own, which is how a
+    /// playlist swaps one player over, has to be that player's rather than the first player's.
+    #[test]
+    fn every_player_is_dealt_their_own_puyos() {
+        let mode = versus_at(12345, 10);
+        let together = mode.new_games(GameKind::Puyo, 2, 0).unwrap();
+        let first = skins_of(&together[0]);
+        let second = skins_of(&together[1]);
+        assert_eq!(first.len(), 1, "a board is drawn from one set");
+        assert_eq!(second.len(), 1, "a board is drawn from one set");
+        assert_ne!(first, second, "both players were dealt the same puyos");
+
+        // ... and one at a time, as a playlist swaps a board over
+        for (player, expected) in [(0, &first), (1, &second)] {
+            let alone = mode.new_games(GameKind::Puyo, 1, player).unwrap();
+            assert_eq!(&skins_of(&alone[0]), expected, "player {player} alone");
+        }
+    }
+
+    /// ... and another match is another pair of them, or every game would look the same
+    #[test]
+    fn another_match_deals_another_pair_of_sets() {
+        let deals: HashSet<Vec<_>> = (0..40u64)
+            .map(|seed| {
+                versus_at(seed, 10)
+                    .new_games(GameKind::Puyo, 2, 0)
+                    .unwrap()
+                    .iter()
+                    .map(|game| skins_of(game).into_iter().next().unwrap())
+                    .collect()
+            })
+            .collect();
+        assert!(deals.len() > 20, "{} distinct deals in 40", deals.len());
     }
 
     /// ... and it is a seed doing that, not every match dealing the same thing
     #[test]
     fn another_match_is_dealt_another_game() {
         for kind in GameKind::ALL {
-            let one = versus_at(1, 10).new_games(kind, 1).unwrap();
-            let two = versus_at(2, 10).new_games(kind, 1).unwrap();
+            let one = versus_at(1, 10).new_games(kind, 1, 0).unwrap();
+            let two = versus_at(2, 10).new_games(kind, 1, 0).unwrap();
             assert_ne!(board_of(&one[0]), board_of(&two[0]), "{:?}", kind);
         }
     }

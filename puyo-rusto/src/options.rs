@@ -1,6 +1,7 @@
 //! The match options Puyo Rusto offers on the main menu.
 
 use crate::game::ai::PuyoAiKind;
+use crate::game::cell::PuyoSkin;
 use crate::game::random::from_seed;
 use crate::game::rules::{
     AiDifficulty, AiMode, Difficulty, GameConfig, MatchRules, MatchThemes, MAX_START_LEVEL,
@@ -191,12 +192,17 @@ impl Options {
         true
     }
 
-    /// `count` games sharing one seed, so every player is dealt the same pairs
+    /// `count` games sharing one seed, so every player is dealt the same pairs - and a set of
+    /// puyos each, dealt from that same seed, so they are not dealt the same ones to look at
+    /// and no two matches look alike
     pub fn games(&self, count: usize) -> Vec<Game> {
         let difficulty = self.config.difficulty;
-        from_seed(Seed::random(), count, difficulty.colors())
+        let seed = Seed::random();
+        let skins = PuyoSkin::deal(seed, count);
+        from_seed(seed, count, difficulty.colors())
             .into_iter()
-            .map(|random| Game::new(difficulty, self.config.level, random))
+            .zip(skins)
+            .map(|(random, skin)| Game::new(difficulty, self.config.level, random, skin))
             .collect()
     }
 

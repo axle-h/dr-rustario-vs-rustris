@@ -6,9 +6,59 @@
 //! sprite concern rather than an engine one: the engine only compares `CellId`s, and a game
 //! may recompute them whenever it likes.
 
+use engine::game::random::Seed;
 use engine::game::{CellId, GameId, PieceId};
+use rand::seq::SliceRandom;
 
 pub const GAME_ID: GameId = engine::game::ids::PUYO;
+
+/// Which set of puyos a cell is drawn from.
+///
+/// The particle theme is cut from a rip that carries fifteen skins of the same puyos - see
+/// `puyo-rusto/art/rip.py` - and [`PuyoSkin::deal`] hands a different one to each player at
+/// the start of every match, so a session is not two boards of the same puyos and no two
+/// matches look alike either. The theme keys every one of the fifteen, so which a board gets
+/// is a decision the *game* makes when it is built rather than one the theme makes when it is,
+/// and a theme with only one set of art may key all fifteen at the same sprites.
+///
+/// It rides in the [`CellId`] for the same reason [`LinkMask`] does - the engine's sheet is
+/// keyed by cell id and nothing else, and a game may put whatever drawing information it
+/// likes in one. Nothing in the rules ever reads it: [`PuyoCell`] itself carries no skin, so
+/// two puyos of a colour are equal whoever is looking at them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
+pub struct PuyoSkin(u8);
+
+impl PuyoSkin {
+    /// how many sets of puyos there are, which is how many a theme's sheet has to key. The
+    /// sheet `puyo-rusto/art/rip.py` writes carries exactly this many, and a test in
+    /// [`crate::theme::modern`] holds it to that
+    pub const COUNT: usize = 15;
+
+    /// the set a board falls back on when nobody dealt it one, which is every test's and the
+    /// title screen's
+    pub const FIRST: PuyoSkin = PuyoSkin(0);
+
+    pub fn all() -> impl Iterator<Item = PuyoSkin> {
+        (0..PuyoSkin::COUNT as u8).map(PuyoSkin)
+    }
+
+    /// One set each for `players`, all different, drawn from the match's own seed.
+    ///
+    /// From the seed rather than the thread's randomness so that a playlist swapping one board
+    /// over mid-match deals that player the puyos they already had - and so that replaying a
+    /// seed looks like it did. It reads nothing any player's game is reading from: a
+    /// `GameRandom`'s pool is fixed when it is built, so this cannot put two players out of
+    /// step.
+    pub fn deal(seed: Seed, players: usize) -> Vec<PuyoSkin> {
+        let mut all: Vec<PuyoSkin> = PuyoSkin::all().collect();
+        all.shuffle(&mut seed.rng());
+        all.into_iter().cycle().take(players).collect()
+    }
+
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
 
 /// The colours a puyo can be. A match deals three, four or five of them - see
 /// [`crate::game::rules::Difficulty`] - but the set they are drawn from is always these five.
@@ -195,15 +245,26 @@ impl PuyoCell {
     }
 }
 
-// kind in bits 0-1, colour in 2-4, link mask in 5-8
-impl From<PuyoCell> for CellId {
-    fn from(cell: PuyoCell) -> Self {
-        let (kind, value, links) = match cell {
+// kind in bits 0-1, colour in 2-4, link mask in 5-8, skin in 9-12
+impl PuyoCell {
+    /// this cell as the engine's sheet keys it, drawn from `skin`'s sprites
+    ///
+    /// There is no `From<PuyoCell>` because there is no answer without a skin: a cell id that
+    /// forgot which board it was for would draw player two's puyos out of player one's set.
+    pub fn id(self, skin: PuyoSkin) -> CellId {
+        let (kind, value, links) = match self {
             PuyoCell::Puyo { color, links } => (KIND_PUYO, color as u16, links.bits() as u16),
             PuyoCell::Nuisance => (KIND_NUISANCE, 0, 0),
             PuyoCell::Tray(icon) => (KIND_TRAY, icon as u16, 0),
         };
-        CellId(kind | value << 2 | links << 5)
+        CellId(kind | value << 2 | links << 5 | (skin.0 as u16) << 9)
+    }
+}
+
+/// the slot a cell id was drawn for, which only the sheet that keyed it cares about
+impl From<CellId> for PuyoSkin {
+    fn from(CellId(id): CellId) -> Self {
+        PuyoSkin(((id >> 9) & 0b1111) as u8)
     }
 }
 
@@ -246,9 +307,21 @@ impl PuyoPiece {
     }
 }
 
-impl From<PuyoPiece> for PieceId {
-    fn from(piece: PuyoPiece) -> Self {
-        PieceId(piece.pivot as u16 | (piece.child as u16) << 3)
+// pivot in bits 0-2, child in 3-5, skin in 6-9
+impl PuyoPiece {
+    /// this pair as the engine's queue keys it, drawn from `skin`'s sprites
+    ///
+    /// The previews are composed from the cells rather than drawn again, so a pair carries
+    /// the slot for the same reason a cell does - otherwise a player would watch the other
+    /// player's puyos queue up over their own board.
+    pub fn id(self, skin: PuyoSkin) -> PieceId {
+        PieceId(self.pivot as u16 | (self.child as u16) << 3 | (skin.0 as u16) << 6)
+    }
+}
+
+impl From<PieceId> for PuyoSkin {
+    fn from(PieceId(id): PieceId) -> Self {
+        PuyoSkin(((id >> 6) & 0b1111) as u8)
     }
 }
 
@@ -278,36 +351,85 @@ mod tests {
             }
         }
         for cell in cells {
-            assert_eq!(PuyoCell::from(CellId::from(cell)), cell, "{cell:?}");
+            for skin in PuyoSkin::all() {
+                let id = cell.id(skin);
+                assert_eq!(PuyoCell::from(id), cell, "{cell:?}");
+                assert_eq!(PuyoSkin::from(id), skin, "{cell:?}");
+            }
         }
     }
 
-    /// ... and no two of them collide, or the board would draw one thing as another
+    /// ... and no two of them collide, or the board would draw one thing as another - and
+    /// that has to hold across the skins as well, since both players' sets share one sheet
     #[test]
     fn no_two_cells_share_an_id() {
         let mut seen = std::collections::HashSet::new();
-        for color in PuyoColor::iter() {
-            for bits in 0..LinkMask::COUNT as u8 {
-                assert!(seen.insert(CellId::from(PuyoCell::puyo(
-                    color,
-                    LinkMask::from_bits(bits)
-                ))));
+        for skin in PuyoSkin::all() {
+            for color in PuyoColor::iter() {
+                for bits in 0..LinkMask::COUNT as u8 {
+                    assert!(seen.insert(PuyoCell::puyo(color, LinkMask::from_bits(bits)).id(skin)));
+                }
+            }
+            assert!(seen.insert(PuyoCell::Nuisance.id(skin)));
+            for icon in NuisanceIcon::ALL {
+                assert!(seen.insert(PuyoCell::Tray(icon).id(skin)));
             }
         }
-        assert!(seen.insert(CellId::from(PuyoCell::Nuisance)));
-        for icon in NuisanceIcon::ALL {
-            assert!(seen.insert(CellId::from(PuyoCell::Tray(icon))));
-        }
-        // five colours by sixteen masks, plus nuisance and the three tray icons
-        assert_eq!(seen.len(), PuyoColor::N * LinkMask::COUNT + 4);
+        // five colours by sixteen masks, plus nuisance and the three tray icons, per skin
+        assert_eq!(
+            seen.len(),
+            PuyoSkin::COUNT * (PuyoColor::N * LinkMask::COUNT + 4)
+        );
     }
 
     #[test]
     fn a_pair_survives_the_round_trip() {
-        for piece in PuyoPiece::all() {
-            assert_eq!(PuyoPiece::from(PieceId::from(piece)), piece);
+        let mut seen = std::collections::HashSet::new();
+        for skin in PuyoSkin::all() {
+            for piece in PuyoPiece::all() {
+                let id = piece.id(skin);
+                assert_eq!(PuyoPiece::from(id), piece);
+                assert_eq!(PuyoSkin::from(id), skin);
+                assert!(seen.insert(id));
+            }
         }
         assert_eq!(PuyoPiece::all().len(), PuyoColor::N * PuyoColor::N);
+        assert_eq!(seen.len(), PuyoSkin::COUNT * PuyoColor::N * PuyoColor::N);
+    }
+
+    /// the whole point: two players are never dealt the same puyos, and two matches rarely
+    /// the same pair
+    #[test]
+    fn a_match_deals_every_player_a_different_set() {
+        let mut seen = std::collections::HashSet::new();
+        for seed in 0..200u64 {
+            let dealt = PuyoSkin::deal(Seed::from_u64(seed), 2);
+            assert_eq!(dealt.len(), 2);
+            assert_ne!(dealt[0], dealt[1], "seed {seed}");
+            assert!(dealt.iter().all(|s| s.index() < PuyoSkin::COUNT));
+            seen.insert(dealt);
+        }
+        // fifteen skins two at a time is 210 ordered pairs, so two hundred seeds landing on a
+        // handful of them would mean the shuffle is not shuffling
+        assert!(seen.len() > 100, "{} distinct deals", seen.len());
+    }
+
+    /// ... and one seed always deals the same, which is what lets a playlist hand a player
+    /// back the puyos they were already playing with
+    #[test]
+    fn one_seed_deals_the_same_set_every_time() {
+        let seed = Seed::from_u64(7);
+        assert_eq!(PuyoSkin::deal(seed, 2), PuyoSkin::deal(seed, 2));
+        // ... and asking for one player is asking for the first of the same deal
+        assert_eq!(PuyoSkin::deal(seed, 1)[0], PuyoSkin::deal(seed, 2)[0]);
+    }
+
+    /// more players than sets is not a thing this game can do, but wrapping beats panicking
+    #[test]
+    fn more_players_than_sets_wraps() {
+        let dealt = PuyoSkin::deal(Seed::from_u64(3), PuyoSkin::COUNT + 2);
+        assert_eq!(dealt.len(), PuyoSkin::COUNT + 2);
+        assert_eq!(dealt[0], dealt[PuyoSkin::COUNT]);
     }
 
     #[test]

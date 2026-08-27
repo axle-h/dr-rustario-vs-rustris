@@ -20,7 +20,7 @@
 //! is what stops a player shuffling a pair about up in the ghost rows.
 
 use crate::game::board::{self, Board};
-use crate::game::cell::{PuyoCell, PuyoColor, PuyoPiece};
+use crate::game::cell::{PuyoCell, PuyoColor, PuyoPiece, PuyoSkin};
 use engine::game::geometry::{Point, Rotation};
 use engine::game::PlacedCell;
 
@@ -88,12 +88,12 @@ impl Pair {
         [self.pivot, self.child()]
     }
 
-    /// the two halves and their colours, pivot first. They always draw **unlinked**: a pair
-    /// joins to what it lands next to on lock, never before.
-    pub fn cells(&self) -> Vec<PlacedCell> {
+    /// the two halves and their colours, pivot first, out of `skin`'s sprites. They always
+    /// draw **unlinked**: a pair joins to what it lands next to on lock, never before.
+    pub fn cells(&self, skin: PuyoSkin) -> Vec<PlacedCell> {
         vec![
-            (self.pivot, PuyoCell::loose(self.piece.pivot).into()),
-            (self.child(), PuyoCell::loose(self.piece.child).into()),
+            (self.pivot, PuyoCell::loose(self.piece.pivot).id(skin)),
+            (self.child(), PuyoCell::loose(self.piece.child).id(skin)),
         ]
     }
 
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn the_child_orbits_the_pivot_clockwise_on_screen() {
-        let empty = Board::new();
+        let empty = Board::new(PuyoSkin::FIRST);
         let mut pair = pair_at(2, 5);
         // up, right, down, left is clockwise when y grows downwards
         for expected in [
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn a_pair_slides_sideways_until_it_meets_a_wall() {
-        let empty = Board::new();
+        let empty = Board::new(PuyoSkin::FIRST);
         let mut pair = pair_at(0, 5);
         assert!(!pair.shift(&empty, -1), "the left wall stops it");
         assert!(pair.shift(&empty, 1));
@@ -299,7 +299,7 @@ mod tests {
     /// rotating a puyo down into the floor pushes the whole pair up
     #[test]
     fn a_floor_kick_pushes_the_pair_up() {
-        let empty = Board::new();
+        let empty = Board::new(PuyoSkin::FIRST);
         let mut pair = pair_at(2, ROWS as i32 - 1);
         assert!(pair.is_resting(&empty));
         // North -> East is free, East -> South would put the child under the floor
@@ -313,7 +313,7 @@ mod tests {
     /// ... and rotating into a wall pushes it sideways
     #[test]
     fn a_wall_kick_pushes_the_pair_off_the_wall() {
-        let empty = Board::new();
+        let empty = Board::new(PuyoSkin::FIRST);
         let mut pair = pair_at(5, 5);
         assert_eq!(pair.rotate(&empty, true), RotateOutcome::Kicked);
         assert_eq!(pair.rotation(), Rotation::East);
@@ -330,7 +330,7 @@ mod tests {
     /// a puyo in the way kicks exactly as a wall does
     #[test]
     fn a_stack_kicks_the_pair_the_same_way_a_wall_does() {
-        let mut wall = Board::new();
+        let mut wall = Board::new(PuyoSkin::FIRST);
         for y in 0..ROWS as i32 {
             wall.set(Point::new(3, y), Some(PuyoCell::loose(PuyoColor::Green)));
         }
@@ -345,7 +345,7 @@ mod tests {
     /// swap cells rather than the pair moving anywhere.
     #[test]
     fn a_wedged_pair_quick_turns_on_the_second_press() {
-        let mut wedge = Board::new();
+        let mut wedge = Board::new(PuyoSkin::FIRST);
         for y in 0..ROWS as i32 {
             wedge.set(Point::new(1, y), Some(PuyoCell::loose(PuyoColor::Green)));
             wedge.set(Point::new(3, y), Some(PuyoCell::loose(PuyoColor::Green)));
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn a_quick_turn_never_moves_the_pair_off_the_cells_it_holds() {
         // boxed in on all four sides: left, right, above and below
-        let mut boxed_in = Board::new();
+        let mut boxed_in = Board::new(PuyoSkin::FIRST);
         for y in 0..ROWS as i32 {
             boxed_in.set(Point::new(1, y), Some(PuyoCell::loose(PuyoColor::Green)));
             boxed_in.set(Point::new(3, y), Some(PuyoCell::loose(PuyoColor::Green)));
@@ -407,7 +407,7 @@ mod tests {
     /// a quick turn against the floor lifts the pair, the way a floor kick does
     #[test]
     fn a_quick_turn_on_the_floor_lifts_the_pair() {
-        let mut wedge = Board::new();
+        let mut wedge = Board::new(PuyoSkin::FIRST);
         for y in 0..ROWS as i32 {
             wedge.set(Point::new(1, y), Some(PuyoCell::loose(PuyoColor::Green)));
             wedge.set(Point::new(3, y), Some(PuyoCell::loose(PuyoColor::Green)));
@@ -424,7 +424,7 @@ mod tests {
     /// press can never flip a pair by surprise.
     #[test]
     fn a_quick_turn_spends_its_arming() {
-        let mut wedge = Board::new();
+        let mut wedge = Board::new(PuyoSkin::FIRST);
         for y in 0..ROWS as i32 {
             wedge.set(Point::new(1, y), Some(PuyoCell::loose(PuyoColor::Green)));
             wedge.set(Point::new(3, y), Some(PuyoCell::loose(PuyoColor::Green)));
@@ -445,7 +445,7 @@ mod tests {
     /// back needs two fresh presses
     #[test]
     fn turning_freely_disarms_the_quick_turn() {
-        let mut wall = Board::new();
+        let mut wall = Board::new(PuyoSkin::FIRST);
         for y in 0..ROWS as i32 {
             wall.set(Point::new(3, y), Some(PuyoCell::loose(PuyoColor::Green)));
         }
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn locking_lays_both_halves_down_where_they_are() {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         let pair = pair_at(2, 5);
         pair.lock(&mut board);
         assert_eq!(
@@ -506,17 +506,16 @@ mod tests {
     #[test]
     fn a_pair_always_draws_unjoined() {
         use crate::game::cell::LinkMask;
-        use engine::game::CellId;
         let board = board(&["rrrr.."]);
         let mut pair = pair_at(0, ROWS as i32 - 2);
         pair.rotate(&board, true);
         // resting right on top of a row of matching reds, and still joined to nothing
-        for (_, id) in pair.cells() {
+        for (_, id) in pair.cells(PuyoSkin::FIRST) {
             assert_eq!(PuyoCell::from(id).links(), LinkMask::NONE);
         }
         assert_eq!(
-            pair.cells()[0].1,
-            CellId::from(PuyoCell::loose(PuyoColor::Red))
+            pair.cells(PuyoSkin::FIRST)[0].1,
+            PuyoCell::loose(PuyoColor::Red).id(PuyoSkin::FIRST)
         );
     }
 
@@ -532,7 +531,7 @@ mod tests {
     /// pushing the pair anywhere - so the player gets no free shove out of it either.
     #[test]
     fn there_is_a_ceiling_above_the_ghost_row() {
-        let empty = Board::new();
+        let empty = Board::new(PuyoSkin::FIRST);
         // a pair lying in the ghost row, child to its right
         let mut pair = pair_at(2, 0);
         assert_eq!(pair.rotate(&empty, true), RotateOutcome::Turned);
@@ -551,7 +550,7 @@ mod tests {
     #[test]
     fn a_pair_in_the_ghost_row_is_refused_an_upright_rotation_either_way() {
         // the ghost row is free but everything below it is not
-        let mut full = Board::new();
+        let mut full = Board::new(PuyoSkin::FIRST);
         for x in 0..COLUMNS as i32 {
             for y in 1..ROWS as i32 {
                 full.set(Point::new(x, y), Some(PuyoCell::loose(PuyoColor::Green)));
@@ -572,7 +571,7 @@ mod tests {
     /// a pair one row lower is an ordinary pair again, and kicks as one
     #[test]
     fn the_row_below_the_ghost_row_still_kicks_normally() {
-        let mut full = Board::new();
+        let mut full = Board::new(PuyoSkin::FIRST);
         for x in 0..COLUMNS as i32 {
             for y in 2..ROWS as i32 {
                 full.set(Point::new(x, y), Some(PuyoCell::loose(PuyoColor::Green)));
@@ -628,7 +627,7 @@ mod tests {
     /// the arming is the pair's own, and survives being nudged about between presses
     #[test]
     fn the_quick_turn_arming_survives_moving_and_falling() {
-        let mut wedge = Board::new();
+        let mut wedge = Board::new(PuyoSkin::FIRST);
         for y in 0..ROWS as i32 {
             wedge.set(Point::new(1, y), Some(PuyoCell::loose(PuyoColor::Green)));
             wedge.set(Point::new(3, y), Some(PuyoCell::loose(PuyoColor::Green)));

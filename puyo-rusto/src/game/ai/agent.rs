@@ -119,6 +119,7 @@ mod tests {
             Difficulty::Normal,
             0,
             GameRandom::from_seed(Seed::from_u64(7), Difficulty::Normal.colors()),
+            crate::game::cell::PuyoSkin::FIRST,
         )
     }
 

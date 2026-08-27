@@ -4,10 +4,10 @@
 //! That top row is the game's hidden thirteenth, and it is not merely invisible - see
 //! [`is_ghost`].
 
-use crate::game::cell::{LinkMask, PuyoCell};
+use crate::game::cell::{LinkMask, PuyoCell, PuyoSkin};
 use crate::game::score::{PoppedGroup, PUYOS_TO_POP};
 use engine::game::geometry::Point;
-use engine::game::{CellId, PlacedCell};
+use engine::game::PlacedCell;
 
 pub const COLUMNS: u32 = 6;
 /// the twelve rows a player can see
@@ -78,18 +78,23 @@ impl ChainStep {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Board {
     cells: [Option<PuyoCell>; CELLS],
+    /// which of the theme's sprite sets this board's cells are drawn from - see
+    /// [`PuyoSkin`]. The board never reads it; it only stamps it on every [`CellId`] it
+    /// hands out, since a board belongs to one player and a sheet carries both
+    skin: PuyoSkin,
 }
 
 impl Default for Board {
     fn default() -> Self {
-        Self::new()
+        Self::new(PuyoSkin::FIRST)
     }
 }
 
 impl Board {
-    pub fn new() -> Self {
+    pub fn new(skin: PuyoSkin) -> Self {
         Self {
             cells: [None; CELLS],
+            skin,
         }
     }
 
@@ -291,7 +296,7 @@ impl Board {
 
         for point in going {
             if let Some(cell) = self.get(point) {
-                step.cells.push((point, CellId::from(cell)));
+                step.cells.push((point, cell.id(self.skin)));
             }
             self.set(point, None);
         }
@@ -343,7 +348,7 @@ impl Board {
     pub fn placed_cells(&self) -> Vec<PlacedCell> {
         (0..ROWS as i32)
             .flat_map(|y| (0..COLUMNS as i32).map(move |x| Point::new(x, y)))
-            .filter_map(|point| self.get(point).map(|cell| (point, CellId::from(cell))))
+            .filter_map(|point| self.get(point).map(|cell| (point, cell.id(self.skin))))
             .collect()
     }
 }
@@ -359,7 +364,7 @@ pub mod tests {
     /// board are padded, and the whole thing is bottom-aligned, so a test only writes the
     /// stack it cares about.
     pub fn board(rows: &[&str]) -> Board {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         let top = ROWS as i32 - rows.len() as i32;
         for (j, row) in rows.iter().enumerate() {
             for (i, c) in row.chars().enumerate() {
@@ -384,7 +389,7 @@ pub mod tests {
 
     /// like [`board`], but written from the top of the field down rather than bottom-aligned
     pub fn board_rows(rows: &[&str]) -> Board {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         for (j, row) in rows.iter().enumerate() {
             for (i, c) in row.chars().enumerate() {
                 if let Some(cell) = parse(c) {
@@ -542,7 +547,7 @@ pub mod tests {
 
     #[test]
     fn settling_compacts_each_column_independently() {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         board.set(Point::new(0, 0), Some(PuyoCell::loose(PuyoColor::Red)));
         board.set(Point::new(3, 5), Some(PuyoCell::Nuisance));
         assert!(board.settle());
@@ -565,7 +570,7 @@ pub mod tests {
 
     #[test]
     fn a_full_column_takes_nothing_more() {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         for _ in 0..ROWS {
             assert!(board.drop_into(0, PuyoCell::Nuisance).is_some());
         }
@@ -631,7 +636,7 @@ pub mod tests {
     /// ... and after a settle, on both sides of the move
     #[test]
     fn links_are_recomputed_after_a_settle() {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         let floor = ROWS as i32 - 1;
         // a red resting on the floor and another floating two above it
         board.set(Point::new(0, floor), Some(PuyoCell::loose(PuyoColor::Red)));
@@ -652,7 +657,7 @@ pub mod tests {
 
     #[test]
     fn the_death_square_ends_it_only_once_something_rests_there() {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         assert!(!board.is_dead());
         board.set(DEATH_SQUARE, Some(PuyoCell::loose(PuyoColor::Red)));
         assert!(board.is_dead());
@@ -666,7 +671,7 @@ pub mod tests {
     /// but the two are different squares and the game must not read the wrong one.
     #[test]
     fn the_ghost_row_above_the_death_square_is_not_the_death_square() {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         board.set(
             Point::new(DEATH_SQUARE.x, 0),
             Some(PuyoCell::loose(PuyoColor::Red)),
@@ -679,7 +684,7 @@ pub mod tests {
     /// a full column that is *not* the third does not end the game
     #[test]
     fn filling_another_column_to_the_top_is_survivable() {
-        let mut board = Board::new();
+        let mut board = Board::new(PuyoSkin::FIRST);
         for _ in 0..ROWS {
             board.drop_into(0, PuyoCell::Nuisance);
         }
@@ -774,7 +779,7 @@ pub mod tests {
     fn there_is_nothing_above_the_ghost_row() {
         for x in 0..COLUMNS as i32 {
             assert!(!Board::in_bounds(Point::new(x, -1)));
-            assert!(!Board::new().is_free(Point::new(x, -1)));
+            assert!(!Board::new(PuyoSkin::FIRST).is_free(Point::new(x, -1)));
         }
     }
 

@@ -33,6 +33,25 @@ impl BlockMask {
         Ok(Self::from_pixels(&pixels, rect.width(), rect.height()))
     }
 
+    /// One cell cut out of a whole texture's pixels, so a sheet reads itself back once rather
+    /// than once per cell - see `BlockSpriteSheet::new`, which has twelve hundred of them to
+    /// mask on Puyo Rusto's particle theme and would otherwise stall the pipeline that often.
+    pub fn from_region(pixels: &[u8], texture_width: u32, rect: Rect) -> Self {
+        let (width, height) = (rect.width(), rect.height());
+        let mut mask = Vec::with_capacity((width * height) as usize);
+        for y in rect.y()..rect.bottom() {
+            for x in rect.x()..rect.right() {
+                let at = 4 * (y as usize * texture_width as usize + x as usize) + ALPHA_BYTE;
+                mask.push(pixels.get(at).is_some_and(|a| *a > BASE_TRANSPARENCY));
+            }
+        }
+        Self {
+            width,
+            height,
+            mask,
+        }
+    }
+
     /// `pixels` is `ARGB8888`, which SDL packs into a 32-bit word and then writes out in the
     /// machine's byte order, so the alpha byte is the last of the four here rather than the
     /// first. Reading the first byte instead reads *blue*, which quietly masks out every

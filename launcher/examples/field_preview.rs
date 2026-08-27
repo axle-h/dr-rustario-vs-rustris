@@ -100,9 +100,24 @@ fn main() -> Result<(), String> {
     };
 
     if sheet {
-        // every sprite of every theme, outlined and labelled with what the bank made of it,
-        // in one png: the only way to eyeball the edge detection itself
+        // every sprite of every theme, outlined and labelled with what the bank made of it:
+        // the only way to eyeball the edge detection itself. One png per theme, since Puyo
+        // Rusto's fifteen sets of puyos are 375 previews on their own and every theme on one
+        // page runs past what a texture may be
         let out = args.get(2).cloned().unwrap_or("sheet.png".to_string());
+        let page_path = |title: &str| {
+            let slug: String = title
+                .split(':')
+                .next()
+                .unwrap_or(title)
+                .chars()
+                .map(|c| if c.is_alphanumeric() { c } else { '-' })
+                .collect();
+            match out.rsplit_once('.') {
+                Some((stem, ext)) => format!("{stem}-{slug}.{ext}"),
+                None => format!("{out}-{slug}"),
+            }
+        };
         let font = FontRender::from_font(
             &mut canvas,
             &texture_creator,
@@ -147,20 +162,17 @@ fn main() -> Result<(), String> {
             ));
         }
         let width = COLS as u32 * CELL;
-        let height: u32 = pages
-            .iter()
-            .map(|(_, audited)| HEADER + audited.len().div_ceil(COLS) as u32 * (CELL + LABEL))
-            .sum();
-        let mut target = texture_creator
-            .create_texture_target(PixelFormatEnum::RGBA8888, width, height)
-            .map_err(|e| e.to_string())?;
-        let mut pixels = vec![];
-        canvas
-            .with_texture_canvas(&mut target, |c| {
-                c.set_draw_color(Color::RGB(0x10, 0x10, 0x14));
-                c.clear();
-                let mut top = 0i32;
-                for (title, audited) in pages.iter() {
+        for (title, audited) in pages.iter() {
+            let height = HEADER + audited.len().div_ceil(COLS) as u32 * (CELL + LABEL);
+            let mut target = texture_creator
+                .create_texture_target(PixelFormatEnum::RGBA8888, width, height)
+                .map_err(|e| e.to_string())?;
+            let mut pixels = vec![];
+            canvas
+                .with_texture_canvas(&mut target, |c| {
+                    c.set_draw_color(Color::RGB(0x10, 0x10, 0x14));
+                    c.clear();
+                    let top = 0i32;
                     c.set_draw_color(Color::RGB(0x20, 0x20, 0x30));
                     c.fill_rect(Rect::new(0, top, width, HEADER)).unwrap();
                     font.render_string(c, sdl2::rect::Point::new(8, top + 8), title)
@@ -196,17 +208,16 @@ fn main() -> Result<(), String> {
                         )
                         .unwrap();
                     }
-                    top +=
-                        HEADER as i32 + audited.len().div_ceil(COLS) as i32 * (CELL + LABEL) as i32;
-                }
-                pixels = c
-                    .read_pixels(Rect::new(0, 0, width, height), PixelFormatEnum::ABGR8888)
-                    .unwrap();
-            })
-            .map_err(|e| e.to_string())?;
-        image::save_buffer(&out, &pixels, width, height, image::ColorType::Rgba8)
-            .map_err(|e| e.to_string())?;
-        println!("wrote {out}: {width}x{height}");
+                    pixels = c
+                        .read_pixels(Rect::new(0, 0, width, height), PixelFormatEnum::ABGR8888)
+                        .unwrap();
+                })
+                .map_err(|e| e.to_string())?;
+            let path = page_path(title);
+            image::save_buffer(&path, &pixels, width, height, image::ColorType::Rgba8)
+                .map_err(|e| e.to_string())?;
+            println!("wrote {path}: {width}x{height}");
+        }
         return Ok(());
     }
 
