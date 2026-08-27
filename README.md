@@ -398,11 +398,16 @@ binary.
 apart, and from random weights it cannot: 20 of 24 random genomes clear no virus at all, so the
 fitness meant to rank them is zero for most of the population. So the network is taught first,
 by gradient descent, to reproduce what the deterministic ai thought of every placement it was
-offered over ten thousand pills. Four networks are taught and the one that *plays* best is kept
-- how well a clone reproduces the ai and how well it plays are not the same measure, and where a
-network starts moves the second far more than the first. A taught model clears around 2500
-viruses over five whole games where a random one clears none, and stage two's first generation
-opens at 800 viruses instead of 2.
+offered over ten thousand pills.
+
+It keeps teaching until one of them plays 1500 viruses over five whole games, because how well a
+clone reproduces the ai and how well it *plays* are not the same measure: four clones of one
+corpus agreed with it on 53% to 56% of pills and played anywhere between 291 and 2526 viruses.
+Only the initial weights are drawn again - the corpus is deterministic, and re-gathering it
+would only cost time. About half of all clones clear the bar, so it rarely takes more than two
+or three; if 25 of them cannot, it says so and goes on with the best. A taught model clears
+around 2500 viruses over five whole games where a random one clears none, and stage two's first
+generation opens at 800 viruses instead of 2.
 
 **Stage two** is the one that used to be all of training. It plays the game and counts viruses,
 with no pill budget and no reward for speed, so it trains purely for staying alive. Seeded from
@@ -421,7 +426,7 @@ Every stage can also be run on its own:
 
 ```shell
 ga dr auto                                  # all three, which is a training run
-ga dr pretrain [pills]                      # stage one alone, printing the weights it learned
+ga dr pretrain [pills] [threshold]          # stage one alone, printing the weights it learned
 ga dr survive                               # stage two alone, from random weights
 ga dr tune                                  # stages two and three, from the embedded model
 ga dr trial [population] [generations] [stage]   # a short bounded run that trains nothing
@@ -454,10 +459,11 @@ statistics, in the working directory.
 **The knobs**, all constants at the top of
 [dr-rustario/src/game/ai/genetic.rs](dr-rustario/src/game/ai/genetic.rs) and
 [imitation.rs](dr-rustario/src/game/ai/imitation.rs): `LESSON_PILLS` (how many pills stage one
-learns from), `PRETRAIN_CLONES` (how many networks it teaches before keeping the best player),
-`PILL_BUDGET` and `EFFICIENCY_GENERATIONS` (stage three), `TOP_TRAINING_LEVEL` (the last bottle
-a training game plays) and `VERIFY_SEEDS` (how many unseen games a model has to clear to be
-believed). The population is `HyperParameters::default()`, a thousand.
+learns from), `TAUGHT_ENOUGH` and `PRETRAIN_ATTEMPTS` (how well a taught network has to play
+before stage two starts from it, and how many tries it gets), `PILL_BUDGET` and
+`EFFICIENCY_GENERATIONS` (stage three), `TOP_TRAINING_LEVEL` (the last bottle a training game
+plays) and `VERIFY_SEEDS` (how many unseen games a model has to clear to be believed). The
+population is `HyperParameters::default()`, a thousand.
 
 ### Dr. Rustario vs. Rustris
 

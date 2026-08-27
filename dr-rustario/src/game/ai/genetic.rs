@@ -4,9 +4,11 @@
 //! `ga dr auto` runs three stages, in order, each one starting from what the last left behind:
 //!
 //! 1. **Imitation** ([`crate::game::ai::imitation`]). A network is taught by gradient descent
-//!    to rank placements the way the deterministic ai ranks them. No game is played and nothing
-//!    is scored; this exists because a genetic algorithm cannot select between members that all
-//!    score zero, and from random weights almost all of them do.
+//!    to rank placements the way the deterministic ai ranks them. This exists because a genetic
+//!    algorithm cannot select between members that all score zero, and from random weights
+//!    almost all of them do. Networks are taught until one of them plays [`TAUGHT_ENOUGH`]
+//!    viruses, since where a network starts moves how well it plays far more than it moves how
+//!    well it agrees with its teacher.
 //! 2. **Survival**. Candidates play the game itself, starting on the first bottle, clearing it,
 //!    moving on to the next, and are scored on the viruses they took out before they were
 //!    buried. There is no pill budget and nothing rewards speed - a model may take as long as
@@ -55,8 +57,14 @@ const EFFICIENCY_GENERATIONS: usize = 150;
 /// thing rather than producing a model
 const TRIAL_LESSON_PILLS: usize = 3000;
 
-/// how many networks stage one teaches before keeping the one that plays best
-const PRETRAIN_CLONES: u64 = 4;
+/// How well a taught network has to play before stage two starts from it, counted in viruses
+/// over [`VERIFY_SEEDS`] whole games from the first bottle. Where a network starts moves this
+/// about far more than it moves how well the network agrees with the ai, so stage one keeps
+/// teaching until one of them clears the bar rather than taking whatever the first few give.
+const TAUGHT_ENOUGH: u32 = 1500;
+
+/// how many networks stage one will teach before it settles for the best of a bad lot
+const PRETRAIN_ATTEMPTS: u64 = 25;
 
 struct NeuralFitness {
     fixture: HeadlessGameFixture,
@@ -202,36 +210,48 @@ fn survive(mut population_seed: Option<DrNeuralGenome>) -> DrNeuralGenome {
     }
 }
 
-/// `ga dr pretrain`: stage one on its own. Teaches a network from the deterministic ai, reports
+/// `ga dr pretrain [pills] [threshold]`: stage one on its own. Teaches networks from the
+/// deterministic ai until one plays `threshold` viruses over the verification games, reports
 /// how well it learned and how it plays, and prints the weights.
 pub fn ga_main_pretrain(args: &[String]) -> Result<(), String> {
     let pills: usize = args
         .first()
         .and_then(|s| s.parse().ok())
         .unwrap_or(imitation::LESSON_PILLS);
-    let genome = pretrain(pills);
+    let threshold: u32 = args
+        .get(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(TAUGHT_ENOUGH);
+    let genome = pretrain(pills, threshold);
     print_weights("the taught network", genome);
     Ok(())
 }
 
-/// Stage one. Gather the lessons once and learn them several times over, keeping whichever
-/// network plays best: how well a clone reproduces the ai and how well it plays are not the
-/// same measure, and where a network starts moves the second one about far more than the first.
-fn pretrain(pills: usize) -> DrNeuralGenome {
+/// Stage one. Gather the lessons once and learn them over and over, keeping teaching until one
+/// of the networks plays well enough to be worth handing on.
+///
+/// How well a clone reproduces the ai and how well it *plays* are not the same measure, and
+/// where a network starts moves the second far more than the first: four clones of one corpus
+/// agreed with the ai on 53% to 56% of pills and played anywhere between 291 and 2526 viruses.
+/// So the corpus is gathered once - it is deterministic, and re-gathering it would only cost
+/// time - and only the initial weights are drawn again.
+fn pretrain(pills: usize, threshold: u32) -> DrNeuralGenome {
     println!(
         "gathering lessons from the deterministic ai ({} pills)",
         pills
     );
     let corpus = imitation::lessons(pills);
     println!(
-        "teaching {} networks to rank them, {} passes over {} pills apiece",
-        PRETRAIN_CLONES,
+        "teaching networks to rank them, {} passes over {} pills apiece, until one plays {} \
+         viruses over {} whole games",
         imitation::EPOCHS,
-        corpus.len()
+        corpus.len(),
+        threshold,
+        VERIFY_SEEDS
     );
 
     let mut best: Option<(u32, DrNeuralGenome)> = None;
-    for clone in 0..PRETRAIN_CLONES {
+    for clone in 0..PRETRAIN_ATTEMPTS {
         let network = imitation::teach(&corpus, imitation::EPOCHS, clone);
         let report = imitation::measure(&corpus, &network);
         let genome: DrNeuralGenome = network.into();
@@ -250,9 +270,19 @@ fn pretrain(pills: usize) -> DrNeuralGenome {
         if best.is_none_or(|(most, _)| viruses > most) {
             best = Some((viruses, genome));
         }
+        if viruses >= threshold {
+            break;
+        }
     }
 
-    let (_, genome) = best.expect("no clone was taught");
+    let (viruses, genome) = best.expect("no clone was taught");
+    if viruses < threshold {
+        println!(
+            "none of {} clones reached {} viruses; going on with the best of them, which is \
+             a worse start than stage two should be given",
+            PRETRAIN_ATTEMPTS, threshold
+        );
+    }
     report_play("the taught model", genome);
     genome
 }
@@ -309,7 +339,7 @@ fn verify_results(genome: DrNeuralGenome) -> Vec<GameResult> {
 /// Every stage in order, which is what a training run is.
 pub fn ga_main_auto() -> Result<(), String> {
     println!("== stage one: learning to play from the deterministic ai ==");
-    let taught = pretrain(imitation::LESSON_PILLS);
+    let taught = pretrain(imitation::LESSON_PILLS, TAUGHT_ENOUGH);
 
     println!("\n== stage two: surviving the whole game ==");
     let survivor = survive(Some(taught));
@@ -373,7 +403,7 @@ pub fn ga_main_trial(args: &[String]) -> Result<(), String> {
 
     let seed = match stage {
         "scratch" => None,
-        "taught" | "efficiency" => Some(pretrain(TRIAL_LESSON_PILLS)),
+        "taught" | "efficiency" => Some(pretrain(TRIAL_LESSON_PILLS, TAUGHT_ENOUGH)),
         other => return Err(format!("unknown trial stage '{}'", other)),
     };
     let mut phase = match stage {
