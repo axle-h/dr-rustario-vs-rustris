@@ -121,59 +121,226 @@ def cut(source, skin, row, col):
 # pixel of shading that happens to differ from the unlinked puyo
 MIN_NECK = 8
 
+# the alpha a pixel needs before it is the puyo rather than the antialiasing around it. A
+# neck is run out to its cell's edge by repeating its last line, and repeating a half
+# transparent one only draws the seam a shade lighter than leaving it there
+SOLID = 200
 
-def neck(tile, plain):
-    """which pixels of `tile` are the necks its links added, against the same puyo unlinked"""
-    return (tile[:, :, 3] > 40) & ~(plain[:, :, 3] > 40)
+
+def body(plain):
+    """the box the unlinked puyo fills, which is what every neck lies outside of"""
+    solid = plain[:, :, 3] >= SOLID
+    rows = np.nonzero(solid.sum(axis=1) >= MIN_NECK)[0]
+    columns = np.nonzero(solid.sum(axis=0) >= MIN_NECK)[0]
+    return rows[0], rows[-1], columns[0], columns[-1]
 
 
-def stretch(tile, mask, direction):
-    """Run a neck out to the edge of its cell.
+def margin(box, direction):
+    """the lines of the cell on one side of the puyo, which is where that neck can be"""
+    top, bottom, left, right = box
+    if direction == UP:
+        return range(0, top)
+    if direction == DOWN:
+        return range(bottom + 1, SRC_BLOCK)
+    if direction == LEFT:
+        return range(0, left)
+    return range(right + 1, SRC_BLOCK)
+
+
+def side(box, direction):
+    """that margin as the part of the cell it covers, corners excepted"""
+    top, bottom, left, right = box
+    lines = margin(box, direction)
+    band = slice(lines.start, lines.stop)
+    return (
+        (band, slice(left, right + 1))
+        if direction in (UP, DOWN)
+        else (slice(top, bottom + 1), band)
+    )
+
+
+def corner(box, vertical, horizontal):
+    """the square of the cell that is outside two of the puyo's sides at once"""
+    rows, columns = margin(box, vertical), margin(box, horizontal)
+    return slice(rows.start, rows.stop), slice(columns.start, columns.stop)
+
+
+def neck(tile, plain, box, direction):
+    """the neck one link added to `tile`, and which of its lines are wide enough to be one
+
+    By *difference*, the linked tile against the same puyo unlinked - one skin wears
+    antennae on the same line as its upward neck, and repeating those paints a band of
+    antenna up the cell - and only within the margin that side's neck can be in. That
+    second half is the part this used to get wrong: a tile joined on three sides carries
+    three necks, and reading the outermost line of all of them at once hands one direction
+    another's line. Skin 2's brick joined up, down and right was drawn with no downward neck
+    at all, so running what it found - the *upward* one - down the cell flooded the tile.
+
+    The mask is every pixel of the neck including the soft edge it stops at, so that edge is
+    carried out with the rest of the line; which line to carry is read off the solid part.
+    """
+    solid = (tile[:, :, 3] >= SOLID) & ~(plain[:, :, 3] >= SOLID)
+    counts = solid.sum(axis=1) if direction in (UP, DOWN) else solid.sum(axis=0)
+    lines = [line for line in margin(box, direction) if counts[line] >= MIN_NECK]
+    return (tile[:, :, 3] > 0) & ~(plain[:, :, 3] > 40), lines
+
+
+def trim(tile, plain, box, links):
+    """put every side this puyo is not joined on back to the unlinked puyo's
+
+    The rip's cells are not quite its grid: an upward neck starts a pixel *above* its own
+    cell and lands in the bottom row of the one above it on the sheet, which draws a line of
+    the wrong colour under a puyo joined to nothing below. Restoring the margin rather than
+    clearing it keeps the puyo's own soft edge, which the skin with antennae has out there.
+    A corner goes back only when neither of the two sides it lies between is joined, since a
+    neck of either may reach into it.
+    """
+    for direction in (UP, DOWN, LEFT, RIGHT):
+        if not links & direction:
+            region = side(box, direction)
+            tile[region] = plain[region]
+    for vertical in (UP, DOWN):
+        for horizontal in (LEFT, RIGHT):
+            if not links & (vertical | horizontal):
+                region = corner(box, vertical, horizontal)
+                tile[region] = plain[region]
+
+
+def borrow(tile, donor, box, direction):
+    """take a neck the rip drew on one variant and left off another
+
+    A neck is the same shape whatever else the puyo is joined to, so one missing from a
+    variant can be had from the variant that is joined that way and nothing else. Skin 2 is
+    the one that needs it: its brick joined up, down and right was drawn without the
+    downward neck the same brick joined up and down has.
+    """
+    lines = margin(box, direction)
+    if not lines:
+        return
+    band = slice(lines.start, lines.stop)
+    here, theirs = (
+        (tile[band], donor[band])
+        if direction in (UP, DOWN)
+        else (tile[:, band], donor[:, band])
+    )
+    take = (theirs[:, :, 3] > 0) & (here[:, :, 3] == 0)
+    here[take] = theirs[take]
+
+
+def graft(tile, box, direction, shape):
+    """run the puyo's own edge out where the rip drew no neck at all
+
+    The sheet has no room above its top row for an upward neck, so the first colour of every
+    skin is cut without one - and unlike skin 2's missing downward neck there is no variant
+    to borrow it from, since no red puyo on the sheet has one. The skin's other colours say
+    where the neck goes and how wide it is; what it is made of is this puyo's own outermost
+    line, which is the line a neck continues. `shape` is empty for a skin that draws no such
+    neck in any colour, and that one is left with the gap it was drawn with.
+    """
+    top, bottom, left, right = box
+    if not shape.any():
+        return
+    if direction == UP:
+        tile[:top, shape] = tile[top, shape]
+    elif direction == DOWN:
+        tile[bottom + 1 :, shape] = tile[bottom, shape]
+    elif direction == LEFT:
+        tile[shape, :left] = tile[shape, left][:, None]
+    else:
+        tile[shape, right + 1 :] = tile[shape, right][:, None]
+
+
+def stretch(tile, mask, direction, at):
+    """run one line of a neck out to the edge of its cell
 
     A neck is a prism, so its last line is exactly what is missing between where the art
     stops and where the cell ends - and the rip has necks stopping anywhere from one to
     eight pixels short, because its skins were drawn on their own pitches and laid out on a
-    common 72 pixel grid. Only the line's *neck* pixels are carried out: a skin whose puyo
-    wears antennae has them on the same line, and repeating those would draw a band of them
-    up the cell.
+    common 72 pixel grid.
     """
-    lines = mask.any(axis=1) if direction in (UP, DOWN) else mask.any(axis=0)
-    wide = np.nonzero(
-        (mask.sum(axis=1) if direction in (UP, DOWN) else mask.sum(axis=0)) >= MIN_NECK
-    )[0]
-    if not lines.any() or not len(wide):
-        return
-    if direction == DOWN and wide[-1] < SRC_BLOCK - 1:
-        at = wide[-1]
+    if direction == DOWN:
         tile[at + 1 :, mask[at]] = tile[at, mask[at]]
-    elif direction == UP and wide[0] > 0:
-        at = wide[0]
-        tile[: at, mask[at]] = tile[at, mask[at]]
-    elif direction == RIGHT and wide[-1] < SRC_BLOCK - 1:
-        at = wide[-1]
+    elif direction == UP:
+        tile[:at, mask[at]] = tile[at, mask[at]]
+    elif direction == RIGHT:
         tile[mask[:, at], at + 1 :] = tile[mask[:, at], at][:, None]
-    elif direction == LEFT and wide[0] > 0:
-        at = wide[0]
-        tile[mask[:, at], : at] = tile[mask[:, at], at][:, None]
+    else:
+        tile[mask[:, at], :at] = tile[mask[:, at], at][:, None]
 
 
-def repair(tile, plain, links):
-    """the two places the rip does not line up on its own grid
+def close(tile, box, links):
+    """fill the notch where two necks meet
 
-    * A neck that stops short of its cell draws a seam between two puyos that are supposed
-      to be one shape. Every skin has some: the sheet's own top row clips red's upward neck
-      in all of them, and most skins were drawn on a pitch of their own and stop short at
-      the bottom besides. `stretch` runs each one out to the edge it belongs at.
-    * An upward neck starts one pixel *above* its own cell, landing in the bottom row of
-      the puyo above: a line of the wrong colour under a puyo linked to nothing below. A
-      puyo that *is* linked below fills that row itself, so only the rest are cleared.
+    A neck is drawn the width of the puyo and no wider, so the little square outside both of
+    them - where a puyo is joined downward *and* to the right - is drawn by neither, and
+    shows as a speck of nothing at the point four puyos meet. It is filled from the line
+    beside it, which by now is a neck run out to the edge, and only where nothing is drawn
+    already, so a skin that does draw its corners keeps what it drew.
     """
-    if not links & DOWN:
-        tile[-3:] = 0
-    mask = neck(tile, plain)
+    _, _, left, right = box
+    for vertical in (UP, DOWN):
+        for horizontal, edge in ((LEFT, left), (RIGHT, right)):
+            if not (links & vertical and links & horizontal):
+                continue
+            region = corner(box, vertical, horizontal)
+            notch = tile[region]
+            empty = notch[:, :, 3] == 0
+            beside = np.broadcast_to(tile[region[0], edge][:, None], notch.shape)
+            notch[empty] = beside[empty]
+
+
+def neck_shapes(source, skin):
+    """where each of a skin's four necks goes, taken from whichever colour draws it
+
+    A skin's necks are one shape in five palettes, so a colour cut without one can still be
+    told where it belongs by the colours that were not. Returns each neck's cross section as
+    a line of the cell - which columns an upward one covers, which rows a leftward one does -
+    and an empty one for a direction the skin has no neck in at all.
+    """
+    shapes = {}
     for direction in (UP, DOWN, LEFT, RIGHT):
-        if links & direction:
-            stretch(tile, mask, direction)
+        best = np.zeros(SRC_BLOCK, dtype=bool)
+        for source_row in COLOR_ROWS:
+            plain = cut(source, skin, source_row, sheet_index(0))
+            tile = cut(source, skin, source_row, sheet_index(direction))
+            box = body(plain)
+            mask, lines = neck(tile, plain, box, direction)
+            if not lines:
+                continue
+            at = lines[-1] if direction in (DOWN, RIGHT) else lines[0]
+            across = mask[at] if direction in (UP, DOWN) else mask[:, at]
+            if across.sum() > best.sum():
+                best = across
+        shapes[direction] = best
+    return shapes
+
+
+def repair(tile, plain, links, donors, shapes):
+    """make one cut tile meet the cells around it
+
+    Every skin has necks that stop short of the cell they were drawn in: the sheet's own top
+    row clips red's upward neck in all of them, and most skins were drawn on a pitch of their
+    own and stop short at the bottom besides. Each side the puyo is joined on is run out to
+    its edge - by the neck it has, the neck another variant has, or, failing both, its own
+    outermost line - and each side it is not joined on is put back to the unlinked puyo's.
+    """
+    box = body(plain)
+    trim(tile, plain, box, links)
+    for direction in (UP, DOWN, LEFT, RIGHT):
+        if not links & direction:
+            continue
+        mask, lines = neck(tile, plain, box, direction)
+        if not lines:
+            borrow(tile, donors[direction], box, direction)
+            mask, lines = neck(tile, plain, box, direction)
+        if not lines:
+            graft(tile, box, direction, shapes[direction])
+            continue
+        far = direction in (DOWN, RIGHT)
+        at = lines[-1] if far else lines[0]
+        if at != (SRC_BLOCK - 1 if far else 0):
+            stretch(tile, mask, direction, at)
+    close(tile, box, links)
     return tile
 
 
@@ -355,11 +522,19 @@ def main():
     )
     for index, skin in enumerate(SKINS):
         base = SKIN_ROWS * index
+        shapes = neck_shapes(source, skin)
         for row, source_row in enumerate(COLOR_ROWS):
             plain = cut(source, skin, source_row, sheet_index(0))
+            # the four puyos joined one way each, which is where `repair` goes for a neck
+            # the rip drew on one variant and left off another
+            donors = {
+                direction: cut(source, skin, source_row, sheet_index(direction))
+                for direction in (UP, DOWN, LEFT, RIGHT)
+            }
             for links in range(16):
                 tile = cut(source, skin, source_row, sheet_index(links))
-                paste(sheet, repair(tile, plain, links), links, base + row)
+                tile = repair(tile, plain, links, donors, shapes)
+                paste(sheet, tile, links, base + row)
         paste(sheet, cut(source, skin, *NUISANCE), 0, base + 5)
         for column, (row, col) in enumerate(TRAY):
             paste(sheet, cut(source, skin, row, col), 1 + column, base + 5)

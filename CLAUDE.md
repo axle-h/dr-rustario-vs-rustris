@@ -147,7 +147,17 @@ the linked tile against the same puyo unlinked, and runs the outermost line of t
 out to the cell edge: a neck is a prism, so its last line is exactly what is missing. Locating
 it by difference rather than by the tile's own outermost pixels is the part that matters - one
 skin wears antennae on the same line as its upward neck, and repeating those paints a band of
-antenna up the cell. `python3 puyo-rusto/art/rip.py check` writes `art/alignment.png`
+antenna up the cell - and so is looking for it only in the *margin* that side's neck can be
+in, since a tile joined on three sides carries three necks and reading the outermost line of
+all of them at once hands one direction another's line. Three things stand behind the
+stretch, in order: `borrow` takes a neck the rip drew on one variant and left off another
+(skin 2's brick joined up, down and right has no downward neck, and running its upward one
+down the cell used to flood the whole tile); `graft` runs the puyo's own outermost line out
+where no variant has the neck at all, which is every skin's first colour, since the sheet has
+no room above its top row to draw an upward one in; and `close` fills the notch outside two
+necks at once, the speck of nothing where four puyos meet. A side the puyo is *not* joined on
+is put back to the unlinked puyo's, which is how the bleed from the next cell along comes off.
+`python3 puyo-rusto/art/rip.py check` writes `art/alignment.png`
 (gitignored): every skin drawn as a board that uses all sixteen masks, since a seam is a
 hairline and the only way to see one is to put two puyos side by side. The music is a
 rip too: `puyo-rusto/art/music.py` cuts `src/theme/menu/` and `src/theme/music/` out of a
