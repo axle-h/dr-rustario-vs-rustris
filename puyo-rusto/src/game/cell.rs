@@ -14,12 +14,12 @@ pub const GAME_ID: GameId = engine::game::ids::PUYO;
 
 /// Which set of puyos a cell is drawn from.
 ///
-/// The particle theme is cut from a rip that carries fifteen skins of the same puyos - see
-/// `puyo-rusto/art/rip.py` - and [`PuyoSkin::deal`] hands a different one to each player at
+/// The particle theme is cut from a rip carrying fourteen usable sets of the same puyos (see
+/// `puyo-rusto/art/rip.py`), and [`PuyoSkin::deal`] hands a different one to each player at
 /// the start of every match, so a session is not two boards of the same puyos and no two
-/// matches look alike either. The theme keys every one of the fifteen, so which a board gets
-/// is a decision the *game* makes when it is built rather than one the theme makes when it is,
-/// and a theme with only one set of art may key all fifteen at the same sprites.
+/// matches look alike either. The theme keys every one of them, so which a board gets is a
+/// decision the *game* makes when it is built rather than one the theme makes when it is, and
+/// a theme with only one set of art may key all fourteen at the same sprites.
 ///
 /// It rides in the [`CellId`] for the same reason [`LinkMask`] does - the engine's sheet is
 /// keyed by cell id and nothing else, and a game may put whatever drawing information it
@@ -32,7 +32,7 @@ impl PuyoSkin {
     /// how many sets of puyos there are, which is how many a theme's sheet has to key. The
     /// sheet `puyo-rusto/art/rip.py` writes carries exactly this many, and a test in
     /// [`crate::theme::modern`] holds it to that
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 14;
 
     /// the set a board falls back on when nobody dealt it one, which is every test's and the
     /// title screen's
@@ -409,8 +409,8 @@ mod tests {
             assert!(dealt.iter().all(|s| s.index() < PuyoSkin::COUNT));
             seen.insert(dealt);
         }
-        // fifteen skins two at a time is 210 ordered pairs, so two hundred seeds landing on a
-        // handful of them would mean the shuffle is not shuffling
+        // fourteen sets two at a time is 182 ordered pairs, so two hundred seeds landing on
+        // a handful of them would mean the shuffle is not shuffling
         assert!(seen.len() > 100, "{} distinct deals", seen.len());
     }
 

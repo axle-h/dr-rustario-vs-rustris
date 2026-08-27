@@ -6,6 +6,8 @@ desktop.ini
 generation-record-*.csv
 # `puyo-rusto/art/sprites.py` writes this; the theme ships the rip instead
 procedural-sprites.png
+# `puyo-rusto/art/rip.py check` writes this: every skin's joins, to be looked at
+alignment.png
 # the Puyo Puyo Tetris rip `puyo-rusto/art/rip.py` cuts that sheet out of, kept locally
 # rather than carried: it is 12 MiB and the 317 KiB it yields is committed
 /puyo-rusto/art/PC _ Computer - Puyo Puyo Tetris - Gameplay Elements - Puyo Puyo Elements.png
