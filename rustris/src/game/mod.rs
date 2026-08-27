@@ -9,7 +9,8 @@ use crate::game::tetromino::{Minos, TetrominoShape};
 use engine::game::hold::HoldState;
 use engine::game::timing::{lock_move, LockMove, LockPlacements, Timing};
 use engine::game::{
-    Attack, Cell, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState, StageTransition,
+    ids, Attack, Cell, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState,
+    StageTransition,
 };
 use std::time::Duration;
 
@@ -159,9 +160,16 @@ impl ClearAction {
     }
 }
 
-/// What a clear sends to a player of the other game, in its units: see
+/// What a clear sends to a player of `receiver`, in that game's units: see
 /// [`FOREIGN_TETRIS_GARBAGE`]. Nothing else a Rustris player does crosses.
-fn foreign_attack(action: ClearAction) -> u32 {
+///
+/// Only the sender knows what the clear took, so only it can price the crossing - and it
+/// prices each game it can reach separately, since a row, a garbage block and a nuisance puyo
+/// are not the same thing. A game nothing here prices is worth nothing and never gets hit.
+fn foreign_attack(receiver: GameId, action: ClearAction) -> u32 {
+    if receiver != ids::DR_RUSTARIO {
+        return 0;
+    }
     let spin_index = (action.lines as usize).min(FOREIGN_T_SPIN_GARBAGE.len() - 1);
     let tetris = if action.lines as usize == MAX_DESTROYED_LINES {
         FOREIGN_TETRIS_GARBAGE
@@ -672,7 +680,8 @@ impl Game {
             garbage_lines + difficult_garbage_lines + combo_garbage + perfect_clear_garbage;
         if attack > 0 {
             self.events.push(GameEvent::AttackSent(
-                Attack::new(GAME_ID, attack).with_foreign(foreign_attack(action)),
+                Attack::new(GAME_ID, attack)
+                    .with_foreign_for(ids::DR_RUSTARIO, foreign_attack(ids::DR_RUSTARIO, action)),
             ));
         }
 
@@ -781,7 +790,7 @@ impl engine::game::Game for Game {
             MetricKind::Score => Some(self.score),
             MetricKind::Level => Some(self.level),
             MetricKind::Lines => Some(self.lines),
-            MetricKind::Viruses => None,
+            MetricKind::Viruses | MetricKind::Chain => None,
         }
     }
 
@@ -1160,7 +1169,7 @@ mod tests {
         std::mem::take(&mut game.events)
             .into_iter()
             .filter_map(|event| match event {
-                GameEvent::AttackSent(attack) => Some(attack.foreign),
+                GameEvent::AttackSent(attack) => Some(attack.strength_for(ids::DR_RUSTARIO)),
                 _ => None,
             })
             .sum()
@@ -1227,13 +1236,16 @@ mod tests {
     #[test]
     fn a_foreign_attack_lands_in_the_receivers_own_units() {
         let mut game = game();
-        engine::game::Game::receive_attack(&mut game, Attack::new(GAME_ID, 8).with_foreign(2));
+        engine::game::Game::receive_attack(
+            &mut game,
+            Attack::new(GAME_ID, 8).with_foreign_for(GAME_ID, 2),
+        );
         assert_eq!(game.garbage_buffer, 8, "another Rustris player sends rows");
 
         let mut game = super::tests::game();
         engine::game::Game::receive_attack(
             &mut game,
-            Attack::new(GameId(u16::MAX), 8).with_foreign(2),
+            Attack::new(GameId(u16::MAX), 8).with_foreign_for(GAME_ID, 2),
         );
         assert_eq!(game.garbage_buffer, 2, "another game sends what it says");
     }

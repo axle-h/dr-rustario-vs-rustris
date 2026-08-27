@@ -18,6 +18,22 @@ use std::time::Duration;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GameId(pub u16);
 
+/// Every game of the compendium, by id.
+///
+/// These live here rather than each in its own crate for two reasons: the ids have to be
+/// unique across the whole binary, and pricing an attack means naming the game it is crossing
+/// to (see [`ForeignPrices`]) - which a game crate could not do otherwise, since the games are
+/// siblings and none of them depends on another. Each crate re-exports its own as `GAME_ID`.
+///
+/// Ids are small and dense because [`ForeignPrices`] keys on them directly; number a new game
+/// from the end and raise [`ForeignPrices::GAMES`] if it runs out.
+pub mod ids {
+    use super::GameId;
+
+    pub const DR_RUSTARIO: GameId = GameId(1);
+    pub const RUSTRIS: GameId = GameId(2);
+}
+
 /// A game-private key for how a cell should be drawn, e.g. "red virus" or "left half of a
 /// blue vitamin rotated east" or "T mino". The engine only compares them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -58,37 +74,84 @@ impl Cell {
 /// A cell together with where it is.
 pub type PlacedCell = (Point, CellId);
 
+/// What an attack is worth abroad: one price per receiving [`GameId`], in that game's own
+/// units.
+///
+/// A single foreign number would be a silent bug the moment a third game arrives, because
+/// every other game would be sent the same one and it would still compile. One price per
+/// receiver makes each pair of games a deliberate decision instead. That is O(n²) to author,
+/// which is the honest cost of this project's own principle that only the sender knows what a
+/// clear took: a neutral "work unit" currency would be O(n) but would throw that away.
+///
+/// A pair nobody has priced is worth **nothing**, so a forgotten one drops the attack (see
+/// `Match::send_attack`) rather than landing the wrong units on somebody.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ForeignPrices([u32; ForeignPrices::GAMES]);
+
+impl ForeignPrices {
+    /// how many games the compendium can price between. Ids are small and dense (Dr. Rustario
+    /// is 1, Rustris 2), so a flat array keyed by id is the whole data structure; raise this
+    /// when the compendium outgrows it.
+    pub const GAMES: usize = 8;
+
+    fn slot(receiver: GameId) -> Option<usize> {
+        let index = receiver.0 as usize;
+        (index < Self::GAMES).then_some(index)
+    }
+
+    fn price(&self, receiver: GameId) -> u32 {
+        Self::slot(receiver).map_or(0, |slot| self.0[slot])
+    }
+
+    fn set(&mut self, receiver: GameId, price: u32) {
+        // an id past the end is an authoring mistake rather than something a match can reach:
+        // it fails every test run, and in a release build the attack is simply worth nothing
+        // to that receiver, which is the same safe default as a pair nobody priced at all
+        debug_assert!(
+            Self::slot(receiver).is_some(),
+            "game id {} is past ForeignPrices::GAMES ({}); raise it",
+            receiver.0,
+            Self::GAMES
+        );
+        if let Some(slot) = Self::slot(receiver) {
+            self.0[slot] = price;
+        }
+    }
+}
+
 /// An attack sent from one player to another. `strength` is how big the attack is to a player
 /// of the same game, in that game's own units - rows of garbage in Rustris, garbage blocks in
-/// Dr. Rustario - and `foreign` how big it is to a player of the other game, in theirs.
+/// Dr. Rustario - and `foreign` how big it is to a player of each *other* game, in theirs.
 /// `detail` is private to the sending game and only meaningful to a receiver of the same
 /// `origin`.
 ///
-/// The two numbers differ because the two games' units are not the same thing and neither are
-/// the clears that earn them: only the sending game knows how much work the clear took, so
-/// only it can say what that is worth to somebody playing the other one.
+/// The numbers differ because the games' units are not the same thing and neither are the
+/// clears that earn them: only the sending game knows how much work the clear took, so only it
+/// can say what that is worth to somebody playing another one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Attack {
     pub origin: GameId,
     pub strength: u32,
-    pub foreign: u32,
+    pub foreign: ForeignPrices,
     pub detail: u64,
 }
 
 impl Attack {
-    /// an attack worth the same to any receiver, whatever they are playing
+    /// an attack worth `strength` at home and nothing at all abroad, until a price is put on
+    /// each crossing it should make
     pub fn new(origin: GameId, strength: u32) -> Self {
         Self {
             origin,
             strength,
-            foreign: strength,
+            foreign: ForeignPrices::default(),
             detail: 0,
         }
     }
 
-    /// what this attack is worth to a player of another game, in that game's own units
-    pub fn with_foreign(self, foreign: u32) -> Self {
-        Self { foreign, ..self }
+    /// what this attack is worth to a player of `receiver`, in that game's own units
+    pub fn with_foreign_for(mut self, receiver: GameId, price: u32) -> Self {
+        self.foreign.set(receiver, price);
+        self
     }
 
     pub fn with_detail(self, detail: u64) -> Self {
@@ -100,7 +163,7 @@ impl Attack {
         if receiver == self.origin {
             self.strength
         } else {
-            self.foreign
+            self.foreign.price(receiver)
         }
     }
 }
@@ -130,6 +193,10 @@ pub enum MetricKind {
     Level,
     Lines,
     Viruses,
+    /// the longest run of clears one placement set off. Named for the thing rather than for
+    /// any one game's word for it, since this is a closed engine enum and more than one game
+    /// wants the counter.
+    Chain,
 }
 
 /// Something that happened inside a game during an update or in response to input. Events are
@@ -229,9 +296,72 @@ pub trait Game {
 
     fn receive_attack(&mut self, attack: Attack);
 
+    /// Attacks already sent that have not landed yet, soonest first, as the cells this game
+    /// would draw them with - so a player can see what is hanging over them and decide
+    /// whether to answer it or take it.
+    ///
+    /// Only a game that can hold an attack has any: a game that takes a hit the moment it
+    /// arrives leaves this empty and its themes draw no strip at all. What each icon is worth
+    /// is the game's business, so one may stand for a single block or for a whole row.
+    fn pending_attacks(&self) -> Vec<CellId> {
+        vec![]
+    }
+
     fn row(&self, y: u32) -> Vec<Cell> {
         (0..self.board_width())
             .map(|x| self.cell(Point::from_u32(x, y)))
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// the trap a third game sets: one foreign number would send a Rustris tetris to
+    /// Dr. Rustario and to Puyo alike, in whichever units happened to be meant, and compile
+    #[test]
+    fn an_attack_is_priced_for_each_game_separately() {
+        let third = GameId(3);
+        let attack = Attack::new(ids::RUSTRIS, 4)
+            .with_foreign_for(ids::DR_RUSTARIO, 2)
+            .with_foreign_for(third, 7);
+        assert_eq!(attack.strength_for(ids::RUSTRIS), 4, "at home");
+        assert_eq!(attack.strength_for(ids::DR_RUSTARIO), 2);
+        assert_eq!(attack.strength_for(third), 7);
+    }
+
+    /// a pair nobody has priced is worth nothing, so the attack is dropped rather than
+    /// landing a number that means something else where it lands
+    #[test]
+    fn an_unpriced_game_is_never_hit() {
+        let attack = Attack::new(ids::RUSTRIS, 4).with_foreign_for(ids::DR_RUSTARIO, 2);
+        assert_eq!(attack.strength_for(GameId(3)), 0);
+        assert_eq!(
+            Attack::new(ids::RUSTRIS, 4).strength_for(ids::DR_RUSTARIO),
+            0
+        );
+    }
+
+    /// ... including one numbered past the table. Authoring a price for it trips the debug
+    /// assertion, so the mistake cannot ship; reading one back is what a match would do, and
+    /// that is worth nothing rather than worth whatever happens to be in slot zero
+    #[test]
+    fn a_game_past_the_table_is_worth_nothing_rather_than_something_wrong() {
+        let far = GameId(ForeignPrices::GAMES as u16);
+        let attack = Attack::new(ids::RUSTRIS, 4).with_foreign_for(ids::DR_RUSTARIO, 2);
+        assert_eq!(attack.strength_for(far), 0);
+    }
+
+    #[test]
+    fn every_game_has_its_own_id() {
+        let all = [ids::DR_RUSTARIO, ids::RUSTRIS];
+        for (i, id) in all.iter().enumerate() {
+            assert!(!all[..i].contains(id), "{id:?} is used twice");
+            assert!(
+                (id.0 as usize) < ForeignPrices::GAMES,
+                "{id:?} is past ForeignPrices::GAMES"
+            );
+        }
     }
 }

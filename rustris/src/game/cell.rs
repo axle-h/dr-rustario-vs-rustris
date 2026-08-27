@@ -5,7 +5,7 @@ use crate::game::geometry::{Point, Rotation};
 use crate::game::tetromino::{Minos, TetrominoShape};
 use engine::game::{Cell, CellId, GameId, PieceId, PlacedCell};
 
-pub const GAME_ID: GameId = GameId(2);
+pub const GAME_ID: GameId = engine::game::ids::RUSTRIS;
 
 /// The game-specific meaning of a [`CellId`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

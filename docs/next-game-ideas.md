@@ -60,13 +60,15 @@ bots whose evaluation functions are described in the literature.
 
 The cost is a full game crate — the existing two are about 9-10k lines each, of which the art
 and audio is the real expense — plus generalising the launcher past its assumption that there
-are exactly two games. That work is scoped in the plan.
+are exactly two games. That work is scoped in the plan, and the generalising half of it is
+**done**: as of phase 0 the engine and launcher take a third game as an entry in a list rather
+than as a rewrite.
 
 ## The other candidates
 
 | Game | Engine fit | Battle | Assets | Docs | Verdict |
 |---|---|---|---|---|---|
-| **Puyo Puyo (Tsu)** | Excellent — pair piece ≈ pill | Best in class: chain power, nuisance queue, offset | Mean Bean Machine (Genesis/SMS/GG), Kirby's Avalanche (SNES), arcade | Puyo Nexus documents the formulas exactly | **Chosen** |
+| **Puyo Puyo (Tsu)** | Excellent — pair piece ≈ pill | Best in class: chain power, nuisance queue, offset | Mean Bean Machine (Genesis/SMS/GG), Kirby's Avalanche (SNES), arcade | Puyo Nexus documents the formulas exactly | **In progress** — phase 0 done, see the [plan](puyo-puyo-plan.md) |
 | Super Puzzle Fighter II Turbo | Good — pair piece, but needs multi-cell power gems | Excellent and very distinct: crash gems, countdown counter gems, per-character attack patterns | Spriters Resource (arcade CPS2, PS1, GBA) | StrategyWiki and FAQs cover it well | Strong runner-up |
 | Tetris Battle Gaiden (SNES) | Excellent — it *is* Rustris plus a gauge | Excellent: crystals on pieces fill a magic gauge, four spell levels per character, offensive and defensive | SNES rip, Japan-only | GameFAQs guides list every spell | **Cheapest win — a Rustris ruleset, not a new crate** |
 | Bombliss / Tetris Blast / Super Bombliss | Excellent — tetrominoes carrying bomb cells | Good: completing a line detonates the bombs in it, chains, four small bombs in a 2x2 merge into a big one | GB/SFC/FC rips | TetrisWiki and Hard Drop | **Also a Rustris ruleset, not a new crate** |
@@ -188,8 +190,9 @@ Work on this repository is **synchronous. One agent at a time. Never in parallel
   plan document, top to bottom, before touching anything.
 * **One game at a time.** The status board above is authoritative. While Puyo Puyo is
   `in progress`, nobody starts Puzzle Fighter, Battle Gaiden or Bombliss — not as a "quick
-  parallel branch", not as a subagent, not at all. Two half-finished games in a compendium
-  that hardcodes its game count in a dozen places is a mess nobody can land.
+  parallel branch", not as a subagent, not at all. Phase 0 took the hardcoded game count out
+  of the engine and launcher, but two half-finished game crates competing for the same
+  `GameId`s, theme lists and attack prices is still a mess nobody can land.
 * **Finishing a game is not the same as picking the next one.** Move it to `done` on the
   board, then pick the next one *with Alex*, not unilaterally.
 * **Where things belong.** This file records *which* game and *why* — the criteria, the

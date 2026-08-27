@@ -29,9 +29,11 @@ chaining back at it, which is what turns two people racing into two people fight
 * **Scope.** A full citizen of the compendium: four themes, an ai offering the same four
   difficulties and the same two demo models as the other games, high score tables, menus, and
   three-way attack pricing.
-* **Crate name.** Alex's call, not settled. `rusto-rusto` (displayed "Rusto Rusto") is the
-  placeholder; `oxo-oxo` and `rusty-beans` are the alternatives. Whoever starts phase 1 asks
-  before creating the directory. It takes `GameId(3)`.
+* **Crate name.** Asked of Alex before phase 0: `rusto-rusto`, `oxo-oxo` and `rusty-beans` are
+  all out. Alex likes **`puyo-rusto`** or **`rusto-puyo`** and did not pick between the two,
+  so whoever starts phase 1 confirms which before creating the directory - but only between
+  those two. It takes `GameId(3)`, which is already reserved in `engine::game::ids` (see
+  phase 0's handover).
 * **Sources.** The exact tables come from Puyo Nexus at the time of writing the code — see
   the links in [next-game-ideas.md](next-game-ideas.md#sources). Those pages reject automated
   fetches; read them in a browser. Do not guess a table.
@@ -78,7 +80,7 @@ the surface that draws the pending nuisance.
 
 ## Phase 0 — generalise the engine and launcher past two games
 
-**Status:** `todo`
+**Status:** `done`
 
 **Goal.** Nothing in the engine or launcher assumes the game count is two, with both existing
 games unchanged in behaviour. Do this before the new crate exists so the crate is built on
@@ -144,6 +146,10 @@ Two ways out, and this phase picks one rather than leaving phase 2 to discover t
 
 Take the second if the appetite is there; the first is not a wrong answer. Either way, record
 which in the handover notes, because phase 2's theme work depends on it.
+
+**Decided (Alex, before the work started): the second.** It is built - see the handover notes
+for the shape it took and for the one thing that turned out cheaper than this section expected,
+which is that it costs the themes no new art at all.
 
 ### What belongs to later phases, not this one
 
@@ -212,13 +218,137 @@ search for the game count turns up nothing that assumes two.
 
 ### Handover notes
 
-_(to be filled in by the agent that completes this phase)_
+Done on 2026-08-27. `cargo test --workspace` passes (553 tests, 0 failures) and the four
+examples all still run and render as they did. Nothing in the engine or launcher names Puyo.
+
+**The attack price table.** `Attack::foreign` is now a `ForeignPrices` - a flat `[u32; 8]`
+keyed by `GameId`, `Copy`, defaulting to zero - with `with_foreign_for(receiver, price)` to
+author and the unchanged `strength_for(receiver)` to read. `Attack::new` no longer copies
+`strength` into it, so an attack is worth *nothing* abroad until somebody prices the crossing,
+and `Match::send_attack` drops it. `ForeignPrices::GAMES` is 8, not 3: raise it rather than
+renumbering games. An id past the end trips a `debug_assert` when authored and reads back as
+zero, which is the same safe default as an unpriced pair.
+
+Both senders now take the receiver: `foreign_attack(receiver, ...)` in
+`rustris/src/game/mod.rs` and `dr-rustario/src/game/mod.rs`, each an early return for a game
+it does not price. Every existing measured number is intact - the tests that pin them were
+rewritten to read `strength_for` rather than the old field, not relaxed.
+
+**Game ids moved to the engine**, as `engine::game::ids::{DR_RUSTARIO, RUSTRIS}`; each crate's
+`GAME_ID` re-exports its own, so nothing else changed. This was forced rather than chosen: a
+game pricing an attack has to *name* the game it is crossing to, and the game crates are
+siblings that do not depend on each other, so `dr-rustario` cannot say `rustris::…::GAME_ID`.
+**Puyo adds `PUYO: GameId(3)` there**, and `dr-rustario` and `rustris` each gain an arm in
+their `foreign_attack` for it - which is phase 5's number, but phase 1 will want the id.
+
+**Two closed enums grew:** `MetricKind::Chain` (labelled `"Chain"` in `metrics_table.rs`; both
+existing games return `None` for it) and `words::CHAIN` in `reaction.rs`, with `ALL` widened to
+6 so it is outlined ahead of time.
+
+**The pending nuisance indicator is an engine attack-queue strip**, per Alex. It came out much
+smaller than this phase expected, because of one decision: the game reports what is queued as
+its own `CellId`s -
+
+```rust
+fn pending_attacks(&self) -> Vec<CellId> { vec![] }   // on engine::game::Game
+```
+
+— and the theme draws them with `BlockSpriteSheet::draw_cell`, the same call the board uses.
+So **the strip costs the themes no new art**: a Puyo theme already has a nuisance puyo sprite,
+and that is the icon. Phases 2 and 3 owe it nothing beyond deciding where it goes. The default
+is an empty `Vec`, so neither existing game changed and no game is obliged to have one.
+
+Where it goes:
+
+* a retro theme authors a `PendingLayout { point, step, size, max }` in background source
+  pixels (`step` may be negative to fill leftwards or upwards) - a new `pending` field on
+  `RetroThemeOptions`, `None` in all six existing retro themes.
+* a particle theme just says how many fit, `pending_max` on `ModernThemeOptions` (`0` in both
+  existing ones), and `modern_theme` places the strip itself: a cell to an icon, along the top
+  of the playfield in the gap above the board. That gap is `top_slack` - room the window is
+  allowed to crop - so a theme with a strip now keeps back exactly the strip's height and lets
+  the rest go as before. A theme with `pending_max: 0` gets the identical `top_slack` it did
+  before, which is why the existing frames are pixel-for-pixel unchanged.
+
+`Theme::draw_pending` runs inside `draw_background`, next to the queue and hold. There is no
+game exercising it until phase 2, so the arithmetic is unit tested directly
+(`PendingLayout::slots`) rather than left to be discovered later.
+
+**Launcher.** `GameKind` gained `ALL`, `COUNT`, `index()`, `name()` and a second list,
+`RUNNING_ORDER`. Two lists because they are two different things and a third game joins both:
+
+* `ALL` is the order games are *numbered* - the key of every per-game collection, and the
+  order the themes are built into the shared list.
+* `RUNNING_ORDER` is the order they are *billed* - the pre-menu's list and the turns a fixed
+  playlist takes. It opens on Rustris, which is presentation, not numbering.
+
+A test holds them to being the same games. Everything that named the two games by hand is now
+`PerGame<T>` (`launcher/src/games.rs`): `Themes`' ranges, `PlaylistThemes`' slots, and the
+`Shell`'s modes. `Playlist::stage_count` is `GameKind::COUNT * slots`, `first_game`'s fallback
+is `RUNNING_ORDER[0]`, `fixed_stages`' order is `RUNNING_ORDER`, and `random_game` is a modulo
+over `COUNT` rather than a coin flip - all of which deal exactly what they dealt before, seed
+for seed, because `RUNNING_ORDER` preserves the old index-to-game mapping. `game_seed`'s salt
+is `kind.index() + 1`, which is the same 1 and 2 as the hand-written match.
+
+`Difficulty` fans out through `level(game)` - one arm per game - and keeps
+`dr_rustario_speed()` as its own thing, because a fall speed dial separate from the level is
+Dr. Rustario's own idea and Rustris has no equivalent. **Puyo's arm of `level` and its own
+speed dial are phase 5's to measure.**
+
+**The ai went n-way through a trait rather than a wider tuple**, which is the one place this
+phase did more than the plan asked. `VersusAi::brains()` returned
+`Vec<(u32, Duration, DrAiKind, TetrisNeuralNetwork)>` - a tuple that grows a *dimension* per
+game. It now returns `Vec<(u32, Vec<Box<dyn AiBrain>>)>`: an ai player and one brain per game.
+
+```rust
+pub trait AiBrain {
+    fn act(&mut self, game: &mut AnyGame, delta: Duration);
+    fn reset(&mut self);
+}
+```
+
+A brain handed a board that is not its game does nothing; the controller resets them all when
+the playlist swaps the board and then offers the board to each in turn. **So phase 4 adds a
+`puyo_brain()` beside `dr_rustario_brain()` and `rustris_brain()` in `games.rs` and one arm to
+`VersusAi::ai_players`, and touches the controller not at all.** One small behaviour change
+falls out of it: each game's brain now plays at *its own* declared key delay rather than at
+Dr. Rustario's, which the old zip used for both. The two games declare identical delays for
+every difficulty, so nothing differs today - but it is what the README already promised.
+
+`modes.rs` gained `game_mode(game) -> Box<dyn Mode>`, the single place that names each game's
+standalone mode; the shell and the tests both go through it, so a game cannot be added to one
+and forgotten in the other. `ModeChoice` is now `Game(GameKind) | Versus`.
+
+**Tests.** `launcher/src/modes.rs`'s test module was rewritten as the plan expected: helpers
+`same_themes`, `turns(slot)`, `all_modes()` and `ai_difficulty_names(game)`, and constants
+`THEME_SLOTS` / `FIXED_STAGES = GameKind::COUNT * THEME_SLOTS`, so the stage sequences are
+asserted as *every game takes a turn per slot* rather than as literal 8s and named pairs. Four
+tests were renamed off "both games". Two new ones: `a_versus_ai_player_carries_a_brain_for_every_game`
+and, in `games.rs`, `every_game_is_numbered_and_billed_exactly_once`.
+
+**Examples.** Each now has one list to add a game to: `PREVIEW_GAMES` in `field_preview.rs`
+(which also killed the hardcoded `GameId(1)`/`GameId(2)` and the `dr|rustris|mixed` argument's
+two-game assumption - one game named puts both players on it, anything else deals the first
+two), `all_games()` and a local `MenuOptions` trait in `menu_shot.rs` (the games' `Options` are
+separate types with no trait between them), and a `GAMES` constant in `scale_report.rs`.
+`frame_shot.rs` already dispatched on a game-name argument, so a third game is one arm and one
+`fn` there.
+
+**Not done, deliberately:** nothing in the engine or launcher mentions Puyo, per this phase's
+own rule. `ForeignPrices::GAMES` has room for it, `engine::game::ids` is where its id goes, and
+the four places above each take one entry.
+
+**Watch out for:** another agent was rewriting `dr-rustario/src/game/ai/` throughout this
+phase. Nothing here touched those files - the only Dr. Rustario changes are `game/mod.rs`
+(`foreign_attack`, the `MetricKind::Chain` arm), `game/cell.rs` (`GAME_ID` re-export) and
+`pending: None` in the four themes. `cargo fmt --all` was run and rewrote only this phase's own
+files.
 
 ---
 
 ## Phase 1 — rules, headless
 
-**Status:** `todo` — blocked on phase 0
+**Status:** `todo` — phase 0 is `done`, so this is next
 
 **Goal.** The rules simulate correctly with no rendering at all, checked by unit tests against
 known positions.
@@ -234,7 +364,17 @@ Mirror the existing crate shape (`dr-rustario/src/lib.rs` is six lines):
 | `game/score.rs` | the chain power, colour bonus and group bonus tables |
 | `game/random.rs` | the seeded colour sequence |
 | `game/rules.rs` | `GameConfig`, `MatchThemes`, `AiDifficulty`, `AiMode`, `ai_players()` |
-| `game/cell.rs` | `GameId(3)`, the `CellId` and `PieceId` space, including the link mask |
+| `game/cell.rs` | the `CellId` and `PieceId` space, including the link mask |
+
+`GameId(3)` is **not** declared in `cell.rs`: phase 0 moved the ids to `engine::game::ids`,
+because pricing an attack means naming the game it crosses to and the game crates are siblings.
+Add `PUYO: GameId(3)` there and re-export it as this crate's `GAME_ID`, the way the other two
+do.
+
+`nuisance.rs`'s queue is also what `engine::game::Game::pending_attacks` reports - a `Vec<CellId>`,
+soonest first, which phase 0 added for exactly this and which both existing games leave empty.
+Return the cells the tray should be drawn with (one icon may stand for a single puyo or a whole
+row, as the game likes); the themes draw them from their own sprites and owe no new art.
 
 `random.rs` is mostly *not* new machinery, and should not be written as if it were. The engine
 already owns the seed and the randomiser: `engine::game::random` has `Seed` over `ChaChaRng`
@@ -367,6 +507,13 @@ The particle theme needs only `sprites.png`, the mascot strips and the oggs, plu
 `particle_color` and a `particle_palette` — its background, board frame, HUD and cards are all
 drawn procedurally. Template: `dr-rustario/src/theme/modern/mod.rs`.
 
+**The nuisance tray is one number here.** Phase 0 built the attack-queue strip and put the
+placement inside `modern_theme`, so this theme sets `pending_max` to how many icons fit and
+nothing else: the strip is drawn a cell to an icon along the top of the playfield, from this
+theme's own nuisance sprite, and the builder keeps the room back out of the board's top slack.
+Set it to 0 and no strip is drawn at all, which is how both existing games' particle themes
+are left.
+
 ### The link mask is an art problem here
 
 Phase 1's `CellId` carries a four-bit neighbour mask, so `sprites.png` is keyed on
@@ -441,6 +588,10 @@ in a directory beside that file:
   `interstitial_points`
 * `font.png` — ten digits in a row for `FontRenderOptions::numeric_sprites`, or digits plus
   letters sliced by a closure the way `rustris/src/theme/data.rs` does it
+* a `pending: Some(PendingLayout { point, step, size, max })` in the theme's `mod.rs` — where
+  the nuisance tray goes in *this* background, in source pixels, `step` negative to fill
+  leftwards or upwards. No sprite work: it draws the theme's own nuisance cell. Every existing
+  retro theme passes `None`, so the field is there and empty to copy from
 * mascot strips `{idle,throw,victory,game-over}.png`
 * music and about twelve sound effects as **OGG Vorbis at exactly 44,100 Hz, mono or stereo**
   — the decoder rejects anything else outright. Music may be split into `-intro.ogg` and
@@ -498,6 +649,13 @@ counts come straight off it for free, since that is exactly what it counts.
 If phase 2 shipped the stub `ai_players()`, this phase is where the placeholder brain goes and
 the real one takes its slot. Nothing on the menu surface should change.
 
+In the launcher that is smaller than it sounds. Phase 0 replaced the versus mode's brain tuple
+with an `AiBrain` trait (`launcher/src/games.rs`): an ai player carries one boxed brain per
+game, a brain handed a board that is not its game does nothing, and the controller offers the
+board to each in turn. So this phase adds a `puyo_brain()` beside `dr_rustario_brain()` and
+`rustris_brain()`, and one arm to `VersusAi::ai_players` — and touches the versus controller
+not at all.
+
 **Done when:** the four difficulty names match the other games exactly, the 1- and 2-player
 demos run, and the weight set ranking is recorded in the handover notes with the numbers
 behind it.
@@ -534,8 +692,15 @@ simply takes them. So the same raw measurement means different things in each di
 tuning both ends from one table will get one of them wrong. Measure the six prices, then sanity
 check by playing each pairing rather than trusting the numbers.
 
-This is also the phase that sets the Puyo half of `Difficulty` — the level and speed the 0-10
-vs. dial maps to, left as a shape in phase 0.
+Where the six prices go: each sending game's `foreign_attack(receiver, ...)` in its own
+`game/mod.rs` gains an arm for each receiver, and the caller adds a `with_foreign_for(receiver,
+price)`. Phase 0 made the default zero, so any crossing this phase forgets is *dropped* rather
+than sent in the wrong units — silent, but harmless and easy to spot by playing a pairing and
+seeing nothing arrive.
+
+This is also the phase that sets the Puyo half of `Difficulty` — the level the 0-10 vs. dial
+maps to, as an arm of `Difficulty::level(game)`, plus a speed dial of Puyo's own if it wants
+one the way `dr_rustario_speed()` is Dr. Rustario's. Left as a shape in phase 0.
 
 **Done when:** a 2-player vs. match on each playlist has the three games taking turns, garbage
 crossing sensibly in all six directions, and the README table updated with the measurements.

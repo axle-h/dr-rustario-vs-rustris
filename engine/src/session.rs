@@ -566,7 +566,7 @@ mod tests {
     #[test]
     fn an_attack_lands_in_the_units_of_the_game_it_lands_on() {
         let mut fixture = mixed();
-        assert!(fixture.send_attack(0, Attack::new(GameId(0), 6).with_foreign(2)));
+        assert!(fixture.send_attack(0, Attack::new(GameId(0), 6).with_foreign_for(GameId(1), 2)));
         assert_eq!(fixture.players[1].game.received, vec![2]);
         assert_eq!(
             fixture.drain_attack_routes(),
@@ -579,14 +579,14 @@ mod tests {
 
         // ... and its own kind take it whole
         let mut fixture = mixed();
-        assert!(fixture.send_attack(1, Attack::new(GameId(0), 6).with_foreign(2)));
+        assert!(fixture.send_attack(1, Attack::new(GameId(0), 6).with_foreign_for(GameId(1), 2)));
         assert_eq!(fixture.players[0].game.received, vec![6]);
     }
 
     #[test]
     fn an_attack_worth_nothing_to_the_other_game_never_leaves() {
         let mut fixture = mixed();
-        assert!(!fixture.send_attack(0, Attack::new(GameId(0), 6).with_foreign(0)));
+        assert!(!fixture.send_attack(0, Attack::new(GameId(0), 6).with_foreign_for(GameId(1), 0)));
         assert!(fixture.players[1].game.received.is_empty());
         assert!(fixture.drain_attack_routes().is_empty());
     }

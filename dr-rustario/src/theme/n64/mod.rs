@@ -236,6 +236,8 @@ pub fn n64_theme<'a>(
         destroy_style: None,
         game_over_style: None,
         curtain_cell: None,
+        // Dr. Rustario and Rustris take a hit as it arrives, so nothing ever waits
+        pending: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
     };

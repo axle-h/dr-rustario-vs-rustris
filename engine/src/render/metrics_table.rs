@@ -9,6 +9,7 @@ pub fn metric_label(kind: MetricKind) -> &'static str {
         MetricKind::Level => "Level",
         MetricKind::Lines => "Lines",
         MetricKind::Viruses => "Virus",
+        MetricKind::Chain => "Chain",
     }
 }
 

@@ -12,6 +12,56 @@ use rustris::options::Options as RustrisOptions;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::WindowCanvas;
 
+/// As much of a game's options as this example drives. The games' `Options` are separate
+/// types with no trait between them, so the walk gets one here: a game joining the compendium
+/// is an impl and an entry in [`all_games`], not another hand-written pair of menus.
+trait MenuOptions {
+    fn set_players(&mut self, players: u32);
+    fn select(&mut self, name: &str, value: &str);
+    fn items(&self) -> Vec<MenuItem>;
+}
+
+impl MenuOptions for RustrisOptions {
+    fn set_players(&mut self, players: u32) {
+        RustrisOptions::set_players(self, players);
+    }
+    fn select(&mut self, name: &str, value: &str) {
+        RustrisOptions::select(self, name, value);
+    }
+    fn items(&self) -> Vec<MenuItem> {
+        self.menu_items(false)
+    }
+}
+
+impl MenuOptions for DrOptions {
+    fn set_players(&mut self, players: u32) {
+        DrOptions::set_players(self, players);
+    }
+    fn select(&mut self, name: &str, value: &str) {
+        DrOptions::select(self, name, value);
+    }
+    fn items(&self) -> Vec<MenuItem> {
+        self.menu_items(false)
+    }
+}
+
+/// every game whose menus are walked: the file name it is shot under, its title, and its
+/// options
+fn all_games() -> Vec<(&'static str, &'static str, Box<dyn MenuOptions>)> {
+    vec![
+        (
+            "rustris",
+            "Rustris",
+            Box::new(RustrisOptions::default()) as Box<dyn MenuOptions>,
+        ),
+        (
+            "dr-rustario",
+            "Dr. Rustario",
+            Box::new(DrOptions::default()) as Box<dyn MenuOptions>,
+        ),
+    ]
+}
+
 /// the theme picks to walk, in order
 const THEMES: [&str; 3] = ["all", "nes", "all"];
 
@@ -42,40 +92,26 @@ fn main() -> Result<(), String> {
     let texture_creator = canvas.texture_creator();
 
     for players in [1, 2] {
-        let mut rustris = RustrisOptions::default();
-        rustris.set_players(players);
-        let mut dr = DrOptions::default();
-        dr.set_players(players);
-
-        let mut menus = [
-            (
-                "rustris",
+        let mut games = all_games();
+        let mut menus = vec![];
+        for (name, title, options) in games.iter_mut() {
+            options.set_players(players);
+            menus.push((
+                *name,
                 Menu::new(
-                    rustris.menu_items(false),
+                    options.items(),
                     &mut canvas,
                     &texture_creator,
-                    "Rustris".to_string(),
+                    title.to_string(),
                     format!("{players} player"),
                 )?,
-            ),
-            (
-                "dr-rustario",
-                Menu::new(
-                    dr.menu_items(false),
-                    &mut canvas,
-                    &texture_creator,
-                    "Dr. Rustario".to_string(),
-                    format!("{players} player"),
-                )?,
-            ),
-        ];
+            ));
+        }
 
         for (step, theme) in THEMES.iter().enumerate() {
-            rustris.select("themes", theme);
-            dr.select("themes", theme);
-            let items: [Vec<MenuItem>; 2] = [rustris.menu_items(false), dr.menu_items(false)];
-            for ((game, menu), items) in menus.iter_mut().zip(items.iter()) {
-                menu.set_items(&mut canvas, items)?;
+            for ((game, menu), (_, _, options)) in menus.iter_mut().zip(games.iter_mut()) {
+                options.select("themes", theme);
+                menu.set_items(&mut canvas, &options.items())?;
                 // park on the mode row and walk it, so every mode on offer is in a shot
                 menu.down();
                 for mode in 0..MODE_SHOTS {

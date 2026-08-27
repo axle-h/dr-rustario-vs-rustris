@@ -15,7 +15,8 @@ use crate::render::scene::SceneType;
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
 use crate::render::{
-    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme, ThemeFamily,
+    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, PendingLayout, Theme,
+    ThemeFamily,
 };
 use crate::scale::ScaleMode;
 use sdl2::pixels::Color;
@@ -51,6 +52,9 @@ pub struct RetroThemeOptions {
     pub overlay_size: Option<(u32, u32)>,
     pub hold: Option<HoldLayout>,
     pub peek: PeekLayout,
+    /// where attacks queued against the player are drawn; `None` for a game that takes its
+    /// hits the moment they arrive and so never has any waiting
+    pub pending: Option<PendingLayout>,
     pub mascot: Option<MascotLayout>,
     pub mascot_animations: Option<MascotAnimationTypes>,
     /// where a spawning piece is thrown from and to, in background coordinates
@@ -180,6 +184,7 @@ pub fn retro_theme<'a>(
         curtain_cell: options.curtain_cell,
         hold: options.hold,
         peek: options.peek,
+        pending: options.pending,
         ghost_style: options.ghost_style,
         particle_color: None,
         particle_palette: vec![],

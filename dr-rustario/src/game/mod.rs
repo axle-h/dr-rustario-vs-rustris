@@ -12,7 +12,7 @@ use crate::game::geometry::BottlePoint;
 use engine::game::hold::HoldState;
 use engine::game::timing::{lock_move, LockMove, LockPlacements, Timing};
 use engine::game::{
-    Attack, Cell, GameEvent, GameId, MetricKind, PieceId, StageState, StageTransition,
+    ids, Attack, Cell, GameEvent, GameId, MetricKind, PieceId, StageState, StageTransition,
 };
 
 #[cfg(not(test))]
@@ -200,8 +200,15 @@ impl GameState {
 /// hurts, up to the four rows a tetris sends
 const MAX_FOREIGN_GARBAGE_ROWS: u32 = 4;
 
-fn foreign_attack(blocks: u32) -> u32 {
-    blocks.saturating_sub(1).min(MAX_FOREIGN_GARBAGE_ROWS)
+/// what `blocks` of garbage is worth to a player of `receiver`, in that game's own units.
+/// Only the sender knows what the combo took, so only it can price the crossing; a game
+/// nothing here prices is worth nothing and the attack never leaves.
+fn foreign_attack(receiver: GameId, blocks: u32) -> u32 {
+    if receiver == ids::RUSTRIS {
+        blocks.saturating_sub(1).min(MAX_FOREIGN_GARBAGE_ROWS)
+    } else {
+        0
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -406,7 +413,7 @@ impl Game {
     pub fn attack(garbage: &SendGarbage) -> Attack {
         let blocks = garbage.len() as u32;
         Attack::new(GAME_ID, blocks)
-            .with_foreign(foreign_attack(blocks))
+            .with_foreign_for(ids::RUSTRIS, foreign_attack(ids::RUSTRIS, blocks))
             .with_detail(encode_garbage(garbage))
     }
 
@@ -705,7 +712,7 @@ impl engine::game::Game for Game {
             MetricKind::Score => Some(self.score),
             MetricKind::Level => Some(self.virus_level),
             MetricKind::Viruses => Some(self.bottle.virus_count()),
-            MetricKind::Lines => None,
+            MetricKind::Lines | MetricKind::Chain => None,
         }
     }
 
@@ -1278,7 +1285,11 @@ mod tests {
             let garbage: SendGarbage = vec![VirusColor::Blue; blocks];
             let attack = Game::attack(&garbage);
             assert_eq!(attack.strength, blocks as u32, "{blocks} blocks");
-            assert_eq!(attack.foreign, expected, "{blocks} blocks abroad");
+            assert_eq!(
+                attack.strength_for(ids::RUSTRIS),
+                expected,
+                "{blocks} blocks to Rustris"
+            );
         }
     }
 
@@ -1290,7 +1301,7 @@ mod tests {
         assert_eq!(game.garbage_of(Game::attack(&colors)), colors);
         // another game sends what it says it is worth here, in made up colours
         assert_eq!(
-            game.garbage_of(Attack::new(GameId(u16::MAX), 8).with_foreign(2))
+            game.garbage_of(Attack::new(GameId(u16::MAX), 8).with_foreign_for(GAME_ID, 2))
                 .len(),
             2
         );

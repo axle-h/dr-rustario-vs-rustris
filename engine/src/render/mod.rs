@@ -94,6 +94,43 @@ pub enum HoldLayout {
     Slot { slot: Rect, max_scale: f64 },
 }
 
+/// Where the attacks queued against a player are drawn: the strip a game with an answerable
+/// attack needs, so a player can see what is hanging over them and decide whether to chain
+/// back at it or take it.
+///
+/// The game says *what* is queued, through [`crate::game::Game::pending_attacks`], as its own
+/// [`CellId`]s; the theme says where the icons go and how big, in its background's own source
+/// pixels, and they are drawn from that theme's own cell sprites - so a theme owes the strip
+/// no art it does not already have. A theme with no `pending` layout draws no strip, which is
+/// every theme of a game that takes its hits immediately.
+#[derive(Clone, Debug)]
+pub struct PendingLayout {
+    /// the top left of the icon nearest the front of the queue
+    pub point: Point,
+    /// how far the next icon sits from the last; negative fills leftwards or upwards
+    pub step: Point,
+    /// the side of one icon, in source pixels
+    pub size: u32,
+    /// how many the strip has room for; anything queued past this is not drawn
+    pub max: u32,
+}
+
+impl PendingLayout {
+    /// where each of `count` queued attacks is drawn, front of the queue first
+    pub fn slots(&self, count: usize) -> Vec<Rect> {
+        (0..count.min(self.max as usize))
+            .map(|i| {
+                Rect::new(
+                    self.point.x() + self.step.x() * i as i32,
+                    self.point.y() + self.step.y() * i as i32,
+                    self.size,
+                    self.size,
+                )
+            })
+            .collect()
+    }
+}
+
 /// How a match-end overlay is placed on the board.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OverlayFit {
@@ -153,6 +190,8 @@ pub struct Theme<'a> {
     pub(crate) curtain_cell: Option<CellId>,
     pub(crate) hold: Option<HoldLayout>,
     pub(crate) peek: PeekLayout,
+    /// where attacks queued against the player are drawn, for a game that holds them
+    pub(crate) pending: Option<PendingLayout>,
     pub(crate) ghost_style: GhostStyle,
     /// themes that emit particles do so in this colour
     pub(crate) particle_color: Option<Color>,
@@ -295,6 +334,18 @@ impl<'a> Theme<'a> {
         }
     }
 
+    /// the strip of attacks waiting to land, drawn from this theme's own cell sprites
+    fn draw_pending<G: Game>(&self, canvas: &mut WindowCanvas, game: &G) -> Result<(), String> {
+        let Some(layout) = &self.pending else {
+            return Ok(());
+        };
+        let pending = game.pending_attacks();
+        for (dest, id) in layout.slots(pending.len()).into_iter().zip(pending) {
+            self.sprites.draw_cell(canvas, id, false, dest, 0.0, None)?;
+        }
+        Ok(())
+    }
+
     fn draw_queue(
         &self,
         canvas: &mut WindowCanvas,
@@ -415,6 +466,7 @@ impl<'a> Theme<'a> {
             }
             self.draw_queue(canvas, &queue, spawn_peek_offset)?;
         }
+        self.draw_pending(canvas, game)?;
 
         self.font.render_all(canvas, game)
     }
@@ -499,5 +551,48 @@ impl<'a> Theme<'a> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strip() -> PendingLayout {
+        PendingLayout {
+            point: Point::new(20, 8),
+            step: Point::new(16, 0),
+            size: 16,
+            max: 4,
+        }
+    }
+
+    #[test]
+    fn the_pending_strip_fills_from_the_front_of_the_queue() {
+        assert_eq!(strip().slots(0), vec![]);
+        assert_eq!(
+            strip().slots(2),
+            vec![Rect::new(20, 8, 16, 16), Rect::new(36, 8, 16, 16)]
+        );
+    }
+
+    /// a queue longer than the strip draws what it has room for rather than running off the
+    /// side of the background
+    #[test]
+    fn the_pending_strip_stops_when_it_runs_out_of_room() {
+        assert_eq!(strip().slots(99).len(), 4);
+    }
+
+    /// ... and a negative step fills the other way, for a theme whose room is to the left
+    #[test]
+    fn a_pending_strip_may_fill_backwards() {
+        let layout = PendingLayout {
+            step: Point::new(-16, 0),
+            ..strip()
+        };
+        assert_eq!(
+            layout.slots(2),
+            vec![Rect::new(20, 8, 16, 16), Rect::new(4, 8, 16, 16)]
+        );
     }
 }

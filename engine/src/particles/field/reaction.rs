@@ -19,8 +19,9 @@ pub mod words {
     pub const T_SPIN: &str = "T-SPIN";
     pub const PERFECT: &str = "PERFECT";
     pub const GAME_OVER: &str = "GAME OVER";
+    pub const CHAIN: &str = "CHAIN";
 
-    pub const ALL: [&str; 5] = [TETRIS, COMBO, T_SPIN, PERFECT, GAME_OVER];
+    pub const ALL: [&str; 6] = [TETRIS, COMBO, T_SPIN, PERFECT, GAME_OVER, CHAIN];
 }
 
 /// Something that happened in the match, in the terms the field cares about. Built by the

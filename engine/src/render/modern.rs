@@ -18,7 +18,8 @@ use crate::render::scene::{ClearParticles, SceneType};
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
 use crate::render::{
-    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, Theme, ThemeFamily,
+    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, PendingLayout, Theme,
+    ThemeFamily,
 };
 use crate::scale::ScaleMode;
 use sdl2::pixels::Color;
@@ -62,6 +63,9 @@ pub struct ModernThemeOptions {
     pub spawn_cell: CellPoint,
     pub cell_idle_type: FrameAnimationType,
     pub queue_max: u32,
+    /// how many queued attacks the strip above the board has room for. 0 draws no strip,
+    /// which is every game that takes its hits the moment they arrive.
+    pub pending_max: u32,
     pub particle_color: Color,
     /// what this theme radiates into the background particle field, see
     /// [`crate::particles::field`]. `particle_color` stays the fallback, so the foreground
@@ -328,6 +332,26 @@ pub fn modern_theme<'a>(
         clear: options.clear_particles,
     };
 
+    // the tray of attacks still to land goes in the gap above the board, a cell to an icon:
+    // the one part of the HUD a player has to read while looking at their own skyline. The
+    // gap is otherwise slack the window may crop, so a theme with a tray keeps back exactly
+    // the room the tray takes and lets the rest go as before
+    let pending_height = if options.pending_max > 0 {
+        (block_size + vertical_gutter).min(board_top_buffer)
+    } else {
+        0
+    };
+    let top_slack = board_top_buffer - pending_height;
+    let pending = (options.pending_max > 0).then(|| PendingLayout {
+        point: Point::new(
+            board_bg_snip.left() + border_weight as i32,
+            top_slack as i32,
+        ),
+        step: Point::new(block_size as i32, 0),
+        size: block_size,
+        max: options.pending_max,
+    });
+
     let (hold, peek) = if mascot_layout.is_some() {
         (
             HoldLayout::Point {
@@ -385,12 +409,14 @@ pub fn modern_theme<'a>(
         curtain_cell: None,
         hold: Some(hold),
         peek,
+        pending,
         ghost_style: options.ghost_style,
         particle_color: Some(options.particle_color),
         particle_palette: options.particle_palette,
         family: ThemeFamily::Particle,
         scale_mode: ScaleMode::Native,
-        // nothing is ever drawn in the gap above the board, unlike the rows below it
-        top_slack: board_top_buffer,
+        // nothing is ever drawn in the gap above the board, unlike the rows below it - bar
+        // the pending tray, which keeps its own room back out of it
+        top_slack,
     })
 }
