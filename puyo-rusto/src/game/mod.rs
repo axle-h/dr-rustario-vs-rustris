@@ -398,10 +398,13 @@ impl engine::game::Game for Game {
             return;
         }
         let Some(mut pair) = self.pair else { return };
+        // where it started, not where it lands: the trail animation smears down from these
+        // cells towards the landing point, so handing it the landing point draws it below.
+        let cells = pair.cells();
         let dropped_rows = pair.hard_drop(&self.board);
         self.pair = Some(pair);
         self.events.push(GameEvent::HardDrop {
-            cells: pair.cells(),
+            cells,
             dropped_rows,
         });
         self.lock_pair(true);
@@ -666,6 +669,29 @@ mod tests {
         // both halves are on the board, stacked in the spawn column
         resolve(&mut game);
         assert_eq!(game.board.height(SPAWN.x), 2);
+    }
+
+    /// the trail animation smears down from the cells the event carries, so they have to be
+    /// where the pair started rather than where it landed
+    #[test]
+    fn a_hard_drop_reports_where_the_pair_fell_from() {
+        let mut game = game();
+        let before = game.pair.expect("a pair").cells();
+        game.drain_events();
+        game.hard_drop();
+        let hard_drop = game
+            .drain_events()
+            .into_iter()
+            .find_map(|e| match e {
+                GameEvent::HardDrop {
+                    cells,
+                    dropped_rows,
+                } => Some((cells, dropped_rows)),
+                _ => None,
+            })
+            .expect("a hard drop");
+        assert_eq!(hard_drop.0, before);
+        assert!(hard_drop.1 > 0);
     }
 
     /// a placement that clears nothing simply hands over to the next pair
