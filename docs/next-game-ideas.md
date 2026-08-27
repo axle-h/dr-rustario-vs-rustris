@@ -132,7 +132,10 @@ Recorded here so the next person to have the idea can see it was weighed and why
 
 ## Sources
 
-The Puyo Nexus pages reject automated fetches (HTTP 403) — read them in a browser.
+The Puyo Nexus pages reject automated fetches (HTTP 403) — read them in a browser. Every
+Puyo page that carries a rule has been copied into
+[puyo-nexus-rules.md](puyo-nexus-rules.md), which is the faster way in; the live pages remain
+the authority.
 
 **Puyo Puyo**
 
