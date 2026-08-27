@@ -4,7 +4,12 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 
 * **Dr. Rustario** - a Dr. Mario clone (NES, SNES, N64 and particle themes)
 * **Rustris** - Tetris with the guideline ruleset (Game Boy, NES, SNES and particle themes)
+* **Puyo Rusto** - Puyo Puyo Tsu (particle theme; the retro ones are still being built)
 * **Dr. Rustario vs Rustris** - play a multi-player focussed playlist over both games.
+
+Puyo Rusto is the newest of them and is not finished: it is playable by one or two people on
+its own theme, with its own high score tables, but its ai is a placeholder that drops pairs at
+random and it does not take a turn in the vs. playlists yet.
 
 Rustris follows the guideline: the Super Rotation System and its wall kicks, a seven bag
 randomiser, hold, extended placement lock down, and guideline scoring. A T rotated into a slot

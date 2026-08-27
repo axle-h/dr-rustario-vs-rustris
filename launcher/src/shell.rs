@@ -128,6 +128,7 @@ impl Shell {
             all.extend(match game {
                 GameKind::DrRustario => dr_rustario::theme::all_themes(app.canvas(), tc, config)?,
                 GameKind::Rustris => rustris::theme::all_themes(app.canvas(), tc, config)?,
+                GameKind::Puyo => puyo_rusto::theme::all_themes(app.canvas(), tc, config)?,
             });
             ranges.push(start..all.len());
         }

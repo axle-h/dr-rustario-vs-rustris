@@ -8,6 +8,7 @@
 use dr_rustario::options::Options as DrOptions;
 use engine::app_info::{init, AppInfo};
 use engine::menu::{Menu, MenuItem};
+use puyo_rusto::options::Options as PuyoOptions;
 use rustris::options::Options as RustrisOptions;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::WindowCanvas;
@@ -19,6 +20,9 @@ trait MenuOptions {
     fn set_players(&mut self, players: u32);
     fn select(&mut self, name: &str, value: &str);
     fn items(&self) -> Vec<MenuItem>;
+    /// the names of this game's own themes, `all` first - the games do not name their themes
+    /// alike, so the walk asks each one what it has rather than assuming
+    fn theme_names(&self) -> Vec<&'static str>;
 }
 
 impl MenuOptions for RustrisOptions {
@@ -31,6 +35,9 @@ impl MenuOptions for RustrisOptions {
     fn items(&self) -> Vec<MenuItem> {
         self.menu_items(false)
     }
+    fn theme_names(&self) -> Vec<&'static str> {
+        rustris::game::rules::MatchThemes::names()
+    }
 }
 
 impl MenuOptions for DrOptions {
@@ -42,6 +49,24 @@ impl MenuOptions for DrOptions {
     }
     fn items(&self) -> Vec<MenuItem> {
         self.menu_items(false)
+    }
+    fn theme_names(&self) -> Vec<&'static str> {
+        dr_rustario::game::rules::MatchThemes::names()
+    }
+}
+
+impl MenuOptions for PuyoOptions {
+    fn set_players(&mut self, players: u32) {
+        PuyoOptions::set_players(self, players);
+    }
+    fn select(&mut self, name: &str, value: &str) {
+        PuyoOptions::select(self, name, value);
+    }
+    fn items(&self) -> Vec<MenuItem> {
+        self.menu_items(false)
+    }
+    fn theme_names(&self) -> Vec<&'static str> {
+        puyo_rusto::game::rules::MatchThemes::names()
     }
 }
 
@@ -59,11 +84,27 @@ fn all_games() -> Vec<(&'static str, &'static str, Box<dyn MenuOptions>)> {
             "Dr. Rustario",
             Box::new(DrOptions::default()) as Box<dyn MenuOptions>,
         ),
+        (
+            "puyo",
+            "Puyo Rusto",
+            Box::new(PuyoOptions::default()) as Box<dyn MenuOptions>,
+        ),
     ]
 }
 
-/// the theme picks to walk, in order
-const THEMES: [&str; 3] = ["all", "nes", "all"];
+/// the theme picks to walk, as *steps*: `all`, then a single theme of the game's own, then
+/// `all` again - which is what takes the theme sprint off the mode list and puts it back
+const THEME_STEPS: usize = 3;
+
+/// the theme this game is asked for at each step
+fn theme_step(names: &[&'static str], step: usize) -> &'static str {
+    // "all" is always the first of them; a single theme is anything after it, and a game with
+    // only one theme has nothing to switch to yet
+    match step {
+        1 => names.get(1).copied().unwrap_or(names[0]),
+        _ => names[0],
+    }
+}
 
 /// how far to walk the mode row: one more than the longest list, so the wrap shows
 const MODE_SHOTS: usize = 5;
@@ -108,8 +149,9 @@ fn main() -> Result<(), String> {
             ));
         }
 
-        for (step, theme) in THEMES.iter().enumerate() {
+        for step in 0..THEME_STEPS {
             for ((game, menu), (_, _, options)) in menus.iter_mut().zip(games.iter_mut()) {
+                let theme = theme_step(&options.theme_names(), step);
                 options.select("themes", theme);
                 menu.set_items(&mut canvas, &options.items())?;
                 // park on the mode row and walk it, so every mode on offer is in a shot

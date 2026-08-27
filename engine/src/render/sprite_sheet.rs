@@ -13,7 +13,7 @@ use crate::render::animation::{AnimationSpriteSheet, AnimationSpriteSheetData};
 use crate::render::block_mask::BlockMask;
 use crate::render::geometry::BoardGeometry;
 use crate::render::helper::TextureFactory;
-use sdl2::pixels::Color;
+use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
@@ -295,6 +295,86 @@ pub struct FlatSpriteSheet<'a> {
     pub mascot: Option<MascotSprites<'a>>,
 }
 
+/// SDL packs `ARGB8888` into a 32 bit word and writes it out in the machine's byte order, so
+/// the bytes come back reversed on a little endian machine - see [`BlockMask::from_pixels`],
+/// which learned this the hard way.
+#[cfg(target_endian = "little")]
+const CHANNELS: [usize; 4] = [3, 2, 1, 0]; // a, r, g, b
+#[cfg(target_endian = "big")]
+const CHANNELS: [usize; 4] = [0, 1, 2, 3];
+
+/// a pixel below this alpha is not part of the sprite
+const OPAQUE_ENOUGH: u8 = 0x40;
+
+/// The colour each cell is drawn in, read off the built atlas in one pass.
+///
+/// Pixels are weighted by saturation times brightness, so the outline a sprite is drawn with
+/// and the white of a puyo's eyes do not wash the answer out - what comes back is the colour
+/// somebody would name if you pointed at the sprite. A sprite with no saturation anywhere
+/// (nuisance, a monochrome theme) falls back to the plain average of what is there.
+fn cell_colors(
+    canvas: &mut WindowCanvas,
+    texture: &mut Texture,
+    cells: &HashMap<CellId, CellSnips>,
+) -> Result<HashMap<CellId, Color>, String> {
+    let query = texture.query();
+    let (width, height) = (query.width, query.height);
+    let mut pixels = vec![];
+    canvas
+        .with_texture_canvas(texture, |c| {
+            pixels = c
+                .read_pixels(Rect::new(0, 0, width, height), PixelFormatEnum::ARGB8888)
+                .unwrap_or_default()
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut colors = HashMap::new();
+    for (id, snips) in cells.iter() {
+        if let Some(color) = snip_color(&pixels, width, snips.normal) {
+            colors.insert(*id, color);
+        }
+    }
+    Ok(colors)
+}
+
+fn snip_color(pixels: &[u8], atlas_width: u32, snip: Rect) -> Option<Color> {
+    let [a, r, g, b] = CHANNELS;
+    let mut weighted = [0f64; 3];
+    let mut plain = [0f64; 3];
+    let (mut weight, mut count) = (0f64, 0f64);
+    for y in snip.y()..snip.bottom() {
+        for x in snip.x()..snip.right() {
+            let i = 4 * (y as usize * atlas_width as usize + x as usize);
+            let Some(pixel) = pixels.get(i..i + 4) else {
+                continue;
+            };
+            if pixel[a] < OPAQUE_ENOUGH {
+                continue;
+            }
+            let rgb = [pixel[r] as f64, pixel[g] as f64, pixel[b] as f64];
+            let high = rgb[0].max(rgb[1]).max(rgb[2]);
+            let low = rgb[0].min(rgb[1]).min(rgb[2]);
+            let w = (high - low) * high;
+            for channel in 0..3 {
+                weighted[channel] += rgb[channel] * w;
+                plain[channel] += rgb[channel];
+            }
+            weight += w;
+            count += 1.0;
+        }
+    }
+    if count == 0.0 {
+        return None;
+    }
+    let divisor = if weight > 0.0 { weight } else { count };
+    let source = if weight > 0.0 { weighted } else { plain };
+    Some(Color::RGB(
+        (source[0] / divisor).round() as u8,
+        (source[1] / divisor).round() as u8,
+        (source[2] / divisor).round() as u8,
+    ))
+}
+
 pub struct BlockSpriteSheet<'a> {
     texture: Texture<'a>,
     alpha_textures: HashMap<u8, Texture<'a>>,
@@ -303,6 +383,7 @@ pub struct BlockSpriteSheet<'a> {
     animations: Vec<CellAnimations<'a>>,
     animation_index: HashMap<CellId, usize>,
     masks: HashMap<CellId, BlockMask>,
+    colors: HashMap<CellId, Color>,
     block_size: u32,
     previews: PreviewSpriteSheet<'a>,
     mascot: Option<MascotSprites<'a>>,
@@ -403,6 +484,8 @@ impl<'a> BlockSpriteSheet<'a> {
             };
             masks.insert(*id, mask);
         }
+
+        let colors = cell_colors(canvas, &mut texture, &cells)?;
 
         let previews = match &data.previews {
             PreviewData::Sprites { file, pieces, size } => {
@@ -505,6 +588,7 @@ impl<'a> BlockSpriteSheet<'a> {
             animations,
             animation_index,
             masks,
+            colors,
             block_size,
             previews,
             mascot,
@@ -525,6 +609,15 @@ impl<'a> BlockSpriteSheet<'a> {
 
     pub fn mask(&self, id: CellId) -> Option<&BlockMask> {
         self.masks.get(&id)
+    }
+
+    /// The colour this theme draws a cell in, near enough for something else to be drawn to
+    /// match it - a caption over the cells that just cleared, say.
+    ///
+    /// Read off the sheet rather than declared, so it is right on every theme including ones
+    /// built from a rip, and costs a game no new contract at all.
+    pub fn cell_color(&self, id: CellId) -> Option<Color> {
+        self.colors.get(&id).copied()
     }
 
     fn cell_animations(&self, id: CellId) -> Option<&CellAnimations<'a>> {

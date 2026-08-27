@@ -10,7 +10,7 @@ use crate::animate::AnimationMeta;
 use crate::font::FontType;
 use crate::game::geometry::Point as CellPoint;
 use crate::game::MetricKind;
-use crate::render::font::{FontRender, FontTheme, ThemedNumeric};
+use crate::render::font::{FontRender, FontTheme, PopupFont, ThemedNumeric};
 use crate::render::geometry::BoardGeometry;
 use crate::render::helper::{TextureFactory, TextureQuery};
 use crate::render::metrics_table::{metric_label, GameMetricsTable};
@@ -38,6 +38,20 @@ const BIG_SLOT_BLOCKS: f64 = 2.5;
 // most pieces are 3 blocks wide: fill the slot with them and let I and O meet in the middle
 const SLOT_MAX_SCALE: f64 = SLOT_BLOCKS / 3.0;
 const BIG_SLOT_MAX_SCALE: f64 = BIG_SLOT_BLOCKS / 3.0;
+
+/// the words drawn across the board when a stage or a life ends
+const MATCH_END_CARDS: [&str; 2] = ["game over", "next level"];
+/// how many times the card font may be re-measured and shrunk to fit the board's width
+const MATCH_END_FIT_STEPS: usize = 4;
+const MIN_MATCH_END_FONT: u32 = 8;
+
+fn retro_font<'a>(
+    canvas: &mut WindowCanvas,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    size: u32,
+) -> Result<FontRender<'a>, String> {
+    FontRender::from_font(canvas, texture_creator, FontType::Retro, size, Color::WHITE)
+}
 
 pub struct ModernThemeOptions {
     pub name: &'static str,
@@ -127,13 +141,27 @@ pub fn modern_theme<'a>(
         font_size,
         Color::WHITE,
     )?;
-    let font_match_end = FontRender::from_font(
-        canvas,
-        texture_creator,
-        FontType::Retro,
-        font_size * 3,
-        Color::WHITE,
-    )?;
+    // The cards are drawn across the board, so they have to fit a board of any width: at a
+    // fixed size "game over" is a little narrower than a ten column board and half as wide
+    // again as a six column one. Shrink to fit and never grow, so a board wide enough for the
+    // full size gets exactly the card it always got.
+    let mut match_end_size = font_size * 3;
+    let mut font_match_end = retro_font(canvas, texture_creator, match_end_size)?;
+    let card_width = geometry.width() * 15 / 16;
+    for _ in 0..MATCH_END_FIT_STEPS {
+        let widest = MATCH_END_CARDS
+            .iter()
+            .map(|card| font_match_end.string_size(card).0)
+            .max()
+            .unwrap_or(0);
+        if widest <= card_width || match_end_size <= MIN_MATCH_END_FONT {
+            break;
+        }
+        match_end_size = ((match_end_size as f64 * card_width as f64 / widest as f64).floor()
+            as u32)
+            .max(MIN_MATCH_END_FONT);
+        font_match_end = retro_font(canvas, texture_creator, match_end_size)?;
+    }
 
     let board_snip = Rect::new(
         0,
@@ -310,10 +338,10 @@ pub fn modern_theme<'a>(
             c.set_draw_color(Color::RGBA(0, 0, 0, 100));
             c.clear();
             font_match_end
-                .render_string_in_center(c, game_over_snip, "game over")
+                .render_string_in_center(c, game_over_snip, MATCH_END_CARDS[0])
                 .unwrap();
             font_match_end
-                .render_string_in_center(c, next_stage_snip, "next level")
+                .render_string_in_center(c, next_stage_snip, MATCH_END_CARDS[1])
                 .unwrap();
         })
         .map_err(|e| e.to_string())?;
@@ -366,11 +394,16 @@ pub fn modern_theme<'a>(
             },
         )
     } else {
-        // a column of slots beside the board, the next piece largest
+        // a column of slots beside the board, the next piece largest. The smaller slots are
+        // centred on the big one rather than sharing its left edge: a piece is drawn in the
+        // middle of its slot, so left aligned slots of two widths put the pieces on two
+        // different axes - which reads as a ragged column, and is glaring in a game whose
+        // pieces are all one column wide
         let mut slots = vec![Rect::new(side_x, side_y, big_slot_size, big_slot_size)];
+        let slot_x = side_x + (big_slot_size - slot_size) as i32 / 2;
         let mut y = side_y + big_slot_size as i32 + vertical_gutter as i32;
         for _ in 1..options.queue_max.max(1) {
-            slots.push(Rect::new(side_x, y, slot_size, slot_size));
+            slots.push(Rect::new(slot_x, y, slot_size, slot_size));
             y += slot_size as i32 + vertical_gutter as i32;
         }
         (
@@ -385,12 +418,14 @@ pub fn modern_theme<'a>(
         )
     };
 
+    let popup_font = PopupFont::new(canvas, texture_creator, block_size)?;
     Ok(Theme {
         name: options.name,
         scenes: vec![scene_type.build(canvas, texture_creator)?],
         sprites,
         geometry,
         audio: options.audio,
+        popup_font,
         font: font_theme,
         board_texture,
         board_snips: vec![board_snip],

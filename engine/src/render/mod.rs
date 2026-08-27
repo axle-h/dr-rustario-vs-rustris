@@ -22,12 +22,12 @@ use crate::animate::{AnimationMeta, PlayerAnimations};
 use crate::game::{CellId, Game, GameEvent, PieceId, PlacedCell};
 use crate::particles::particle::ParticleAnimationType;
 use crate::particles::prescribed::RaceTheme;
-use crate::render::font::FontTheme;
+use crate::render::font::{FontTheme, PopupFont};
 use crate::render::geometry::BoardGeometry;
 use crate::render::scene::SceneRender;
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, GhostStyle, MascotKind};
-use crate::scale::ScaleMode;
+use crate::scale::{Scale, ScaleMode};
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Texture, WindowCanvas};
@@ -48,6 +48,17 @@ pub trait GameRender {
     /// a Rustris tetris, a Dr. Rustario combo. The words themselves are the engine's, see
     /// [`crate::particles::field::reaction::words`]; a game only says when.
     fn clear_word(&self, event: &GameEvent) -> Option<&'static str> {
+        let _ = event;
+        None
+    }
+
+    /// A short caption to draw over the cells this event cleared, if it deserves one.
+    ///
+    /// Unlike [`Self::clear_word`], which writes across the whole window in particles and is
+    /// for the once-a-match moments, this is small, local and may fire on every clear - a Puyo
+    /// chain counting itself up step by step. The game owns the words: they are drawn as text
+    /// rather than picked from a list the field knows how to spell.
+    fn clear_popup(&self, event: &GameEvent) -> Option<String> {
         let _ = event;
         None
     }
@@ -167,6 +178,9 @@ pub enum ThemeFamily {
     Particle,
 }
 
+/// how much of the board's width a popup may take, in sixteenths
+const POPUP_MAX_BOARD_WIDTH: u32 = 15;
+
 pub struct Theme<'a> {
     pub(crate) name: &'static str,
     pub(crate) family: ThemeFamily,
@@ -175,6 +189,11 @@ pub struct Theme<'a> {
     pub(crate) geometry: BoardGeometry,
     pub(crate) audio: AudioTheme,
     pub(crate) font: FontTheme<'a>,
+    /// draws [`crate::animate::popup::Popup`]s over the board. Every theme has one, sized to
+    /// its own cell, because whether there are any popups at all is the *game*'s decision -
+    /// see [`GameRender::clear_popup`] - and a theme should not have to opt into a game's
+    /// feedback
+    pub(crate) popup_font: PopupFont<'a>,
     /// the board frame per speed band, drawn under the cells
     pub(crate) board_texture: Texture<'a>,
     pub(crate) board_snips: Vec<Rect>,
@@ -469,6 +488,68 @@ impl<'a> Theme<'a> {
         self.draw_pending(canvas, game)?;
 
         self.font.render_all(canvas, game)
+    }
+
+    /// The captions a game asked for over the cells they are about, drifting up off them.
+    ///
+    /// Drawn straight onto the window rather than into the board texture, **after** the
+    /// foreground particles - a caption that a clear's own particle burst is drawn over is a
+    /// caption nobody reads, and the burst is exactly what is happening when one appears. That
+    /// costs the clipping the board texture used to give it for free, so the caption is held
+    /// inside the board's own width here instead.
+    ///
+    /// `origin` is where the board texture sits in the window and `scale` is what it is drawn
+    /// at, so everything below is worked out in the theme's own source pixels and mapped out
+    /// at the end. Nothing is drawn at all unless a game returned a caption from
+    /// [`GameRender::clear_popup`], which neither Dr. Rustario nor Rustris does.
+    pub(crate) fn draw_popups(
+        &self,
+        canvas: &mut WindowCanvas,
+        animations: &PlayerAnimations,
+        scale: &Scale,
+        origin: Point,
+    ) -> Result<(), String> {
+        let block = self.geometry.block_size() as f64;
+        let half = self.geometry.block_size() as i32 / 2;
+        let left = self
+            .geometry
+            .point(crate::game::geometry::Point::new(0, 0))
+            .x();
+        // a caption wider than the board would run over the HUD, or over the other player,
+        // so however long a game's words are they are held to the board
+        let widest = self.geometry.width() * POPUP_MAX_BOARD_WIDTH / 16;
+        for popup in animations.popup().active() {
+            let (column, row) = popup.at();
+            let anchor = self
+                .geometry
+                .point(crate::game::geometry::Point::new(0, row.round() as i32));
+            let mut size = popup.scale();
+            let natural = self.popup_font.width(popup.text(), size);
+            if natural > widest {
+                size *= widest as f64 / natural as f64;
+            }
+            // ... and held inside it, so a caption over the first column is not half cut off
+            let width = self.popup_font.width(popup.text(), size) as i32;
+            let x = (left + (column * block).round() as i32 + half).clamp(
+                left + width / 2,
+                left + self.geometry.width() as i32 - width / 2,
+            );
+            let center = Point::new(x, anchor.y() + half - (popup.rise() * block).round() as i32);
+            // the colour this theme draws the cells that popped in, so the caption belongs to
+            // the burst rather than floating over it
+            let color = popup
+                .cell()
+                .and_then(|id| self.sprites.cell_color(id))
+                .unwrap_or(Color::WHITE);
+            self.popup_font.draw(
+                canvas,
+                scale.scale_and_offset_point(center, origin.x(), origin.y()),
+                popup.text(),
+                size * scale.factor(),
+                color,
+            )?;
+        }
+        Ok(())
     }
 
     pub fn draw_board<G: Game>(
