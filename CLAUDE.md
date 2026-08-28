@@ -173,11 +173,19 @@ size the digits and nothing drew it. All three source games print it and two of 
 the recess under `STAGE` on `snes`, where Mean Bean Machine prints its own on `genesis`, at the
 far end of the score strip on `3ds`, and as a labelled row on the particle theme. Placing it is
 what `theme::data::hud` is for: a retro theme used to map one `MetricSnips` over `HUD_MAX`,
-which is right for one row and draws two on top of each other. `genesis` gets the word `STAGE`
-back with it, cut whole off the end of the big face's own row (`0123456789FINALSTAGE`) - that
-column's five words are all text sprites and the frame plane carries none of them, so the panel
-had boxes and no words, and a bare digit on stone says nothing. It is the only one of the five
-that face can spell.
+which is right for one row and draws two on top of each other. `genesis` gets the words
+`SCORE` and `STAGE` back with it, and the two faces the game sets them in. That column's five
+words are all text sprites and the frame plane carries none of them, so the panel had boxes and
+no words at all; the fonts sheet has the lot, and reading it once serves all of it, since every
+face on it is eight wide on a nine pixel pitch with thirty glyphs to a row - the digits and
+then A to T - so a word is a lookup into that alphabet. The game uses two: a bold sixteen row
+face for `NEXT`, `SCORE` and *both players' scores*, and a smaller plain white one for `STAGE`,
+`1P`, `DR R` and the stage number. The bold one is **green** on the sheet because green is the
+palette the labels take - a score is the same glyphs in the player's own, and matching the
+sheet's green `0` against the game's own `00007536` both proves the face and pairs each ink
+with the red it comes out as. The swap asserts nothing green survives it: that face has seven
+shades, two of them a couple of dozen pixels across the whole row, and a shade left off the
+table lights an edge on three digits and nowhere else.
 
 Chronicle is the odd one out again: it stands both fields on one painted scene rather than
 giving each player a panel, so this theme does too. Its `background.png` is transparent - it is

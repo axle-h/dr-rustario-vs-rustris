@@ -1451,13 +1451,28 @@ Avalanche except the last.
   it needed `data::hud`: every retro theme mapped one snip over `HUD_MAX`, which was fine
   while there was one row and drew both numbers on top of each other the moment there were
   two.
-* **`genesis` gets the word `STAGE` back with it.** Mean Bean Machine prints `NEXT`, `1P`,
+* **`genesis` gets its two words and its two faces.** Mean Bean Machine prints `NEXT`, `1P`,
   `DR R`, `STAGE` and `SCORE` down the middle of the screen and every one is a *text sprite*,
   so the frame plane carries none of them and the panel had the boxes and no words at all - a
-  bare digit on stone says nothing. The big face's row reads `0123456789FINALSTAGE` and the
-  last five letters are one forty pixel run, so `STAGE` is a single crop; it is the only one
-  of the five words that face can spell, and the others are left off rather than set in a
-  face the game never used there.
+  bare digit on stone says nothing. The fonts sheet has all of it, and reading it once serves
+  the lot: every face on it is eight pixels wide on a nine pixel pitch, thirty glyphs to a row
+  - the ten digits and then A to T - so a word is a lookup into that alphabet.
+
+  Which face is which was measured, not picked. The game sets `NEXT`, `SCORE` and *both
+  players' scores* in one bold sixteen row face, and `STAGE`, `1P`, `DR R` and the stage
+  number in a smaller plain white one whose ink is nine rows inside its cell. The bold face is
+  **green** on the sheet because green is the palette the labels take; a score is the same
+  glyphs in the player's own. Matching the sheet's green `0` against the game's own
+  `00007536` puts it beyond doubt - identical silhouettes to the pixel - and pairs each ink
+  with the red it comes out as, which is written back in the sheet's own scaling since the
+  sheet and a frame of the game are the same eight levels per channel scaled differently.
+  A first pass had taken the big white `0123456789FINALSTAGE` row for the score face; that
+  one is `FINAL STAGE`'s and a different shape, and it drew the stage number in it too.
+
+  The swap asserts that **nothing green survives it**. The bold face has seven shades and two
+  of them are a couple of dozen pixels across the whole row, so a shade left off the table
+  lights up an edge on three of the ten digits and nowhere else - which is exactly how the
+  seventh was found.
 
 **Done when:** the bottom row of puyos rests on the floor of every retro board, the queue and
 the tray sit in furniture the source game actually drew, every panel says what its numbers
