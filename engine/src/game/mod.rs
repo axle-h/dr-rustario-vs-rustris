@@ -275,6 +275,19 @@ pub trait Game {
     fn visible_height(&self) -> u32;
     fn cell(&self, point: Point) -> Cell;
 
+    /// How far the piece in play is through the row it is falling into, 0.0 at the top of the
+    /// cell and approaching 1.0 at the bottom, so a renderer can slide it between cells rather
+    /// than stepping it whole ones.
+    ///
+    /// Defaults to 0.0, which is a piece drawn on the grid and is what Rustris and Dr. Rustario
+    /// want: both step a piece a cell at a time and their soft drops are slow enough that the
+    /// step reads as a fall. Puyo Rusto overrides it because its soft drop is two frames a row -
+    /// the rate the original hardcodes - and at that rate a whole-cell step is a strobe rather
+    /// than a fall, the original having slid the pair eight pixels a frame inside its cell.
+    fn fall_progress(&self) -> f64 {
+        0.0
+    }
+
     /// upcoming pieces, soonest first
     fn queue(&self) -> Vec<PieceId>;
     fn held(&self) -> Option<PieceId>;

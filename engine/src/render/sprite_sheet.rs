@@ -846,6 +846,12 @@ impl<'a> BlockSpriteSheet<'a> {
                 .unwrap_or(false)
         };
 
+        // how far the piece in play is into the row below, so it slides rather than stepping.
+        // Zero for a game that does not interpolate, and the ghost never takes it: the ghost
+        // marks the cell the piece lands in, which is a grid position whatever the piece is
+        // doing between two of them
+        let fall_offset = game.fall_progress();
+
         let hidden = geometry.hidden_rows();
         let mut ghosts = HashSet::new();
         if let GhostStyle::Outline { .. } = ghost_style {
@@ -866,7 +872,7 @@ impl<'a> BlockSpriteSheet<'a> {
                 match game.cell(point) {
                     Cell::Empty => {}
                     Cell::Active(id) if draw_active => {
-                        self.draw_cell(canvas, id, false, dest, 0.0, None)?
+                        self.draw_cell(canvas, id, false, dest, fall_offset, None)?
                     }
                     Cell::Ghost(id) if draw_active => match ghost_style {
                         GhostStyle::Alpha => {
