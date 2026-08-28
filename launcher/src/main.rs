@@ -36,6 +36,21 @@ fn main() -> Result<(), String> {
                 };
             }
 
+            // `ga puyo ...` plays and ranks Puyo Rusto, which trains nothing: its ai is a
+            // deterministic scorer and its difficulty ladder is a measurement rather than a
+            // model, so there is a `rank` where the other two games have an `auto`
+            if args.get(1).map(String::as_str) == Some("puyo") {
+                use puyo_rusto::game::ai::harness;
+                return match args.get(2).map(String::as_str) {
+                    None | Some("rank") => harness::rank_main(&args[3..]),
+                    Some("play") => harness::harness_main(&args[3..]),
+                    Some(other) => Err(format!(
+                        "unknown ga puyo mode '{}', expected: play or rank",
+                        other
+                    )),
+                };
+            }
+
             use rustris::game::ai::{genetic, harness};
             return match args.get(1).map(String::as_str) {
                 None | Some("auto") => genetic::ga_main_auto(),
@@ -44,7 +59,8 @@ fn main() -> Result<(), String> {
                 Some("diagnose") => genetic::ga_diagnose(),
                 Some("play") => harness::harness_main(&args[2..]),
                 Some(other) => Err(format!(
-                    "unknown ga mode '{}', expected: dr, auto, survival, score, diagnose or play",
+                    "unknown ga mode '{}', expected: dr, puyo, auto, survival, score, diagnose \
+                     or play",
                     other
                 )),
             };
