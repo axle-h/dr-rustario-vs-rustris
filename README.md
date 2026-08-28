@@ -11,7 +11,13 @@ Puyo Rusto is the newest of them and is not finished: it is playable by one or t
 all four of its themes, with its own high score tables, but its ai is a placeholder that drops
 pairs at random and it does not take a turn in the vs. playlists yet. The retro themes are the
 three games Compile's original became: **genesis** is Dr. Robotnik's Mean Bean Machine,
-**snes** is Kirby's Avalanche and **3ds** is Puyo Puyo Chronicle. Its particle theme carries
+**snes** is Kirby's Avalanche and **3ds** is Puyo Puyo Chronicle. Each keeps its own game's
+furniture and puts the queue and the nuisance tray in the boxes that game drew for them -
+Mean Bean Machine's two `NEXT` boxes and the box it keeps Robotnik's mugshot in, Kirby's two
+name plates and the arch at the foot of its centre column. Chronicle has none of that: it
+stands both fields on one painted scene rather than giving each player a panel, and so does
+this - the scene covers the whole window at any size, so a 1080p screen is filled by it and
+not letterboxed round a strip in the middle. Its particle theme carries
 fourteen sets
 of puyos and deals a different one to each player at the start of every match, so a two player
 game is never two boards of the same puyos and no two matches look alike; the title screen

@@ -8,7 +8,7 @@ use crate::scale::Scale;
 use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::Rect;
-use sdl2::render::{Texture, TextureCreator, WindowCanvas};
+use sdl2::render::{ScaleMode as TextureScaleMode, Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
 
@@ -35,6 +35,13 @@ pub enum SceneType {
         colors: [Color; 2],
     },
     Tile {
+        texture: &'static [u8],
+    },
+    /// One picture, scaled until it covers the window and centred on it - what a theme whose
+    /// backdrop is a painting rather than a tile wants. It is drawn with linear filtering
+    /// and nothing else here is: a tiled retro backdrop scales by whole pixels and has to
+    /// keep its hard edges, and a painted one has none to keep.
+    Cover {
         texture: &'static [u8],
     },
 }
@@ -92,6 +99,11 @@ impl<'a> SceneRender<'a> {
                 texture
             }
             SceneType::Tile { texture } => texture_creator.load_texture_bytes(texture)?,
+            SceneType::Cover { texture } => {
+                let mut texture = texture_creator.load_texture_bytes(texture)?;
+                texture.set_scale_mode(TextureScaleMode::Linear);
+                texture
+            }
             SceneType::Solid(_) => texture_creator
                 .create_texture_target(None, 1, 1)
                 .map_err(|e| e.to_string())?,
@@ -187,6 +199,14 @@ impl<'a> SceneRender<'a> {
             canvas.set_draw_color(color);
             return canvas.fill_rect(Rect::new(0, 0, window_width, window_height));
         }
+        if let SceneType::Cover { .. } = self.scene_type {
+            let (window_width, window_height) = scale.window_size();
+            return canvas.copy(
+                &self.texture,
+                None,
+                cover(self.rect_0, window_width, window_height),
+            );
+        }
 
         let (window_width, window_height) = scale.window_size();
         let mut rect = scale.scale_rect(self.rect_0);
@@ -212,5 +232,45 @@ impl<'a> SceneRender<'a> {
         let offset = -remainder / 2;
         let repeat = window_size as i32 / tile_size as i32 + if remainder == 0 { 0 } else { 2 };
         (offset, repeat)
+    }
+}
+
+/// `source` blown up until it covers `width` by `height`, centred on it - the larger of the
+/// two ratios, so the short side fills and the long one hangs over the edge equally at both
+/// ends. A window narrower or shorter than the picture crops it rather than letterboxing.
+fn cover(source: Rect, width: u32, height: u32) -> Rect {
+    let factor = (width as f64 / source.width() as f64).max(height as f64 / source.height() as f64);
+    let scaled = (
+        (source.width() as f64 * factor).round() as u32,
+        (source.height() as f64 * factor).round() as u32,
+    );
+    Rect::new(
+        (width as i32 - scaled.0 as i32) / 2,
+        (height as i32 - scaled.1 as i32) / 2,
+        scaled.0,
+        scaled.1,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// a 5:3 picture on a 16:9 window fills the width and hangs over the top and bottom
+    #[test]
+    fn a_wider_window_covers_by_the_width() {
+        assert_eq!(
+            cover(Rect::new(0, 0, 400, 240), 1920, 1080),
+            Rect::new(0, -36, 1920, 1152)
+        );
+    }
+
+    /// ... and a taller one the other way about, with the overhang split evenly
+    #[test]
+    fn a_taller_window_covers_by_the_height() {
+        assert_eq!(
+            cover(Rect::new(0, 0, 400, 240), 480, 640),
+            Rect::new(-293, 0, 1067, 640)
+        );
     }
 }

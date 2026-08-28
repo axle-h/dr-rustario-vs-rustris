@@ -1125,8 +1125,10 @@ speed band exactly as the other games' retro themes do.
 
 ## Phase 3 — retro themes
 
-**Status:** `in progress` — 3a, 3b and 3c are all `done` (2026-08-28); 3d is `todo`. Puyo Rusto
-has its four themes. **Split into 3a, 3b, 3c and 3d on
+**Status:** `in progress` — 3a, 3b, 3c and 3e are all `done` (2026-08-28); 3d is `todo`. Puyo
+Rusto has its four themes. **3e was added on 2026-08-28** after Alex played the first three:
+the panels were built from the rips alone and the rips disagree with the games, so every board
+and every preview was out. See it for what was wrong and how each number was measured. **Split into 3a, 3b, 3c and 3d on
 2026-08-27**, with Alex, because three themes is three separate slicing jobs that share one
 piece of groundwork and nothing else, and there is no reason for the second to wait on the
 third. 3a carries the groundwork and `genesis`; 3b is `snes`, which is the same game reskinned
@@ -1325,6 +1327,62 @@ playlist.
 
 **Done when:** all four themes render, `field_preview sheet` outlines the new sprites cleanly,
 and matching puyos join up on all three retro themes the way they do on the particle one.
+
+### Phase 3e — the alignment pass (2026-08-28)
+
+**Status:** `done`. Alex played 3a–3c and reported that the puyos did not line up with the
+boards, worst on `genesis` where they sat "way above the bottom", and that the previews were
+not aligned either. All three were wrong and all three are fixed. This is here because *how*
+they were found is the reusable part: **every number below was measured against the emulated
+game, not read off the rip**, and the rip was wrong every time the two disagreed.
+
+* **`genesis` was missing the well's floor.** The boards sheet keeps the screen as the two
+  planes the Genesis drew it on, side by side: the left one is the dungeon wall with the wells
+  sunk into it, the right one is every stone border, every well floor and the boxes down the
+  middle, over a flat `(0, 64, 64)` key. Cutting the left plane alone left sixteen pixels of
+  open well under the last row of beans. `genesis_screen` composites the two before anything is
+  cut from it; against a live frame the result agrees to within the rip's own colour rounding,
+  and the back plane alone does not. The geometry was never wrong — the art under it was.
+* **The frame plane's holes are the panel's boxes, exactly.** Flood filling the key gives
+  `(16, 16, 96, 192)` and `(208, 16, 96, 192)` for the two wells, `(120, 32, 32, 48)` and
+  `(168, 32, 32, 48)` for the two `NEXT` boxes and `(120, 96, 80, 56)` for the mugshot. Those
+  are what `genesis/mod.rs` names now. A pair goes in each `NEXT` box — the game gives the
+  second to the opponent, but a panel here belongs to one player, so the queue runs through
+  both — and the tray goes in the mugshot box, five icons at a whole cell each.
+* **`snes` was one pixel high.** A blob's eyes sit three rows into its cell; in a frame with the
+  field full they land on 99, 115, 131 … 195, so the bottom row is 192 and the field starts at
+  16, not the 15 the BG1 render read. Its queue goes under the two name plates (`(104, 38)` and
+  `(128, 38)`, both 24 by 41, the two runs of white at row 31) and its tray across the mouth of
+  the arch, `(104, 186, 48, 14)` — the only clear run in a forty-eight pixel column that is as
+  wide as six icons, at half a cell each. The stage number is *filled* with the recess's own
+  colour now rather than painted out with the black around it, which had left a black hole
+  under `STAGE`.
+* **`3ds` had the panel and the scene the wrong way round.** Chronicle stands both fields on one
+  painted scene; the theme was giving each player a slice of that scene as a panel and filling
+  the rest of the window with flat colour, so at 1080p a strip of scenery sat in a blue void.
+  The panel is transparent now and the backdrop is the new `SceneType::Cover` — one picture
+  scaled until it covers the window, centred, drawn with linear filtering. See below for the
+  size it is written at.
+* **The Chronicle skin sheet is not on one pitch.** Most of the top row is on nineteen, but a
+  gap partway along shifts everything after it by a pixel and then by three, so the nuisance and
+  the tray were cut three pixels off and the tray drew slivers of the tiles next door.
+  `three_ds_row_tiles` finds the tiles by the page showing between them and the two constants
+  are ordinals along that row rather than column numbers.
+
+**`SceneType::Cover` is new engine, and it is the only scene here that is a painting rather than
+a tile** — which is why it is the only one drawn with linear filtering: a tiled retro backdrop
+scales by whole pixels and has to keep its hard edges, and a painted one has none to keep. The
+picture is written at 1200x720: three times the 3DS top screen it is cut from, with Lanczos and
+a light unsharp, and the last stretch to 1080p and beyond is `Cover`'s own filter. Three rather
+than five because the art is painted — all soft gradients, no fine detail, so the interpolation
+has nothing to lose — and 1200x720 is 685 KiB in the binary and 3.4 MiB of texture against 1.5
+MiB and 8.6 MiB at full size. There is no neural upscaler in this pipeline and it does not need
+one; a straight Lanczos blow-up of this art holds up at 1080p.
+
+**Done when:** the bottom row of puyos rests on the floor of every retro board, the queue and
+the tray sit in furniture the source game actually drew, and the `3ds` backdrop fills the
+window at 1080p. All three check out in `frame_shot` at 1920x1080 and 640x480, one and two
+players.
 
 ### Phase 3d — the retro soundtracks and sound effects
 

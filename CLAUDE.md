@@ -133,7 +133,37 @@ which is oldest hardware first the way the other two games order theirs. The thr
 are cut by `puyo-rusto/art/rip_retro.py`, whose sources are not in the repository: it reads each
 sheet's own link order off the art rather than being told it, and for `snes` - whose rips carry
 no board, background or font - it renders the SNES's background layers on their own by poking
-`$212C` in a savestate, which is how that theme's panel exists at all. Its ai is phase 4 and its
+`$212C` in a savestate, which is how that theme's panel exists at all.
+
+Where a retro panel's furniture goes was **measured against the emulated game**, not read off
+the rip, and the two disagree. Mean Bean Machine's sheet keeps the screen as the two planes the
+Genesis drew it on: the left one is the dungeon wall with the wells sunk into it, and every
+stone border, every well *floor* and the boxes down the middle are on the right one, over a flat
+key. Cutting the left plane alone gave the panel no floor, so the last row of beans had sixteen
+pixels of open well under it and looked like it had stopped a row short; `genesis_screen`
+composites the two, which is the fix and is also what hands the panel its `NEXT` boxes. Those
+boxes are holes in the frame plane, so their rects are exact and `genesis/mod.rs` names them
+rather than guessing: a pair per `NEXT` box (the game's own and its opponent's - a panel here
+belongs to one player, so the queue runs through both) and the nuisance tray in the mugshot box,
+which is the one piece of furniture this game has no use for. Kirby's Avalanche wanted the same
+treatment and a pixel besides - a blob's eyes sit three rows into its cell and in a full field
+they land on 99, 115 ... 195, so the field starts at 16 and not the 15 the layer render read.
+Its queue goes under the two name plates and its tray across the mouth of the arch at the foot
+of the centre column, which is the only clear run as wide as six icons - at half a cell, since
+that column is forty eight pixels across.
+
+Chronicle is the odd one out again: it stands both fields on one painted scene rather than
+giving each player a panel, so this theme does too. Its `background.png` is transparent - it is
+written out at all only because the engine sizes a player's side of the window by it - and the
+backdrop is `SceneType::Cover`, which is one picture scaled until it covers the window and
+centred, drawn with linear filtering where every other scene here is a tile that has to keep its
+hard edges. A 3DS top screen is 400x240 and has to hold up at 1080p and beyond, which it gets to
+in two steps: three times in the rip, with Lanczos and a light unsharp, and the rest at draw
+time with `Cover`'s own filter. Three rather than five because the art is painted - all soft
+gradients, no fine detail, so the interpolation has nothing to lose - and 1200x720 is 685 KiB in
+the binary and 3.4 MiB of texture against 1.5 MiB and 8.6 MiB at full size.
+
+Its ai is phase 4 and its
 place in the vs. playlists phase 5. Two things follow from that. Its four ai
 difficulties are all backed by `PuyoAiKind::Placeholder`, which drops the pair in a column
 picked at random - the menu offers what every other game offers because the launcher's tests

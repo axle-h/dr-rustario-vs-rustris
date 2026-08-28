@@ -39,6 +39,9 @@ mod sprites {
     pub const BACKGROUND: &[u8] = include_bytes!("background.png");
     pub const BOARD: &[u8] = include_bytes!("board.png");
     pub const FONT: &[u8] = include_bytes!("font.png");
+    /// one of the game's own top screens, blown up by `rip_retro.py` to stand being
+    /// stretched over a whole window - see `THREE_DS_BG_SCALE` there
+    pub const SCENE: &[u8] = include_bytes!("scene.png");
 }
 
 /// the rip's own cell, squared off from its 18 by 17 by `rip_retro.py`
@@ -64,11 +67,35 @@ const CELLS_AT: (i32, i32) = (13, 7);
 /// where the frame is cut out of the panel, and so where the board is drawn back into it
 const FRAME_AT: (i32, i32) = (7, 11);
 
+/// The column beside the field, which is everything the frame leaves. The queue and the
+/// nuisance tray both live in it, against the field rather than centred across it: in a two
+/// player game the far side of this column is the gap between the boards, and anything out
+/// there reads as belonging to neither player. Chronicle floats both beside the field with
+/// no furniture round either - there is none in the rip to give them - so the only things to
+/// get right are that they hug the field and start level with its first row.
+const SIDE: (i32, u32) = (
+    FRAME_AT.0 + FRAME.0 as i32,
+    PANEL.0 - FRAME_AT.0 as u32 - FRAME.0,
+);
+/// the air between the field's frame and the column's contents
+const SIDE_GAP: i32 = 6;
+/// the first row of the field, which the queue starts level with
+const FIRST_ROW: i32 = FRAME_AT.1 + CELLS_AT.1;
+/// pair to pair down the queue: a pair, and a little air
+const PEEK_STEP: i32 = SRC_BLOCK_SIZE as i32 * 2 + 8;
+/// the tray goes under the queue, at a little under a cell so all six fit the column
+const TRAY_ICON: u32 = 15;
+
+/// one player's panel, which is `rip_retro.py`'s `THREE_DS_PANEL` - transparent, since the
+/// scene is the whole of the backdrop
+const PANEL: (u32, u32) = (240, 272);
+
 /// how long a group holds before it goes, under [`crate::game::rules::POP_DELAY`] so a chain
 /// step never waits on the animation
 const POP_HOLD: Duration = Duration::from_millis(200);
 
-/// the dark the field is printed on, averaged off the fill itself
+/// the dark the field is printed on, averaged off the fill itself. Nothing is drawn in it
+/// now that the scene is a picture; it is what the window would be were the scene missing.
 const FIELD: Color = Color::RGB(0x27, 0x3A, 0x56);
 
 fn block(col: i32, row: i32) -> Point {
@@ -88,7 +115,13 @@ pub fn three_ds_theme<'a>(
 ) -> Result<Theme<'a>, String> {
     let options = RetroThemeOptions {
         name: "3ds",
-        scenes: vec![SceneType::Solid(FIELD)],
+        // Chronicle stands both fields on one painted scene rather than giving each player a
+        // panel, and so does this: the panel is transparent and the backdrop is the picture,
+        // covering the window however big it is. It is the one theme in the repository whose
+        // background is a painting rather than a tile, which is why `Cover` exists.
+        scenes: vec![SceneType::Cover {
+            texture: sprites::SCENE,
+        }],
         sprites: BlockSpriteSheetData {
             file: sprites::SPRITES,
             source_block_size: SRC_BLOCK_SIZE,
@@ -155,17 +188,19 @@ pub fn three_ds_theme<'a>(
         overlay_size: None,
         hold: None,
         peek: PeekLayout::Column {
-            point: Point::new(158, 24),
-            offset: 44,
+            point: Point::new(SIDE.0 + SIDE_GAP, FIRST_ROW + TOP_PADDING as i32),
+            offset: PEEK_STEP,
             max: 2,
             scale: None,
         },
-        // the tray runs along the top of the side column, filling rightwards at a little
-        // under a cell so all six fit in the width beside the field
+        // ... and the tray under the queue, filling rightwards
         pending: Some(PendingLayout {
-            point: Point::new(150, 132),
-            step: Point::new(15, 0),
-            size: 15,
+            point: Point::new(
+                SIDE.0 + SIDE_GAP,
+                FIRST_ROW + TOP_PADDING as i32 + PEEK_STEP * 2 + 8,
+            ),
+            step: Point::new(TRAY_ICON as i32, 0),
+            size: TRAY_ICON,
             max: COLUMNS,
         }),
         mascot: None,

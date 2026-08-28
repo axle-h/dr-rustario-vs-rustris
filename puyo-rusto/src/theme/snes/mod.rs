@@ -28,7 +28,7 @@ use engine::render::scene::SceneType;
 use engine::render::sprite_sheet::{BlockSpriteSheetData, GhostStyle};
 use engine::render::{PeekLayout, PendingLayout, Theme};
 use sdl2::pixels::Color;
-use sdl2::rect::Point;
+use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
@@ -52,9 +52,24 @@ const EXTRAS_ROW: i32 = PuyoColor::N as i32;
 /// one transparent cell above everything, for the thirteenth row to float in
 const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 
-/// where the field sits in the panel, measured off the BG1 render: it is the one flat run of
-/// the backdrop colour, six columns and twelve rows of sixteen
-const FIELD: (i32, i32) = (8, 15);
+/// Where the field sits in the panel. The panel is the whole SNES screen cut off at the
+/// second player's field, so **a point here is a point on the SNES screen** - and a point
+/// handed to the *engine* is that plus [`TOP_PADDING`], since the padding sits above
+/// everything and the HUD is measured from the top of that. `board_point` is the exception:
+/// the board texture carries the same padding, so it is given the panel point as it stands.
+const FIELD: (i32, i32) = (8, 16);
+
+/// The two boxes under `NEXT`. Kirby's Avalanche puts the player's next pair under their own
+/// name plate and the opponent's under theirs, but a panel here belongs to one player, so the
+/// queue runs left to right through both: next, then next but one.
+const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(104, 38, 24, 41), (128, 38, 24, 41)];
+
+/// the mouth of the arch at the foot of the centre column, where Kirby stands in the
+/// original: forty eight pixels across, which is exactly six tray icons at half size, and
+/// the only clear run this column has that is as wide as the tray needs
+const ARCH_MOUTH: (i32, i32, u32, u32) = (104, 186, 48, 14);
+/// ... at which the tray's icons are drawn, half the cell so six of them fit
+const TRAY_ICON: u32 = SRC_BLOCK_SIZE / 2;
 
 /// how long a group holds before it goes, under [`crate::game::rules::POP_DELAY`]
 const POP_HOLD: Duration = Duration::from_millis(200);
@@ -144,22 +159,30 @@ pub fn snes_theme<'a>(
         interstitial_points: vec![],
         overlay_size: None,
         hold: None,
-        // under the game's own `NEXT`, in the framed slot it drew for one
-        peek: PeekLayout::Column {
-            point: Point::new(114, 62),
-            offset: 26,
-            max: 2,
-            // three quarters, so both pairs fit the slot the game framed for its own two
-            // without running down over `STAGE`
-            scale: Some(0.75),
+        // one pair per box under the game's own `NEXT`, at the size the game drew them
+        peek: PeekLayout::Slots {
+            slots: NEXT_BOXES
+                .iter()
+                .map(|(x, y, w, h)| {
+                    Rect::from_center(
+                        Point::new(x + *w as i32 / 2, y + TOP_PADDING as i32 + *h as i32 / 2),
+                        SRC_BLOCK_SIZE,
+                        SRC_BLOCK_SIZE * 2,
+                    )
+                })
+                .collect(),
+            max_scale: 1.0,
         },
-        // the tray runs down the wooden column between `STAGE` and the arch, which is the only
-        // clear stretch of panel this layout has: Kirby's Avalanche takes its hits as they
-        // arrive and drew nothing waiting anywhere
+        // the tray goes across the mouth of the arch: Kirby's Avalanche takes its hits as
+        // they arrive and drew nothing waiting anywhere, and this column is too narrow to
+        // carry six cells at their own size anywhere else
         pending: Some(PendingLayout {
-            point: Point::new(119, 138),
-            step: Point::new(0, 9),
-            size: 9,
+            point: Point::new(
+                ARCH_MOUTH.0,
+                ARCH_MOUTH.1 + TOP_PADDING as i32 + (ARCH_MOUTH.3 as i32 - TRAY_ICON as i32) / 2,
+            ),
+            step: Point::new(TRAY_ICON as i32, 0),
+            size: TRAY_ICON,
             max: COLUMNS,
         }),
         mascot: None,
@@ -203,7 +226,29 @@ mod tests {
         assert_eq!(board_width, COLUMNS * SRC_BLOCK_SIZE);
         assert_eq!(board_height, VISIBLE_ROWS * SRC_BLOCK_SIZE);
         assert!(FIELD.0 as u32 + board_width <= width);
-        assert!(FIELD.1 as u32 + board_height <= height);
+        // the flower border above the field and the grass under it are a cell each, which is
+        // what puts the field at 16 rather than the 15 the layer render read
+        assert_eq!(FIELD.1 as u32, SRC_BLOCK_SIZE);
+        assert_eq!(FIELD.1 as u32 + board_height + SRC_BLOCK_SIZE, height);
+    }
+
+    /// the boxes are the game's own furniture, measured off the layer render by
+    /// `rip_retro.py`; what this checks is that what is put in them fits and lands on the panel
+    #[test]
+    fn everything_the_panel_is_told_to_draw_lands_on_it() {
+        let (width, height) = png_size(sprites::BACKGROUND);
+        for (x, y, w, h) in NEXT_BOXES {
+            assert!(x as u32 + w <= width, "a next box runs off the panel");
+            assert!(y as u32 + h <= height);
+            assert!(
+                w >= SRC_BLOCK_SIZE && h >= SRC_BLOCK_SIZE * 2,
+                "a pair does not fit"
+            );
+        }
+        assert!(ARCH_MOUTH.0 as u32 + ARCH_MOUTH.2 <= width);
+        assert!(ARCH_MOUTH.1 as u32 + ARCH_MOUTH.3 <= height);
+        // six icons across the arch, at whole pixels, which is what half a cell buys
+        assert_eq!(TRAY_ICON * COLUMNS, ARCH_MOUTH.2);
     }
 
     #[test]
