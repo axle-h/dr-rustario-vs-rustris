@@ -149,12 +149,23 @@ which is the one piece of furniture this game has no use for. Kirby's Avalanche 
 treatment and a pixel besides - a blob's eyes sit three rows into its cell and in a full field
 they land on 99, 115 ... 195, so the field starts at 16 and not the 15 the layer render read.
 Its two name plates are painted out - they label one queue per player and this panel has both
-boxes to itself - so its queue goes in the gaps between the three wooden posts that frame them,
-and its tray across the mouth of the arch at the foot of the centre column, which is the only
-clear run as wide as six icons at half a cell. Its numbers are drawn in the red the game draws
-that player's in: the ten font tiles use an outline index and a fill index and nothing else,
-and which colours those take is the palette's, which is the player's - the left panel is red
-and the right one white.
+boxes to itself - so its queue goes in the gaps between the three wooden posts that frame them.
+Painting anything out of that column leaves a hole, and a flat dark band in a wooden column
+reads as one, so the column's own woodwork closes them: the posts are run up to meet the plank
+the `NEXT` sign is nailed to, and a whole course of plank is laid across the mouth of the arch
+where the game stands Kirby and this one stands nothing. The tray stands on that course, at
+half a cell, which is the only run in a forty eight pixel column as wide as six icons.
+
+**Its numbers are the game's own sixteen row face and not the eight row one**, which is two
+tiles stacked - the top at VRAM tile 769 and the bottom sixteen further on, since the font is
+laid out sixteen glyphs to a row. Tile 896 is a *different* face, the small one the game sets
+its menus in, and cutting the score in it drew numbers a little over half the height of the
+`SC` they sit beside. Neither the tiles nor the inks were guessed: the layer render carries two
+of the game's own digits - the `0` of its score and the `1` in the `STAGE` recess - so both
+were masked off it and matched against a decode of all 2048 tiles, which puts the `0` at 769
+over 785 and the `1` at 770 over 786 to the pixel, and pairs each index with the colour it
+came out as. The palette is the *player's*: the left panel draws in the red its `SC` is drawn
+in, the right one in white.
 
 **The level is a HUD row on every Puyo theme**, which it never was: `MAX_LEVEL` was there to
 size the digits and nothing drew it. All three source games print it and two of them call it a

@@ -607,6 +607,21 @@ SNES_GRASS = (26, 200, 64, 24)
 SNES_NAME_PLATES = (104, 31, 48, 7)
 SNES_PLATE_DONOR = (104, 38, 48, 1)
 
+# ... and then the hole they leave is filled with the column's own woodwork, because a flat
+# dark band under the `NEXT` sign reads as a hole and not as a panel. Two holes, in fact:
+#
+# `POSTS` runs the three wooden posts that frame the two queues up to meet the plank the
+# `NEXT` sign is nailed to - they stop where the plates began, so the boxes simply get taller
+# and nothing is invented. `FLOOR` lays a whole course of plank across the mouth of the arch,
+# where the game stands Kirby and this one stands nothing: the ground under him is bare dark
+# and reads as a gap in the column. Both copy from the panel itself - `POSTS` from the seven
+# rows below the hole, `FLOOR` from the course between `STAGE` and the arch - so the wood is
+# the game's own and no two courses are alike by accident.
+SNES_POSTS = (104, 32, 48, 7)
+SNES_POSTS_DONOR = (104, 39, 48, 7)
+SNES_FLOOR = (104, 192, 48, 16)
+SNES_FLOOR_DONOR = (104, 120, 48, 16)
+
 # Two blobs sit *outside* the field, in the little arch at the foot of the centre column where
 # Kirby stands - so they survive punching the field out and have to be painted over. They are
 # found rather than measured: a blob comes to rest on the arch's floor, which is black, so the
@@ -636,12 +651,29 @@ SNES_TILE = (16, 32, 32, 32)
 
 # the ten digits in the game's own face, as tiles of its VRAM. Three indices: nothing, the
 # dark outline and the white fill, which is what they are drawn as on screen.
-SNES_FONT_TILE = 896
-# The two inks the tiles actually use - a decode of all ten says so: every pixel is index 0,
-# 1 or 15. Which colours they take is the palette's, and the palette is the player's: the
-# left one draws its numbers in the red its `SC` is drawn in and the right one in white. This
-# panel is the left one, so the fill is that red, read off the `SC` the panel keeps.
-SNES_FONT_INK = {1: (0x00, 0x00, 0x00, 0xff), 15: (0xE7, 0x51, 0x63, 0xff)}
+# The game's own numeric face: **sixteen rows and not eight**. Each digit is two tiles, the
+# top at `SNES_FONT_TILE + n` and the bottom `SNES_FONT_ROW` further on, because the font is
+# laid out sixteen glyphs to a VRAM row. There is an eight row face at tile 896 as well - the
+# small one the game sets its menus in - and cutting the score in it drew numbers a little
+# over half the height of the `SC` they sit beside, which is what gave this away.
+#
+# Which tiles those are was not guessed. The game prints one digit on the layer render (the
+# `0` of its own score) and one in the `STAGE` recess, so both were masked off the render and
+# matched against a decode of all 2048 tiles: the score's `0` is 769 over 785 exactly, the
+# stage's `1` is 770 over 786, and no other reading of the sheet produces a pair that agrees
+# to the pixel.
+SNES_FONT_TILE = 769
+SNES_FONT_ROW = 16
+
+# ... and the four inks it uses, paired index to colour off those same two digits. The
+# palette is the *player's*: the left panel draws its numbers in the red its `SC` is drawn in
+# and the right one in white. This panel is the left one.
+SNES_FONT_INK = {
+    1: (0x00, 0x00, 0x00, 0xff),
+    5: (0xE7, 0x51, 0x63, 0xff),
+    6: (0xEF, 0x86, 0x84, 0xff),
+    15: (0xFF, 0xFF, 0xFF, 0xff),
+}
 
 
 def snes_vram(path):
@@ -655,23 +687,24 @@ def snes_vram(path):
 
 
 def snes_font(vram):
-    """ten 8x8 tiles, decoded from 4bpp planar and inked"""
-    out = Image.new("RGBA", (8 * 10, 8), (0, 0, 0, 0))
+    """ten digits, each two 8x8 tiles stacked, decoded from 4bpp planar and inked"""
+    out = Image.new("RGBA", (8 * 10, 16), (0, 0, 0, 0))
     px = out.load()
     for digit in range(10):
-        base = (SNES_FONT_TILE + digit) * 32
-        for y in range(8):
-            planes = (
-                vram[base + y * 2],
-                vram[base + y * 2 + 1],
-                vram[base + 16 + y * 2],
-                vram[base + 16 + y * 2 + 1],
-            )
-            for x in range(8):
-                bit = 7 - x
-                index = sum(((p >> bit) & 1) << i for i, p in enumerate(planes))
-                if index in SNES_FONT_INK:
-                    px[digit * 8 + x, y] = SNES_FONT_INK[index]
+        for half in range(2):
+            base = (SNES_FONT_TILE + digit + half * SNES_FONT_ROW) * 32
+            for y in range(8):
+                planes = (
+                    vram[base + y * 2],
+                    vram[base + y * 2 + 1],
+                    vram[base + 16 + y * 2],
+                    vram[base + 16 + y * 2 + 1],
+                )
+                for x in range(8):
+                    bit = 7 - x
+                    index = sum(((p >> bit) & 1) << i for i, p in enumerate(planes))
+                    if index in SNES_FONT_INK:
+                        px[digit * 8 + x, half * 8 + y] = SNES_FONT_INK[index]
     return out
 
 
@@ -741,6 +774,9 @@ def snes_art(out):
     snes_paint_out(panel, SNES_ARCH)
     snes_fill_flat(panel, SNES_STAGE_NUMBER)
     snes_fill_flat(panel, SNES_NAME_PLATES, SNES_PLATE_DONOR)
+    for hole, donor in ((SNES_POSTS, SNES_POSTS_DONOR), (SNES_FLOOR, SNES_FLOOR_DONOR)):
+        dx, dy, dw, dh = donor
+        panel.paste(panel.crop((dx, dy, dx + dw, dy + dh)), (hole[0], hole[1]))
     # ... and the hole the board draws through, which is the field
     holed = np.array(panel)
     holed[fy : fy + fh, fx : fx + fw, 3] = 0
