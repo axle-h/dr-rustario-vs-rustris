@@ -21,6 +21,12 @@ strum = { version = "0.28.0", features = ["derive"] }
 strum_macros = "0.28.0"
 titlecase = "3.6.0"
 
+[workspace.lints.clippy]
+# A `debug_assert!` does not evaluate its arguments at all in a release build, so a value the
+# game needs cannot be produced inside one - which is how every versus ai mode came to panic
+# the moment a match started in a release build and in no test run at all.
+debug_assert_with_mut_call = "deny"
+
 [workspace.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
 tag = "2024.10.21"

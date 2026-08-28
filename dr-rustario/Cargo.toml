@@ -5,6 +5,9 @@ authors.workspace = true
 edition.workspace = true
 build = "build.rs"
 
+[lints]
+workspace = true
+
 [features]
 # both halve the particle theme's mascot sheets at build time - see build.rs, which is the
 # only thing `image` is here for
