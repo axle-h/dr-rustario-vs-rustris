@@ -127,8 +127,14 @@ Rusto is the game this is for.
 
 Puyo Rusto is being built in phases against [docs/puyo-puyo-plan.md](docs/puyo-puyo-plan.md),
 which is the shared memory for that work - read it before touching the crate. It is on the
-pre-menu and playable, on one theme, by humans; its retro themes are phase 3, its ai phase 4
-and its place in the vs. playlists phase 5. Two things follow from that. Its four ai
+pre-menu and playable by humans on all four of its themes - `genesis` (Dr. Robotnik's Mean Bean
+Machine), `snes` (Kirby's Avalanche), `3ds` (Puyo Puyo Chronicle) and `particle`, in that order,
+which is oldest hardware first the way the other two games order theirs. The three retro themes
+are cut by `puyo-rusto/art/rip_retro.py`, whose sources are not in the repository: it reads each
+sheet's own link order off the art rather than being told it, and for `snes` - whose rips carry
+no board, background or font - it renders the SNES's background layers on their own by poking
+`$212C` in a savestate, which is how that theme's panel exists at all. Its ai is phase 4 and its
+place in the vs. playlists phase 5. Two things follow from that. Its four ai
 difficulties are all backed by `PuyoAiKind::Placeholder`, which drops the pair in a column
 picked at random - the menu offers what every other game offers because the launcher's tests
 hold every game to that list, and phase 4 puts a real brain behind it. And a versus playlist
@@ -221,6 +227,19 @@ fourteen at around 25 MiB. Whether it is the race or a match asking, they share 
 going past before a match picks two out of it. The hidden thirteenth row is not merely invisible: a *ghost puyo* there
 cannot pop and does not count towards the four a group needs (`Board::is_ghost`), so a chain
 with a foot in it is held back until that puyo drops into view.
+
+Every theme of every game is built at startup, in `Shell::new`, and stays built: the title
+screen's sprite race draws from all of them at once and so does the particle field's silhouette
+bank, so there is no theme that could be deferred without breaking those. What that costs is a
+long wait on a slow device, so it happens behind `engine::app::loading`, a progress bar drawn in
+flat rectangles - it runs before any theme, font or sheet exists to draw with. Each game offers
+`all_themes_with_progress` beside `all_themes`, taking an `engine::render::ThemeProgress` that is
+called as each theme lands; `all_themes` is the same thing with a callback that does nothing, so
+the examples and tests are untouched. **`App::new` presents a frame the moment the window
+exists**, before any of it: a Wayland toplevel is not mapped until the client commits a buffer,
+so until something is presented the window does not exist for the compositor - which is what a
+PortMaster session's `swaymsg [app_id=...] fullscreen enable` helper was failing to find while
+the game loaded.
 
 A game implements `engine::game::Game` (a headless board of `Cell`s with game-private
 `CellId`s, producing engine `GameEvent`s) and `engine::render::GameRender`; its themes are

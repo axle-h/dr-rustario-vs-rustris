@@ -148,6 +148,14 @@ pub enum MatchThemes {
     #[default]
     #[strum(serialize = "all")]
     All,
+    #[strum(serialize = "genesis")]
+    Genesis,
+    #[strum(serialize = "snes")]
+    Snes,
+    /// Puyo Puyo Chronicle. `3ds` cannot begin a Rust identifier, so only the menu row is
+    /// spelt that way and the variant and its module are `ThreeDs` / `three_ds`.
+    #[strum(serialize = "3ds")]
+    ThreeDs,
     #[strum(serialize = "particle")]
     Particle,
 }
@@ -162,10 +170,18 @@ impl MatchThemes {
         Self::iter().filter(|i| *i as usize > 0).count()
     }
 
-    /// the theme every player starts on
+    /// The theme every player starts on: an index into [`crate::theme::all_themes`], which
+    /// is in the same order this enum is less `all`.
+    ///
+    /// `options.rs::theme_mode` reads this rather than matching the variants itself, which
+    /// is a difference from the other two games - so a new theme is an arm here, an entry in
+    /// `all_themes` and nothing else.
     pub fn initial_index(&self) -> usize {
         match self {
-            MatchThemes::All | MatchThemes::Particle => 0,
+            MatchThemes::All | MatchThemes::Genesis => 0,
+            MatchThemes::Snes => 1,
+            MatchThemes::ThreeDs => 2,
+            MatchThemes::Particle => 3,
         }
     }
 }

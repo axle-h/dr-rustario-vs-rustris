@@ -1,6 +1,7 @@
 //! The application shell: window, audio and the per-frame screens. Generic over the game
 //! being played; a launcher decides which games and themes to run and ticks the screens.
 
+pub mod loading;
 pub mod screens;
 
 use crate::audio;
@@ -168,13 +169,22 @@ impl App {
 
         let canvas_builder = window.into_canvas().target_texture().accelerated();
 
-        let canvas = if config.video.vsync {
+        let mut canvas = if config.video.vsync {
             canvas_builder.present_vsync()
         } else {
             canvas_builder
         }
         .build()
         .map_err(|e| e.to_string())?;
+
+        // Frame zero, before a single theme is built. A Wayland toplevel is not mapped until
+        // the client commits a buffer, so until something is presented the window does not
+        // exist as far as the compositor is concerned - which is what a PortMaster session's
+        // `swaymsg [app_id=...] fullscreen enable` helper spends the whole load failing to
+        // find. See `crate::app::loading`, which draws the bar over the top of this.
+        canvas.set_draw_color(loading::BACKGROUND);
+        canvas.clear();
+        canvas.present();
 
         // the window built under FullScreenDesktop (or any mode the WM adjusts) only knows
         // its real size now: particle space is normalised to it, so it must be the real one

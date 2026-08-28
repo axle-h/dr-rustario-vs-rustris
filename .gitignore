@@ -23,3 +23,13 @@ menu-*.png
 # and neither is `puyo-rusto/art/sfx.py`'s: the Puyo Puyo Tetris 2 sound effect rip, 33 MiB
 # of WAVs in twelve .acb folders, which the script expects to find beside itself
 /puyo-rusto/art/Nintendo Switch - Puyo Puyo Tetris 2 - Sound Effects - Sound Effects/
+
+# `puyo-rusto/art/rip_retro.py check` writes this: every retro theme's cells drawn as a board
+# that uses all sixteen link masks, to be looked at
+/puyo-rusto/art/retro-alignment.png
+
+# the three retro rips `puyo-rusto/art/rip_retro.py` cuts the retro themes out of, and the roms
+# the board geometry was measured against. Kept locally rather than carried, on the same
+# footing as the Puyo Puyo Tetris sheet above: they are spriters-resource downloads under their
+# own names, and re-running the script means finding them again.
+/puyo-rusto/art/retro/

@@ -4,12 +4,15 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 
 * **Dr. Rustario** - a Dr. Mario clone (NES, SNES, N64 and particle themes)
 * **Rustris** - Tetris with the guideline ruleset (Game Boy, NES, SNES and particle themes)
-* **Puyo Rusto** - Puyo Puyo Tsu (particle theme; the retro ones are still being built)
+* **Puyo Rusto** - Puyo Puyo Tsu (Genesis, SNES, 3DS and particle themes)
 * **Dr. Rustario vs Rustris** - play a multi-player focussed playlist over both games.
 
 Puyo Rusto is the newest of them and is not finished: it is playable by one or two people on
-its own theme, with its own high score tables, but its ai is a placeholder that drops pairs at
-random and it does not take a turn in the vs. playlists yet. Its theme carries fourteen sets
+all four of its themes, with its own high score tables, but its ai is a placeholder that drops
+pairs at random and it does not take a turn in the vs. playlists yet. The retro themes are the
+three games Compile's original became: **genesis** is Dr. Robotnik's Mean Bean Machine,
+**snes** is Kirby's Avalanche and **3ds** is Puyo Puyo Chronicle. Its particle theme carries
+fourteen sets
 of puyos and deals a different one to each player at the start of every match, so a two player
 game is never two boards of the same puyos and no two matches look alike; the title screen
 sends all fourteen past. It has a soundtrack the same way: one track over its menus, and four

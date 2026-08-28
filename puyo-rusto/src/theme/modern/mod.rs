@@ -8,7 +8,7 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, SPAWN, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
 use crate::theme::data::{audio, cells, previews, Sounds, HUD_MAX};
-use crate::theme::GAME_MUSIC;
+use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -95,26 +95,6 @@ fn popup_sprites() -> PopupSpriteData {
         space: POPUP_SPACE,
         glyphs: digits.chain(std::iter::once(("chain", word))).collect(),
     }
-}
-
-mod sound {
-    pub const ATTACK: &[u8] = include_bytes!("attack.ogg");
-    pub const GAME_OVER: &[u8] = include_bytes!("game-over.ogg");
-    pub const GARBAGE: &[u8] = include_bytes!("garbage.ogg");
-    pub const HARD_DROP: &[u8] = include_bytes!("hard-drop.ogg");
-    pub const LOCK: &[u8] = include_bytes!("lock.ogg");
-    pub const MOVE: &[u8] = include_bytes!("move.ogg");
-    pub const PAUSE: &[u8] = include_bytes!("pause.ogg");
-    pub const POP: [&[u8]; 4] = [
-        include_bytes!("pop-1.ogg"),
-        include_bytes!("pop-2.ogg"),
-        include_bytes!("pop-3.ogg"),
-        include_bytes!("pop-4.ogg"),
-    ];
-    pub const ROTATE: &[u8] = include_bytes!("rotate.ogg");
-    pub const SETTLE: &[u8] = include_bytes!("settle.ogg");
-    pub const SPEED_UP: &[u8] = include_bytes!("speed-up.ogg");
-    pub const VICTORY: &[u8] = include_bytes!("victory.ogg");
 }
 
 /// What the theme radiates into the background particle field: the five puyo colours, read

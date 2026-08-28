@@ -256,9 +256,15 @@ mod tests {
         options.modes().iter().map(|m| m.name(STAGE_NOUN)).collect()
     }
 
+    /// The row reads oldest hardware first with the particle theme last, which is how the
+    /// other two games order theirs - and `particle` is the name every game gives the modern
+    /// theme, so the vs. mode's particle playlist can pick it out by it.
     #[test]
-    fn the_modern_theme_is_called_particle_as_it_is_in_the_other_games() {
-        assert_eq!(MatchThemes::names(), vec!["all", "particle"]);
+    fn the_themes_are_listed_oldest_first_and_the_modern_one_is_called_particle() {
+        assert_eq!(
+            MatchThemes::names(),
+            vec!["all", "genesis", "snes", "3ds", "particle"]
+        );
     }
 
     #[test]
@@ -270,13 +276,15 @@ mod tests {
         assert_eq!(options.rules(), MatchRules::ONE_STAGE_SPRINT);
     }
 
-    /// Phase 2 ships one theme, so there is nothing for a theme sprint to run through yet -
-    /// it joins the list of its own accord when phase 3 adds the retro themes
+    /// A theme sprint runs one level per theme, so it is only offered while there is more
+    /// than one to run through. Phase 2 shipped a single theme and it was not on the list;
+    /// phase 3a added the second and it came back on its own, which is the whole of what
+    /// `Options::modes` has to get right here.
     #[test]
-    fn a_theme_sprint_needs_more_than_one_theme() {
+    fn a_theme_sprint_is_offered_once_there_is_more_than_one_theme() {
         let options = Options::default();
-        assert_eq!(MatchThemes::count(), 1);
-        assert!(!mode_names(&options).contains(&"theme sprint".to_string()));
+        assert!(MatchThemes::count() > 1);
+        assert!(mode_names(&options).contains(&"theme sprint".to_string()));
     }
 
     #[test]
