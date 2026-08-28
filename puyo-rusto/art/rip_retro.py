@@ -40,7 +40,7 @@ import sys
 from collections import Counter, deque
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -365,6 +365,18 @@ GENESIS_TRAY = [(665, 32), (627, 32), (627, 50)]
 # measured against a live frame of the emulated game rather than picked by eye
 GENESIS_BOARD_TILE = (1, 1180)
 GENESIS_SCREEN = (320, 224)
+
+# ... and the same board again, beside it: the *frame*. The sheet carries the screen as the
+# two planes the Genesis drew it on, and the one on the left is only the back half - the
+# dungeon wall and the wells sunk into it, with no border round anything. The stone that
+# frames a well, the floor it stands on and the boxes the next beans and the mugshot sit in
+# are all on the front plane, laid out over a flat key. Cutting the back plane alone is what
+# left the beans looking like they stopped a row short of the bottom: the well was there,
+# the floor under it was not, so the last row of beans had sixteen pixels of open well
+# beneath it. Compositing the two is the whole fix, and it is what hands the panel its NEXT
+# boxes as well.
+GENESIS_FRAME_TILE = (323, 1180)
+GENESIS_FRAME_KEY = (0, 64, 64)
 # the left well within that board: six columns and twelve rows of 16, at (16, 16)
 GENESIS_WELL = (16, 16, 96, 192)
 # one player's panel is the well and the column of furniture beside it, cut where the second
@@ -379,6 +391,25 @@ GENESIS_DIGITS = (123, 139, 1, 9, 8)
 # taken out of the left border, which is the one strip that is stone and nothing else. It
 # tiles with a visible horizontal band and that is fine: courses of stone are what a wall has.
 GENESIS_TILE = (0, 64, 16, 32)
+
+
+def genesis_screen(boards, back_at, front_at):
+    """One whole 320x224 board screen, the two planes the sheet keeps apart put together.
+
+    The front plane is keyed on [`GENESIS_FRAME_KEY`] - a flat teal that means "the back
+    plane shows here" - and covers the rest: every stone border, the well floors and the
+    boxes down the middle. Composited against a live frame of the emulated game the result
+    agrees to within the rip's own colour rounding; the back plane alone does not, and the
+    sixteen rows under each well are where it differs.
+    """
+    bx, by = back_at
+    fx, fy = front_at
+    w, h = GENESIS_SCREEN
+    back = np.array(boards.crop((bx, by, bx + w, by + h)).convert("RGBA"))
+    front = np.array(boards.crop((fx, fy, fx + w, fy + h)).convert("RGBA"))
+    drawn = np.abs(front[:, :, :3].astype(int) - GENESIS_FRAME_KEY).sum(2) > 12
+    back[drawn] = front[drawn]
+    return Image.fromarray(back)
 
 
 def genesis():
@@ -413,13 +444,13 @@ def genesis():
 
     boards = source(GENESIS_BOARDS)
     bx, by = GENESIS_BOARD_TILE
+    fx, fy = GENESIS_FRAME_TILE
     wx, wy, ww, wh = GENESIS_WELL
+    screen = genesis_screen(boards, (bx, by), (fx, fy))
     # the panel is cut at the well's top edge, not the screen's: the thirteenth row floats
     # above the frame in `top_padding`, and the theme's own transparent rows are cheaper and
     # exact where a strip of the game's stone border would only be nearly right
-    panel = boards.crop(
-        (bx, by + wy, bx + GENESIS_PANEL_WIDTH, by + GENESIS_SCREEN[1])
-    ).convert("RGBA")
+    panel = screen.crop((0, wy, GENESIS_PANEL_WIDTH, GENESIS_SCREEN[1]))
     # ... with a hole where the well is. The board frame is drawn *under* the background and
     # the cells with it, so a panel that carries its own well would cover the whole game -
     # which is exactly what it did the first time. Both of the other games' retro themes cut
@@ -428,17 +459,11 @@ def genesis():
     hole[0:wh, wx : wx + ww, 3] = 0
     panel = Image.fromarray(hole)
     write_png(os.path.join(out, "background.png"), panel)
-    well = boards.crop((bx + wx, by + wy, bx + wx + ww, by + wy + wh)).convert("RGBA")
+    well = screen.crop((wx, wy, wx + ww, wy + wh))
     write_png(os.path.join(out, "board.png"), well)
 
-    tile = boards.crop(
-        (
-            bx + GENESIS_TILE[0],
-            by + GENESIS_TILE[1],
-            bx + GENESIS_TILE[0] + GENESIS_TILE[2],
-            by + GENESIS_TILE[1] + GENESIS_TILE[3],
-        )
-    ).convert("RGBA")
+    tx, ty, tw, th = GENESIS_TILE
+    tile = screen.crop((tx, ty, tx + tw, ty + th))
     write_png(os.path.join(out, "background-tile.png"), tile)
 
     fonts = source(GENESIS_FONTS)
@@ -524,10 +549,12 @@ SNES_LAYERS_BOTH = "kirby-layer-03.png"
 SNES_LAYER_SCENERY = "kirby-layer-02.png"
 SNES_STATE = "kirby-avalanche.state"
 
-# the SNES screen, and the left player's field on it: six columns and twelve rows of 16,
-# measured off the BG1 render, where the field is the one flat run of the backdrop colour
+# the SNES screen, and the left player's field on it: six columns and twelve rows of 16.
+# Measured off the game rather than the BG1 render, which is a pixel out: a blob's eyes sit
+# three rows into its cell, and in a frame with the field full they land on 99, 115, 131 ...
+# 195, so the bottom row is 192 and the top of the field is 208 - 192 = 16.
 SNES_SCREEN = (256, 224)
-SNES_FIELD = (8, 15, 96, 192)
+SNES_FIELD = (8, 16, 96, 192)
 # one player's panel is the field and the wooden column beside it, cut where the second
 # player's field begins
 SNES_PANEL_WIDTH = 152
@@ -546,10 +573,20 @@ SNES_GRASS = (22, 200, 64, 24)
 # saturated too, and searching the whole arch paints that out with it.
 SNES_ARCH = (104, 194, 48, 14)
 
-# The stage number the game prints in its own STAGE box. This game shows no level at all, so a
-# number sitting there would be wrong on every stage but the first; painted out, the box reads
-# as part of the furniture.
-SNES_STAGE_NUMBER = (120, 98, 18, 20)
+# The recess the game prints its stage number in. This game shows no level at all, so a number
+# sitting there would be wrong on every stage but the first. The recess is a flat sixteen
+# square of one colour with the digit drawn on it, so it is *filled* rather than patched -
+# `snes_paint_out` would take the black around the box for the colour to cover the digit with
+# and leave a black hole under `STAGE`, which is exactly what it did.
+SNES_STAGE_NUMBER = (120, 103, 16, 16)
+
+# The two boxes under `NEXT`, one per name plate, and the arch at the foot of the column.
+# Nothing is cut from these - they are here because they are what `snes/mod.rs` addresses,
+# and measuring them once here keeps the theme's numbers and the art they were read off in
+# the same file. The plates are the two runs of white at row 31; the arch is the run of sky
+# blue below the last of the slats.
+SNES_NEXT_BOXES = ((104, 38, 24, 41), (128, 38, 24, 41))
+SNES_ARCH_MOUTH = (104, 186, 48, 14)
 
 # the canopy, tiled behind the boards. The forest layer is the only one with a stretch of it
 # that is all leaves.
@@ -619,6 +656,21 @@ def snes_paint_out(panel, region):
     panel.paste(Image.fromarray(px), (0, 0))
 
 
+def snes_fill_flat(panel, region):
+    """flood one flat region of the panel with the colour it is mostly made of.
+
+    For a recess the game draws a number into: the box is one colour and the digit is a
+    handful of pixels on it, so the colour to cover the digit with is the region's own
+    commonest, and there is no bounding box to find.
+    """
+    x, y, w, h = region
+    px = np.array(panel)
+    fill = Counter(map(tuple, px[y : y + h, x : x + w, :3].reshape(-1, 3))).most_common(1)
+    px[y : y + h, x : x + w, :3] = fill[0][0]
+    px[y : y + h, x : x + w, 3] = 255
+    panel.paste(Image.fromarray(px), (0, 0))
+
+
 def snes_art(out):
     both = source(SNES_LAYERS_BOTH)
     scenery = source(SNES_LAYER_SCENERY)
@@ -637,7 +689,7 @@ def snes_art(out):
     for x in range(px, px + pw, grass.width):
         panel.paste(grass, (x, py))
     snes_paint_out(panel, SNES_ARCH)
-    snes_paint_out(panel, SNES_STAGE_NUMBER)
+    snes_fill_flat(panel, SNES_STAGE_NUMBER)
     # ... and the hole the board draws through, which is the field
     holed = np.array(panel)
     holed[fy : fy + fh, fx : fx + fw, 3] = 0
@@ -716,16 +768,47 @@ THREE_DS_ORDER = [2, 8, 12, 4, 3, 10, 14, 6, 1, 11, 15, 7, 0, 9, 13, 5]
 THREE_DS_BLOCK_ROWS = 4
 THREE_DS_GRID_COLUMNS = 4
 
-# the nuisance puyo, and the tray's three: the small grey one for a single, the white one for
-# six and the iron block for a rock of thirty. Columns of row 0, on the same grid.
-THREE_DS_NUISANCE = 23
-THREE_DS_TRAY = [28, 26, 29]
+# the page the sheet is laid out on, which is what shows between one tile and the next
+THREE_DS_PAGE = (231, 231, 202)
+
+# The nuisance puyo, and the tray's three: the small grey one for a single, the white one for
+# six and the iron block for a rock of thirty. These are **ordinals along the top row**, not
+# columns - see [`three_ds_row_tiles`], which is what finds them.
+THREE_DS_NUISANCE = 13
+THREE_DS_TRAY = [17, 15, 18]
+
+
+def three_ds_row_tiles(image):
+    """the left edge of every tile along the sheet's top row, in order.
+
+    The sheet is not all on one pitch. The puyo blocks down the left are on nineteen and so
+    is most of the top row, but a gap partway along it shifts everything after by a pixel and
+    then by three - so cutting the nuisance and the tray by column number takes three pixels
+    of the tile next door and loses three of their own, which is exactly what the tray looked
+    like. The tiles are found instead, by the page showing between them.
+    """
+    band = np.array(image.convert("RGB"))[: THREE_DS_CELL[1]].astype(int)
+    page = (np.abs(band - THREE_DS_PAGE).sum(2) < 12).all(axis=0)
+    tiles, x = [], 0
+    while x < len(page):
+        if page[x]:
+            x += 1
+            continue
+        tiles.append(x)
+        while x < len(page) and not page[x]:
+            x += 1
+    return tiles
 
 
 def three_ds_cut(image, col, row, transparent):
     """one cell, 18 by 17, squared off to 18 by 18 by repeating its last row of art"""
-    x = THREE_DS_PITCH[0] * col
-    y = THREE_DS_PITCH[1] * row
+    return three_ds_cut_at(
+        image, THREE_DS_PITCH[0] * col, THREE_DS_PITCH[1] * row, transparent
+    )
+
+
+def three_ds_cut_at(image, x, y, transparent):
+    """... from an explicit corner, for the tiles that are not on the pitch"""
     w, h = THREE_DS_CELL
     cell = image.crop((x, y, x + w, y + h)).convert("RGBA")
     px = np.array(cell)
@@ -762,10 +845,27 @@ THREE_DS_ROWS, THREE_DS_COLUMNS = 12, 6
 THREE_DS_BG_SIZE = (400, 240)
 THREE_DS_BG_PICK = (0, 0)
 
+# What the background is written at. Chronicle paints one scene behind both fields and this
+# theme does the same - `SceneType::Cover` scales it over the whole window - so a 3DS top
+# screen has to hold up at 1080p and beyond, which is around five times the size it was
+# drawn. It gets there in two steps: three times here, with Lanczos and a light unsharp, and
+# the rest at draw time with the linear filter `Cover` turns on. Three rather than five
+# because the last stretch is the cheap one to give away: the art is painted, all soft
+# gradients and no fine detail, so the interpolation has nothing to lose - and 1200x720 is
+# 685 KiB in the binary and 3.4 MiB of texture against 1.5 MiB and 8.6 MiB at full size.
+THREE_DS_BG_SCALE = 3
+THREE_DS_BG_SHARPEN = (2, 60, 2)
+
 # One player's panel: the framed field, a column beside it for the queue and the nuisance
 # tray, and a strip under it for the score - which goes there because seven digits of the
 # game's own face are wider than the column beside the board, and because it is where
 # Chronicle puts it.
+#
+# It carries no art of its own. Chronicle stands both fields on one scene rather than giving
+# each player a panel, so the scene is the whole of the backdrop and the panel is the hole
+# the field draws through and nothing else - which is why this is written out transparent
+# rather than as a slice of the same picture: a slice would sit on top of the scene it was
+# cut from, at a different scale, and read as a rectangle.
 THREE_DS_PANEL = (240, 272)
 THREE_DS_FRAME_AT = (7, 11)
 
@@ -822,23 +922,25 @@ def three_ds_field(objects):
     return frames, size, (well_x, inset)
 
 
-def three_ds_panel(backgrounds, frame_size):
-    """one player's panel: a slice of one of the game's own backgrounds, with the field cut
-    out of it so the board draws through"""
-    pw, ph = THREE_DS_PANEL
+def three_ds_panel():
+    """one player's panel, which is nothing at all - see [`THREE_DS_PANEL`]
+
+    It is still written, because the engine sizes a player's side of the window by the
+    panel's own size and a retro theme has to hand it one.
+    """
+    return Image.new("RGBA", THREE_DS_PANEL, (0, 0, 0, 0))
+
+
+def three_ds_scene(backgrounds):
+    """the scene behind both fields: one of the game's own backgrounds, blown up"""
     bw, bh = THREE_DS_BG_SIZE
     col, row = THREE_DS_BG_PICK
     scene = backgrounds.crop((col * bw, row * bh, (col + 1) * bw, (row + 1) * bh))
-    factor = max(pw / scene.width, ph / scene.height)
-    scaled = scene.resize(
-        (max(pw, round(scene.width * factor)), max(ph, round(scene.height * factor))),
-        Image.LANCZOS,
-    )
-    left = (scaled.width - pw) // 2
-    panel = np.array(scaled.crop((left, 0, left + pw, ph)).convert("RGBA"))
-    fx, fy = THREE_DS_FRAME_AT
-    panel[fy : fy + frame_size[1], fx : fx + frame_size[0], 3] = 0
-    return Image.fromarray(panel)
+    scene = scene.resize(
+        (bw * THREE_DS_BG_SCALE, bh * THREE_DS_BG_SCALE), Image.LANCZOS
+    ).convert("RGB")
+    radius, percent, threshold = THREE_DS_BG_SHARPEN
+    return scene.filter(ImageFilter.UnsharpMask(radius, percent, threshold))
 
 
 def three_ds():
@@ -855,9 +957,10 @@ def three_ds():
             col = index % THREE_DS_GRID_COLUMNS
             sheet_row = THREE_DS_BLOCK_ROWS * row + index // THREE_DS_GRID_COLUMNS
             tiles[(row, mask)] = three_ds_cut(sheet, col, sheet_row, transparent)
-    tiles[(COLOR_ROWS, 0)] = three_ds_cut(sheet, THREE_DS_NUISANCE, 0, transparent)
-    for i, col in enumerate(THREE_DS_TRAY):
-        tiles[(COLOR_ROWS, 1 + i)] = three_ds_cut(sheet, col, 0, transparent)
+    top = three_ds_row_tiles(sheet)
+    tiles[(COLOR_ROWS, 0)] = three_ds_cut_at(sheet, top[THREE_DS_NUISANCE], 0, transparent)
+    for i, tile in enumerate(THREE_DS_TRAY):
+        tiles[(COLOR_ROWS, 1 + i)] = three_ds_cut_at(sheet, top[tile], 0, transparent)
     write_sheet(os.path.join(out, "sprites.png"), THREE_DS_BLOCK, tiles)
 
     objects = source(THREE_DS_OBJECTS)
@@ -867,7 +970,8 @@ def three_ds():
     for i, frame in enumerate(frames):
         strip.paste(frame, (frame_size[0] * i, 0))
     write_png(os.path.join(out, "board.png"), strip)
-    write_png(os.path.join(out, "background.png"), three_ds_panel(backgrounds, frame_size))
+    write_png(os.path.join(out, "background.png"), three_ds_panel())
+    write_png(os.path.join(out, "scene.png"), three_ds_scene(backgrounds))
     write_png(os.path.join(out, "font.png"), three_ds_font(objects))
     print(
         f"    frame {frame_size}, cells at {cells_at}, panel {THREE_DS_PANEL},"

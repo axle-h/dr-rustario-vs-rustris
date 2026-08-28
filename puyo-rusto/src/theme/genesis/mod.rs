@@ -26,7 +26,7 @@ use engine::render::scene::SceneType;
 use engine::render::sprite_sheet::{BlockSpriteSheetData, GhostStyle};
 use engine::render::{PeekLayout, PendingLayout, Theme};
 use sdl2::pixels::Color;
-use sdl2::rect::Point;
+use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
@@ -56,6 +56,27 @@ const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 /// sixteen rows cut off the top. Not a `Point` constant: `sdl2::rect::Point::new` is not
 /// `const`, and every other theme in the repository builds its points at the call site too.
 const WELL: (i32, i32) = (16, 0);
+
+/// The panel is cut at the well's top edge and [`TOP_PADDING`] puts exactly that much back,
+/// so **a point in the padded background is a point on the Genesis screen**. Every
+/// coordinate below is one, measured off `rip_retro.py`'s own reading of the frame plane -
+/// the boxes the game left empty are holes in it, and their rects are exact.
+///
+/// The two 32x48 boxes under `NEXT`. Mean Bean Machine fills the left one with the player's
+/// next pair and the right one with the opponent's, but a panel here belongs to one player,
+/// so the queue runs left to right through both: next, then next but one.
+const NEXT_BOXES: [(i32, i32); 2] = [(120, 32), (168, 32)];
+/// where the pair sits in one of them - centred across, and low, which is where the game
+/// draws it
+const NEXT_PAIR: (i32, i32) = (8, 12);
+
+/// the box the game keeps Robotnik's mugshot in, which is the one piece of furniture this
+/// panel has no use for and the only hole big enough for the tray
+const MUGSHOT: (i32, i32, u32, u32) = (120, 96, 80, 56);
+
+/// where the score goes: the first of the two rows of digits the game keeps under `SCORE`,
+/// which is the player's own
+const SCORE_AT: (i32, i32) = (120, 176);
 
 /// how long the beans hold before they go. Under [`crate::game::rules::POP_DELAY`], so a
 /// chain step never waits on the animation - the same bound the particle theme keeps.
@@ -133,7 +154,7 @@ pub fn genesis_theme<'a>(
             FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 1)?,
             HUD_MAX
                 .iter()
-                .map(|(kind, max)| (*kind, MetricSnips::zero_fill((124, 176), *max)))
+                .map(|(kind, max)| (*kind, MetricSnips::zero_fill(SCORE_AT, *max)))
                 .collect(),
         ),
         board_file: sprites::BOARD,
@@ -152,21 +173,36 @@ pub fn genesis_theme<'a>(
         overlay_size: None,
         // Tsu has no hold and neither does this game
         hold: None,
-        peek: PeekLayout::Column {
-            point: Point::new(128, 32),
-            offset: 40,
-            max: 2,
-            scale: None,
+        // one pair per box rather than a column of them: the boxes are where the game puts
+        // its previews and they are side by side, which no `Column` can say
+        peek: PeekLayout::Slots {
+            slots: NEXT_BOXES
+                .iter()
+                .map(|(x, y)| {
+                    Rect::new(
+                        x + NEXT_PAIR.0,
+                        y + NEXT_PAIR.1,
+                        SRC_BLOCK_SIZE,
+                        SRC_BLOCK_SIZE * 2,
+                    )
+                })
+                .collect(),
+            max_scale: 1.0,
         },
         // the tray, which is the one thing on this panel the Genesis never drew: Mean Bean
         // Machine lands an attack the moment it is sent and has nothing waiting to show. It
-        // goes in the column beside the well, under the queue, filling leftwards from the
-        // right edge so a long queue grows towards the board rather than off the panel.
+        // goes in the mugshot box, filling leftwards from the right edge so a long queue
+        // grows towards the board rather than off the panel. Five fit across eighty pixels
+        // at the cell size and a sixth would have to be drawn small, so a queue longer than
+        // that says five and no more.
         pending: Some(PendingLayout {
-            point: Point::new(184, 132),
-            step: Point::new(-16, 0),
+            point: Point::new(
+                MUGSHOT.0 + MUGSHOT.2 as i32 - SRC_BLOCK_SIZE as i32,
+                MUGSHOT.1 + (MUGSHOT.3 as i32 - SRC_BLOCK_SIZE as i32) / 2,
+            ),
+            step: Point::new(-(SRC_BLOCK_SIZE as i32), 0),
             size: SRC_BLOCK_SIZE,
-            max: COLUMNS,
+            max: MUGSHOT.2 / SRC_BLOCK_SIZE,
         }),
         mascot: None,
         mascot_animations: None,
@@ -208,6 +244,12 @@ mod tests {
     /// the panel has to be exactly as tall as the twelve played rows plus whatever furniture
     /// stands under them, and the well has to start at its top left corner - the thirteenth
     /// row lives in `top_padding` above it and nowhere else
+    ///
+    /// The row under the well is the point. The sheet keeps the screen as the two planes the
+    /// Genesis drew it on and the well's *floor* is on the front one, so a panel cut from the
+    /// back plane alone had open well where the floor should be and the last row of beans
+    /// looked like it had stopped short. One cell, and it is what the panel is one cell
+    /// taller than the well for.
     #[test]
     fn the_well_fills_the_panel_from_its_own_top() {
         let (width, height) = png_size(sprites::BACKGROUND);
@@ -215,8 +257,39 @@ mod tests {
         assert_eq!(board_width, COLUMNS * SRC_BLOCK_SIZE);
         assert_eq!(board_height, VISIBLE_ROWS * SRC_BLOCK_SIZE);
         assert!(WELL.0 as u32 + board_width <= width);
-        assert!(board_height <= height);
+        assert_eq!(
+            WELL.1 as u32 + board_height + SRC_BLOCK_SIZE,
+            height,
+            "the panel has to carry the well's floor under it"
+        );
         assert_eq!(TOP_PADDING, SRC_BLOCK_SIZE);
+    }
+
+    /// the boxes are holes in the frame plane and their rects are `rip_retro.py`'s reading of
+    /// it, so what this can check is that what goes in them fits and lands on the panel
+    #[test]
+    fn everything_the_panel_is_told_to_draw_lands_on_it() {
+        let (width, height) = png_size(sprites::BACKGROUND);
+        let panel = |x: i32, y: i32, w: u32, h: u32| {
+            assert!(x >= 0 && y >= 0);
+            assert!(x as u32 + w <= width, "{x}+{w} runs off the panel");
+            assert!(
+                y as u32 + h <= height + TOP_PADDING,
+                "{y}+{h} runs off the panel"
+            );
+        };
+        for (x, y) in NEXT_BOXES {
+            panel(
+                x + NEXT_PAIR.0,
+                y + NEXT_PAIR.1,
+                SRC_BLOCK_SIZE,
+                SRC_BLOCK_SIZE * 2,
+            );
+        }
+        panel(MUGSHOT.0, MUGSHOT.1, MUGSHOT.2, MUGSHOT.3);
+        panel(SCORE_AT.0, SCORE_AT.1, 0, 0);
+        // and the tray fills the mugshot box across, one whole cell per icon
+        assert_eq!(MUGSHOT.2 % SRC_BLOCK_SIZE, 0);
     }
 
     /// `numeric_sprites` divides the sheet by ten and takes its whole height, so a font that
