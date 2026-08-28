@@ -141,23 +141,26 @@ impl Shell {
         // time - some thirty megabytes of embedded png and ogg, which on a handheld is a long
         // wait - so it is done behind a progress bar, one step per theme.
         let mut loading = Loading::new(theme_count());
-        loading.draw(app.canvas())?;
+        // both, for the length of the load: the themes are built with the canvas and nothing
+        // any of them draws reaches the screen unless the queue is pumped as they land
+        let (canvas, events) = app.canvas_and_events();
+        loading.draw(canvas, events)?;
         // every game's themes in one list, each game's slice of it recorded: built in
         // GameKind::ALL order, so a game's themes keep one place in the list
         let mut all = vec![];
         let mut ranges = vec![];
         for game in GameKind::ALL {
             let start = all.len();
-            let built = &mut |canvas: &mut sdl2::render::WindowCanvas| loading.step(canvas);
+            let built = &mut |canvas: &mut sdl2::render::WindowCanvas| loading.step(canvas, events);
             all.extend(match game {
                 GameKind::DrRustario => {
-                    dr_rustario::theme::all_themes_with_progress(app.canvas(), tc, config, built)?
+                    dr_rustario::theme::all_themes_with_progress(canvas, tc, config, built)?
                 }
                 GameKind::Rustris => {
-                    rustris::theme::all_themes_with_progress(app.canvas(), tc, config, built)?
+                    rustris::theme::all_themes_with_progress(canvas, tc, config, built)?
                 }
                 GameKind::Puyo => {
-                    puyo_rusto::theme::all_themes_with_progress(app.canvas(), tc, config, built)?
+                    puyo_rusto::theme::all_themes_with_progress(canvas, tc, config, built)?
                 }
             });
             ranges.push(start..all.len());

@@ -229,6 +229,15 @@ impl App {
         &mut self.canvas
     }
 
+    /// The canvas and the event pump at once, for a long job that runs before the main loop.
+    ///
+    /// Building the themes draws with one and has to keep pumping the other, and it holds
+    /// both for the length of the load - which one `&mut self` at a time cannot give it. See
+    /// [`crate::app::loading`] for why a load that never pumps shows nothing.
+    pub fn canvas_and_events(&mut self) -> (&mut WindowCanvas, &mut EventPump) {
+        (&mut self.canvas, &mut self.event_pump)
+    }
+
     pub fn max_players(&self) -> u32 {
         self.max_players
     }
