@@ -177,12 +177,26 @@ Puyo Rusto's particle theme is puyos, music and sound effects all cut out of rip
 sources and three scripts, none of the sources carried here. `puyo-rusto/art/rip.py` writes `src/theme/modern/sprites.png` out of a sheet that
 is **not in the repository** - it is 12 MiB and gitignored, so re-running the script means
 finding the rip again - and the rip is sixteen skins on one 72 pixel grid, fifteen of them
-whole (the sixteenth is a grab bag on no grid) and fourteen of those cut, one band of six rows
-under the next. The theme keys **all fourteen**; which two a match shows is `PuyoSkin::deal`'s
-answer at the start of it, so the two boards of a two player game are never the same puyos and
-no two matches look alike. The fifteenth is dropped: its sixteen link variants are only eight,
-paired so that a puyo joined below draws exactly like one joined to nothing, so it has no
-downward neck to cut and nothing can make it meet the puyo underneath.
+whole (the sixteenth is a grab bag on no grid) and eleven of those cut, a band of six rows per
+skin and `BANDS_ACROSS` bands side by side. The theme keys **all eleven**; which two a match
+shows is `PuyoSkin::deal`'s answer at the start of it, so the two boards of a two player game
+are never the same puyos and no two matches look alike. Four of the fifteen are dropped, for
+two different reasons. One has no downward neck at all: its sixteen link variants are only
+eight, paired so that a puyo joined below draws exactly like one joined to nothing, so nothing
+can make it meet the puyo underneath. The other three cut and join perfectly well and were
+dropped for how they *look* joined, which is the whole point of a set - four in a row have to
+read as one mass. A television with antennae has necks so short that a run of them stays a row
+of televisions with the antennae poking between; a stick figure joins into an elongated
+humanoid; a small round face merges into a gappy mesh. `rip.py check` is the only way to see
+any of that, since it takes a whole board of one skin to show it.
+
+The bands run side by side rather than all in one column because the sheet is loaded **whole,
+as a single texture**, and fourteen bands stacked stood it 6720 pixels tall - past the 4096
+`MAX_ATLAS_WIDTH` a GLES driver will allocate in a dimension, which is the same ceiling the
+built atlas is already kept under. That is not a slow theme on a handheld, it is a theme that
+cannot be built there at all. Two across is 2560x2880 and the same pixels either way. The
+layout lives in exactly two places that have to agree - `band()` in `rip.py` and `skin_block`
+in `theme/modern/mod.rs` - and a test holds the sheet to both its shape and that ceiling.
 
 It is a script rather than a crop because the rip numbers a puyo's links differently (down 1,
 up 2, right 4, left 8, against `LinkMask`'s up 1, down 2, left 4, right 8) and because almost
@@ -238,21 +252,21 @@ A Puyo `CellId` carries its colour, a four bit mask of which neighbours match an
 `PuyoSkin` - because puyos of a colour that touch are drawn joined, and because each player's
 board is drawn from its own set of puyos. `board.rs` recomputes the masks after every lock,
 pop and settle. The skin is dealt by the *game*, not chosen by the theme: `PuyoSkin::deal`
-takes the match seed and hands every player a different one of the fourteen, `Game::new` is
+takes the match seed and hands every player a different one of the eleven, `Game::new` is
 handed theirs, and every `CellId` and `PieceId` it reports carries it. Off the seed rather
 than the thread's randomness so a playlist swapping one board onto Puyo mid-match hands that
 player the puyos they already had; and `PuyoCell` itself has no skin on it, so nothing in the
 rules can tell two players' puyos apart and `board_of` in `launcher/src/modes.rs` reads the
 skin back off before comparing two players' boards. The theme therefore keys `PuyoSkin::COUNT`
-sets of all eighty four cells and of all twenty five previews - eleven hundred and seventy six
+sets of all eighty four cells and of all twenty five previews - nine hundred and twenty four
 - and two things follow. `BlockSpriteSheet` wraps its atlas onto another row past
 `MAX_ATLAS_WIDTH`, and its preview sheet onto shelves the same way, rather than laying
 everything in one line that no driver would allocate. And the pre-built bank of alpha
 variants had to go: it was sixty three whole copies of the atlas, one per fade step, so a
 `&self` draw could pick one without a `&mut` - about 106 MiB for a *single* skin, and most of
-a gigabyte for fourteen. The atlas now sits in a `RefCell` and a fade is `set_alpha_mod` at
-draw time, which is the same trick the popup font's tint already used, and puts the whole
-fourteen at around 25 MiB. Whether it is the race or a match asking, they share the one sheet:
+a gigabyte for the fourteen there were then. The atlas now sits in a `RefCell` and a fade is
+`set_alpha_mod` at draw time, which is the same trick the popup font's tint already used, and
+puts the whole set at around 20 MiB. Whether it is the race or a match asking, they share the one sheet:
 `race_themes` offers a pair per colour of every skin, so the title screen is the whole rip
 going past before a match picks two out of it. The hidden thirteenth row is not merely invisible: a *ghost puyo* there
 cannot pop and does not count towards the four a group needs (`Board::is_ghost`), so a chain
@@ -270,6 +284,27 @@ exists**, before any of it: a Wayland toplevel is not mapped until the client co
 so until something is presented the window does not exist for the compositor - which is what a
 PortMaster session's `swaymsg [app_id=...] fullscreen enable` helper was failing to find while
 the game loaded.
+
+Building them all is also what a 1 GiB handheld cannot afford, and the whole of that bill is
+Dr. Rustario's particle Dr.: 591 frames of 478 pixels square over four sheets, the largest
+7170x7648 and so 209 MiB once it is a texture. `BlockSpriteSheet::new` loads a sheet whole and
+*then* scales it down to the six and a half blocks he is drawn at, so it is held twice over
+while that happens - measured with `SDL_RENDER_DRIVER=software`, which puts textures in the
+rss the way a unified memory device does, that is an 800 MB startup peak against a 430 MB
+resting one, and it is the peak the oom killer takes. It is the source art and not the window
+that costs it: 762 MB at 320x240 against 870 MB at 1080p. Three of the four sheets are also
+past the 4096 pixels a Mali G31 will allocate in a dimension. So `dr-rustario/build.rs` halves
+them into `OUT_DIR` for the `portmaster` and `browser` builds - 800 MB down to 490 MB - and
+`theme/modern/mod.rs` has two arms of `include_bytes!` to pick which it gets. A desktop is what
+4k is drawn from and keeps the art as it was drawn. The halving is a plain 2x2 average rather
+than a filter with any reach, because a sheet is a grid of frames whose size the theme works
+out by division and two of the four draw right to a frame's edge: a 2x2 block reads only within
+itself, so the frames stay where the theme looks for them and nothing bleeds from one into the
+next, and the grid stays declared once, in the theme. The colours are weighted by their alpha
+first - the sheets are palette pngs on a flat green matte, transparent by index, so every
+transparent pixel still carries (71, 112, 76) and averaging it in would wash green into every
+edge. `image` is an optional build-dependency, so a desktop build compiles neither it nor the
+halving.
 
 A game implements `engine::game::Game` (a headless board of `Cell`s with game-private
 `CellId`s, producing engine `GameEvent`s) and `engine::render::GameRender`; its themes are

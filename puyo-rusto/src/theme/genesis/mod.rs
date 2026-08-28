@@ -92,7 +92,7 @@ fn block(col: i32, row: i32) -> Point {
 /// A colour's sixteen link variants run along its own row, indexed by the mask's bits.
 ///
 /// The skin is ignored, which is the whole difference between a retro theme and the particle
-/// one: `PuyoSkin::deal` still hands each player one of fourteen, and Mean Bean Machine drew
+/// one: `PuyoSkin::deal` still hands each player one of eleven, and Mean Bean Machine drew
 /// one set of beans, so every slot is keyed to the same art and both players see the same
 /// beans - as they did on a Genesis.
 fn puyo(_: PuyoSkin, color: PuyoColor, links: LinkMask) -> Point {

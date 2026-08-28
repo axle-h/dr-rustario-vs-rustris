@@ -28,11 +28,33 @@ pub mod sprites {
     pub const VIRUS_BLUE_IDLE: &[u8] = include_bytes!("viruses/b.png");
     pub const VIRUS_YELLOW_IDLE: &[u8] = include_bytes!("viruses/y.png");
 
-    // dr
+    // dr - 591 frames of 478 pixels square, over four sheets.
+    //
+    // A desktop is what 4k is drawn from and gets them as they were drawn. The handheld and
+    // browser builds get them halved into `OUT_DIR` by this crate's `build.rs`: the largest
+    // is 209 MiB as a texture, every one is held twice over while it is scaled down to the
+    // six and a half blocks the Dr. is drawn at, and three of the four are past the 4096
+    // pixels a handheld will allocate in a dimension. Nothing else changes - the theme asks
+    // for the mascot by a height in blocks, so `modern_theme` reads the scale back off
+    // whichever sheet it was given.
+    #[cfg(not(any(feature = "portmaster", feature = "browser")))]
     pub const DR_THROW: &[u8] = include_bytes!("dr/throw.png");
+    #[cfg(not(any(feature = "portmaster", feature = "browser")))]
     pub const DR_IDLE: &[u8] = include_bytes!("dr/idle.png");
+    #[cfg(not(any(feature = "portmaster", feature = "browser")))]
     pub const DR_GAME_OVER: &[u8] = include_bytes!("dr/game-over.png");
+    #[cfg(not(any(feature = "portmaster", feature = "browser")))]
     pub const DR_VICTORY: &[u8] = include_bytes!("dr/victory.png");
+
+    #[cfg(any(feature = "portmaster", feature = "browser"))]
+    pub const DR_THROW: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/dr/throw.png"));
+    #[cfg(any(feature = "portmaster", feature = "browser"))]
+    pub const DR_IDLE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/dr/idle.png"));
+    #[cfg(any(feature = "portmaster", feature = "browser"))]
+    pub const DR_GAME_OVER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/dr/game-over.png"));
+    #[cfg(any(feature = "portmaster", feature = "browser"))]
+    pub const DR_VICTORY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/dr/victory.png"));
+
     pub const DR_FPS: u32 = 60;
 }
 

@@ -27,13 +27,19 @@ swap, and it is one of the two reasons this is a script rather than a crop. The 
 It writes a second, much smaller sheet beside that one: `popup.png`, the caption a chain
 step says over the puyos it just took. See `POPUP_ROWS`.
 
-The output layout is `sprites.py`'s, one skin under the next, so `theme/modern/mod.rs`
-addresses either the same way:
+The output layout is `sprites.py`'s a band at a time, so `theme/modern/mod.rs` addresses
+either the same way:
 
     block (col, row) -> (PAD + PITCH * col, PAD + PITCH * row), BLOCK square
-    skin s occupies rows SKIN_ROWS * s to SKIN_ROWS * s + 5
+    skin s occupies the band at `band(s)`, COLUMNS wide and SKIN_ROWS tall
     rows 0-4  one colour each (red, green, blue, yellow, purple), column = link mask bits
     row 5     col 0 nuisance, cols 1-3 the tray's small, large and rock symbols
+
+The bands run BANDS_ACROSS at a time rather than all in one column, because the whole sheet
+is loaded as a single texture: stacked, the fourteen skins cut before three were dropped stood
+6720 pixels tall - past the 4096 a handheld's driver will allocate in a dimension, which is
+the same ceiling `MAX_ATLAS_WIDTH` keeps the built atlas under. Two across is 2560x2880 now,
+and the same pixels either way.
 """
 
 import os
@@ -71,7 +77,14 @@ SKIN_COLUMNS = 4
 # Skin 7 is left out as well: its sixteen link variants are only eight, paired so that a puyo
 # joined below draws exactly like one joined to nothing. It has no downward neck to cut, so
 # nothing can make it meet the puyo underneath - see `check`, which is what found it.
-SKINS = [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14]
+#
+# Skins 8, 10 and 11 are left out for how they *look* joined rather than for a missing neck.
+# The point of a set is that four in a row read as one mass: 10 is a television with antennae
+# whose necks are stubs, so a run of them stays a row of televisions with the antennae poking
+# between; 8 is a stick figure that joins into an elongated humanoid; 11 is a small round face
+# that merges but leaves a gappy mesh. `check` is how to see it - a whole board of one skin,
+# which is the only way any of this reads.
+SKINS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14]
 
 # the sheet's own eighty coloured cells are in the order this game numbers its colours
 COLOR_ROWS = [0, 1, 2, 3, 4]  # red, green, blue, yellow, purple
@@ -86,6 +99,8 @@ PAD = 4
 PITCH = BLOCK + 2 * PAD
 COLUMNS = 16
 SKIN_ROWS = 6
+# how many skin bands lie side by side; see the layout note at the top
+BANDS_ACROSS = 2
 
 # LinkMask's bits: up 1, down 2, left 4, right 8
 UP, DOWN, LEFT, RIGHT = 1, 2, 4, 8
@@ -344,6 +359,11 @@ def repair(tile, plain, links, donors, shapes):
     return tile
 
 
+def band(index):
+    """where skin `index`'s band starts, as a (column, row) of the sheet's own grid"""
+    return COLUMNS * (index % BANDS_ACROSS), SKIN_ROWS * (index // BANDS_ACROSS)
+
+
 def paste(sheet, tile, col, row):
     sheet.paste(Image.fromarray(tile, "RGBA"), (PAD + PITCH * col, PAD + PITCH * row))
 
@@ -417,7 +437,11 @@ def check():
             # the block and the plus in one colour, the rows and the lone puyo in another,
             # since a seam shows differently on a dark colour than a light one
             color = 0 if y >= 5 else 1
-            at = (PAD + PITCH * links, PAD + PITCH * (SKIN_ROWS * index + color))
+            base_col, base_row = band(index)
+            at = (
+                PAD + PITCH * (base_col + links),
+                PAD + PITCH * (base_row + color),
+            )
             cell = sheet.crop((at[0], at[1], at[0] + BLOCK, at[1] + BLOCK))
             page.alpha_composite(cell, (x * BLOCK, top + header + y * BLOCK))
     page.convert("RGB").save(CHECK_OUT)
@@ -517,11 +541,14 @@ def popup(source):
 
 def main():
     source = Image.open(SHEET).convert("RGBA")
+    down = -(-len(SKINS) // BANDS_ACROSS)  # rows of bands, rounded up
     sheet = Image.new(
-        "RGBA", (PITCH * COLUMNS, PITCH * SKIN_ROWS * len(SKINS)), (0, 0, 0, 0)
+        "RGBA",
+        (PITCH * COLUMNS * BANDS_ACROSS, PITCH * SKIN_ROWS * down),
+        (0, 0, 0, 0),
     )
     for index, skin in enumerate(SKINS):
-        base = SKIN_ROWS * index
+        base_col, base_row = band(index)
         shapes = neck_shapes(source, skin)
         for row, source_row in enumerate(COLOR_ROWS):
             plain = cut(source, skin, source_row, sheet_index(0))
@@ -534,10 +561,10 @@ def main():
             for links in range(16):
                 tile = cut(source, skin, source_row, sheet_index(links))
                 tile = repair(tile, plain, links, donors, shapes)
-                paste(sheet, tile, links, base + row)
-        paste(sheet, cut(source, skin, *NUISANCE), 0, base + 5)
+                paste(sheet, tile, base_col + links, base_row + row)
+        paste(sheet, cut(source, skin, *NUISANCE), base_col, base_row + 5)
         for column, (row, col) in enumerate(TRAY):
-            paste(sheet, cut(source, skin, row, col), 1 + column, base + 5)
+            paste(sheet, cut(source, skin, row, col), base_col + 1 + column, base_row + 5)
     sheet.save(OUT)
     print(f"{OUT} {sheet.size[0]}x{sheet.size[1]} {len(SKINS)} skins")
     popup(source)

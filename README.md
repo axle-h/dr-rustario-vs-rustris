@@ -18,10 +18,10 @@ name plates and the arch at the foot of its centre column. Chronicle has none of
 stands both fields on one painted scene rather than giving each player a panel, and so does
 this - the scene covers the whole window at any size, so a 1080p screen is filled by it and
 not letterboxed round a strip in the middle. Its particle theme carries
-fourteen sets
+eleven sets
 of puyos and deals a different one to each player at the start of every match, so a two player
 game is never two boards of the same puyos and no two matches look alike; the title screen
-sends all fourteen past. It has a soundtrack the same way: one track over its menus, and four
+sends all eleven past. It has a soundtrack the same way: one track over its menus, and four
 more that a match is dealt one of. The **music** row on its menu pins one instead - the deal
 is what `random`, its default, means, and a track dealt at the start of a match plays to the
 end of it, changing only if the theme does. Every step of a chain counts itself out over the
