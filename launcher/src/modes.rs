@@ -656,18 +656,21 @@ impl VersusAi {
         let players = per_game.iter().map(|game| game.len()).min().unwrap_or(0);
         (0..players)
             .map(|_| {
-                let mut board = None;
-                let brains = per_game
+                let dealt = per_game
                     .iter_mut()
-                    .map(|game| {
-                        let (plays, brain) = game.next().expect("a brain per game per player");
-                        // taken by position, so the games have to agree on which board each
-                        // of their ai players takes - as they do, offering the same modes
-                        debug_assert_eq!(*board.get_or_insert(plays), plays);
-                        brain
-                    })
-                    .collect();
-                (board.expect("a game to field the player"), brains)
+                    .map(|game| game.next().expect("a brain per game per player"))
+                    .collect::<Vec<(u32, Box<dyn AiBrain>)>>();
+                // the games are taken by position, so they have to agree on which board each
+                // of their ai players takes - as they do, offering the same modes. The check
+                // is over what has already been dealt rather than something the dealing does
+                // on the way past: a `debug_assert!` does not evaluate its arguments at all
+                // in a release build, so anything a match needs has to happen outside one
+                let board = dealt[0].0;
+                debug_assert!(
+                    dealt.iter().all(|(plays, _)| *plays == board),
+                    "the games disagree about which board an ai player takes"
+                );
+                (board, dealt.into_iter().map(|(_, brain)| brain).collect())
             })
             .collect()
     }
@@ -1082,6 +1085,34 @@ impl VersusMode {
             }
         })
     }
+
+    /// The playlist's next turn for this player: which game it deals, on which theme, and
+    /// the board to play it on when the game has changed.
+    ///
+    /// This is [`Mode::next_stage`] without the themes a window needs, so that a whole
+    /// playlist - every board it deals and every swap it makes - can be played out headless.
+    fn next_turn(
+        &self,
+        playlist_themes: &PlaylistThemes,
+        player: u32,
+        completed: u32,
+    ) -> Option<(GameKind, ThemeMode, Option<AnyGame>)> {
+        let seed = self.seed.get();
+        let (kind, theme_mode) = self
+            .playlist
+            .stage(seed, completed as usize, playlist_themes)?;
+        let previous = completed
+            .checked_sub(1)
+            .and_then(|i| self.playlist.stage(seed, i as usize, playlist_themes))
+            .map(|(kind, _)| kind);
+        // the same game again keeps its board and hold: only the theme changes
+        let game = if previous == Some(kind) {
+            None
+        } else {
+            Some(self.new_games(kind, 1, player as usize).ok()?.pop()?)
+        };
+        Some((kind, theme_mode, game))
+    }
 }
 
 impl Mode for VersusMode {
@@ -1190,21 +1221,8 @@ impl Mode for VersusMode {
         player: u32,
         completed: u32,
     ) -> Option<StageChange<AnyGame>> {
-        let playlist_themes = self.playlist_themes(themes);
-        let seed = self.seed.get();
-        let (kind, theme_mode) = self
-            .playlist
-            .stage(seed, completed as usize, &playlist_themes)?;
-        let previous = completed
-            .checked_sub(1)
-            .and_then(|i| self.playlist.stage(seed, i as usize, &playlist_themes))
-            .map(|(kind, _)| kind);
-        // the same game again keeps its board and hold: only the theme changes
-        let game = if previous == Some(kind) {
-            None
-        } else {
-            Some(self.new_games(kind, 1, player as usize).ok()?.pop()?)
-        };
+        let (kind, theme_mode, game) =
+            self.next_turn(&self.playlist_themes(themes), player, completed)?;
         Some(StageChange {
             game,
             settings: PlayerSettings {
@@ -1243,6 +1261,8 @@ impl Mode for VersusMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine::game::{Game, GameEvent, StageState};
+    use engine::session::Player;
     use std::collections::HashSet;
 
     /// the same list of themes for every game
@@ -1456,6 +1476,224 @@ mod tests {
                 with_ai,
                 without
             );
+        }
+    }
+
+    /// A whole match played out headless: every board driven by whatever controller has it,
+    /// garbage crossing between the players, and - in a playlist - each board swapped for
+    /// the next game as it finishes a stage.
+    ///
+    /// This is the match screen with the window taken off it: everything there that touches
+    /// a game, in the order it does, and nothing that draws one. An ai mode is the one thing
+    /// nobody can play by hand, so this is the only way to find out whether one survives a
+    /// match at all.
+    struct Session<'a> {
+        players: Vec<Player<AnyGame>>,
+        controllers: Vec<Controller>,
+        /// the boards a player has been dealt and will be dealt again: a playlist parks the
+        /// game it swaps out and resumes it when its turn comes round, exactly as the match
+        /// screen does
+        parked: Vec<Vec<AnyGame>>,
+        completed: Vec<u32>,
+        /// a player who has been buried plays no further part
+        out: Vec<bool>,
+        /// the playlist's next turn for a player who has just finished a stage: the board to
+        /// play it on, or `None` when the mode never changes the game
+        next_turn: Box<dyn FnMut(u32, u32) -> Option<AnyGame> + 'a>,
+        locked: usize,
+        stages: usize,
+        swaps: usize,
+        attacks: usize,
+    }
+
+    impl<'a> Session<'a> {
+        fn new(
+            games: Vec<AnyGame>,
+            controllers: Vec<Controller>,
+            next_turn: impl FnMut(u32, u32) -> Option<AnyGame> + 'a,
+        ) -> Self {
+            let count = games.len();
+            Self {
+                players: games
+                    .into_iter()
+                    .enumerate()
+                    .map(|(pid, game)| Player::new(pid as u32, game))
+                    .collect(),
+                controllers,
+                parked: (0..count).map(|_| vec![]).collect(),
+                completed: vec![0; count],
+                out: vec![false; count],
+                next_turn: Box::new(next_turn),
+                locked: 0,
+                stages: 0,
+                swaps: 0,
+                attacks: 0,
+            }
+        }
+
+        /// the board this attack lands on: the next player still playing, which in a two
+        /// player match is the session's own choice of victim
+        fn victim(&self, from: u32) -> Option<u32> {
+            (1..self.players.len() as u32)
+                .map(|step| (from + step) % self.players.len() as u32)
+                .find(|player| !self.out[*player as usize])
+        }
+
+        fn play(&mut self, frames: usize) -> &mut Self {
+            for _ in 0..frames {
+                for player in 0..self.players.len() as u32 {
+                    if self.out[player as usize] {
+                        continue;
+                    }
+                    self.frame(player);
+                }
+            }
+            self
+        }
+
+        fn frame(&mut self, player: u32) {
+            let index = player as usize;
+            let game = self.players[index].game_mut();
+            for (controlled, controller) in self.controllers.iter_mut() {
+                if *controlled == player {
+                    controller(game, STEP);
+                }
+            }
+            let mut events = Game::drain_events(game);
+            Game::update(game, STEP);
+            events.extend(Game::drain_events(game));
+
+            let mut stage_complete = false;
+            for event in events {
+                match event {
+                    GameEvent::Lock { .. } => self.locked += 1,
+                    GameEvent::AttackSent(attack) => {
+                        if let Some(victim) = self.victim(player) {
+                            let board = self.players[victim as usize].game_mut();
+                            // only the sender knows what the clear was worth over there, and
+                            // an attack nobody priced is worth nothing
+                            if attack.strength_for(Game::game_id(board)) > 0 {
+                                board.receive_attack(attack);
+                                self.attacks += 1;
+                            }
+                        }
+                    }
+                    GameEvent::StageComplete => stage_complete = true,
+                    GameEvent::GameOver => self.out[index] = true,
+                    _ => {}
+                }
+            }
+
+            if stage_complete && !self.out[index] {
+                self.stages += 1;
+                self.completed[index] += 1;
+                let completed = self.completed[index];
+                if let Some(next) = (self.next_turn)(player, completed) {
+                    // resume the board this player parked when they last left this game,
+                    // else start the new one
+                    let wanted = Game::game_id(&next);
+                    let resumed = match self.parked[index]
+                        .iter()
+                        .position(|g| Game::game_id(g) == wanted)
+                    {
+                        Some(i) => self.parked[index].swap_remove(i),
+                        None => next,
+                    };
+                    let outgoing = self.players[index].replace_game(resumed);
+                    self.parked[index].push(outgoing);
+                    self.swaps += 1;
+                }
+                let game = self.players[index].game_mut();
+                if Game::stage_state(game) == StageState::StageComplete {
+                    Game::next_stage(game).expect("the next stage");
+                }
+                Game::set_completed_stages(game, completed);
+            }
+        }
+    }
+
+    /// every ai mode the versus playlist offers, by the name it goes by on the title screen
+    fn versus_ai_modes() -> Vec<String> {
+        AiDifficulty::ALL
+            .iter()
+            .filter_map(|d| VersusAi::Opponent(*d).name())
+            .chain([AI_DEMO_1P.to_string(), AI_DEMO_2P.to_string()])
+            .collect()
+    }
+
+    /// a versus match under `mode`'s current options, its playlist dealt from the same
+    /// themes every game's tests use
+    fn versus_session(mode: &VersusMode) -> Session<'_> {
+        let games = mode.games().unwrap();
+        let controllers = mode.controllers();
+        let themes = all_themes();
+        Session::new(games, controllers, move |player, completed| {
+            mode.next_turn(&themes, player, completed)
+                .and_then(|(_, _, game)| game)
+        })
+    }
+
+    /// how long an ai mode is played for: enough frames of every board for a demo, which
+    /// plays at full speed, to be dealt every game of the playlist more than once - so the
+    /// boards are swapped, parked and resumed under the agents playing them
+    const MATCH_FRAMES: usize = 3_000;
+
+    /// Every ai mode of the versus playlist plays a match out.
+    ///
+    /// Nobody can sit down and check one of these: the demos play both boards themselves.
+    /// This is where the versus ai crashed the moment a match started - `brains` set the
+    /// board each ai player takes inside a `debug_assert!`, which evaluates nothing at all
+    /// in a release build, so every mode here panicked on `expect`. **A release run is what
+    /// catches that**: `cargo test --release`. What a debug run holds is everything else -
+    /// that each mode fields an ai at all, that it plays whatever game it is dealt, and that
+    /// it survives the playlist taking the board away and giving it back.
+    #[test]
+    fn every_versus_ai_mode_plays_a_match_out() {
+        for players in versus_ai_modes() {
+            let mut mode = VersusMode::new();
+            mode.title_select(PLAYERS, &players);
+            // the playlist that carries every game on through its themes, so a board is
+            // swapped for another game's and later resumed where it was parked
+            mode.menu_select(PLAYLIST, Playlist::Interleaved.name());
+            let mut session = versus_session(&mode);
+            session.play(MATCH_FRAMES);
+            assert!(session.locked > 0, "{players} played nothing");
+            // a demo plays every board at full speed, so it gets far enough for the playlist
+            // to deal it another game - the half of a versus match only an ai ever reaches
+            if matches!(
+                VersusAi::from_name(&players),
+                Some(VersusAi::Demo) | Some(VersusAi::VsDemo)
+            ) {
+                assert!(
+                    session.swaps >= GameKind::PLAYLIST_COUNT,
+                    "{players} was never dealt the whole playlist: {} stages, {} boards \
+                     dealt, {} attacks crossed",
+                    session.stages,
+                    session.swaps,
+                    session.attacks
+                );
+            }
+        }
+    }
+
+    /// how long an ai mode of a single game is played for. Shorter than a playlist's, since
+    /// there is no board to swap here and every game is played by every mode: long enough
+    /// that even the slowest ai difficulty, a key every 500 ms, has placed several pieces
+    const GAME_FRAMES: usize = 1_200;
+
+    /// ... and so does every ai mode of every game played on its own, where the board is
+    /// never swapped and the only thing a stage changes is the theme
+    #[test]
+    fn every_ai_mode_of_every_game_plays_a_match_out() {
+        for game in GameKind::ALL {
+            for players in versus_ai_modes() {
+                let mut mode = game_mode(game);
+                mode.title_select(PLAYERS, &players);
+                let mut session =
+                    Session::new(mode.games().unwrap(), mode.controllers(), |_, _| None);
+                session.play(GAME_FRAMES);
+                assert!(session.locked > 0, "{game:?}: {players} played nothing");
+            }
         }
     }
 
