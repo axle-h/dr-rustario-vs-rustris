@@ -14,13 +14,14 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, hud, previews, Sounds};
+use crate::theme::data::{audio, cells, previews, Sounds};
 use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
 use engine::config::Config;
-use engine::render::font::{FontRenderOptions, FontThemeOptions, MetricSnips};
+use engine::game::MetricKind;
+use engine::render::font::{FontRenderOptions, FontThemeOptions, MetricSnips, ThemedNumeric};
 use engine::render::geometry::BoardGeometry;
 use engine::render::retro::{retro_theme, RetroThemeOptions};
 use engine::render::scene::SceneType;
@@ -37,7 +38,10 @@ mod sprites {
     pub const BACKGROUND: &[u8] = include_bytes!("background.png");
     pub const BACKGROUND_TILE: &[u8] = include_bytes!("background-tile.png");
     pub const BOARD: &[u8] = include_bytes!("board.png");
+    /// the bold face, in the first player's red - what the game sets its score in
     pub const FONT: &[u8] = include_bytes!("font.png");
+    /// ... and the plain white one it prints its stage number in, which is smaller
+    pub const FONT_SMALL: &[u8] = include_bytes!("font-small.png");
 }
 
 /// the Genesis's own bean, and `rip_retro.py`'s grid
@@ -75,15 +79,15 @@ const NEXT_PAIR: (i32, i32) = (8, 12);
 /// panel has no use for and the only hole big enough for the tray
 const MUGSHOT: (i32, i32, u32, u32) = (120, 96, 80, 56);
 
-/// where the score goes: the first of the two rows of digits the game keeps under `SCORE`,
-/// which is the player's own
-const SCORE_AT: (i32, i32) = (120, 176);
+/// Where the score goes: the first of the two rows of digits the game keeps under `SCORE`,
+/// which is the player's own. The game zero fills eight digits from 120 and this game's score
+/// is seven, so it starts a cell later and its units digit lands where the game's does.
+const SCORE_AT: (i32, i32) = (128, 176);
 
 /// Where the level goes: where Mean Bean Machine prints the number after `STAGE`, which is
-/// the same number under another name. Right aligned on it, and in the sixteen pixel band the
-/// game leaves between the `NEXT` boxes and the mugshot - the game's own stage font is nine
-/// pixels tall and smaller than the one it scores in, and this theme has only the one.
-const LEVEL_AT: (i32, i32) = (192, 80);
+/// the same number under another name - right aligned on the cell the game's own sits in, and
+/// in the plain face it sets that number in rather than the bold one it scores in.
+const LEVEL_AT: (i32, i32) = (184, 80);
 
 /// how long the beans hold before they go. Under [`crate::game::rules::POP_DELAY`], so a
 /// chain step never waits on the animation - the same bound the particle theme keeps.
@@ -157,12 +161,23 @@ pub fn genesis_theme<'a>(
                 game_over: sound::GAME_OVER,
             },
         )?,
-        font: FontThemeOptions::simple(
-            FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 1)?,
-            hud(
-                MetricSnips::zero_fill(SCORE_AT, MAX_SCORE),
-                MetricSnips::right(LEVEL_AT, MAX_LEVEL),
-            ),
+        // two faces, because the game uses two: the digits are on an eight pixel pitch with
+        // no gap in both of them, which is what the spacing of zero says
+        font: FontThemeOptions::new(
+            vec![
+                FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 0)?,
+                FontRenderOptions::numeric_sprites(sprites::FONT_SMALL, texture_creator, 0)?,
+            ],
+            vec![
+                (
+                    MetricKind::Score,
+                    ThemedNumeric::new(0, MetricSnips::zero_fill(SCORE_AT, MAX_SCORE)),
+                ),
+                (
+                    MetricKind::Level,
+                    ThemedNumeric::new(1, MetricSnips::right(LEVEL_AT, MAX_LEVEL)),
+                ),
+            ],
         ),
         board_file: sprites::BOARD,
         board_alpha: 0xff,
@@ -301,9 +316,21 @@ mod tests {
 
     /// `numeric_sprites` divides the sheet by ten and takes its whole height, so a font that
     /// is not exactly ten cells wide draws sliced digits rather than failing
+    /// `numeric_sprites` divides a sheet by ten and takes its whole height, so a face that is
+    /// not exactly ten cells wide draws sliced digits rather than failing. Both of this
+    /// theme's are checked, and against each other: the game sets its score and its stage
+    /// number in two different faces at the same eight pixel cell.
     #[test]
     fn the_font_is_ten_digits_wide() {
-        let (width, _) = png_size(sprites::FONT);
+        let (width, height) = png_size(sprites::FONT);
+        let (small_width, small_height) = png_size(sprites::FONT_SMALL);
         assert_eq!(width % 10, 0);
+        assert_eq!(small_width, width);
+        assert_eq!(small_height, height);
+        assert_eq!(
+            width / 10,
+            SRC_BLOCK_SIZE / 2,
+            "a digit is half a bean wide"
+        );
     }
 }

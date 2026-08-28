@@ -383,20 +383,47 @@ GENESIS_WELL = (16, 16, 96, 192)
 # player's well begins
 GENESIS_PANEL_WIDTH = 208
 
-# the big white face the game sets FINAL STAGE in: ten digits, 8x16, on a nine pixel pitch
-GENESIS_DIGITS = (123, 139, 1, 9, 8)
+# Every face on the fonts sheet is laid out the same way: eight pixels wide on a nine pixel
+# pitch, thirty glyphs to a row - the ten digits and then A to T. So one reading serves all of
+# them and a word is a lookup into the alphabet.
+GENESIS_GLYPH = (1, 9, 8)
+GENESIS_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRST"
 
-# The word `STAGE`, taken whole off the end of that same row - it reads
-# `0123456789FINALSTAGE`, and the last five letters are one forty pixel run with no gaps in
-# it. Mean Bean Machine prints `NEXT`, `1P`, `DR R`, `STAGE` and `SCORE` down the middle of
-# the screen and *every one of them is a text sprite*, so the frame plane carries none: the
-# panel has the boxes and no words at all. This is the only one of them the big face can
-# spell, and it is the one worth having, because the number beside it is this game's level
-# and a bare digit on stone says nothing. It goes where the game prints its own, in the band
-# the frame leaves between the `NEXT` boxes and the mugshot - in **screen** coordinates,
-# like [`GENESIS_WELL`], since the panel is cut sixteen rows down from there.
-GENESIS_STAGE_WORD = (132, 123, 40, 16)
-GENESIS_STAGE_AT = (122, 80)
+# The face the game sets `NEXT`, `SCORE` and both players' scores in, four inks and sixteen
+# rows. It is *green* on the sheet because green is the palette the labels take; a score is
+# the same glyphs in the player's own, which for player one is [`GENESIS_SCORE_INK`]. Matched
+# glyph for glyph against the game's own `00007536`, so this is the face and not a guess -
+# the big white one at 123 the first pass used is `FINAL STAGE`'s and a different shape.
+GENESIS_FACE_BOLD = (174, 190)
+
+# ... and the smaller white one it sets `STAGE`, `1P` and `DR R` in, and the stage number with
+# them. Its ink is nine rows inside a sixteen row cell, which is why the word is pasted at 80
+# and reads at 84.
+GENESIS_FACE_PLAIN = (140, 156)
+
+# Green to red, by role. The sheet and a frame of the game are the same eight levels per
+# channel at two different scalings, so the pairing was read off the game a digit at a time
+# and written back in the sheet's own scaling.
+GENESIS_SCORE_INK = {
+    (0, 96, 0): (128, 0, 64),
+    (0, 128, 0): (128, 0, 64),
+    (64, 160, 0): (160, 32, 64),
+    (64, 224, 0): (224, 64, 96),
+    (160, 224, 160): (224, 128, 128),
+}
+
+# the flat the ripper laid behind each glyph cell, which is not the page colour and is not ink
+GENESIS_FONT_CELL = (0, 64, 64)
+
+# The words the frame plane does not carry. Mean Bean Machine prints `NEXT`, `1P`, `DR R`,
+# `STAGE` and `SCORE` down the middle of the screen and *every one of them is a text sprite*,
+# so the frame has the boxes and no words at all - and a bare number on stone says nothing.
+# These two are the ones with a number under them. In **screen** coordinates, like
+# [`GENESIS_WELL`], since the panel is cut sixteen rows down from there.
+GENESIS_LABELS = (
+    ("SCORE", GENESIS_FACE_BOLD, (128, 160)),
+    ("STAGE", GENESIS_FACE_PLAIN, (128, 80)),
+)
 
 # The scene behind the boards is the dungeon wall, tiled. There is no seamless tile in the
 # board art - the stone is hand scattered and repeats on nothing - so this is a course of it
@@ -412,6 +439,38 @@ def keyed_box(image, box, transparent):
     flat = px[:, :, :3].astype(int)
     for color in transparent:
         px[:, :, 3][np.abs(flat - color).sum(2) < 12] = 0
+    return Image.fromarray(px)
+
+
+def genesis_glyphs(fonts, band, text, transparent, recolour=None):
+    """one word out of one of the fonts sheet's faces, keyed and optionally palette swapped"""
+    first, pitch, width = GENESIS_GLYPH
+    top, bottom = band
+    out = Image.new("RGBA", (width * len(text), bottom - top), (0, 0, 0, 0))
+    for i, letter in enumerate(text):
+        n = GENESIS_ALPHABET.index(letter)
+        cell = keyed_box(
+            fonts, (first + pitch * n, top, width, bottom - top), transparent
+        )
+        out.paste(cell, (width * i, 0))
+    if not recolour:
+        return out
+    px = np.array(out)
+    flat = px[:, :, :3].astype(int)
+    for source, target in recolour.items():
+        hit = np.abs(flat - source).sum(2) < 12
+        px[:, :, 0][hit], px[:, :, 1][hit], px[:, :, 2][hit] = target
+    # ... and nothing green may survive a swap out of a green face. The sheet has seven
+    # shades in it, two of them a couple of dozen pixels across the whole row, and a shade
+    # left off the table shows up as a lit edge on three of the ten digits and nowhere else -
+    # which is exactly how it was found. Name the shade rather than widening the table.
+    left = np.array(Image.fromarray(px).convert("RGBA"))
+    lit = (left[:, :, 3] > 0) & (left[:, :, 1].astype(int) > left[:, :, 0].astype(int))
+    if lit.any():
+        raise SystemExit(
+            f"{lit.sum()} pixels are still green after the swap: "
+            f"{sorted({tuple(c) for c in left[lit][:, :3]})}"
+        )
     return Image.fromarray(px)
 
 
@@ -490,15 +549,18 @@ def genesis():
     write_png(os.path.join(out, "background-tile.png"), tile)
 
     fonts = source(GENESIS_FONTS)
-    top, bottom, first, pitch, width = GENESIS_DIGITS
-    font_bg = background_of(rgb(fonts))
-    sx, sy, sw, sh = GENESIS_STAGE_WORD
-    word = keyed_box(fonts, (sx, sy, sw, sh), [font_bg, [0, 0, 0]])
-    panel.alpha_composite(word, (GENESIS_STAGE_AT[0], GENESIS_STAGE_AT[1] - wy))
+    keys = [background_of(rgb(fonts)), GENESIS_FONT_CELL]
+    for word, band, (lx, ly) in GENESIS_LABELS:
+        panel.alpha_composite(genesis_glyphs(fonts, band, word, keys), (lx, ly - wy))
     write_png(os.path.join(out, "background.png"), panel)
+    # the score is the bold face in the first player's red; the stage number is the plain one
     write_png(
         os.path.join(out, "font.png"),
-        digits(fonts, (top, bottom), first, pitch, width, [font_bg, [0, 0, 0]]),
+        genesis_glyphs(fonts, GENESIS_FACE_BOLD, "0123456789", keys, GENESIS_SCORE_INK),
+    )
+    write_png(
+        os.path.join(out, "font-small.png"),
+        genesis_glyphs(fonts, GENESIS_FACE_PLAIN, "0123456789", keys),
     )
 
 
