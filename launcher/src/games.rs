@@ -270,6 +270,13 @@ impl Game for AnyGame {
         delegate!(self, g => Game::cell(g, point))
     }
 
+    /// Forwarded like everything else, and easy to miss because it is the one method on
+    /// [`Game`] with a default: a wrapper that does not name it silently answers 0.0 for every
+    /// game, whatever the game underneath would have said.
+    fn fall_progress(&self) -> f64 {
+        delegate!(self, g => Game::fall_progress(g))
+    }
+
     fn queue(&self) -> Vec<PieceId> {
         delegate!(self, g => Game::queue(g))
     }
@@ -352,6 +359,37 @@ impl GameRender for AnyGame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// [`Game::fall_progress`] is the one method on the trait with a default, so a game that
+    /// answers it is only heard if this wrapper names it - and forgetting to costs nothing at
+    /// compile time and silently draws every piece on the grid. Puyo is the game that answers.
+    #[test]
+    fn a_wrapped_game_is_asked_how_far_it_has_fallen() {
+        use puyo_rusto::game::rules::Difficulty;
+        let difficulty = Difficulty::Normal;
+        let seed = puyo_rusto::game::random::Seed::from_u64(42);
+        let skin = puyo_rusto::game::cell::PuyoSkin::deal(seed, 1)[0];
+        let mut game = AnyGame::Puyo(puyo_rusto::game::Game::new(
+            difficulty,
+            0,
+            puyo_rusto::game::random::from_seed(seed, 1, difficulty.colors())
+                .into_iter()
+                .next()
+                .unwrap(),
+            skin,
+        ));
+        game.set_soft_drop(true);
+
+        let mut seen: Vec<f64> = vec![];
+        for _ in 0..30 {
+            game.update(Duration::from_millis(16));
+            seen.push(game.fall_progress());
+        }
+        assert!(
+            seen.iter().any(|p| *p > 0.0),
+            "the wrapper answered 0.0 for a falling pair - the default, not the game: {seen:?}"
+        );
+    }
 
     /// the two lists are the same games in different orders: one game left out of either
     /// would go missing from the menus or from a per-game collection

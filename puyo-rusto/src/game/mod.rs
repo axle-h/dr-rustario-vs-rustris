@@ -172,7 +172,7 @@ impl Game {
     fn fall_interval(&self) -> Duration {
         let delay = rules::fall_delay(self.speed_index);
         if self.soft_drop {
-            (delay / rules::SOFT_DROP_FACTOR).max(Duration::from_millis(1))
+            delay.min(rules::SOFT_DROP_DELAY)
         } else {
             delay
         }
@@ -404,8 +404,41 @@ impl engine::game::Game for Game {
         }
     }
 
+    /// Taking soft drop up or letting it go carries the pair's *position* across the change,
+    /// not the time it has banked towards the next row.
+    ///
+    /// [`Self::fall`] counts towards one row at whatever interval is in force, so the two are
+    /// only meaningful together. Handing a bank filled at gravity's eight hundred milliseconds
+    /// to the eighty three of a soft drop lets [`Self::tick_falling`]'s loop spend it eight
+    /// times over - eight rows in the single frame the key went down, which is one faint tap
+    /// putting the pair half way down the board however slow the rate itself is. Rustris never
+    /// had this: it steps one row per tick and drops the remainder.
     fn set_soft_drop(&mut self, soft_drop: bool) {
+        if soft_drop == self.soft_drop {
+            return;
+        }
+        let travelled = self.fall.as_secs_f64() / self.fall_interval().as_secs_f64();
         self.soft_drop = soft_drop;
+        self.fall = self.fall_interval().mul_f64(travelled.clamp(0.0, 1.0));
+    }
+
+    /// The pair slides between cells rather than stepping whole ones - see
+    /// [`engine::game::Game::fall_progress`] for why this game overrides it and the other two
+    /// do not.
+    ///
+    /// Zero while the pair is resting on something. The fall timer goes on accumulating there
+    /// until it next comes round, so drawing it would sink a settled pair into whatever it is
+    /// sitting on and snap it back, once per fall interval, for the whole of the lock delay.
+    fn fall_progress(&self) -> f64 {
+        let Some(pair) = self.pair else { return 0.0 };
+        if !matches!(self.state, State::Falling { .. }) || pair.is_resting(&self.board) {
+            return 0.0;
+        }
+        let interval = self.fall_interval().as_secs_f64();
+        if interval <= 0.0 {
+            return 0.0;
+        }
+        (self.fall.as_secs_f64() / interval).clamp(0.0, 1.0)
     }
 
     fn hard_drop(&mut self) {
@@ -901,6 +934,68 @@ mod tests {
         assert_eq!(links(floor - 2), LinkMask::NONE, "the blue joined nothing");
     }
 
+    /// A falling pair is drawn between cells rather than on them, so that two or three frames
+    /// a row reads as a fall - and sits still the moment it is resting, since the fall timer
+    /// goes on running under it while the lock delay burns down.
+    #[test]
+    fn a_falling_pair_slides_between_cells_and_settles_still() {
+        let mut game = game();
+        game.set_soft_drop(true);
+        let mut seen = vec![];
+        for _ in 0..400 {
+            if game.pair.is_none_or(|p| p.is_resting(&game.board)) {
+                break;
+            }
+            game.update(STEP);
+            seen.push(game.fall_progress());
+        }
+        assert!(
+            seen.iter().all(|p| (0.0..=1.0).contains(p)),
+            "a pair was slid outside its own cell: {seen:?}"
+        );
+        assert!(
+            seen.iter().any(|p| *p > 0.0),
+            "the pair stepped whole cells rather than sliding: {seen:?}"
+        );
+
+        assert!(game.pair.is_some_and(|p| p.is_resting(&game.board)));
+        // the lock delay is twenty five frames of sitting on the floor, and the fall timer is
+        // still running the whole of it
+        for frame in 0..25 {
+            assert_eq!(
+                game.fall_progress(),
+                0.0,
+                "frame {frame}: a resting pair was slid off its cell"
+            );
+            game.update(STEP);
+        }
+    }
+
+    /// A tap of soft drop moves the pair one row at most, however long gravity has been
+    /// banking time towards the next one - see [`Game::set_soft_drop`]. Before that carried the
+    /// position across rather than the bank, a single frame of soft drop after most of a second
+    /// of gravity moved the pair eight rows, which no per-row rate can slow down.
+    #[test]
+    fn a_tap_of_soft_drop_is_one_row_however_long_gravity_has_been_banking() {
+        for banked in 0..48 {
+            let mut game = game();
+            for _ in 0..banked {
+                game.update(STEP);
+            }
+            let before = game.pair.unwrap().pivot().y;
+
+            game.set_soft_drop(true);
+            game.update(STEP);
+            game.set_soft_drop(false);
+
+            let moved = game.pair.unwrap().pivot().y - before;
+            assert!(
+                moved <= 1,
+                "a one frame tap after {banked} frames of gravity moved the pair {moved} rows"
+            );
+        }
+    }
+
     /// holding soft drop is what makes a pair fall faster, and nothing else about it changes
     #[test]
     fn soft_drop_hurries_the_pair_along() {
@@ -918,8 +1013,8 @@ mod tests {
         );
         assert!(
             hurried.fall_interval() < drifting.fall_interval(),
-            "by a factor of {}",
-            rules::SOFT_DROP_FACTOR
+            "the soft drop step is not {:?}",
+            rules::SOFT_DROP_DELAY
         );
     }
 

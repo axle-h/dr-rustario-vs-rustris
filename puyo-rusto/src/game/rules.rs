@@ -92,8 +92,45 @@ pub const MIN_FALL_DELAY: Duration = Duration::from_millis(90);
 /// nothing but the number on the HUD, which is the same shape Rustris's own curve has.
 pub const FALL_DELAY_MS: [u64; 12] = [800, 700, 600, 520, 450, 380, 320, 260, 210, 170, 130, 100];
 
-/// how much faster a pair falls while the player holds soft drop
-pub const SOFT_DROP_FACTOR: u32 = 12;
+/// How long a pair takes to fall one row while the player holds soft drop.
+///
+/// Puyo Nexus, [Soft Drop](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Soft_Drop): soft drop speed
+/// is *hardcoded* at half a cell per frame - two frames a row, whatever the speed step - and the
+/// original does not even read the pad once regular gravity is faster than that. So it is a
+/// constant here and not a divisor of [`fall_delay`]: dividing made soft drop run away with the
+/// speed steps, reaching four times the original's rate by the bottom of [`FALL_DELAY_MS`] and
+/// crossing the whole board inside two frames, which is a hard drop and not a soft one.
+///
+/// Five frames rather than the original's two, which is the one place here that does not take
+/// the source's number, for two reasons. The original has no hard drop, so *its* soft drop is
+/// the fast way down and is nearly one; this game has both, and a soft drop that races the hard
+/// drop leaves the hard drop nothing to be. And it slides a pair eight pixels a frame *within*
+/// its cell, so two frames a row is continuous motion - this game interpolates now
+/// ([`engine::game::Game::fall_progress`]) but the board under it is still a grid.
+///
+/// Five is not a taste: it is the other two games measured and matched, and what is matched is
+/// how long a soft drop takes to cross **the whole board**, not the rate per row. That
+/// distinction is the whole of it, because these boards are not the same height - Rustris is 20
+/// rows and Dr. Rustario's bottle 16 against this game's [`crate::game::board::VISIBLE_ROWS`]. At the speed
+/// each game starts on:
+///
+/// | game | per row | the whole board |
+/// |--|--|--|
+/// | Rustris, level 0 | 50 ms | 1.00 s |
+/// | Dr. Rustario, low | 67 ms | 1.07 s |
+/// | this, at 83 ms | 83 ms | 1.00 s |
+///
+/// Matching the per-row rate instead is what 50 ms was, and over twelve rows it crossed in
+/// 0.6s - half again as fast as either of the others, which is what it felt like.
+///
+/// The other two divide their gravity by 20 and floor it, so their soft drop quickens as the
+/// level does. This does not, because this game's gravity curve is far flatter than theirs
+/// (800 ms down to 100, against Rustris's 1000 down to 7): the same divisor here bottoms out
+/// at 5 ms, and a constant is what the original has anyway.
+///
+/// Taken as the faster of this and gravity, so holding down can only ever hurry a pair along
+/// and never hold it up.
+pub const SOFT_DROP_DELAY: Duration = Duration::from_millis(83);
 
 /// how long a resting pair may still be nudged about before it locks
 pub const LOCK_DELAY: Duration = Duration::from_millis(400);
@@ -409,5 +446,34 @@ mod tests {
         }
         assert_eq!(fall_delay(FALL_DELAY_MS.len() as u32), MIN_FALL_DELAY);
         assert_eq!(fall_delay(9999), MIN_FALL_DELAY);
+    }
+
+    /// A soft drop crosses the whole board in about a second, which is what the other two games
+    /// take to cross theirs at the speed they start on - and is why this number is not either
+    /// of *their* per-row rates, their boards being taller. See [`SOFT_DROP_DELAY`].
+    #[test]
+    fn a_soft_drop_crosses_the_board_at_the_pace_the_other_games_do() {
+        let crossing = SOFT_DROP_DELAY * crate::game::board::VISIBLE_ROWS;
+        assert!(
+            (Duration::from_millis(900)..=Duration::from_millis(1100)).contains(&crossing),
+            "a soft drop crosses the board in {crossing:?}, and the other two games take ~1s"
+        );
+    }
+
+    /// soft drop is one rate for the whole game and gravity is what eventually catches it up,
+    /// which is the way round the original has it - see [`SOFT_DROP_DELAY`]
+    #[test]
+    fn soft_drop_is_the_same_speed_at_every_step() {
+        for step in 0..FALL_DELAY_MS.len() as u32 + 2 {
+            let soft = fall_delay(step).min(SOFT_DROP_DELAY);
+            assert!(
+                soft <= fall_delay(step),
+                "step {step}: soft drop is slower than gravity"
+            );
+            assert!(
+                soft >= SOFT_DROP_DELAY.min(MIN_FALL_DELAY),
+                "step {step}: soft drop has run away from its own rate"
+            );
+        }
     }
 }
