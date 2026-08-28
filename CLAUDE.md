@@ -35,8 +35,18 @@ Training the neural model is three stages, run in order by `ga dr auto` (see the
 placements the way the n64 ai ranks them, since a genetic algorithm cannot select between
 members that all score zero and from random weights nearly all of them do; then `ai/genetic.rs`
 runs a survival phase (viruses destroyed before being buried) and an efficiency phase (bottles
-finished on a pill budget) off that seed. `ga dr trial` is a short bounded run that trains
-nothing, for checking a change has left something to climb, and `ga dr probe` (`ai/probe.rs`) is
+finished on a pill budget) off that seed. The survival phase's finish line lives in the fitness
+rather than after it (`ai/run.rs`'s `run_finished`, carried out through the aggregate
+`GameResult`'s game over flag, which for a run of several seeds means *out of the run* rather
+than *buried*): a candidate plays four seeds and is finished when one of them came out of
+`TOP_TRAINING_LEVEL` and every other one reached `PROVEN_LEVEL`. Both numbers are measured
+rather than picked. Stopping at bottle 20, as it used to, capped the fitness where a taught
+model already stood, so 518 generations of a 641 generation run scored the exact maximum and
+selection at the top was a random walk; and asking every seed to clear everything is a lottery a
+whole night lost 516 times out of 516. The two probe seeds of the four are a cost dial:
+a candidate averaging under `ABANDON_BELOW` viruses over them is not played out, and is scored
+over all four regardless, so being cut can only cost it. `ga dr trial` is a short bounded run
+that trains nothing, for checking a change has left something to climb, and `ga dr probe` (`ai/probe.rs`) is
 the diagnostic the features were chosen with: it records what the n64 ai made of every placement
 it was offered and measures how much of that opinion the features can express, cloning it onto
 them and sending the clone out to play. The scored agent has no hold - what it learns from has

@@ -51,6 +51,14 @@ impl GameResult {
         self
     }
 
+    /// Say whether the candidate this result belongs to is out. Averaging several games leaves
+    /// the flag meaning "one of them was buried", which is not the same question as whether the
+    /// candidate is out of the run, and only whatever played them can tell the two apart.
+    pub fn with_game_over(mut self, game_over: bool) -> Self {
+        self.game_over = game_over;
+        self
+    }
+
     pub fn pieces(&self) -> u32 {
         self.pieces
     }

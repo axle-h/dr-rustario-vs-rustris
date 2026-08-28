@@ -2,6 +2,7 @@
 
 use crate::game::ai::agent::DrAiAgent;
 use crate::game::ai::models::DrNeuralNetwork;
+use crate::game::ai::run::{going_nowhere, run_finished, PROBE_SEEDS, TOP_TRAINING_LEVEL};
 use crate::game::random::{viruses_at_level, GameRandom, RandomMode};
 use crate::game::{Game, GameSpeed};
 use engine::ai::{EndGame, GameResult, Seed};
@@ -152,10 +153,7 @@ impl Default for HeadlessGameOptions {
     }
 }
 
-/// The last bottle a training game plays: a candidate starts on bottle 0 and works up.
-pub const TOP_TRAINING_LEVEL: u32 = 20;
-
-/// every virus in every bottle from the first up to and including [TOP_TRAINING_LEVEL]
+/// every virus in every bottle from the first up to and including [`TOP_TRAINING_LEVEL`]
 pub const VIRUSES_TO_CLEAR: u32 = {
     let mut total = 0;
     let mut level = 0;
@@ -215,12 +213,33 @@ impl HeadlessGameFixture {
         self.seed
     }
 
-    /// play one whole game per seed and average the results
+    /// Play one whole game per seed and average them.
+    ///
+    /// Two things the genetic algorithm cannot decide for itself are decided here, because the
+    /// average it is handed hides the seeds and this is the only thing that can tell them
+    /// apart. Both are [`crate::game::ai::run`]'s rules.
+    ///
+    /// The first is whether the run is over: [`run_finished`] is the finish line, and the
+    /// aggregate's game over flag is how it is reported, since for a run of several seeds being
+    /// out means not having got where the run asked rather than having been buried on one board
+    /// of it.
+    ///
+    /// The second is that a candidate going nowhere is not played out. The first
+    /// [`PROBE_SEEDS`] say whether the rest are worth playing, and a candidate that is cut is
+    /// still averaged over every seed it was *given* rather than the ones it played - so being
+    /// cut can only ever cost it, and can never lift it above a candidate that was played out.
     pub fn play(&self, network: DrNeuralNetwork) -> GameResult {
-        let total: GameResult = (0..self.seeds_per_game as u128)
-            .map(|i| self.play_seed(network, self.seed + Seed::from(i)))
-            .sum();
-        total / self.seeds_per_game
+        let mut results: Vec<GameResult> = Vec::with_capacity(self.seeds_per_game);
+        for i in 0..self.seeds_per_game as u128 {
+            results.push(self.play_seed(network, self.seed + Seed::from(i)));
+            if results.len() == PROBE_SEEDS && going_nowhere(&results, self.seeds_per_game) {
+                break;
+            }
+        }
+
+        let total: GameResult = results.iter().copied().sum();
+        let finished = run_finished(&results, self.game_options.top_level);
+        (total / self.seeds_per_game).with_game_over(!finished)
     }
 
     /// one game, played from the first bottle up until it is buried or runs out of bottles

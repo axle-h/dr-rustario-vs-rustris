@@ -108,8 +108,11 @@ impl Phase {
         match self.objective {
             // survived all the way to whichever cap the phase set
             Objective::Survival => !best.game_over() && self.end_game.reached(*best),
-            // cleared every board it was given, on every seed it played
-            Objective::Progress => !best.game_over() && self.end_game.reached(*best),
+            // A progress run is several whole games at once and the result in front of us is
+            // their average, which cannot say what any one of them did. So the fitness is left
+            // to say whether the best member is out of the run, through the flag it averaged
+            // them into; the phase's caps only stop the individual games.
+            Objective::Progress => !best.game_over(),
             Objective::Score => false,
         }
     }
@@ -162,17 +165,15 @@ mod tests {
     }
 
     #[test]
-    fn a_progress_phase_is_complete_once_every_board_is_cleared() {
+    fn a_progress_phase_is_complete_when_the_fitness_says_the_best_is_still_in() {
         let mut phase = Phase::survival(u32::MAX);
         phase.objective = Objective::Progress;
         phase.end_game = EndGame::of_cleared(924);
 
-        // still alive but short of the last board
-        assert!(!phase.is_complete(&result(0, 900, false, 20)));
-        // cleared the lot on every seed it played
-        assert!(phase.is_complete(&result(0, 924, false, 21)));
-        // cleared the lot on some seeds but was buried on another
-        assert!(!phase.is_complete(&result(0, 924, true, 21)));
+        // the fitness averaged several games and says this candidate finished the run
+        assert!(phase.is_complete(&result(0, 1166, false, 24)));
+        // ... and this one did not, however far its average got
+        assert!(!phase.is_complete(&result(0, 1800, true, 30)));
     }
 
     #[test]

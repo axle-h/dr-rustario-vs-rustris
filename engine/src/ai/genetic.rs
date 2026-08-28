@@ -158,19 +158,6 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
     }
 
     pub fn run(&mut self) -> GenerationStatistics<N> {
-        self.run_confirmed(|_| true)
-    }
-
-    /// The same, asking `confirm` whether a phase that has met its own completion test really is
-    /// finished. Answering false carries the *same population* on to another generation rather
-    /// than ending the phase: a caller that wants to check a candidate against something the
-    /// phase cannot see - seeds it has never played, say - can do that without the search
-    /// having to start again from one genome, which would throw away every other line it has
-    /// found.
-    pub fn run_confirmed(
-        &mut self,
-        mut confirm: impl FnMut(&GenerationStatistics<N>) -> bool,
-    ) -> GenerationStatistics<N> {
         let mut record = GenerationRecord::new().expect("Failed to create generation record");
         println!(
             "{} phase, population {}, records in {}",
@@ -186,7 +173,7 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
                 .add(&stats)
                 .expect("Failed to write to generation record");
 
-            let complete = self.phase().is_complete(&stats.max().result()) && confirm(&stats);
+            let complete = self.phase().is_complete(&stats.max().result());
             let phase_over = complete || self.phase_generations >= self.phase().max_generations;
             if !phase_over {
                 self.next_generation();

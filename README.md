@@ -403,8 +403,8 @@ binary.
 | stage | what it optimises | how it ends |
 |--|--|--|
 | **1. imitation** | ranking placements the way the deterministic ai ranks them | when the lessons have been learned; no game is played |
-| **2. survival** | viruses destroyed before being buried, from the first bottle up | when a candidate clears every bottle up to level 20 on its training seeds *and* proves it on five it has never played |
-| **3. efficiency** | bottles finished within a budget of 1500 pills | after 150 generations - there is always a faster model, so this one is bounded by count |
+| **2. survival** | viruses destroyed before being buried, from the first bottle up | when a candidate finishes the run: one of its four seeds out of bottle 30, and every other one of them at least as far as bottle 20 |
+| **3. efficiency** | bottles finished within a budget of 3000 pills | after 150 generations - there is always a faster model, so this one is bounded by count |
 
 **Stage one** exists because a genetic algorithm can only select between members it can tell
 apart, and from random weights it cannot: 20 of 24 random genomes clear no virus at all, so the
@@ -427,14 +427,31 @@ a taught model it mutates gently (3-8% of genes, by 0.05) rather than widely (10
 there is a great deal to preserve, and at the wide rates the median member of a taught
 population scores a twentieth of the model it came from.
 
-Clearing every bottle on the seeds in front of it is not enough to end the stage, since a genome
-can do that without generalising, so a candidate that manages it is put through five games it
-has never seen first. One that fails carries on in the same population - starting again from it
-would reseed every member from one genome and throw away every other line the search has found.
+What ends it is the **finish line**, and the finish line is inside the fitness rather than
+bolted on after it, so what training selects for and what stops training are the same thing. A
+candidate plays four seeds, and it has finished the run when one of them came out of the last
+bottle and every other one of them got at least as far as bottle 20. Both halves of that are
+there for a reason. Asking every seed to clear the whole game is a lottery rather than a test -
+a model good enough to top its generation cleared a fresh seed about one time in five, so five
+of five is a one in three thousand event, and a whole night of training lost it 516 times out of
+516. And asking only for an average would take a model that is lucky once over one that is
+reliable four times.
+
+The last bottle is 30 rather than 20 because stopping at 20 put a ceiling on the measure that
+the best member reached in its *first* generation and then sat on: over a 641 generation run the
+best member scored the exact maximum in 518 of them. Above a ceiling the fitness cannot tell its
+candidates apart, so selection at the top was a random walk for nine hours - the best genome
+differed from the previous generation's in 619 of 640 - and the median crept up 80 viruses while
+the leader learned nothing at all. The bottles past 20 are not more of the same, either: level
+19 and up confine their viruses to the top three rows, and level 24 up carries the game's
+maximum of 99. There is a long way to climb up there. The deterministic ai the whole thing
+learns from dies around bottle 19 or 20 itself, and got as far as 25 once in six seeds.
 
 **Stage three** asks a model that has stopped dying to stop dawdling. Same game, but the clock
 is a pill budget and the score is bottles finished, so taking the clear in front of it beats
-tidying, and finishing a bottle in three hundred pills beats nine hundred. Survival is not
+tidying, and finishing a bottle in three hundred pills beats nine hundred. The budget is three
+thousand, which at the pills a bottle a good model takes reaches somewhere around bottle twenty
+of the thirty one stage two asks for; it was half that while the run stopped at bottle twenty. Survival is not
 thrown away by it - a model that buries itself finishes no more bottles - but it is checked
 afterwards all the same, and if the sweep is lost the run says so and prints the stage two model
 as the one to embed.
@@ -456,8 +473,8 @@ ga dr probe [seeds] [level] [pills]         # what the deterministic ai is payin
 a small population over a handful of generations, reporting every one, which is enough to see
 whether the algorithm has been left anything it can climb. Its `stage` is `scratch` (the
 default: stage two from random weights), `taught` (stage two from a quick imitation seed) or
-`efficiency` (stage three from one). `ga dr trial 60 4 taught` takes a few minutes and should
-open around 800 viruses and 19 bottles.
+`efficiency` (stage three from one). It runs to its generation count and stops; nothing about
+it finishes a run.
 
 **Getting the result into the binary.** Every stage that finishes prints its weights as the body
 of `virus_clear_trained`, ready to paste over the one in
@@ -476,17 +493,23 @@ weights.
 
 **What a generation costs** is `POPULATION` times `SEEDS_PER_GAME` whole games, and a good
 model's game runs to thousands of pills - so those two are the dials to reach for if training is
-too slow. At 250 candidates over 2 seeds a generation takes around half a minute on a desktop;
-at 1000 over 3, which is what it was, it took several minutes. Fewer seeds is a noisier measure
-of a genome, which the seeds changing every generation already guards against.
+too slow. Two seeds measured luck rather than skill: taking the best of 250 candidates over 2
+seeds is an extreme of 250 noisy samples, so *somebody* cleared both every generation whatever
+the population was worth. Four is dearer, which is what the **probe seeds** are for - a
+candidate plays two, and only one averaging at least `ABANDON_BELOW` viruses over them is played
+out on the other two. A candidate that is cut is still averaged over all four seeds it was
+given rather than the two it played, so being cut can only ever cost it and can never lift it
+above a candidate that went the distance. At 250 candidates over 4 seeds a generation takes
+around a minute on a desktop.
 
 **The other knobs**, all constants at the top of
 [dr-rustario/src/game/ai/genetic.rs](dr-rustario/src/game/ai/genetic.rs) and
 [imitation.rs](dr-rustario/src/game/ai/imitation.rs): `LESSON_PILLS` (how many pills stage one
 learns from), `TAUGHT_ENOUGH` and `PRETRAIN_ATTEMPTS` (how well a taught network has to play
 before stage two starts from it, and how many tries it gets), `PILL_BUDGET` and
-`EFFICIENCY_GENERATIONS` (stage three), `TOP_TRAINING_LEVEL` (the last bottle a training game
-plays) and `VERIFY_SEEDS` (how many unseen games a model has to clear to be believed).
+`EFFICIENCY_GENERATIONS` (stage three), and, in [run.rs](dr-rustario/src/game/ai/run.rs),
+`TOP_TRAINING_LEVEL` and `PROVEN_LEVEL` (the two halves of the finish line) with `PROBE_SEEDS`
+and `ABANDON_BELOW` (when a candidate is cut short).
 
 ### Dr. Rustario vs. Rustris
 

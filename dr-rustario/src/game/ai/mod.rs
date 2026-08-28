@@ -22,6 +22,7 @@ pub mod input_sequence;
 pub mod models;
 #[cfg(all(not(test), not(target_os = "emscripten")))]
 pub mod probe;
+mod run;
 
 pub use models::{DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
 pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};
