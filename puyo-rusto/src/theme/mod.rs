@@ -7,7 +7,6 @@ pub mod snes;
 pub mod three_ds;
 
 use crate::game::cell::{PuyoColor, PuyoPiece, PuyoSkin};
-use crate::game::rules::GameMusic;
 use engine::config::Config;
 use engine::game::PieceId;
 use engine::menu::sound::{MenuMusic, MenuSounds};
@@ -75,9 +74,17 @@ pub(crate) mod sound {
     );
 }
 
-/// the tracks a match may be played on, **in [`GameMusic::ALL`] order** - a track's place in
-/// this table is the number the menu's choice turns into
-pub const GAME_MUSIC: [(&[u8], &[u8]); GameMusic::ALL.len()] = [
+/// How many tracks a theme offers a match, which is the same number for every one of them.
+///
+/// Nothing lets a player pick between them - the theme is dealt one at the start of a match
+/// and plays it to the end - so this is not a menu row's length any more. It is still one
+/// number rather than each theme's own, because a theme with a *shorter* soundtrack would be
+/// heard less often than the others rather than differently, and because a retro theme cutting
+/// its own has four to find: the games these are drawn from all wrote four.
+pub const GAME_MUSIC_TRACKS: usize = 4;
+
+/// the tracks a match on the particle theme may be dealt
+pub const GAME_MUSIC: [(&[u8], &[u8]); GAME_MUSIC_TRACKS] = [
     sound::KOROBEINIKI,
     sound::DECISIVE,
     sound::MAGICAL,
@@ -207,13 +214,12 @@ mod tests {
         }
     }
 
-    /// the menu picks a track by its place in [`GameMusic::ALL`] and the theme plays the
-    /// track at that place in [`GAME_MUSIC`], so the two lists have to be the same length -
-    /// which the array's own type says, leaving only the order to check by eye
+    /// every theme is dealt out of a table of [`GAME_MUSIC_TRACKS`], which the arrays' own
+    /// types say - so what is left to check is that none of them is empty, which an
+    /// `include_bytes!` of a file the rip never wrote would be
     #[test]
-    fn every_track_the_menu_offers_is_a_track_the_theme_has() {
-        assert_eq!(GAME_MUSIC.len(), GameMusic::ALL.len());
-        for (intro, repeat) in GAME_MUSIC {
+    fn every_track_a_theme_deals_has_something_in_it() {
+        for (intro, repeat) in GAME_MUSIC.into_iter().chain(genesis::GAME_MUSIC) {
             assert!(!intro.is_empty() && !repeat.is_empty());
         }
     }

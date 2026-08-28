@@ -14,8 +14,8 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, previews, Sounds};
-use crate::theme::{sound, GAME_MUSIC};
+use crate::theme::data::{audio, cells, previews, Sounds, CLEAR_CLASSES};
+use crate::theme::GAME_MUSIC_TRACKS;
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -43,6 +43,66 @@ mod sprites {
     /// ... and the plain white one it prints its stage number in, which is smaller
     pub const FONT_SMALL: &[u8] = include_bytes!("font-small.png");
 }
+
+/// Mean Bean Machine's own soundtrack and sound effects, cut by
+/// `puyo-rusto/art/retro_audio.py genesis`.
+///
+/// The game writes each stage's lead-in as a track of its own, which is exactly the pair the
+/// mixer takes: the intro plays once and the stage tune loops behind it forever. The rip
+/// peak-normalised every one of its effects to the same level, so the script puts each of them
+/// back to the peak the particle theme's sound for the same slot has - see its doc comment,
+/// which is the one place this game levels a rip rather than taking it as it came.
+mod sound {
+    pub const MOVE: &[u8] = include_bytes!("move.ogg");
+    pub const ROTATE: &[u8] = include_bytes!("rotate.ogg");
+    pub const LOCK: &[u8] = include_bytes!("lock.ogg");
+    pub const SETTLE: &[u8] = include_bytes!("settle.ogg");
+    /// this game has no hard drop, so this is the nearest noise it owns - see the script
+    pub const HARD_DROP: &[u8] = include_bytes!("hard-drop.ogg");
+    pub const POP: [&[u8]; super::CLEAR_CLASSES] = [
+        include_bytes!("pop-1.ogg"),
+        include_bytes!("pop-2.ogg"),
+        include_bytes!("pop-3.ogg"),
+        include_bytes!("pop-4.ogg"),
+    ];
+    pub const ATTACK: &[u8] = include_bytes!("attack.ogg");
+    pub const GARBAGE: &[u8] = include_bytes!("garbage.ogg");
+    pub const SPEED_UP: &[u8] = include_bytes!("speed-up.ogg");
+    pub const PAUSE: &[u8] = include_bytes!("pause.ogg");
+    pub const VICTORY: &[u8] = include_bytes!("victory.ogg");
+    /// there is no track called game over: what this game plays over a burial is the music of
+    /// the continue screen it puts you on
+    pub const GAME_OVER: &[u8] = include_bytes!("game-over.ogg");
+
+    pub const STAGES_1_4: (&[u8], &[u8]) = (
+        include_bytes!("stages-1-4-intro.ogg"),
+        include_bytes!("stages-1-4-repeat.ogg"),
+    );
+    pub const STAGES_5_8: (&[u8], &[u8]) = (
+        include_bytes!("stages-5-8-intro.ogg"),
+        include_bytes!("stages-5-8-repeat.ogg"),
+    );
+    pub const STAGES_9_12: (&[u8], &[u8]) = (
+        include_bytes!("stages-9-12-intro.ogg"),
+        include_bytes!("stages-9-12-repeat.ogg"),
+    );
+    pub const STAGE_13: (&[u8], &[u8]) = (
+        include_bytes!("stage-13-intro.ogg"),
+        include_bytes!("stage-13-repeat.ogg"),
+    );
+}
+
+/// the tracks a match on this theme may be dealt, in the game's own order
+///
+/// Mean Bean Machine has exactly [`GAME_MUSIC_TRACKS`] stage tunes and deals them by stage,
+/// four stages at a time, so the order is the game's own and the count is not a coincidence:
+/// the games these themes are cut from all wrote four.
+pub const GAME_MUSIC: [(&[u8], &[u8]); GAME_MUSIC_TRACKS] = [
+    sound::STAGES_1_4,
+    sound::STAGES_5_8,
+    sound::STAGES_9_12,
+    sound::STAGE_13,
+];
 
 /// the Genesis's own bean, and `rip_retro.py`'s grid
 pub const SRC_BLOCK_SIZE: u32 = 16;
@@ -332,5 +392,32 @@ mod tests {
             SRC_BLOCK_SIZE / 2,
             "a digit is half a bean wide"
         );
+    }
+
+    /// Every one of this theme's sounds is a `retro_audio.py` cut of a rip that was 44.1 kHz
+    /// already, so nothing here resamples and a rate the decoder refuses would only be caught
+    /// when a match opened. The theme builder decodes them all, but no test builds a theme.
+    #[test]
+    fn every_sound_this_theme_owns_decodes() {
+        let mut sounds = vec![
+            sound::MOVE,
+            sound::ROTATE,
+            sound::LOCK,
+            sound::SETTLE,
+            sound::HARD_DROP,
+            sound::ATTACK,
+            sound::GARBAGE,
+            sound::SPEED_UP,
+            sound::PAUSE,
+            sound::VICTORY,
+            sound::GAME_OVER,
+        ];
+        sounds.extend(sound::POP);
+        for (intro, repeat) in GAME_MUSIC {
+            sounds.extend([intro, repeat]);
+        }
+        for bytes in sounds {
+            engine::audio::Sound::load(bytes, 100).expect("a genesis sound did not decode");
+        }
     }
 }

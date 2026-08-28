@@ -107,17 +107,19 @@ cell the same height because each glyph was cut against its row's baseline rathe
 bounding box - the round digits hang below the line and the word sits well above it - so the
 whole caption is drawn at one y.
 
-A theme may offer more than one track for a match. `AudioTheme` keeps them in a list with the
-pick in a `Cell` (themes are built once and lived on as `&'static`, so every play site holds a
-`&self`), and the one place a pick is made is `ThemeContext::sync_music` - which is reached
-only when the theme the music belongs to has changed, so a match keeps the track it opened on
-through a pause, a stage clear and a game over, and is dealt another when the theme moves under
-it. What a match asks for is `MatchSettings::music`: `MusicChoice::Random`, which every game
-with a single tune passes and which means the same thing there, or `Track(i)` indexing the
-tracks that theme was given. Puyo Rusto is the game this is for - `GameMusic` in its
-`game/rules.rs` names its four in the order `theme::GAME_MUSIC` embeds them, and its `music`
-menu row pins one - and it is also the only game with menu music of its own besides Rustris,
-through `Mode::menu_sounds`.
+A theme may offer more than one track for a match, and which one it plays is **dealt, never
+chosen**. `AudioTheme` keeps them in a list with the deal in a `Cell` (themes are built once
+and lived on as `&'static`, so every play site holds a `&self`), and the one place a deal is
+made is `ThemeContext::sync_music` - which is reached only when the theme the music belongs to
+has changed, so a match keeps the track it opened on through a pause, a stage clear and a game
+over, and is dealt another when the theme moves under it. A game with one tune is dealt it
+every time, which is what asking for a deal means there. Puyo Rusto is the game this is for:
+`theme::GAME_MUSIC_TRACKS` is how many tracks each of its themes offers, the particle theme's
+being the four `art/music.py` cuts and `genesis`'s the four Mean Bean Machine stage tunes.
+There was a `music` menu row that pinned one, backed by a `GameMusic` enum and the engine's
+`MusicChoice`; it went, with all of its plumbing, once a second theme had a soundtrack of its
+own and a track's *name* could only ever be right on one theme. Puyo Rusto is also the only
+game with menu music of its own besides Rustris, through `Mode::menu_sounds`.
 
 A game that can hold an attack rather than take it as it arrives reports what is still
 waiting through `Game::pending_attacks`, as its own `CellId`s, and a theme that declares a
@@ -134,6 +136,22 @@ are cut by `puyo-rusto/art/rip_retro.py`, whose sources are not in the repositor
 sheet's own link order off the art rather than being told it, and for `snes` - whose rips carry
 no board, background or font - it renders the SNES's background layers on their own by poking
 `$212C` in a savestate, which is how that theme's panel exists at all.
+
+**A retro theme's audio is `puyo-rusto/art/retro_audio.py`**, one subcommand per theme against
+rips that are not in the repository either, and `genesis` is the one that has been done. Two
+things in it are worth knowing. The music rip renders every track as intro + loop *twice* +
+fade and carries the loop point only as a table of whole seconds, which is a third of a bar out
+and would put a stumble in every loop - so the split is **measured**: cross correlation finds
+the loop length to the sample, a normalised match profile finds where it starts, and the rip's
+own two numbers are the assertion rather than the input. Landing late on the loop start is
+harmless and landing early is not, since the render is periodic from the true start onwards, so
+the search never reaches back before the run it is sure of. And Mean Bean Machine writes each
+stage's lead-in as a track of its own, which is exactly the pair `StructuredMusic::new` takes.
+The other thing is the **levels**: `sfx.py` does not normalise because the particle theme's rip
+came with its mix intact, and this one did not - all sixty of its files peak at the same sample
+value - so each effect is scaled to the peak of the particle theme's sound for the same slot,
+read off `src/theme/sfx/` at run time. Mean Bean Machine has no hard drop, so `hard-drop.ogg`
+is the nearest noise the game owns, the way the particle theme borrows Tetris's.
 
 Where a retro panel's furniture goes was **measured against the emulated game**, not read off
 the rip, and the two disagree. Mean Bean Machine's sheet keeps the screen as the two planes the

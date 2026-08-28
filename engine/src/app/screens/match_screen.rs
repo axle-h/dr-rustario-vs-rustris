@@ -130,7 +130,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         fg_particles.clear();
         bg_particles.clear();
 
-        themes.set_music_choice(settings.music);
         themes.sync_music(fixture.leading_player(), fixture.state(), is_single_player)?;
 
         Ok(Self {
