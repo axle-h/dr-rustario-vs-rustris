@@ -882,7 +882,8 @@ reached only when the theme owning the music has changed, so nothing re-deals fo
 stage clear or a game over, and a second Puyo theme will re-deal of its own accord. The menu's
 `music` row is `random` plus `GameMusic::ALL`, whose order *is* the index into
 `theme::GAME_MUSIC`. It costs 12.3 MiB, which takes the theme from 672 KiB to 13 MiB - the
-first thing this crate has been charged real money for.
+first thing this crate has been charged real money for. *(Amended 2026-08-28, phase 3d: the
+`music` row and everything that pinned a track are gone. A match is dealt one, always.)*
 
 `art/audio.py`'s `music_loop` went with it, and the chord and lead tables it was the only
 reader of; the two stings are still its own.
@@ -1144,7 +1145,8 @@ speed band exactly as the other games' retro themes do.
 
 ## Phase 3 — retro themes
 
-**Status:** `in progress` — 3a, 3b, 3c and 3e are all `done` (2026-08-28); 3d is `todo`. Puyo
+**Status:** `in progress` — 3a, 3b, 3c and 3e are all `done` (2026-08-28); 3d is `in
+progress`, `genesis` done and `snes` and `3ds` still on the particle theme's audio. Puyo
 Rusto has its four themes. **3e was added on 2026-08-28** after Alex played the first three:
 the panels were built from the rips alone and the rips disagree with the games, so every board
 and every preview was out. See it for what was wrong and how each number was measured. **Split into 3a, 3b, 3c and 3d on
@@ -1481,8 +1483,10 @@ are, and the `3ds` backdrop fills the window at 1080p. All three check out in `f
 
 ### Phase 3d — the retro soundtracks and sound effects
 
-**Status:** `todo` — blocked on 3c. **Until it is done, 3a–3c ship placeholders**, which is
-Alex's call of 2026-08-27 and not a shortcut taken quietly.
+**Status:** `in progress` — 2026-08-28. **`genesis` is cut and wired, with seven of its sound
+effects waiting on a listen** (see below); `snes` and `3ds` still play the placeholder. Until
+2026-08-28 all three shipped placeholders, which was Alex's call of 2026-08-27 and not a
+shortcut taken quietly.
 
 **The placeholder is the particle theme's audio, referenced rather than copied.** A retro theme
 hands `data::audio` the same `Sounds` the particle theme does. The music half is already free:
@@ -1497,10 +1501,11 @@ were already lifted. Either way `include_bytes!` of one path embeds one copy how
 modules name it, so the placeholder costs nothing but the wrong period sound.
 
 One trap for a theme that later takes its own soundtrack: `GAME_MUSIC` is an array whose type
-carries `GameMusic::ALL.len()`, so the menu row and the table cannot drift apart — but
-`Sounds::music` is a *slice*, so a theme handing over its own table of a different length would
-compile and quietly make the `music` row mean something different on that theme. If a retro
-theme gets its own tracks, they are four, or `GameMusic` grows and every theme grows with it.
+carries a fixed length, so the tables cannot drift apart — but `Sounds::music` is a *slice*, so
+a theme handing over its own table of a different length would compile. If a retro theme gets
+its own tracks, they are four. *(Amended: this was written while a `music` menu row pinned a
+track by index. That row is gone — see below — and the length is `theme::GAME_MUSIC_TRACKS`
+now, but the constraint is the same one.)*
 
 What 3d then does, per theme, is what `art/music.py` and `art/sfx.py` already do for the
 particle theme:
@@ -1519,9 +1524,70 @@ particle theme:
 The sources are three more rips that are not in the repository and will not be, on the same
 footing as everything else in `puyo-rusto/art/`.
 
-**Done when:** every theme plays its own period audio, `frame_shot` still runs (which is proof
-every ogg decodes, since the theme builder decodes them all), and the `music` row still lines
-up with `GameMusic::ALL` on every theme.
+**Done when:** every theme plays its own period audio and `frame_shot` still runs (which is
+proof every ogg decodes, since the theme builder decodes them all).
+
+#### What `genesis` actually did, 2026-08-28
+
+`puyo-rusto/art/retro_audio.py genesis`, cutting `src/theme/genesis/` out of a FLAC rip of the
+soundtrack and a WAV rip of the effects under `art/retro/genesis-{music,sfx}`. 4.4 MiB, ogg
+q6, and a test in the theme that decodes all twenty three.
+
+* **The loop points are measured, not read.** The rip renders intro + loop *twice* + fade and
+  its `meta.md` gives the loop only in whole seconds, which is a third of a bar out at this
+  tempo. So `loop_length` cross-correlates the render against itself - the minimum is sharp,
+  a sample either side and the residual doubles - and `loop_start` takes the longest run of
+  quarter seconds that match a loop later, at 0.9 rather than at 1 because the two passes are
+  the same performance and not the same samples. The rip's two numbers are the *assertion*.
+  Landing late on the loop start is harmless and landing early is not, which is why the search
+  never reaches back before the run it is sure of.
+* **The game writes each stage's lead-in as its own track**, which is exactly the pair
+  `StructuredMusic::new(intro, repeat)` takes, so the four tracks are the four stage tunes with
+  their four lead-ins. Victory is `Victory!`; there is no track called game over, so a burial
+  gets one pass of `Continue`, which is what the game plays when you lose.
+* **The effects had to be levelled, which contradicts `sfx.py` on purpose.** All sixty files in
+  that rip peak at the same sample value - it is peak-normalised, so the mix is gone and a bean
+  settling would arrive as loud as a fanfare. Each effect is scaled to the peak of the particle
+  theme's sound for the same slot, read off `src/theme/sfx/` at run time rather than written
+  down. Mean Bean Machine has no hard drop, so that slot takes the nearest noise the game owns.
+* **The `music` menu row is gone, and so is the pinning seam behind it**, which is Alex's call
+  of 2026-08-28. The row named the particle theme's four tracks (`korobeiniki`, `decisive` ...)
+  and those names could only ever be right on one theme; with a second soundtrack in the game
+  they were wrong on `genesis` and would be wrong again on `snes` and `3ds`. With nothing left
+  to pin, `GameMusic`, `Options::music_choice`, `MatchSettings::music`,
+  `ThemeContext::set_music_choice` and the engine's whole `MusicChoice` enum went with it;
+  `AudioTheme::choose_game_music` is `deal_game_music(rng)` now and `with_game_music_choice` is
+  `with_game_music_track`. What is left is `theme::GAME_MUSIC_TRACKS`, one number every theme's
+  table is as long as - so a theme with a shorter soundtrack would be heard less often rather
+  than differently, and a retro theme cutting its own knows it has four to find.
+
+**Open: `genesis`'s sound effects are waiting on Alex's ear.** The music is settled - the rip
+names its tracks and the loop split is measured - but the effect rip names only the sounds
+whoever made it recognised and numbers the other twenty six `sfx_N`, so seven slots were filled
+by inference from the names and the spectra rather than by hearing the game. Playing it was
+tried and abandoned: RetroArch freezes on this machine about fifteen seconds into a session, so
+the sounds could not be triggered and recorded. **These are the guesses, and each is one line
+of `GENESIS_SFX` in `retro_audio.py` and a re-run away from being corrected:**
+
+| slot | taken from | the doubt |
+|--|--|--|
+| `rotate` | `puyo_sine.wav` | a 16 ms 744 Hz blip; `sfx_11.wav` (88 ms, 1.9 kHz) is the other candidate |
+| `lock` | `puyo_blob.wav` | which way round `puyo_blob` and `puyo_blob_2` go |
+| `settle` | `puyo_blob_2.wav` | ... the same question, and whether either is really the settle |
+| `garbage` | `bad_puyos.wav` | the plural, read as the shower of them landing |
+| `attack` | `bad_puyo_1.wav` | reading the three singulars as sizes of a *send*; the game may have no send sound at all |
+| `pause` | `select.wav` | most likely the menu confirm rather than the pause |
+| `hard-drop` | `short_noise.wav` | the game has no hard drop, so this is a substitute either way |
+
+Not in doubt: `move`, the four `chain_N` steps (they are a rising ladder - 1456 Hz, 2018, 2139,
+2280 - which is the sound Puyo is known for) and `level_start`. Also wanted: whether `Victory!`
+and `Continue` are the right tracks for a win and a burial.
+
+**What is left after that:** `snes` (Kirby's Avalanche) and `3ds` (Puyo Puyo Chronicle). Both
+write their tables into their own `mod sound` and their own `GAME_MUSIC` the way
+`genesis/mod.rs` does, and both need four tracks. `retro_audio.py` grows a subcommand each;
+whether their rips are laid out the same way is the first thing to find out, and `split`'s
+assertion is what will say.
 
 ### Handover notes
 

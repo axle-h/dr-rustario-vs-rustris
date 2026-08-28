@@ -95,19 +95,6 @@ pub struct StageChange<G> {
     pub settings: PlayerSettings,
 }
 
-/// Which of a theme's game tracks a match is played on.
-///
-/// It belongs to the match rather than to a player because only one track ever plays:
-/// [`crate::render::ThemeContext`] keeps the music on one player's theme. `Track` indexes the
-/// tracks that theme was given, in the order the game's own menu lists them.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum MusicChoice {
-    /// dealt afresh every match, and again whenever the theme changes under it
-    #[default]
-    Random,
-    Track(usize),
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MatchSettings {
     pub rules: MatchRules,
@@ -116,8 +103,6 @@ pub struct MatchSettings {
     pub high_score_key: HighScoreKey,
     /// stages may switch games, so every stage boundary shows the stage card
     pub playlist: bool,
-    /// which track of the theme in play the match is played on
-    pub music: MusicChoice,
 }
 
 pub struct App {

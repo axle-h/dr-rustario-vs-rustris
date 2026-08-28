@@ -2,7 +2,7 @@
 //! and a versus mode where every player plays the same playlist over all of them.
 
 use crate::games::{AiBrain, AnyGame, GameKind, PerGame};
-use engine::app::{MatchSettings, MusicChoice, PlayerSettings, StageChange, ThemeMode};
+use engine::app::{MatchSettings, PlayerSettings, StageChange, ThemeMode};
 use engine::high_score::table::Ranking;
 use engine::high_score::HighScoreKey;
 use engine::menu::sound::MenuSounds;
@@ -236,7 +236,6 @@ impl Mode for DrRustarioMode {
                 .collect(),
             high_score_key: self.high_score_key(),
             playlist: false,
-            music: MusicChoice::Random,
         }
     }
 
@@ -346,7 +345,6 @@ impl Mode for RustrisMode {
                 .collect(),
             high_score_key: self.high_score_key(),
             playlist: false,
-            music: MusicChoice::Random,
         }
     }
 
@@ -456,7 +454,6 @@ impl Mode for PuyoMode {
                 .collect(),
             high_score_key: self.high_score_key(),
             playlist: false,
-            music: self.options.music_choice(),
         }
     }
 
@@ -1201,7 +1198,6 @@ impl Mode for VersusMode {
                 .collect(),
             high_score_key: self.high_score_key(),
             playlist: true,
-            music: MusicChoice::Random,
         }
     }
 

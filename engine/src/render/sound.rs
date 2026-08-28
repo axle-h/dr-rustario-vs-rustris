@@ -1,4 +1,3 @@
-use crate::app::MusicChoice;
 use crate::audio::theme::{LoadSound, StructuredMusic};
 use crate::audio::{self, Sound};
 use crate::config::AudioConfig;
@@ -31,7 +30,7 @@ pub enum SfxKey {
 pub struct AudioTheme {
     sfx: HashMap<SfxKey, Sound>,
     /// every track this theme will play a match on. Most themes offer one; a theme that
-    /// offers several has one of them chosen per match by [`Self::choose_game_music`]
+    /// offers several has one of them dealt per match by [`Self::deal_game_music`]
     game_music: Vec<Rc<StructuredMusic>>,
     /// which of them is playing. A `Cell` because themes are built once and lived on as
     /// `&'static`, so every play site holds a `&self` - the same reason the fill font of
@@ -81,18 +80,19 @@ impl AudioTheme {
         intro: &'static [u8],
         repeating: &'static [u8],
     ) -> Result<Self, String> {
-        self.with_game_music_choice(Some(intro), repeating)
+        self.with_game_music_track(Some(intro), repeating)
     }
 
     /// one track that loops from the start
     pub fn with_looping_game_music(self, music: &'static [u8]) -> Result<Self, String> {
-        self.with_game_music_choice(None, music)
+        self.with_game_music_track(None, music)
     }
 
-    /// another track this theme may play a match on, appended to the ones already offered:
-    /// a game with a soundtrack rather than a tune calls this once per track, in the order
-    /// its own menu lists them, since that order is what [`MusicChoice::Track`] indexes
-    pub fn with_game_music_choice(
+    /// another track this theme may be dealt a match on, appended to the ones already offered:
+    /// a game with a soundtrack rather than a tune calls this once per track. Nothing picks
+    /// between them, so the order is the game's own to choose - what it costs a theme to
+    /// offer a track is how often that track comes up.
+    pub fn with_game_music_track(
         mut self,
         intro: Option<&'static [u8]>,
         repeating: &'static [u8],
@@ -112,16 +112,14 @@ impl AudioTheme {
         self.game_music.len()
     }
 
-    /// Picks the track the next match is played on. A pinned track that this theme does not
-    /// have is taken as no answer at all rather than as silence, so a saved choice outliving
-    /// the track it named still plays something.
-    pub fn choose_game_music(&self, choice: MusicChoice, rng: &mut impl Rng) {
-        let index = match choice {
-            MusicChoice::Track(track) if track < self.game_music.len() => track,
-            _ if self.game_music.len() > 1 => rng.random_range(0..self.game_music.len()),
-            _ => 0,
-        };
-        self.game_music_index.set(index);
+    /// Deals the track the next match is played on. A game with one tune is dealt it every
+    /// time, which is what asking for a deal means there.
+    pub fn deal_game_music(&self, rng: &mut impl Rng) {
+        self.game_music_index.set(if self.game_music.len() > 1 {
+            rng.random_range(0..self.game_music.len())
+        } else {
+            0
+        });
     }
 
     pub fn with_game_over_music<R: Into<Option<&'static [u8]>>>(
@@ -228,7 +226,7 @@ mod tests {
         let mut audio = AudioTheme::new(config, &[]).unwrap();
         for track in 0..tracks {
             let bytes = if track % 2 == 0 { ONE } else { TWO };
-            audio = audio.with_game_music_choice(None, bytes).unwrap();
+            audio = audio.with_game_music_track(None, bytes).unwrap();
         }
         audio
     }
@@ -241,39 +239,19 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(1);
         let mut seen = vec![false; 4];
         for _ in 0..100 {
-            audio.choose_game_music(MusicChoice::Random, &mut rng);
+            audio.deal_game_music(&mut rng);
             seen[audio.game_music_index.get()] = true;
         }
         assert!(seen.into_iter().all(|s| s));
     }
 
+    /// the games with a single tune ask for a deal and get the one they have
     #[test]
-    fn a_pinned_track_is_the_one_that_plays() {
-        let audio = theme(4);
-        let mut rng = ChaCha8Rng::seed_from_u64(1);
-        for track in 0..audio.game_music_count() {
-            audio.choose_game_music(MusicChoice::Track(track), &mut rng);
-            assert_eq!(audio.game_music_index.get(), track);
-        }
-    }
-
-    /// a choice this theme cannot honour - a track a theme with fewer of them does not have -
-    /// is taken as no answer rather than as silence
-    #[test]
-    fn a_track_the_theme_does_not_have_is_dealt_one_it_does() {
-        let audio = theme(2);
-        let mut rng = ChaCha8Rng::seed_from_u64(1);
-        audio.choose_game_music(MusicChoice::Track(7), &mut rng);
-        assert!(audio.game_music_index.get() < 2);
-    }
-
-    /// the games with a single tune ask for nothing and get it
-    #[test]
-    fn one_track_is_played_whatever_is_asked_for() {
+    fn one_track_is_the_one_that_is_dealt() {
         let audio = theme(1);
         let mut rng = ChaCha8Rng::seed_from_u64(1);
-        for choice in [MusicChoice::Random, MusicChoice::Track(3)] {
-            audio.choose_game_music(choice, &mut rng);
+        for _ in 0..8 {
+            audio.deal_game_music(&mut rng);
             assert_eq!(audio.game_music_index.get(), 0);
         }
     }
