@@ -21,12 +21,26 @@
 //! all of them at once, and so does the particle field's silhouette bank, so there is no theme
 //! this can afford to defer.
 //!
+//! The second reason is the event queue, and it is why the bar takes an [`EventPump`] to draw
+//! itself. Presenting frame zero is not enough on its own: a Wayland client is handed its size
+//! in a `configure` it has to acknowledge, and the compositor paces its commits with frame
+//! callbacks - and both of those reach SDL only when the queue is dispatched. A load that
+//! draws a frame per theme and never pumps acknowledges nothing, so on a PortMaster handheld,
+//! whose session fullscreens the window from the outside *while* the load is running, every
+//! frame after the first goes nowhere and the bar is a black screen.
+//!
+//! It pumps rather than polls, and that matters: the queue is left standing so the events of
+//! the load are still there for the first poll of the main loop. `SDL_GAMECONTROLLERCONFIG`
+//! pads announce themselves once, as `ControllerDeviceAdded`, and draining them here would
+//! throw away the only notice the game gets of a pad that was plugged in before it started.
+//!
 //! It draws in flat rectangles and nothing else, because it runs before a single theme, font or
 //! sprite sheet exists to draw with.
 
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
+use sdl2::EventPump;
 
 /// What the screen is cleared to, and the two colours of the bar.
 ///
@@ -63,15 +77,23 @@ impl Loading {
     }
 
     /// one more set of sprites is built; redraw
-    pub fn step(&mut self, canvas: &mut WindowCanvas) -> Result<(), String> {
+    pub fn step(
+        &mut self,
+        canvas: &mut WindowCanvas,
+        events: &mut EventPump,
+    ) -> Result<(), String> {
         self.done = (self.done + 1).min(self.steps);
-        self.draw(canvas)
+        self.draw(canvas, events)
     }
 
     /// Draw the bar as it stands and put it on the screen.
     ///
-    /// This presents, which is the whole point of it: the first call is what maps the window.
-    pub fn draw(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
+    /// This presents, which is half the point of it: the first call is what maps the window.
+    /// The other half is the pump, which comes first so that a resize the compositor asked for
+    /// is settled before the window is measured for it - see this module's own docs, since a
+    /// load that skips it draws every one of these frames into the dark.
+    pub fn draw(&self, canvas: &mut WindowCanvas, events: &mut EventPump) -> Result<(), String> {
+        events.pump_events();
         let (width, height) = canvas.window().size();
         canvas.set_draw_color(BACKGROUND);
         canvas.clear();
