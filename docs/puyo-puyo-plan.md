@@ -1398,10 +1398,51 @@ has nothing to lose — and 1200x720 is 685 KiB in the binary and 3.4 MiB of tex
 MiB and 8.6 MiB at full size. There is no neural upscaler in this pipeline and it does not need
 one; a straight Lanczos blow-up of this art holds up at 1080p.
 
+**A second round, the same day**, after Alex played the first: four more, all of them Kirby's
+Avalanche except the last.
+
+* **The wooden platform at the foot of the arch was gone**, and a black gap stood where Kirby
+  stands in the original. Not a paint-out - the *grass*: the game's own score number is
+  covered with a course of grass taken from beside it, and the course is sixty four pixels
+  wide where what was left to cover was four, so laying a whole one down ran sixty pixels past
+  the patch and over the platform. The last course is clipped to the patch now. Two more
+  pixels of the game's number survived past the patch's right edge, so it runs to the foot of
+  the column; and the grass is taken from clear of the `SC` label, because a course cut
+  through it repeated a sliver of the label across the border.
+* **The two name plates are painted out.** They label one queue for each player and this panel
+  has both boxes to itself, so they were somebody else's. What is behind them is the plain
+  dark of the column, read off the row underneath - which is what `snes_fill_flat` grew a
+  `donor` argument for, since the plates fill most of their own region and it is the region's
+  commonest colour that is normally the answer. With them gone the two `NEXT` boxes are the
+  gaps between the three wooden posts, `(108, 39, 16, 40)` and `(130, 39, 18, 40)`, which is
+  tighter than the boxes-with-plates guess and is what the posts actually frame.
+* **The numbers are drawn in the game's own red.** A decode of all ten tiles says they use
+  three indices and no more - nothing, an outline and a fill - and which colours those take is
+  the *palette's*, which is the player's: the left panel draws its numbers in the red its `SC`
+  is drawn in and the right one in white. This panel is the left one. The red is `#E75163`,
+  read off the `SC` the panel keeps.
+* **The level is a HUD row now, on every theme.** `MAX_LEVEL` was already there "so the HUD can
+  size the digits" and no theme ever drew it. All three source games print it: Kirby's
+  Avalanche and Mean Bean Machine both call it a *stage* and give it a box, and it is the
+  same number the menu offers as the `level` to start on. It goes in the recess under `STAGE`
+  on `snes`, where Mean Bean Machine prints its own on `genesis`, at the far end of the score
+  strip on `3ds` (Chronicle prints no stage number anywhere, so there is no box to put it
+  back in), and as a labelled row on the particle theme, which builds its own table. Placing
+  it needed `data::hud`: every retro theme mapped one snip over `HUD_MAX`, which was fine
+  while there was one row and drew both numbers on top of each other the moment there were
+  two.
+* **`genesis` gets the word `STAGE` back with it.** Mean Bean Machine prints `NEXT`, `1P`,
+  `DR R`, `STAGE` and `SCORE` down the middle of the screen and every one is a *text sprite*,
+  so the frame plane carries none of them and the panel had the boxes and no words at all - a
+  bare digit on stone says nothing. The big face's row reads `0123456789FINALSTAGE` and the
+  last five letters are one forty pixel run, so `STAGE` is a single crop; it is the only one
+  of the five words that face can spell, and the others are left off rather than set in a
+  face the game never used there.
+
 **Done when:** the bottom row of puyos rests on the floor of every retro board, the queue and
-the tray sit in furniture the source game actually drew, and the `3ds` backdrop fills the
-window at 1080p. All three check out in `frame_shot` at 1920x1080 and 640x480, one and two
-players.
+the tray sit in furniture the source game actually drew, every panel says what its numbers
+are, and the `3ds` backdrop fills the window at 1080p. All three check out in `frame_shot` at
+1920x1080 and 640x480, one and two players.
 
 ### Phase 3d — the retro soundtracks and sound effects
 

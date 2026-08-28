@@ -15,7 +15,8 @@
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
-use crate::theme::data::{audio, cells, previews, Sounds, HUD_MAX};
+use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
+use crate::theme::data::{audio, cells, hud, previews, Sounds};
 use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
@@ -59,10 +60,18 @@ const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 /// the board texture carries the same padding, so it is given the panel point as it stands.
 const FIELD: (i32, i32) = (8, 16);
 
-/// The two boxes under `NEXT`. Kirby's Avalanche puts the player's next pair under their own
-/// name plate and the opponent's under theirs, but a panel here belongs to one player, so the
-/// queue runs left to right through both: next, then next but one.
-const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(104, 38, 24, 41), (128, 38, 24, 41)];
+/// The two boxes under `NEXT`: the gaps between the three wooden posts that run down the
+/// column, which is what the game frames its queues with. Kirby's Avalanche puts the player's
+/// next pair in one and the opponent's in the other and names them over the top; a panel here
+/// belongs to one player with both boxes to itself, so `rip_retro.py` paints the names out
+/// and the queue runs left to right through both - next, then next but one.
+const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(108, 39, 16, 40), (130, 39, 18, 40)];
+
+/// The recess under `STAGE`, which is `rip_retro.py`'s `SNES_STAGE_NUMBER` - the game prints
+/// its stage number in it and the script fills it flat, because that number is the game's and
+/// this one has its own. The level goes back in, right aligned where the original's single
+/// digit sat.
+const STAGE_BOX: (i32, i32, u32, u32) = (120, 103, 16, 16);
 
 /// the mouth of the arch at the foot of the centre column, where Kirby stands in the
 /// original: forty eight pixels across, which is exactly six tray icons at half size, and
@@ -70,6 +79,9 @@ const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(104, 38, 24, 41), (128, 38, 24, 
 const ARCH_MOUTH: (i32, i32, u32, u32) = (104, 186, 48, 14);
 /// ... at which the tray's icons are drawn, half the cell so six of them fit
 const TRAY_ICON: u32 = SRC_BLOCK_SIZE / 2;
+
+/// the game's own digits are 8x8 tiles, which is what [`STAGE_BOX`] centres one against
+const FONT_HEIGHT: u32 = 8;
 
 /// how long a group holds before it goes, under [`crate::game::rules::POP_DELAY`]
 const POP_HOLD: Duration = Duration::from_millis(200);
@@ -142,10 +154,18 @@ pub fn snes_theme<'a>(
         // above everything and the HUD is measured from the top of that.
         font: FontThemeOptions::simple(
             FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 1)?,
-            HUD_MAX
-                .iter()
-                .map(|(kind, max)| (*kind, MetricSnips::right((100, 225), *max)))
-                .collect(),
+            hud(
+                MetricSnips::right((100, 225), MAX_SCORE),
+                MetricSnips::right(
+                    (
+                        STAGE_BOX.0 + STAGE_BOX.2 as i32,
+                        STAGE_BOX.1
+                            + TOP_PADDING as i32
+                            + (STAGE_BOX.3 as i32 - FONT_HEIGHT as i32) / 2,
+                    ),
+                    MAX_LEVEL,
+                ),
+            ),
         ),
         board_file: sprites::BOARD,
         board_alpha: 0xff,
@@ -245,6 +265,11 @@ mod tests {
                 "a pair does not fit"
             );
         }
+        // the level goes in the recess the game printed its stage number in, right aligned
+        // where that number sat, and a digit of the game's own face has to fit the box
+        assert!(STAGE_BOX.2 >= 8 && STAGE_BOX.3 >= FONT_HEIGHT);
+        assert!(STAGE_BOX.0 as u32 + STAGE_BOX.2 <= width);
+        assert!(STAGE_BOX.1 as u32 + STAGE_BOX.3 <= height);
         assert!(ARCH_MOUTH.0 as u32 + ARCH_MOUTH.2 <= width);
         assert!(ARCH_MOUTH.1 as u32 + ARCH_MOUTH.3 <= height);
         // six icons across the arch, at whole pixels, which is what half a cell buys

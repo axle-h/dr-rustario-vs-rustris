@@ -386,11 +386,33 @@ GENESIS_PANEL_WIDTH = 208
 # the big white face the game sets FINAL STAGE in: ten digits, 8x16, on a nine pixel pitch
 GENESIS_DIGITS = (123, 139, 1, 9, 8)
 
+# The word `STAGE`, taken whole off the end of that same row - it reads
+# `0123456789FINALSTAGE`, and the last five letters are one forty pixel run with no gaps in
+# it. Mean Bean Machine prints `NEXT`, `1P`, `DR R`, `STAGE` and `SCORE` down the middle of
+# the screen and *every one of them is a text sprite*, so the frame plane carries none: the
+# panel has the boxes and no words at all. This is the only one of them the big face can
+# spell, and it is the one worth having, because the number beside it is this game's level
+# and a bare digit on stone says nothing. It goes where the game prints its own, in the band
+# the frame leaves between the `NEXT` boxes and the mugshot - in **screen** coordinates,
+# like [`GENESIS_WELL`], since the panel is cut sixteen rows down from there.
+GENESIS_STAGE_WORD = (132, 123, 40, 16)
+GENESIS_STAGE_AT = (122, 80)
+
 # The scene behind the boards is the dungeon wall, tiled. There is no seamless tile in the
 # board art - the stone is hand scattered and repeats on nothing - so this is a course of it
 # taken out of the left border, which is the one strip that is stone and nothing else. It
 # tiles with a visible horizontal band and that is fine: courses of stone are what a wall has.
 GENESIS_TILE = (0, 64, 16, 32)
+
+
+def keyed_box(image, box, transparent):
+    """one rectangle of a sheet, with the flat colours in `transparent` knocked out"""
+    x, y, w, h = box
+    px = np.array(image.crop((x, y, x + w, y + h)).convert("RGBA"))
+    flat = px[:, :, :3].astype(int)
+    for color in transparent:
+        px[:, :, 3][np.abs(flat - color).sum(2) < 12] = 0
+    return Image.fromarray(px)
 
 
 def genesis_screen(boards, back_at, front_at):
@@ -458,7 +480,8 @@ def genesis():
     hole = np.array(panel)
     hole[0:wh, wx : wx + ww, 3] = 0
     panel = Image.fromarray(hole)
-    write_png(os.path.join(out, "background.png"), panel)
+    # ... and the one word of the middle column's furniture this rip can put back, added
+    # after the fonts are read, further down
     well = screen.crop((wx, wy, wx + ww, wy + wh))
     write_png(os.path.join(out, "board.png"), well)
 
@@ -469,6 +492,10 @@ def genesis():
     fonts = source(GENESIS_FONTS)
     top, bottom, first, pitch, width = GENESIS_DIGITS
     font_bg = background_of(rgb(fonts))
+    sx, sy, sw, sh = GENESIS_STAGE_WORD
+    word = keyed_box(fonts, (sx, sy, sw, sh), [font_bg, [0, 0, 0]])
+    panel.alpha_composite(word, (GENESIS_STAGE_AT[0], GENESIS_STAGE_AT[1] - wy))
+    write_png(os.path.join(out, "background.png"), panel)
     write_png(
         os.path.join(out, "font.png"),
         digits(fonts, (top, bottom), first, pitch, width, [font_bg, [0, 0, 0]]),
@@ -561,9 +588,24 @@ SNES_PANEL_WIDTH = 152
 
 # The game draws its own score along the bottom border, and this game draws its own over the
 # top - so the number is painted out with a clean run of the grass beside it and only the
-# `SC` label is kept. `PATCH` is what gets covered, `GRASS` is what covers it.
-SNES_SCORE_PATCH = (34, 200, 68, 24)
-SNES_GRASS = (22, 200, 64, 24)
+# `SC` label is kept. `PATCH` is what gets covered, `GRASS` is what covers it, and the last
+# course of it is *clipped* to the patch: the grass is wider than what is left to cover, and
+# laying a whole one down ran sixty pixels past the patch and over the wooden platform at the
+# foot of the centre column - the one Kirby stands on - leaving a band of grass where the
+# floor of the arch should be.
+# The patch runs to the foot of the centre column, because the game right aligns its number
+# there and two pixels of the last digit survived a patch that stopped short of it; the grass
+# is taken from clear of the `SC`, because a course cut through the label repeats a sliver of
+# it across the border.
+SNES_SCORE_PATCH = (34, 200, 70, 24)
+SNES_GRASS = (26, 200, 64, 24)
+
+# The two name plates under `NEXT`. The game gives one queue to each player and labels them,
+# and this panel belongs to one player with both boxes to itself - so the labels are somebody
+# else's and go. What is behind them is the plain dark of the column, which is what the row
+# under them is made of and where the colour to cover them with is taken from.
+SNES_NAME_PLATES = (104, 31, 48, 7)
+SNES_PLATE_DONOR = (104, 38, 48, 1)
 
 # Two blobs sit *outside* the field, in the little arch at the foot of the centre column where
 # Kirby stands - so they survive punching the field out and have to be painted over. They are
@@ -595,7 +637,11 @@ SNES_TILE = (16, 32, 32, 32)
 # the ten digits in the game's own face, as tiles of its VRAM. Three indices: nothing, the
 # dark outline and the white fill, which is what they are drawn as on screen.
 SNES_FONT_TILE = 896
-SNES_FONT_INK = {1: (0x20, 0x18, 0x30, 0xff), 15: (0xff, 0xff, 0xff, 0xff)}
+# The two inks the tiles actually use - a decode of all ten says so: every pixel is index 0,
+# 1 or 15. Which colours they take is the palette's, and the palette is the player's: the
+# left one draws its numbers in the red its `SC` is drawn in and the right one in white. This
+# panel is the left one, so the fill is that red, read off the `SC` the panel keeps.
+SNES_FONT_INK = {1: (0x00, 0x00, 0x00, 0xff), 15: (0xE7, 0x51, 0x63, 0xff)}
 
 
 def snes_vram(path):
@@ -656,16 +702,19 @@ def snes_paint_out(panel, region):
     panel.paste(Image.fromarray(px), (0, 0))
 
 
-def snes_fill_flat(panel, region):
+def snes_fill_flat(panel, region, donor=None):
     """flood one flat region of the panel with the colour it is mostly made of.
 
     For a recess the game draws a number into: the box is one colour and the digit is a
     handful of pixels on it, so the colour to cover the digit with is the region's own
-    commonest, and there is no bounding box to find.
+    commonest, and there is no bounding box to find. Where what is being covered fills most
+    of the region instead - the name plates do - `donor` names somewhere else to read the
+    colour from, and the row under them is the honest answer.
     """
     x, y, w, h = region
+    dx, dy, dw, dh = donor if donor else region
     px = np.array(panel)
-    fill = Counter(map(tuple, px[y : y + h, x : x + w, :3].reshape(-1, 3))).most_common(1)
+    fill = Counter(map(tuple, px[dy : dy + dh, dx : dx + dw, :3].reshape(-1, 3))).most_common(1)
     px[y : y + h, x : x + w, :3] = fill[0][0]
     px[y : y + h, x : x + w, 3] = 255
     panel.paste(Image.fromarray(px), (0, 0))
@@ -687,9 +736,11 @@ def snes_art(out):
     )
     px, py, pw, ph = SNES_SCORE_PATCH
     for x in range(px, px + pw, grass.width):
-        panel.paste(grass, (x, py))
+        course = min(grass.width, px + pw - x)
+        panel.paste(grass.crop((0, 0, course, grass.height)), (x, py))
     snes_paint_out(panel, SNES_ARCH)
     snes_fill_flat(panel, SNES_STAGE_NUMBER)
+    snes_fill_flat(panel, SNES_NAME_PLATES, SNES_PLATE_DONOR)
     # ... and the hole the board draws through, which is the field
     holed = np.array(panel)
     holed[fy : fy + fh, fx : fx + fw, 3] = 0

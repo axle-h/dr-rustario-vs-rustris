@@ -1,10 +1,11 @@
 //! Helpers that describe Puyo Rusto's sprites and sounds to the engine's theme builders.
 
 use crate::game::cell::{LinkMask, NuisanceIcon, PuyoCell, PuyoColor, PuyoPiece, PuyoSkin};
-use crate::game::rules::MAX_SCORE;
+use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
 use engine::config::AudioConfig;
 use engine::game::geometry::Point as CellPoint;
 use engine::game::{CellId, MetricKind};
+use engine::render::font::MetricSnips;
 use engine::render::sound::{AudioTheme, SfxKey};
 use engine::render::sprite_sheet::{CellSpriteData, PreviewData};
 use sdl2::rect::{Point, Rect};
@@ -129,15 +130,45 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
 
 /// The HUD rows and the largest value each has to show.
 ///
-/// The score, and nothing else - which is Tsu's own HUD, less the nuisance tray, and the tray
-/// is drawn from the theme's own sprites rather than as a number. A chain announces itself
-/// over the puyos that just went (`clear_popup` in [`crate::render`]) and the speed step is
-/// something the player feels rather than reads, so neither is a row here. The engine's
-/// `MetricKind::Chain` and `MetricKind::Level` both stay; this game simply shows neither.
-pub const HUD_MAX: [(MetricKind, u32); 1] = [(MetricKind::Score, MAX_SCORE)];
+/// The score and the speed step, which every one of the three source games prints - Kirby's
+/// Avalanche and Mean Bean Machine both call it a *stage* and give it a box of its own, and
+/// this game's menu offers it as the `level` to start on, so it is the same number under
+/// three names. The chain is not a row: it announces itself over the puyos that just went
+/// (`clear_popup` in [`crate::render`]), which is what Tsu does. `MetricKind::Chain` stays
+/// on the game and is simply never drawn.
+pub const HUD_MAX: [(MetricKind, u32); 2] = [
+    (MetricKind::Score, MAX_SCORE),
+    (MetricKind::Level, MAX_LEVEL),
+];
+
+/// where a theme puts each of them, in the order [`HUD_MAX`] names them
+///
+/// A retro theme places every row by hand, in its own panel's coordinates, so it needs one
+/// snip per metric rather than the same snip for all of them - which is what mapping over
+/// [`HUD_MAX`] gave, and why the level would have landed on top of the score.
+pub fn hud(score: MetricSnips, level: MetricSnips) -> Vec<(MetricKind, MetricSnips)> {
+    vec![(MetricKind::Score, score), (MetricKind::Level, level)]
+}
 
 #[cfg(test)]
 mod tests {
+    /// [`hud`] and [`HUD_MAX`] are two lists of the same rows and a theme uses both - the max
+    /// to size the digits, the snip to place them - so a row in one and not the other is a
+    /// metric drawn at the wrong width or not at all. They were one list until the level
+    /// joined the score, which is when mapping a single snip over `HUD_MAX` started drawing
+    /// both numbers on top of each other.
+    #[test]
+    fn every_row_the_hud_sizes_is_a_row_it_places() {
+        let placed = super::hud(
+            super::MetricSnips::zero_fill((0, 0), 1),
+            super::MetricSnips::zero_fill((0, 1), 1),
+        );
+        assert_eq!(placed.len(), super::HUD_MAX.len());
+        for ((kind, _), (placed_kind, _)) in super::HUD_MAX.iter().zip(placed.iter()) {
+            assert_eq!(kind, placed_kind, "the two lists are in different orders");
+        }
+    }
+
     use super::*;
 
     /// a sheet keyed off a grid, the way a real theme's is
