@@ -166,11 +166,15 @@ per mode of each game and per vs. playlist (start level, speed and difficulty sh
 mode's table). Each game offers the same four modes whether one or two are playing: a
 marathon and the level, theme and point sprints. The theme sprint runs one level per theme,
 so it is only offered while **themes** is `all` - pick a single theme and it drops off the
-list. Marathon tables rank the highest scores; sprint games (level, theme and
-point sprints, and the vs. races: the theme race, which is first to the end of the
-playlist, and the 3, 5 and 10 level random sprints, which deal a random game and theme
-each level) race a single clock, shown in the bottom-left corner (single player) or
-bottom-centre (multiplayer), and their tables rank the fastest times. The interleaved,
+list. It is also what a match anyone is playing opens on, which is why it heads the sprints:
+a stage on each theme in turn is the mode that shows a game off. An ai demo opens on the
+marathon instead, being a thing to watch rather than a race, and a single theme leaves a
+lone player the marathon and two players the 1 level sprint. Marathon tables rank the
+highest scores; sprint games (level, theme and point sprints, and the vs. races: the
+theme sprint, which is first to the end of the playlist, and the 3, 5 and 10 level random
+sprints, which deal a random game and theme each level) race a single clock, shown in the
+bottom-left corner (single player) or bottom-centre (multiplayer), and their tables rank
+the fastest times. The interleaved,
 back to back, retro, particle and random marathon vs. playlists are marathons: the first
 two cycle their playlist endlessly, the interleaved playlist carrying each game on through
 its own themes as its turn comes round again, the retro playlist alternates the games

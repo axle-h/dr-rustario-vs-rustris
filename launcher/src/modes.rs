@@ -683,7 +683,8 @@ impl VersusAi {
 /// wins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Playlist {
-    /// every theme of each game, the games taking turns; a race to the end of the playlist
+    /// every theme of each game, the games taking turns; a race to the end of the
+    /// playlist, and listed as the `theme sprint` the games' own menus call theirs
     ThemeRace,
     /// the games take turns, each carrying on through its themes; a marathon
     Interleaved,
@@ -714,7 +715,7 @@ impl Playlist {
 
     pub fn name(&self) -> &'static str {
         match self {
-            Playlist::ThemeRace => "theme race",
+            Playlist::ThemeRace => "theme sprint",
             Playlist::Interleaved => "interleaved marathon",
             Playlist::BackToBack => "back to back marathon",
             Playlist::Retro => "retro marathon",
@@ -1762,8 +1763,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 "marathon",
-                "1 level sprint",
                 "theme sprint",
+                "1 level sprint",
                 "10,000 point sprint"
             ]
         );
@@ -1773,7 +1774,7 @@ mod tests {
         assert_eq!(
             keys.iter().map(|k| k.mode.as_str()).collect::<Vec<_>>(),
             vec![
-                "theme race",
+                "theme sprint",
                 "interleaved marathon",
                 "back to back marathon",
                 "retro marathon",

@@ -348,9 +348,9 @@ mod tests {
     #[test]
     fn a_table_ranked_the_other_way_is_not_comparable() {
         let mut store = HighScoreStore::default();
-        let scores = HighScoreKey::new("versus", "theme race, easy", Ranking::HighestScore);
+        let scores = HighScoreKey::new("versus", "theme sprint, easy", Ranking::HighestScore);
         store.set(&scores, HighScoreTable::new(Ranking::HighestScore));
-        let times = HighScoreKey::new("versus", "theme race, easy", Ranking::LowestTime);
+        let times = HighScoreKey::new("versus", "theme sprint, easy", Ranking::LowestTime);
         assert_eq!(
             store.table(&times),
             HighScoreTable::new(Ranking::LowestTime)

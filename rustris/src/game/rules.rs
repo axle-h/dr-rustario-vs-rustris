@@ -107,6 +107,13 @@ pub enum AiMode {
     Opponent(AiDifficulty),
 }
 
+impl AiMode {
+    /// nobody is playing: every board is the ai's, at full speed
+    pub fn is_demo(&self) -> bool {
+        matches!(self, AiMode::Demo | AiMode::VsDemo)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GameConfig {
     pub players: u32,
