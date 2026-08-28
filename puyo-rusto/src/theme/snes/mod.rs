@@ -65,7 +65,7 @@ const FIELD: (i32, i32) = (8, 16);
 /// next pair in one and the opponent's in the other and names them over the top; a panel here
 /// belongs to one player with both boxes to itself, so `rip_retro.py` paints the names out
 /// and the queue runs left to right through both - next, then next but one.
-const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(108, 39, 16, 40), (130, 39, 18, 40)];
+const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(108, 32, 16, 47), (130, 32, 18, 47)];
 
 /// The recess under `STAGE`, which is `rip_retro.py`'s `SNES_STAGE_NUMBER` - the game prints
 /// its stage number in it and the script fills it flat, because that number is the game's and
@@ -73,15 +73,25 @@ const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(108, 39, 16, 40), (130, 39, 18, 
 /// digit sat.
 const STAGE_BOX: (i32, i32, u32, u32) = (120, 103, 16, 16);
 
-/// the mouth of the arch at the foot of the centre column, where Kirby stands in the
-/// original: forty eight pixels across, which is exactly six tray icons at half size, and
-/// the only clear run this column has that is as wide as the tray needs
-const ARCH_MOUTH: (i32, i32, u32, u32) = (104, 186, 48, 14);
+/// The course of plank across the mouth of the arch, which `rip_retro.py` lays where the
+/// game stands Kirby and this one stands nothing. Forty eight pixels across, which is exactly
+/// six tray icons at half a cell, and the only run this column has that is as wide as the
+/// tray needs - so the tray stands on it.
+const ARCH_MOUTH: (i32, i32, u32, u32) = (104, 192, 48, 16);
 /// ... at which the tray's icons are drawn, half the cell so six of them fit
 const TRAY_ICON: u32 = SRC_BLOCK_SIZE / 2;
 
-/// the game's own digits are 8x8 tiles, which is what [`STAGE_BOX`] centres one against
-const FONT_HEIGHT: u32 = 8;
+/// The game's own digits are two 8x8 tiles stacked - see `snes_font` in `rip_retro.py`, which
+/// found the pair by matching the two digits the layer render happens to carry against a
+/// decode of every tile in VRAM. They are drawn on an eight pixel pitch with no gap, which
+/// is what the font's own spacing is set to.
+const FONT_HEIGHT: u32 = 16;
+const FONT_WIDTH: u32 = 8;
+
+/// where the game right aligns its own score, and the cell it prints it in
+const SCORE_AT: (i32, i32) = (104, 207);
+/// ... and where it prints its stage number, in the recess: one cell, right aligned in it
+const LEVEL_AT: (i32, i32) = (STAGE_BOX.0 + STAGE_BOX.2 as i32, STAGE_BOX.1);
 
 /// how long a group holds before it goes, under [`crate::game::rules::POP_DELAY`]
 const POP_HOLD: Duration = Duration::from_millis(200);
@@ -153,18 +163,10 @@ pub fn snes_theme<'a>(
         // cell lower than the same place in the art `rip_retro.py` wrote - `top_padding` sits
         // above everything and the HUD is measured from the top of that.
         font: FontThemeOptions::simple(
-            FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 1)?,
+            FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 0)?,
             hud(
-                MetricSnips::right((100, 225), MAX_SCORE),
-                MetricSnips::right(
-                    (
-                        STAGE_BOX.0 + STAGE_BOX.2 as i32,
-                        STAGE_BOX.1
-                            + TOP_PADDING as i32
-                            + (STAGE_BOX.3 as i32 - FONT_HEIGHT as i32) / 2,
-                    ),
-                    MAX_LEVEL,
-                ),
+                MetricSnips::right((SCORE_AT.0, SCORE_AT.1 + TOP_PADDING as i32), MAX_SCORE),
+                MetricSnips::right((LEVEL_AT.0, LEVEL_AT.1 + TOP_PADDING as i32), MAX_LEVEL),
             ),
         ),
         board_file: sprites::BOARD,
@@ -267,7 +269,7 @@ mod tests {
         }
         // the level goes in the recess the game printed its stage number in, right aligned
         // where that number sat, and a digit of the game's own face has to fit the box
-        assert!(STAGE_BOX.2 >= 8 && STAGE_BOX.3 >= FONT_HEIGHT);
+        assert!(STAGE_BOX.2 >= FONT_WIDTH && STAGE_BOX.3 >= FONT_HEIGHT);
         assert!(STAGE_BOX.0 as u32 + STAGE_BOX.2 <= width);
         assert!(STAGE_BOX.1 as u32 + STAGE_BOX.3 <= height);
         assert!(ARCH_MOUTH.0 as u32 + ARCH_MOUTH.2 <= width);

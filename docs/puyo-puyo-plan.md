@@ -1413,14 +1413,34 @@ Avalanche except the last.
   has both boxes to itself, so they were somebody else's. What is behind them is the plain
   dark of the column, read off the row underneath - which is what `snes_fill_flat` grew a
   `donor` argument for, since the plates fill most of their own region and it is the region's
-  commonest colour that is normally the answer. With them gone the two `NEXT` boxes are the
-  gaps between the three wooden posts, `(108, 39, 16, 40)` and `(130, 39, 18, 40)`, which is
-  tighter than the boxes-with-plates guess and is what the posts actually frame.
-* **The numbers are drawn in the game's own red.** A decode of all ten tiles says they use
-  three indices and no more - nothing, an outline and a fill - and which colours those take is
-  the *palette's*, which is the player's: the left panel draws its numbers in the red its `SC`
-  is drawn in and the right one in white. This panel is the left one. The red is `#E75163`,
-  read off the `SC` the panel keeps.
+  commonest colour that is normally the answer.
+
+  Painting them out flat left a band of nothing under the `NEXT` sign, though, and a flat dark
+  band in a wooden column reads as a hole. So the column's own woodwork closes both of the
+  holes this panel is left with: the three posts that frame the queues are run *up* to meet
+  the plank the `NEXT` sign is nailed to, so the boxes simply get taller and nothing is
+  invented, and a whole course of plank is laid across the mouth of the arch, where the game
+  stands Kirby and this one stands nothing. Both copy from the panel itself - the posts from
+  the seven rows below the hole, the plank from the course between `STAGE` and the arch - so
+  the wood is the game's own and no two courses are alike by accident. The tray stands on the
+  new course. With the plates gone the two `NEXT` boxes are the gaps between the posts,
+  `(108, 32, 16, 47)` and `(130, 32, 18, 47)`, which is what the posts actually frame.
+* **The numbers were the wrong font, half the height they should be.** VRAM holds two numeric
+  faces and the first pass took the wrong one: tile 896 is the small eight row face the game
+  sets its menus in, and the one it prints a score in is **sixteen rows** - two tiles stacked,
+  the top at 769 and the bottom sixteen further on, because the font is laid out sixteen
+  glyphs to a VRAM row. Beside the fourteen row `SC` the panel keeps, an eight row number
+  reads as a mistake, which is how Alex spotted it.
+
+  Which tiles those are was not guessed either. The layer render happens to carry two of the
+  game's own digits - the `0` of its score and the `1` in the `STAGE` recess - so both were
+  masked off it and matched against a decode of all 2048 tiles: the `0` is 769 over 785 to the
+  pixel and the `1` is 770 over 786, and nothing else in the sheet comes close. The four inks
+  came out of the same pairing, index by index: 1 is the black outline, 5 the red `#E75163`,
+  6 the pink highlight and 15 white. That palette is the *player's* - the left panel draws its
+  numbers in the red its `SC` is drawn in and the right one in white - and this panel is the
+  left one. The digits sit on an eight pixel pitch with no gap, so the font's spacing is zero
+  and the score right aligns where the game's own does.
 * **The level is a HUD row now, on every theme.** `MAX_LEVEL` was already there "so the HUD can
   size the digits" and no theme ever drew it. All three source games print it: Kirby's
   Avalanche and Mean Bean Machine both call it a *stage* and give it a box, and it is the
