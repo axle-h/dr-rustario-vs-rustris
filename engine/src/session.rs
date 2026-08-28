@@ -26,11 +26,12 @@ impl MatchRules {
     pub const ONE_STAGE_SPRINT: Self = Self::StageSprint { stages: 1 };
     pub const DEFAULT_SCORE_SPRINT: Self = Self::ScoreSprint { score: 10_000 };
     /// every mode a match can be played under, one or two players alike: a marathon and
-    /// the three sprints
+    /// the three sprints. The theme sprint leads the sprints because it is what a match
+    /// with a human in it opens on.
     pub const MODES: [Self; 4] = [
         Self::Marathon,
-        Self::ONE_STAGE_SPRINT,
         Self::ThemeSprint,
+        Self::ONE_STAGE_SPRINT,
         Self::DEFAULT_SCORE_SPRINT,
     ];
 
@@ -72,8 +73,17 @@ impl MatchRules {
         }
     }
 
-    pub fn default_by_players(players: u32) -> Self {
-        if players == 1 {
+    /// the mode a fresh pick of players opens on. A match anyone is playing opens on a
+    /// theme sprint, which runs a stage on each theme in turn and is the one that shows a
+    /// game off; sticking to a single theme takes it off the table, and there a single
+    /// player marathons and two race a stage. An ai demo is something to watch rather than
+    /// a race, so it opens on a marathon whatever else is set and plays on.
+    pub fn default_for(players: u32, ai_demo: bool, theme_count: usize) -> Self {
+        if ai_demo {
+            MatchRules::Marathon
+        } else if theme_count > 1 {
+            MatchRules::ThemeSprint
+        } else if players == 1 {
             MatchRules::Marathon
         } else {
             MatchRules::ONE_STAGE_SPRINT

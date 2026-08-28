@@ -45,8 +45,17 @@ impl Options {
 
     pub fn set_players(&mut self, players: u32) {
         self.config.set_players(players);
-        self.config
-            .set_rules(MatchRules::default_by_players(players));
+        self.config.set_rules(self.default_rules());
+    }
+
+    /// the mode a fresh pick of players or themes opens on, which depends on both of them
+    /// and on whether anyone is playing
+    fn default_rules(&self) -> MatchRules {
+        MatchRules::default_for(
+            self.config.players(),
+            self.config.ai().is_demo(),
+            self.theme_count(),
+        )
     }
 
     /// the title screen's players list: humans, then the ai opponents and the ai demos
@@ -86,17 +95,17 @@ impl Options {
             .and_then(|s| s.strip_suffix(VS_AI_SUFFIX))
             .and_then(AiDifficulty::from_name);
         if value == AI_DEMO_1P {
-            self.set_players(1);
             self.config.set_ai(AiMode::Demo);
+            self.set_players(1);
         } else if value == AI_DEMO_2P {
-            self.set_players(2);
             self.config.set_ai(AiMode::VsDemo);
-        } else if let Some(difficulty) = ai_difficulty {
             self.set_players(2);
+        } else if let Some(difficulty) = ai_difficulty {
             self.config.set_ai(AiMode::Opponent(difficulty));
+            self.set_players(2);
         } else {
-            self.set_players(value.parse::<u32>().unwrap_or(1));
             self.config.set_ai(AiMode::Off);
+            self.set_players(value.parse::<u32>().unwrap_or(1));
         }
     }
 
@@ -177,8 +186,7 @@ impl Options {
                     .set_themes(MatchThemes::from_str(value).unwrap());
                 // sticking to one theme takes the theme sprint off the table
                 if !self.modes().contains(&self.config.rules()) {
-                    self.config
-                        .set_rules(MatchRules::default_by_players(self.config.players()));
+                    self.config.set_rules(self.default_rules());
                 }
             }
             MODE => {
@@ -238,8 +246,34 @@ mod tests {
         let mut options = Options::default();
         options.set_players(2);
         assert!(mode_names(&options).contains(&"marathon".to_string()));
-        // ... though a 2-player match still opens on the 1 level sprint
+        // ... though a match with anyone in it opens on the theme sprint
+        assert_eq!(options.rules(), MatchRules::ThemeSprint);
+    }
+
+    /// Whoever is playing, a match opens on the theme sprint - a stage on each theme in
+    /// turn, which is the mode that shows the game off. An ai demo is something to watch
+    /// rather than a race, so it keeps the marathon; and a single theme has no sprint to
+    /// run, so there a lone player marathons and two race a level.
+    #[test]
+    fn a_match_anyone_is_playing_opens_on_a_theme_sprint_and_a_demo_marathons() {
+        let mut options = Options::default();
+        for players in ["1", "2", "vs hard ai"] {
+            options.select_players(players);
+            assert_eq!(options.rules(), MatchRules::ThemeSprint, "{players}");
+        }
+        for demo in [AI_DEMO_1P, AI_DEMO_2P] {
+            options.select_players(demo);
+            assert_eq!(options.rules(), MatchRules::Marathon, "{demo}");
+        }
+
+        options.select_players("1");
+        options.select(THEMES, "nes");
+        assert_eq!(options.rules(), MatchRules::Marathon);
+        options.select_players("2");
         assert_eq!(options.rules(), MatchRules::ONE_STAGE_SPRINT);
+        // and the demos marathon on one theme as well
+        options.select_players(AI_DEMO_2P);
+        assert_eq!(options.rules(), MatchRules::Marathon);
     }
 
     #[test]
