@@ -3,6 +3,16 @@ name = "dr-rustario"
 version = "1.0.0"
 authors.workspace = true
 edition.workspace = true
+build = "build.rs"
+
+[features]
+# both halve the particle theme's mascot sheets at build time - see build.rs, which is the
+# only thing `image` is here for
+portmaster = ["dep:image"]
+browser = ["dep:image"]
+
+[build-dependencies]
+image = { workspace = true, optional = true }
 
 [dev-dependencies]
 mockall = "0.15.0"

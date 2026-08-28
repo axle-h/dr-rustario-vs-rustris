@@ -450,13 +450,32 @@ from five, so `PuyoPiece::all()` is **25 pieces**, not five.
 ### The skin, added after phase 2
 
 The particle theme's art turned out not to be original after all (see phase 2 below): it is a
-rip that carries **fourteen** usable sets of the same puyos, so every player is dealt a
+rip that carries **eleven** usable sets of the same puyos, so every player is dealt a
 different one and a two player game is never two boards of the same puyos. That went into the `CellId`
 beside the link mask - bits 9-12, a `PuyoSkin` - and into the `PieceId` for the previews, since
 a queue drawn from the other player's art is exactly as wrong as a board would be. The warning
 above stands and was worth heeding: the retrofit was cheap only because the mask had already
 established that a `CellId` may carry drawing information, and because `PuyoCell` itself stayed
 skinless, so nothing in the rules can tell two players' puyos apart.
+
+**Eleven and not fifteen, in two steps.** One of the fifteen whole skins has no downward neck
+to cut - its sixteen link variants are only eight, paired so that a puyo joined below draws
+exactly like one joined to nothing - so nothing can make it meet the puyo underneath, and
+`rip.py` has always left it out. Three more went later for how they *look* joined rather than
+for anything missing, which is the harder thing to notice: a set earns its place only if four
+in a row read as one mass, and a television with antennae whose necks are stubs stays a row of
+televisions, a stick figure joins into an elongated humanoid, and a small round face merges
+into a gappy mesh. None of that shows a cell at a time; `python3 puyo-rusto/art/rip.py check`
+draws a whole board per skin, which is the only way to judge it.
+
+**The sheet is laid out against a texture limit, not just for tidiness.** It is loaded whole,
+as one texture, and a band per skin stacked in a single column stood it 6720 pixels tall -
+past the 4096 `MAX_ATLAS_WIDTH` a GLES driver will allocate in a dimension, so on a handheld
+the theme could not be built at all rather than merely being slow. `rip.py`'s `BANDS_ACROSS`
+lays the bands two across instead; `skin_block` in `theme/modern/mod.rs` is the same formula on
+the Rust side, and those two are the only places that know it. A test holds the sheet to both
+its shape and that ceiling, so a skin count that would push it back over fails rather than
+shipping.
 
 It was first built as a *slot* - two of them, resolved to art by the theme when the theme was
 built - which is worth writing down because it was wrong and the reason is not obvious. A theme
@@ -1206,8 +1225,8 @@ Per theme, in a directory beside that file:
   Boulders". Budget the time in slicing and arithmetic rather than in drawing. The previews
   cost nothing at all: `data.rs::previews()` composes all twenty five pairs out of cells the
   sheet already has, and phase 2 already wrote it.
-* **All fourteen skin slots, keyed to the same art.** `data::cells` walks `PuyoSkin::all()`
-  because the particle theme has fourteen sets of puyos in one sheet; a retro theme hands back
+* **All eleven skin slots, keyed to the same art.** `data::cells` walks `PuyoSkin::all()`
+  because the particle theme has eleven sets of puyos in one sheet; a retro theme hands back
   the same points for every slot and pays only for the duplicate keys, which is exactly what
   that function's doc comment says it is for. The consequence is worth stating plainly so
   nobody reads it as a bug: **on a retro theme both players draw the same puyos**, because the

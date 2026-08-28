@@ -40,12 +40,24 @@ const SKIN_ROWS: i32 = EXTRAS_ROW + 1;
 
 /// how many skins the sheet carries, which is `SKINS` in `puyo-rusto/art/rip.py`.
 ///
-/// The rip is sixteen skins of the same puyos, fifteen of them whole and fourteen of those
-/// able to join a puyo below; the sheet is all fourteen, one band under the next, and the
-/// theme keys **every** one of them. Which two a
+/// The rip is sixteen skins of the same puyos, fifteen of them whole, fourteen of those able
+/// to join a puyo below and eleven of those worth joining; the sheet is all eleven,
+/// [`BANDS_ACROSS`] bands at a time, and the theme keys **every** one of them. Which two a
 /// match shows is not the theme's to decide: [`PuyoSkin::deal`] hands each player one when the
 /// match starts, so the choice can change without rebuilding an atlas.
 pub const SKINS: usize = PuyoSkin::COUNT;
+
+/// how many skin bands the sheet lies side by side, which is `BANDS_ACROSS` in
+/// `puyo-rusto/art/rip.py`.
+///
+/// The sheet is loaded whole, as one texture, and the bands in a single column stood it 6720
+/// pixels tall at the fourteen skins it carried then - past the [`MAX_ATLAS_WIDTH`] a driver
+/// will allocate in a dimension, and so a theme that could not be built at all on a handheld.
+/// Two across is 2560x2880: the same pixels, laid out so that both dimensions fit.
+const BANDS_ACROSS: usize = 2;
+
+/// how wide one skin's band is, in cells: a link mask's worth
+const BAND_COLUMNS: i32 = LinkMask::COUNT as i32;
 
 const SPRITES: &[u8] = include_bytes!("sprites.png");
 
@@ -119,14 +131,18 @@ fn block(col: i32, row: i32) -> Point {
     Point::new(PAD + PITCH * col, PAD + PITCH * row)
 }
 
-/// where a skin's band of six rows starts
-fn skin_row(skin: PuyoSkin, row: i32) -> i32 {
-    SKIN_ROWS * skin.index() as i32 + row
+/// where a cell of a skin's own band sits on the sheet, given where it sits in the band
+fn skin_block(skin: PuyoSkin, row: i32, col: i32) -> Point {
+    let index = skin.index();
+    block(
+        BAND_COLUMNS * (index % BANDS_ACROSS) as i32 + col,
+        SKIN_ROWS * (index / BANDS_ACROSS) as i32 + row,
+    )
 }
 
-/// a colour's sixteen link variants run along its own row, indexed by the mask's bits
+/// a colour's sixteen link variants run along its own row of the band, indexed by the bits
 fn puyo(skin: PuyoSkin, color: PuyoColor, links: LinkMask) -> Point {
-    block(links.bits() as i32, skin_row(skin, color as i32))
+    skin_block(skin, color as i32, links.bits() as i32)
 }
 
 pub fn modern_puyo_theme<'a>(
@@ -135,7 +151,7 @@ pub fn modern_puyo_theme<'a>(
     config: Config,
     block_size: u32,
 ) -> Result<Theme<'a>, String> {
-    let extras = |skin: PuyoSkin| skin_row(skin, EXTRAS_ROW);
+    let extras = |skin: PuyoSkin, col: i32| skin_block(skin, EXTRAS_ROW, col);
     let options = ModernThemeOptions {
         name: "particle",
         sprites: BlockSpriteSheetData {
@@ -144,14 +160,8 @@ pub fn modern_puyo_theme<'a>(
             cells: cells(
                 SRC_BLOCK_SIZE,
                 puyo,
-                |skin| block(0, extras(skin)),
-                |skin| {
-                    [
-                        block(1, extras(skin)),
-                        block(2, extras(skin)),
-                        block(3, extras(skin)),
-                    ]
-                },
+                |skin| extras(skin, 0),
+                |skin| [extras(skin, 1), extras(skin, 2), extras(skin, 3)],
             ),
             animations: vec![],
             ghost_alpha: 0x90,
@@ -220,11 +230,8 @@ pub fn modern_puyo_theme<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine::render::sprite_sheet::MAX_ATLAS_WIDTH;
     use std::collections::HashSet;
-
-    fn extras_row(skin: PuyoSkin) -> i32 {
-        skin_row(skin, EXTRAS_ROW)
-    }
 
     /// a PNG's width and height are big endian at a fixed offset, which is enough to check a
     /// sheet without decoding one
@@ -239,15 +246,26 @@ mod tests {
     #[test]
     fn the_sheet_carries_every_skin_the_theme_deals() {
         let (width, height) = png_size(SPRITES);
-        assert_eq!(width, (PITCH * LinkMask::COUNT as i32) as u32);
-        assert_eq!(height, (PITCH * SKIN_ROWS) as u32 * SKINS as u32);
+        assert_eq!(width, (PITCH * BAND_COLUMNS) as u32 * BANDS_ACROSS as u32);
+        let band_rows = SKINS.div_ceil(BANDS_ACROSS);
+        assert_eq!(height, (PITCH * SKIN_ROWS) as u32 * band_rows as u32);
+    }
+
+    /// and it is laid out the way it is so that it can be a texture at all: the sheet is
+    /// loaded whole, and a driver that stops at [`MAX_ATLAS_WIDTH`] in a dimension would
+    /// refuse the bands stacked in one column
+    #[test]
+    fn the_sheet_fits_a_texture() {
+        let (width, height) = png_size(SPRITES);
+        assert!(width <= MAX_ATLAS_WIDTH, "{width} wide");
+        assert!(height <= MAX_ATLAS_WIDTH, "{height} tall");
     }
 
     /// ... and every cell of the last skin's band is inside it
     #[test]
     fn the_last_skins_extras_are_on_the_sheet() {
         let (width, height) = png_size(SPRITES);
-        let last = block(3, extras_row(PuyoSkin::all().last().unwrap()));
+        let last = skin_block(PuyoSkin::all().last().unwrap(), EXTRAS_ROW, 3);
         assert!(last.x + SRC_BLOCK_SIZE as i32 <= width as i32);
         assert!(last.y + SRC_BLOCK_SIZE as i32 <= height as i32);
     }
@@ -282,7 +300,7 @@ mod tests {
         let mut seen = HashSet::new();
         for skin in PuyoSkin::all() {
             assert!(seen.insert(puyo(skin, PuyoColor::Red, LinkMask::NONE)));
-            assert!(seen.insert(block(0, extras_row(skin))));
+            assert!(seen.insert(skin_block(skin, EXTRAS_ROW, 0)));
         }
         assert_eq!(seen.len(), 2 * SKINS);
     }

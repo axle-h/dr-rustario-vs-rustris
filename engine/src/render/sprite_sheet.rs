@@ -27,7 +27,10 @@ use std::collections::{HashMap, HashSet};
 /// the end of what a driver will allocate in a single dimension. GLES parts commonly stop at
 /// 4096, so that is where this stops; laying the surplus on another row costs the same
 /// pixels and asks for no more of the driver than any other theme does.
-const MAX_ATLAS_WIDTH: u32 = 4096;
+///
+/// It is the ceiling on a theme's *source* sheet too, which is loaded whole and in one piece
+/// - Puyo Rusto's is laid out against this, and says so.
+pub const MAX_ATLAS_WIDTH: u32 = 4096;
 
 /// nothing is faded at all
 const OPAQUE: u8 = 0xff;

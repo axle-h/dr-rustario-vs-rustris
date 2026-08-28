@@ -13,8 +13,8 @@ path = "src/main.rs"
 default = ["pkgconfig"]
 vcpkg = ["engine/vcpkg"]
 pkgconfig = ["engine/pkgconfig"]
-portmaster = ["engine/portmaster"]
-browser = ["engine/browser"]
+portmaster = ["engine/portmaster", "dr-rustario/portmaster"]
+browser = ["engine/browser", "dr-rustario/browser"]
 
 [build-dependencies]
 built = { version = "0.8.1", default-features = false, features = [] }
