@@ -16,7 +16,8 @@
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
-use crate::theme::data::{audio, cells, previews, Sounds, HUD_MAX};
+use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
+use crate::theme::data::{audio, cells, hud, previews, Sounds};
 use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
@@ -89,6 +90,14 @@ const TRAY_ICON: u32 = 15;
 /// one player's panel, which is `rip_retro.py`'s `THREE_DS_PANEL` - transparent, since the
 /// scene is the whole of the backdrop
 const PANEL: (u32, u32) = (240, 272);
+
+/// The strip under the field, which is where Chronicle keeps its score: seven digits of the
+/// game's own face are wider than the column beside the board and this is the only place they
+/// fit. The level goes at the far end of the same strip - Chronicle prints no stage number
+/// anywhere, so there is no box of its own to put it back in, and a strip that already
+/// carries one number is the honest place for the other.
+const SCORE_AT: (i32, i32) = (14, 258);
+const LEVEL_AT: (i32, i32) = (230, 258);
 
 /// how long a group holds before it goes, under [`crate::game::rules::POP_DELAY`] so a chain
 /// step never waits on the animation
@@ -165,10 +174,10 @@ pub fn three_ds_theme<'a>(
         )?,
         font: FontThemeOptions::simple(
             FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 1)?,
-            HUD_MAX
-                .iter()
-                .map(|(kind, max)| (*kind, MetricSnips::zero_fill((14, 258), *max)))
-                .collect(),
+            hud(
+                MetricSnips::zero_fill(SCORE_AT, MAX_SCORE),
+                MetricSnips::right(LEVEL_AT, MAX_LEVEL),
+            ),
         ),
         board_file: sprites::BOARD,
         board_alpha: 0xff,

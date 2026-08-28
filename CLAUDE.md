@@ -148,9 +148,25 @@ belongs to one player, so the queue runs through both) and the nuisance tray in 
 which is the one piece of furniture this game has no use for. Kirby's Avalanche wanted the same
 treatment and a pixel besides - a blob's eyes sit three rows into its cell and in a full field
 they land on 99, 115 ... 195, so the field starts at 16 and not the 15 the layer render read.
-Its queue goes under the two name plates and its tray across the mouth of the arch at the foot
-of the centre column, which is the only clear run as wide as six icons - at half a cell, since
-that column is forty eight pixels across.
+Its two name plates are painted out - they label one queue per player and this panel has both
+boxes to itself - so its queue goes in the gaps between the three wooden posts that frame them,
+and its tray across the mouth of the arch at the foot of the centre column, which is the only
+clear run as wide as six icons at half a cell. Its numbers are drawn in the red the game draws
+that player's in: the ten font tiles use an outline index and a fill index and nothing else,
+and which colours those take is the palette's, which is the player's - the left panel is red
+and the right one white.
+
+**The level is a HUD row on every Puyo theme**, which it never was: `MAX_LEVEL` was there to
+size the digits and nothing drew it. All three source games print it and two of them call it a
+*stage*, and it is the same number the menu offers as the `level` to start on - so it goes in
+the recess under `STAGE` on `snes`, where Mean Bean Machine prints its own on `genesis`, at the
+far end of the score strip on `3ds`, and as a labelled row on the particle theme. Placing it is
+what `theme::data::hud` is for: a retro theme used to map one `MetricSnips` over `HUD_MAX`,
+which is right for one row and draws two on top of each other. `genesis` gets the word `STAGE`
+back with it, cut whole off the end of the big face's own row (`0123456789FINALSTAGE`) - that
+column's five words are all text sprites and the frame plane carries none of them, so the panel
+had boxes and no words, and a bare digit on stone says nothing. It is the only one of the five
+that face can spell.
 
 Chronicle is the odd one out again: it stands both fields on one painted scene rather than
 giving each player a panel, so this theme does too. Its `background.png` is transparent - it is

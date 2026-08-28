@@ -13,7 +13,8 @@
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
-use crate::theme::data::{audio, cells, previews, Sounds, HUD_MAX};
+use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
+use crate::theme::data::{audio, cells, hud, previews, Sounds};
 use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
@@ -77,6 +78,12 @@ const MUGSHOT: (i32, i32, u32, u32) = (120, 96, 80, 56);
 /// where the score goes: the first of the two rows of digits the game keeps under `SCORE`,
 /// which is the player's own
 const SCORE_AT: (i32, i32) = (120, 176);
+
+/// Where the level goes: where Mean Bean Machine prints the number after `STAGE`, which is
+/// the same number under another name. Right aligned on it, and in the sixteen pixel band the
+/// game leaves between the `NEXT` boxes and the mugshot - the game's own stage font is nine
+/// pixels tall and smaller than the one it scores in, and this theme has only the one.
+const LEVEL_AT: (i32, i32) = (192, 80);
 
 /// how long the beans hold before they go. Under [`crate::game::rules::POP_DELAY`], so a
 /// chain step never waits on the animation - the same bound the particle theme keeps.
@@ -152,10 +159,10 @@ pub fn genesis_theme<'a>(
         )?,
         font: FontThemeOptions::simple(
             FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 1)?,
-            HUD_MAX
-                .iter()
-                .map(|(kind, max)| (*kind, MetricSnips::zero_fill(SCORE_AT, *max)))
-                .collect(),
+            hud(
+                MetricSnips::zero_fill(SCORE_AT, MAX_SCORE),
+                MetricSnips::right(LEVEL_AT, MAX_LEVEL),
+            ),
         ),
         board_file: sprites::BOARD,
         board_alpha: 0xff,
