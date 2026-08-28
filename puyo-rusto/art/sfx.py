@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cuts puyo-rusto/src/theme/{modern,menu}/*.ogg out of a rip of Puyo Puyo Tetris 2's sound effects.
+"""Cuts puyo-rusto/src/theme/{sfx,menu}/*.ogg out of a rip of Puyo Puyo Tetris 2's sound effects.
 
     python3 puyo-rusto/art/sfx.py [source directory]   # needs ffmpeg with libvorbis
 
@@ -63,38 +63,38 @@ FADE_OUT = 0.008
 # `tet`. Everything a Puyo player hears every second - move, rotate, land, and the seven
 # steps of a chain - is Puyo's own.
 SOUNDS = {
-    "modern/move.ogg": ("main", "se_puy07_move"),
-    "modern/rotate.ogg": ("main", "se_puy08_rotate"),
+    "sfx/move.ogg": ("main", "se_puy07_move"),
+    "sfx/rotate.ogg": ("main", "se_puy08_rotate"),
     # the pair coming to rest. `down` is the only landing Puyo's half of the rip has, and it
     # is this rather than the hard drop: a puyo pair falls of its own accord and the sound is
     # the arrival, not the descent
-    "modern/lock.ogg": ("main", "se_puy09_down"),
+    "sfx/lock.ogg": ("main", "se_puy09_down"),
     # what the puyos left standing over a group do once it has gone. Deliberately the
     # quietest thing in the theme - it fires once per chain step, under a `ren` that is four
     # times its height, and a chain that clatters is a chain you cannot hear climbing
-    "modern/settle.ogg": ("main", "se_tet01_fall"),
+    "sfx/settle.ogg": ("main", "se_tet01_fall"),
     # Tsu has no hard drop; this game does, so it takes Tetris's whoosh and then `lock`
     # lands on top of it the way it does after any other fall
-    "modern/hard-drop.ogg": ("main", "se_tet04_hdrop"),
+    "sfx/hard-drop.ogg": ("main", "se_tet04_hdrop"),
     # The chain. `ren` is 連 - the rip carries seven of them, one per step, each a fixed
     # interval over the last, and they are the reason to have ripped anything at all.
     # `clear_class` in `puyo-rusto/src/render.rs` grades a step 0..3 - chain 1, 2, 3, then
     # everything from 4 up - so it is the first four that are wanted and `ren4` is what the
     # original plays on the step this game stops counting at
-    "modern/pop-1.ogg": ("main", "se_puy00_ren1"),
-    "modern/pop-2.ogg": ("main", "se_puy01_ren2"),
-    "modern/pop-3.ogg": ("main", "se_puy02_ren3"),
-    "modern/pop-4.ogg": ("main", "se_puy03_ren4"),
+    "sfx/pop-1.ogg": ("main", "se_puy00_ren1"),
+    "sfx/pop-2.ogg": ("main", "se_puy01_ren2"),
+    "sfx/pop-3.ogg": ("main", "se_puy02_ren3"),
+    "sfx/pop-4.ogg": ("main", "se_puy03_ren4"),
     # 送り, sending: nuisance leaving for the other board. The rip grades it in four sizes
     # and the engine has one key for it, so it is the smallest of them - it goes off on top
     # of the `ren` that earned it and must not bury it
-    "modern/attack.ogg": ("main", "se_puy14_oj_okuri1"),
+    "sfx/attack.ogg": ("main", "se_puy14_oj_okuri1"),
     # おじゃま, the nuisance itself, landing on this board
-    "modern/garbage.ogg": ("main", "se_puy12_ojama1"),
-    "modern/speed-up.ogg": ("main", "se_puy24_levelup"),
-    "modern/pause.ogg": ("se_sys", "se_sys04_pause"),
-    "modern/victory.ogg": ("main", "se_puy19_win"),
-    "modern/game-over.ogg": ("main", "se_puy20_lose"),
+    "sfx/garbage.ogg": ("main", "se_puy12_ojama1"),
+    "sfx/speed-up.ogg": ("main", "se_puy24_levelup"),
+    "sfx/pause.ogg": ("se_sys", "se_sys04_pause"),
+    "sfx/victory.ogg": ("main", "se_puy19_win"),
+    "sfx/game-over.ogg": ("main", "se_puy20_lose"),
     # The menus'. Puyo Rusto already plays its own menu music where the other games play
     # the engine's, and these are the two clicks that go with it; they land beside that music
     # in `theme/menu/` rather than in the particle theme, because a menu is not a theme and

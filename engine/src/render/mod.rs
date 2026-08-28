@@ -181,6 +181,15 @@ pub enum ThemeFamily {
 /// how much of the board's width a popup may take, in sixteenths
 const POPUP_MAX_BOARD_WIDTH: u32 = 15;
 
+/// Called as each of a game's themes finishes building, so a caller can show progress.
+///
+/// It is handed the canvas because drawing is the only useful thing it can do - see
+/// [`crate::app::loading`], which is the one implementation. `all_themes` is the only place a
+/// game builds more than one theme, so it is the only seam a progress bar can learn anything
+/// from, and the games each offer an `all_themes_with_progress` that takes one of these.
+
+pub type ThemeProgress<'a> = dyn FnMut(&mut WindowCanvas) -> Result<(), String> + 'a;
+
 pub struct Theme<'a> {
     pub(crate) name: &'static str,
     pub(crate) family: ThemeFamily,

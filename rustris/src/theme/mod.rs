@@ -13,7 +13,7 @@ use engine::game::PieceId;
 use engine::menu::sound::{MenuMusic, MenuSounds};
 use engine::particles::prescribed::RaceTheme;
 use engine::render::layout::reference_block_size;
-use engine::render::Theme;
+use engine::render::{Theme, ThemeProgress};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 
@@ -23,11 +23,21 @@ pub fn all_themes<'a>(
     texture_creator: &'a TextureCreator<WindowContext>,
     config: Config,
 ) -> Result<Vec<Theme<'a>>, String> {
-    let mut themes = vec![
-        gb::game_boy_theme(canvas, texture_creator, config)?,
-        nes::nes_theme(canvas, texture_creator, config)?,
-        snes::snes_theme(canvas, texture_creator, config)?,
-    ];
+    all_themes_with_progress(canvas, texture_creator, config, &mut |_| Ok(()))
+}
+
+/// ... reporting each one as it is built, which is what the loading bar counts
+pub fn all_themes_with_progress<'a>(
+    canvas: &mut WindowCanvas,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    config: Config,
+    built: &mut ThemeProgress,
+) -> Result<Vec<Theme<'a>>, String> {
+    let mut themes = vec![];
+    for build in [gb::game_boy_theme, nes::nes_theme, snes::snes_theme] {
+        themes.push(build(canvas, texture_creator, config)?);
+        built(canvas)?;
+    }
     let block_size = reference_block_size(
         &themes.iter().collect::<Vec<&Theme>>(),
         canvas.window().size(),
@@ -40,6 +50,7 @@ pub fn all_themes<'a>(
         block_size,
         VISIBLE_BUFFER,
     )?);
+    built(canvas)?;
     Ok(themes)
 }
 

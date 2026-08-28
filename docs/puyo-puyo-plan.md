@@ -68,6 +68,21 @@ chaining back at it, which is what turns two people racing into two people fight
   take a hit. Offset is the identity mechanic of this game and it would be strange for it to
   work against one opponent and not another. It does make a tetris less frightening than its
   raw number suggests, which phase 5's pricing has to account for.
+* **The speed ramp stays.** Tsu has no level that climbs with play — versus fixes the drop
+  speed for the whole match and answers a long one with margin time — so phase 1's
+  `PUYOS_PER_STAGE = 30` and its twelve step fall curve are an invented house rule, and phase 2
+  left the question open. **Alex settled it on 2026-08-27: keep the levelling intact**, in
+  single player and versus alike. The whole compendium's mode structure is built on stages, and
+  a third game that opted out of it would cost the level sprint, the stage clear card and the
+  speed band scenes their meaning here. Margin time still arrives in phase 5, on top of the
+  ramp rather than in place of it. The long form is in phase 2's amendments, where the question
+  was raised.
+* **The three retro themes are `genesis`, `snes` and `3ds`** — Mean Bean Machine, Kirby's
+  Avalanche and Puyo Puyo Chronicle, oldest first. Chosen with Alex on 2026-08-27: two drafts
+  named a third Sega title in the last slot (the Master System Mean Bean Machine, then Compile's
+  Mega Drive original) and both were dropped for Chronicle, which is a real Puyo Puyo rather
+  than a reskin and is drawn for a screen. Every theme is named for its platform, as everywhere
+  else in this repository. Sources and the reasoning are at the head of phase 3.
 * **`pair.rs` is a sibling of `pill.rs`, not an extraction from it.** The two pieces rhyme —
   two halves, a pivot, kicks, splitting on lock — but the kick tables, the double-rotate quick
   turn and what happens to the halves afterwards all differ. A shared engine pair-piece would
@@ -1091,36 +1106,110 @@ completed)", with only level 1 recorded.
 So `PUYOS_PER_STAGE = 30` and the twelve step `FALL_DELAY_MS` curve are both invented, and this
 document should not leave them unremarked. The reason a stage exists at all is that the shared
 mode structure needs one - `MatchRules::StageSprint` and the level sprint are built on stages.
-The options are to keep the ramp as a documented house rule and add margin time in phase 5 as
+The options were to keep the ramp as a documented house rule and add margin time in phase 5 as
 well; to drop the ramp for one fixed speed per difficulty, which costs the level sprint its
 meaning here; or to ramp in single player only, where Tsu also ramps, and hold versus at one
-speed. **Alex's call, and phase 5 is where margin time lands either way.**
+speed.
+
+**Settled 2026-08-27, by Alex: keep the levelling intact.** The ramp stays exactly as phase 1
+built it, in single player and in versus alike - `PUYOS_PER_STAGE = 30` and the twelve step
+curve are the house rule, and this game has a `Level` the way every other game in the
+compendium has one. It is what makes the level sprint, the stage clear card and the speed band
+scenes mean the same thing here as they do next door, and a compendium whose third game
+quietly opted out of the shared mode structure would be the worse trade. **Nothing in phases
+3, 4 or 5 revisits this**; margin time still lands in phase 5, on top of the ramp rather than
+instead of it, and phase 3's retro themes each want their `scenes` and `board_snips` one per
+speed band exactly as the other games' retro themes do.
 
 ---
 
 ## Phase 3 — retro themes
 
-**Status:** `todo` — phase 2 is `done`, so this is next
+**Status:** `in progress` — 3a, 3b and 3c are all `done` (2026-08-28); 3d is `todo`. Puyo Rusto
+has its four themes. **Split into 3a, 3b, 3c and 3d on
+2026-08-27**, with Alex, because three themes is three separate slicing jobs that share one
+piece of groundwork and nothing else, and there is no reason for the second to wait on the
+third. 3a carries the groundwork and `genesis`; 3b is `snes`, which is the same game reskinned
+and so the same job again for much less; 3c is `3ds`, which shares nothing with either and is
+the most work of the three; 3d is the audio, deliberately left as placeholders until then.
 
 **Goal.** Three retro themes alongside the particle one, so Puyo has the same four as the
 other games and can take its turn in the retro playlist.
 
-| module | source | notes |
-|---|---|---|
-| `genesis` | Dr. Robotnik's Mean Bean Machine | mascot art available |
-| `snes` | Kirby's Avalanche | mascot art available |
-| `sms` | Mean Bean Machine on Master System / Game Gear | third retro theme |
+### The three sources, and what they are called
+
+| module | menu row | source | year |
+|---|---|---|---|
+| `genesis` | `genesis` | Dr. Robotnik's Mean Bean Machine — [rip](https://www.spriters-resource.com/sega_genesis/drrobmbm/) | 1993 |
+| `snes` | `snes` | Kirby's Avalanche — [rip](https://www.spriters-resource.com/snes/kirbysavalanche/) | 1995 |
+| `3ds` | `3ds` | Puyo Puyo Chronicle — [rip](https://www.spriters-resource.com/3ds/puyopuyochronicle/) | 2016 |
+
+Three things about that table were decided with Alex on 2026-08-27 and are not open:
+
+* **The third theme is Puyo Puyo Chronicle on the 3DS.** Two earlier drafts named something
+  else in that slot — first the Master System Mean Bean Machine, then Compile's Mega Drive
+  original — and both are superseded. What the slot is for is a theme that is *actually Puyo
+  Puyo* rather than a reskin, and Chronicle is that while also being the only one of the four
+  with art drawn for a screen anything like the one this runs on.
+* **Every theme is named for its platform**, which is the convention the whole repository keeps
+  (`gameboy`, `nes`, `snes`, `n64`, `particle`), and with the second Sega game gone there is
+  nothing left to tie-break: `genesis`, `snes`, `3ds`. The two earlier drafts both put two Sega
+  titles in the list and needed a region split to tell them apart; that problem does not exist
+  any more and the reasoning behind it has been deleted rather than left lying about.
+* **`all_themes` runs them oldest first** — `genesis`, `snes`, `3ds`, `particle` — which
+  is the order the other two games use and which makes the theme sprint a walk forwards through
+  the hardware. That order *is* the theme sprint's, and it is the order the retro playlist
+  alternates through, so it is a user-visible decision and not an implementation detail.
+
+**"Retro" here means the engine's `ThemeFamily`, not the calendar.** A 2016 handheld game is
+not retro by any ordinary reading, and this phase is still the right home for it: what the
+retro playlist and `Theme::family` sort on is *art-based theme* against *particle theme*, so
+`3ds` is a retro theme in the only sense the code has. The one thing to watch is that
+Chronicle's puyos are the modern glossy design, which is the same lineage as the Puyo Puyo
+Tetris rip the particle theme is already cut from — so the two themes will read as closer to
+each other than `genesis` and `snes` do. What separates them is everything *around* the board:
+`3ds` gets a real background, board frame and mascot out of the rip where the particle theme has
+a particle field and `mascot: None`. If they still look too alike side by side once `3ds` is
+built, that is worth raising with Alex rather than quietly restyling one of them.
+
+**The sheets are not in the repository and will not be.** Spriters-resource rejects automated
+fetches (403 to anything that is not a browser), and megabytes of source for a few hundred KiB
+of output is the same trade the Puyo Puyo Tetris sheet already lost. **Alex downloads them into
+`puyo-rusto/art/`**; the agent writes the cutter.
+
+Keep the existing convention exactly: the three sources already there sit under the *verbatim*
+download name spriters-resource gives them, and the repository's root `.gitignore` names each
+one by full path with a comment saying which script reads it. So each new sheet lands under
+whatever it is called when it arrives and gains a `.gitignore` line to match, in the phase that
+cuts it. Nobody renames a source file to something tidier — the name is the provenance, and it
+is the only record of where the art came from.
+
+Which means **every retro theme's sprite work is a script**, `puyo-rusto/art/rip_retro.py`, in
+the shape `art/rip.py` already has: source path in, `src/theme/<module>/sprites.png` out, one
+subcommand per theme and a `check` that draws the alignment board the way `rip.py check` writes
+`art/alignment.png`. Re-run it rather than editing its output — that rule is in CLAUDE.md and it
+applies here for the same reason it applies to the particle theme.
+
+### What every one of the three owes
 
 Everything is `include_bytes!` — there is no build script, no asset manifest and no slicing
-tooling. Every rect is arithmetic written by hand in the theme's `mod.rs`. Per retro theme,
-in a directory beside that file:
+tooling in the crate. Every rect is arithmetic written by hand in the theme's `mod.rs`.
+Per theme, in a directory beside that file:
 
 * `sprites.png` — one `source_block_size` grid holding the cells, the idle and pop strips and
   the previews. **The cells are the full `colour × 16` link grid** from phase 1, not one
-  sprite per colour, plus nuisance and the three tray symbols; the previews are 25 pairs. Unlike the particle theme these do not have to be authored: the rips
-  carry them, because the original games drew connected puyos the same way — Kirby's Avalanche
-  is ripped as a sheet literally called "Blobs & Boulders". Budget the time in slicing and
-  arithmetic rather than in drawing.
+  sprite per colour, plus nuisance and the three tray symbols. Unlike the particle theme these
+  do not have to be authored: the rips carry them, because the original games drew connected
+  puyos the same way — Kirby's Avalanche is ripped as a sheet literally called "Blobs &
+  Boulders". Budget the time in slicing and arithmetic rather than in drawing. The previews
+  cost nothing at all: `data.rs::previews()` composes all twenty five pairs out of cells the
+  sheet already has, and phase 2 already wrote it.
+* **All fourteen skin slots, keyed to the same art.** `data::cells` walks `PuyoSkin::all()`
+  because the particle theme has fourteen sets of puyos in one sheet; a retro theme hands back
+  the same points for every slot and pays only for the duplicate keys, which is exactly what
+  that function's doc comment says it is for. The consequence is worth stating plainly so
+  nobody reads it as a bug: **on a retro theme both players draw the same puyos**, because the
+  original drew one set. `PuyoSkin::deal` still deals, and the deal simply does not show.
 * `background.png`, and `board.png` either as one frame or as N frames side by side selected
   by `board_snips`, one per speed band
 * `background-tile*.png` if the theme uses `SceneType::Tile`, one per speed band
@@ -1131,46 +1220,338 @@ in a directory beside that file:
 * a `pending: Some(PendingLayout { point, step, size, max })` in the theme's `mod.rs` — where
   the nuisance tray goes in *this* background, in source pixels, `step` negative to fill
   leftwards or upwards. No sprite work: it draws the theme's own nuisance cell. Every existing
-  retro theme passes `None`, so the field is there and empty to copy from
-* mascot strips `{idle,throw,victory,game-over}.png`
-* about twelve sound effects as **OGG Vorbis at exactly 44,100 Hz, mono or stereo** — the
-  decoder rejects anything else outright. Music is not among them: `theme::GAME_MUSIC` is
-  shared, since the four tracks are this game's whatever it is drawn as, and a retro theme
-  hands the same table to `data::audio`. A theme wanting its own soundtrack instead passes its
-  own table; the menu row indexes whatever it is given, so the two would have to stay the same
-  length. Music files are split into `-intro.ogg` and `-repeat.ogg` for the intro-then-loop
-  chaining — see `art/music.py`, which does the splitting.
+  retro theme passes `None`, so the field is there and empty to copy from. Two of the three
+  rips draw the tray in their own art and the third does not; match the original where it has
+  one.
+* mascot strips `{idle,throw,victory,game-over}.png`. **This is where Puyo gets mascots at
+  all** — phase 2 shipped `mascot: None` deliberately, having no art and no honest way to
+  generate a four-strip character animation, and all three of these rips carry characters
+  (Robotnik, Kirby, and Chronicle's whole cast — Arle and Carbuncle are the obvious pick, being
+  the series' own). The particle field's mascot silhouettes come with them for free, since it
+  outlines the sprites of every theme in play rather than one.
+* the twelve or so sound effects, and the music — **which phase 3d does, not 3a–3c.** See below.
 
 Template for the 34-field `RetroThemeOptions`: `dr-rustario/src/theme/nes/mod.rs`.
 
 Register each theme in three places: `theme/mod.rs::all_themes` (the order defines the theme
 sprint), the `MatchThemes` enum in `game/rules.rs`, and that enum's `initial_index()`.
 `options.rs::theme_mode()` reads `initial_index` rather than matching the variants itself, so
-it needs no arm - that is a difference from the other two games, which do match by hand.
+it needs no arm — that is a difference from the other two games, which do match by hand.
 
-Two things phase 2 left here, both in its handover notes and repeated because this is the phase
-that acts on them:
+**Popups owe this nothing.** A theme without a `PopupSpriteData` gets the plain face, which is
+what every theme had before the particle one grew a sheet; a retro theme's popup font comes out
+at source-pixel size and scales up with the rest of the art, which is chunky and which is right.
+If a rip turns out to carry a `Chain!` graphic, it is a bonus and not an obligation.
+
+### Phase 3a — the groundwork, and `genesis`
+
+**Status:** `done` — 2026-08-28
+
+Everything above that is done once, plus the first of the three themes. The groundwork is two
+debts phase 2 left here on purpose and one new file:
 
 * **`all_themes` builds the particle theme twice.** `reference_block_size` measures themes that
   are already built, and with no retro themes there was nothing to measure. Delete the double
   build and take the reference off the retro themes, the way `dr-rustario` and `rustris` do.
+  This can only be done once a retro theme exists, which is why it is 3a's and not phase 2's.
 * **`visible_rows` is `ROWS` (13), not `VISIBLE_ROWS` (12).** The frame covers
   `visible_rows - top_buffer_rows`, so the hidden thirteenth row floats above it. Passing 12
   puts a playable row outside the frame, which is what happened first time.
+* **`art/rip_retro.py`**, with its first subcommand. One cutter for all three themes rather than
+  three scripts: they are the same job — find the puyo grid, cut `colour × 16`, cut the tray,
+  the mascot strips and the font — and the differences are a table of offsets per source.
 
-**Done when:** `frame_shot` renders every theme correctly, `menu_shot` walks the theme rows,
-`field_preview sheet` outlines the new sprites cleanly, and matching puyos join up on all
-three themes the way they do on the particle one.
+**`genesis` goes first because `snes` is the same game again.** Mean Bean Machine and Kirby's
+Avalanche are the two western reskins of one Compile original, released two years apart and
+built on the same board, the same beans in the same sixteen link states and the same layout —
+so whatever the cutter learns in 3a it reuses almost whole in 3b, and any misunderstanding of a
+bean's link grid shows up while it is still cheap to fix. It is also the oldest, so `all_themes`
+is built front to back rather than assembled out of order.
+
+**Done when:** `genesis` is on the theme row, the theme sprint is offered again (it comes back
+on its own the moment `MatchThemes::count()` passes 1 — `options.rs`'s test says exactly that),
+`frame_shot` renders it, and matching puyos join up on it the way they do on the particle theme.
+
+### Phase 3b — `snes`
+
+**Status:** `done` — 2026-08-28, and the *last* of the three rather than the second. It is not
+"the cheapest of the three" the paragraph below promised: Kirby's Avalanche has no board, no
+background and no font on spriters-resource, so it is the one theme the sheets alone cannot
+finish. Everything but the blobs came out of the ROM instead, by rendering the SNES's own
+background layers on their own — see the handover notes, and `SNES_LAYERS_BOTH` in
+`art/rip_retro.py`.
+
+Kirby's Avalanche, through the cutter 3a wrote and the theme 3a laid out — the cheapest of the
+three, and second for that reason. Kirby is the mascot and its cells are the sheet literally
+called "Blobs & Boulders". Nothing of the groundwork repeats; this is a rip, a `mod.rs` of
+arithmetic, and an `all_themes` entry. Where it *does* differ from `genesis` is the palette and
+the board furniture — the two games are the same code wearing different art, and the theme
+should not end up a recolour of 3a's by accident.
+
+**Done when:** `frame_shot` renders it, `menu_shot` walks the grown theme row, and the puyos join.
+
+### Phase 3c — `3ds`
+
+**Status:** `done` — 2026-08-28, out of order: it was done second, because 3b turned out to be
+the one whose art was not in a sheet. It shares nothing with either reskin, which is exactly why
+it could go ahead without them.
+
+Puyo Puyo Chronicle, and the odd one out of the three in every way that costs time, which is
+why it is last:
+
+* **Its own grid, and nothing learned from the two reskins carries over.** 3a and 3b share a
+  lineage; this shares none of it, so `rip_retro.py` gains a third entry in its offsets table
+  that is written from scratch rather than adapted.
+* **Modern art at a modern size.** The rip is drawn for a 3DS screen rather than a 1993 console,
+  so expect larger cells, more colours per sprite and alpha that actually matters. Pick
+  `source_block_size` off the sheet's real pitch and let `reference_block_size` scale it, the
+  way every other theme does — do not resample the art to match the other two.
+* **It is the theme nearest the particle one**, per the note at the head of this phase, so its
+  background, board frame and mascot are what make it a distinct theme rather than a second
+  glossy board. Budget for those rather than treating them as trim.
+* **`3ds` cannot be a Rust module name.** An identifier may not begin with a digit and no raw
+  identifier rescues one that does, so `mod 3ds;` will not compile and neither will a
+  `MatchThemes::3ds`. Only the *menu row* is the string `3ds` — that is a
+  `#[strum(serialize = "3ds")]` on a variant called something legal, exactly as `MatchThemes`
+  already spells `gameboy` and `particle` out separately from its variant names. Use
+  `three_ds` for the module and the directory and `ThreeDs` for the variant; the alternative,
+  `#[path = "3ds/mod.rs"]`, buys a prettier directory listing at the price of a `#[path]`
+  attribute nobody else in this repository has. Worth knowing at 3a rather than at 3c, because
+  it is the sort of thing that gets discovered halfway through writing the theme.
+
+With this one Puyo has four themes, which is the count phase 5 needs before it can add
+`GameKind::Puyo` to `PLAYLIST_ORDER` without collapsing the theme race or emptying the retro
+playlist.
+
+**Done when:** all four themes render, `field_preview sheet` outlines the new sprites cleanly,
+and matching puyos join up on all three retro themes the way they do on the particle one.
+
+### Phase 3d — the retro soundtracks and sound effects
+
+**Status:** `todo` — blocked on 3c. **Until it is done, 3a–3c ship placeholders**, which is
+Alex's call of 2026-08-27 and not a shortcut taken quietly.
+
+**The placeholder is the particle theme's audio, referenced rather than copied.** A retro theme
+hands `data::audio` the same `Sounds` the particle theme does. The music half is already free:
+`theme::GAME_MUSIC` sits at crate level in `theme/mod.rs` precisely because "phase 3's retro
+themes are the same game's music and walk the same menus", it is `pub`, and `modern/mod.rs`
+passes `music: &GAME_MUSIC` today — a retro theme writes the same line.
+
+The effects half costs **one line of groundwork in 3a**: the fifteen `include_bytes!` live in a
+*private* `mod sound` inside `theme/modern/mod.rs`, so a sibling module cannot see them. Make
+that module `pub(crate)`, or lift the effects up beside `GAME_MUSIC` the way the menu clicks
+were already lifted. Either way `include_bytes!` of one path embeds one copy however many
+modules name it, so the placeholder costs nothing but the wrong period sound.
+
+One trap for a theme that later takes its own soundtrack: `GAME_MUSIC` is an array whose type
+carries `GameMusic::ALL.len()`, so the menu row and the table cannot drift apart — but
+`Sounds::music` is a *slice*, so a theme handing over its own table of a different length would
+compile and quietly make the `music` row mean something different on that theme. If a retro
+theme gets its own tracks, they are four, or `GameMusic` grows and every theme grows with it.
+
+What 3d then does, per theme, is what `art/music.py` and `art/sfx.py` already do for the
+particle theme:
+
+* about twelve sound effects as **OGG Vorbis at exactly 44,100 Hz, mono or stereo** — the
+  decoder rejects anything else outright, and a third of any rip will be 48 kHz. Trim the
+  padding off both ends; do **not** normalise.
+* the music, if the theme is to have its own. `theme::GAME_MUSIC` is shared and a retro theme
+  may simply keep handing that table back — the four tracks are this game's whatever it is
+  drawn as. A theme wanting its own soundtrack passes its own table instead; the menu's `music`
+  row indexes whatever it is given, **so the two tables have to stay the same length** or the
+  row means different things on different themes. Each track splits into `-intro.ogg` and
+  `-repeat.ogg` for the intro-then-loop chaining — `art/music.py` does the splitting, and the
+  split is cut on raw pcm so the seam lands on the sample the loop point names.
+
+The sources are three more rips that are not in the repository and will not be, on the same
+footing as everything else in `puyo-rusto/art/`.
+
+**Done when:** every theme plays its own period audio, `frame_shot` still runs (which is proof
+every ogg decodes, since the theme builder decodes them all), and the `music` row still lines
+up with `GameMusic::ALL` on every theme.
 
 ### Handover notes
 
-_(to be filled in by the agent that completes this phase)_
+Worked on 2026-08-28. **3a, 3b and 3c are all `done`; Puyo Rusto has its four themes.**
+`cargo test --workspace` is green (753 tests, up from 746); `puyo-rusto` is 180 of them and is
+clippy clean. `cargo run --example frame_shot -- 900 700 2 out/ puyo` draws `genesis`, `snes`,
+`3ds` and `particle`, and `menu_shot` walks the grown theme row.
+
+**The order the phase was done in changed, and the plan above is amended to match.** 3a was
+written as "groundwork plus `genesis`" and that is what it is; but `snes` turned out to be the
+one theme whose rips carry no board, no background and no font, so it is **not** the cheap
+second theme this document promised - it is the one that needed the ROM. `3ds` was done second
+because Chronicle's rips carry everything, and `snes` last. Do not read 3b's "cheapest of the
+three" against what actually happened.
+
+#### `art/rip_retro.py`, and the one idea in it
+
+One cutter, one subcommand per theme, in the shape `rip.py` already had. What is worth knowing
+is how the sixteen link variants are *found*, because no two of the three sheets agree and none
+of them says which sprite is which:
+
+* **Mean Bean Machine's sheet has no grid at all.** PicsAndPixels arranged the beans as
+  *groups* - a page of two-, three-, four- and five-bean shapes drawn as they appear in play.
+  So `link_grid` reads the arrangement: a group is a connected run of non-background pixels
+  whose bounding box is a whole number of cells, a cell in that box is occupied or it is not,
+  and a bean's mask is which of its four neighbours are occupied. One pass yields all sixteen
+  of all five with no coordinates written down by hand. It also refuses to write a sheet with
+  holes in it, which is the check that matters.
+* **Kirby's and Chronicle's sheets are grids in the game's own order**, and that order is not
+  this game's. Both were read rather than guessed, by the same trick: a neck runs to its cell
+  edge - that is what makes two joined puyos meet flush - so which sides a variant is joined on
+  is which edges its art touches *in the middle*. Kirby's sheet indexes bit 1 up, 2 right, 4
+  down, 8 left. Chronicle's is `THREE_DS_ORDER`, and it is not separable into a row part and a
+  column part; what says it is right is that **all five colours decode to the identical
+  permutation**, which is five independent confirmations of a sixteen entry table.
+* **`assert_no_marker` is the guard that earns its keep.** Mean Bean Machine's sheet has three
+  flat fills painted behind the beans - a green, a pale green and a pink - and nothing on it
+  says so. Two were listed, the sheet was cut, and the third was still there in the output. So:
+  puyos of different colours share only their black rim and their white eyes, and any *other*
+  colour dominant in cells of three or more colour rows is a marker rather than art. It names
+  the colour so the next sheet's marker is one line to fix.
+
+`python3 puyo-rusto/art/rip_retro.py check` writes `art/retro-alignment.png` (gitignored): every
+theme's cells drawn as a board that uses all sixteen masks, side by side. It is `rip.py check`'s
+twin and it is the only way to see a seam.
+
+#### The gotcha that cost the most: **a retro theme's background needs a hole in it**
+
+The board frame is drawn *under* the background - `draw_players` composites the board texture
+first and the background over it - so a panel that carries its own well covers the board and
+every cell on it. The first `genesis` build drew a perfect empty field with the queue, the tray
+and the score all correct beside it, and that is a very convincing way to look like the board
+is broken. Both of the other games' retro themes cut the same hole and **nothing says so
+anywhere but the art**: `dr-rustario/src/theme/nes/background.png` has 18,044 transparent
+pixels and `rustris`'s has 23,838. `rip_retro.py` now punches it, and there is a test in each
+theme that the hole and the board agree.
+
+The other one, smaller: **`board_snips` are into the *padded* board texture.** A theme that
+supplies them (as `3ds` does, one frame per speed band) must add `top_padding` to their height,
+or the bottom row of the board is left outside the copy - which looks exactly like a board
+whose stack is sitting one row too low.
+
+#### `genesis` - Dr. Robotnik's Mean Bean Machine
+
+Sixteen pixel beans, six columns, twelve rows: the Genesis board *is* this game's board, so
+nothing is scaled. The panel is cut straight out of the third of the four 320x224 boards on the
+boards sheet - **measured, not picked by eye**: the four were scored against a live frame of the
+emulated game and that one is 82.6% identical to it, where the next best is 47.8%. The well is
+at (16, 16), 96 by 192, which is the geometry the emulator gave.
+
+The rest: the refugee bean is the nuisance puyo; the tray's three symbols are the refugee at
+three weights, since Mean Bean Machine lands an attack the moment it is sent and has no tray to
+draw. The font is the big white face the game sets FINAL STAGE in. The scene is a course of the
+dungeon wall taken out of the left border, tiled - there is no seamless tile in the board art,
+the stone is hand scattered and repeats on nothing, so it tiles with a visible horizontal band
+and that is fine: courses of stone are what a wall has.
+
+#### `3ds` - Puyo Puyo Chronicle
+
+The rip carries a whole theme: four field frames, the field's own dark blue puyo print, the
+game's own digits, and twenty two 400x240 in-game backgrounds. Two things are scaled, and both
+are noted in the module:
+
+* The frame's interior is 100 by 180 where twelve rows of an eighteen pixel puyo is 216, so the
+  frame is scaled up **uniformly** until its interior is twelve rows tall, and the six columns
+  sit centred in the width that leaves. A rounded corner stretched on one axis reads as a
+  mistake; six pixels of slack either side reads as padding.
+* The background is one of the game's own top screens, scaled to cover a player's panel and
+  cropped from the middle.
+
+**The four frames are `board_snips`, one per speed band**, so the field changes colour as the
+pairs come down faster. That is a liberty - Chronicle does not do it - and it is the only one.
+The score goes *under* the field rather than beside it, because seven digits of the game's own
+face are wider than the column beside the board, and because that is where Chronicle puts it.
+
+Chronicle's cells are 18 wide by 17 tall on the sheet - not square - so the cut squares them off
+by repeating the last row of art once. That is what closes a downward neck against the puyo
+below, and it is `rip.py`'s `repair` argument at one pixel instead of eight.
+
+#### `snes` - Kirby's Avalanche, and the layer switch
+
+Kirby's Avalanche is Compile's Puyo Puyo again, so its board is this game's board exactly and
+the blobs cut like the others. **Everything else had to come out of the ROM**: Blobs & Boulders
+is the only playfield art on spriters-resource for this game - no board, no background, no font
+among the five sheets.
+
+Not by screenshotting the board, which has the blobs, Kirby, the opponent's portrait and both
+players' HUDs drawn into it. By **the SNES's own layer switch**, which is Alex's suggestion and
+is much better than what was being attempted before it:
+
+* `$212C` is the main screen designation - a bit per background layer and one for the sprites.
+  snes9x keeps it in `Memory.FillRAM`, which is a block of every savestate it writes. So take a
+  state mid-match, poke that one byte, load it back, and the emulator renders whichever layers
+  you asked for and nothing else. **Set `savestate_file_compression=false`** and the state is a
+  plain file with `FIL` in it; otherwise it is `#RZIP` and has to be inflated first.
+* Kirby's Avalanche plays in **mode 2** with `$212C = 0x13` - BG1, BG2 and the sprites. `0x03`
+  gives both backgrounds without the sprites, `0x02` gives BG2 alone. That separates the forest,
+  the grass border and the score line (BG2) from the wooden centre column, the flower border and
+  the blobs in play (BG1).
+* **The field is on neither layer.** It is the backdrop colour, so the forest simply shows
+  through it - which is why `board.png` is a crop of the BG2 render rather than a frame of its
+  own, and why the field's geometry could be measured by looking for the one flat run of the
+  backdrop colour in the BG1 render. It is at (8, 15), 96 by 192: six columns and twelve rows of
+  sixteen, the same board Mean Bean Machine has.
+
+Three things are painted out of the panel, all of them the game's own HUD rather than art: its
+score number (the `SC` label is kept, and this game's score is drawn right after it), its stage
+number, and two blobs standing in the arch at the foot of the centre column - which survive
+punching the field out because they are not in the field. The last two are *found* rather than
+measured: a blob is the only saturated thing on the arch's black floor, so the patch is the
+bounding box of whatever is saturated there filled with the colour around it.
+
+The font came out of VRAM. The savestate's `VRA` block is all 65,536 bytes of it, the game's
+whole tile set is legible in `ra.py tiles --format snes4 --file`, and the digits are ten 8x8
+tiles using three indices - nothing, a dark outline and a white fill, which is exactly how they
+are drawn on screen. So `snes_font` decodes them straight out of the state and inks them; no
+palette needed, because a two-colour font does not have one worth finding.
+
+**What was tried first and did not work**, so nobody repeats it: reading CGRAM out of the
+savestate to colour the tiles by hand. snes9x publishes no memory map at all (`READ_CORE_MEMORY`
+is empty; only 128 KB of WRAM through `--raw`), so the palette has to come from the state, and
+no 512 byte window of the `PPU` block decodes as 256 plain BGR555 words in either byte order.
+The layer switch made the whole question moot - the emulator colours the layers itself.
+
+#### Groundwork, and the debts phase 2 left
+
+* **The sound effects moved up out of the particle theme**, to `src/theme/sfx/`, and their
+  `include_bytes!` sit in `theme/mod.rs`'s `sound` module beside `GAME_MUSIC`. They are the
+  *game*'s sounds, not that theme's - a bean settling and a puyo settling are the same event -
+  and a retro theme plays them until it has a rip of its own. `art/sfx.py` writes there now;
+  re-run it rather than moving files back. One copy is embedded however many modules name it.
+* **`all_themes` no longer builds the particle theme twice.** The reference block size comes off
+  the retro themes, which are built first, exactly as `dr-rustario` and `rustris` do it.
+* **`visible_rows` is `ROWS`,** and both new themes pass it, with one transparent cell of
+  `top_padding` for the thirteenth row to float in.
+* **The theme sprint came back on its own** the moment there was a second theme, as phase 2 said
+  it would. `options.rs`'s two theme tests were rewritten to say so rather than deleted.
+* **`MatchThemes` is `all`, `genesis`, `3ds`, `particle`** - oldest first, particle last. `3ds`
+  is the menu row only: the variant is `ThreeDs` and the module `three_ds`, because an
+  identifier cannot begin with a digit and no raw identifier rescues one.
+
+#### RetroArch, for whoever drives it next
+
+**`--set video_vsync=false` or the session hangs.** Started with vsync on, RetroArch answers the
+command port for a few seconds and then stops replying to everything - status, screenshot, input
+- while the process stays alive and asleep in `poll`. It is the GL swap blocking the main loop
+once the display idles, and there is no error anywhere to say so. `--set video_threaded=true`
+alongside it did no harm. This is worth adding to the skill's own gotchas.
+
+`video_driver=sdl2` does not start at all in this build - it dies before the command port opens.
+`genesis_plus_gx` and `snes9x` both publish no memory map; only `--raw` WRAM.
+
+#### 3d is untouched
+
+Both new themes play the particle theme's sound effects and `theme::GAME_MUSIC`, which is the
+placeholder 3d replaces. Nothing about that changed.
 
 ---
 
 ## Phase 4 — the ai
 
-**Status:** `todo` — blocked on phase 3
+**Status:** `todo` — no longer blocked on phase 3's themes: all four are built. Not blocked on
+3d either, since an ai does not care what the game sounds like
 
 **Goal.** Puyo fields the same four difficulties and the same two demo models as the other
 games — for real this time. Phase 2 already put the four names on the menu behind a

@@ -1,7 +1,10 @@
 //! Puyo Rusto's themes: data handed to the engine's theme builders.
 
 pub mod data;
+pub mod genesis;
 pub mod modern;
+pub mod snes;
+pub mod three_ds;
 
 use crate::game::cell::{PuyoColor, PuyoPiece, PuyoSkin};
 use crate::game::rules::GameMusic;
@@ -10,22 +13,44 @@ use engine::game::PieceId;
 use engine::menu::sound::{MenuMusic, MenuSounds};
 use engine::particles::prescribed::RaceTheme;
 use engine::render::layout::reference_block_size;
-use engine::render::Theme;
+use engine::render::{Theme, ThemeProgress};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 
 /// the source block size every theme's race sprites are scaled relative to
 pub const RACE_REFERENCE_BLOCK_SIZE: u32 = modern::SRC_BLOCK_SIZE;
 
-/// What the menus and a match are played over: the music cut out of a Puyo Puyo Tetris rip
-/// by `puyo-rusto/art/music.py`, and the two menu clicks cut out of a Puyo Puyo Tetris 2 one
-/// by `puyo-rusto/art/sfx.py`.
+/// Everything Puyo Rusto is played over: the sound effects and music cut out of Puyo Puyo
+/// Tetris rips by `puyo-rusto/art/sfx.py` and `art/music.py`, and the two menu clicks with
+/// them.
+///
+/// All of it sits here rather than in the particle theme's own directory because it belongs to
+/// the *game* and not to that theme - a Mean Bean Machine bean settling and a Puyo Puyo Tetris
+/// puyo settling are the same event - so the three retro themes play these until phase 3d cuts
+/// each of them a rip of its own. `include_bytes!` of one path embeds one copy however many
+/// modules name it, so a theme borrowing the set costs nothing but the wrong period sound.
 ///
 /// Every track is a *pair*: the mixer has no loop marker, so one is split at the point it
-/// loops back to and the second half is what repeats. All of it sits here rather than in the
-/// particle theme's own directory because phase 3's retro themes are the same game's music
-/// and walk the same menus, so they will want the same five and the same two clicks.
-mod sound {
+/// loops back to and the second half is what repeats.
+pub(crate) mod sound {
+    pub const ATTACK: &[u8] = include_bytes!("sfx/attack.ogg");
+    pub const GAME_OVER: &[u8] = include_bytes!("sfx/game-over.ogg");
+    pub const GARBAGE: &[u8] = include_bytes!("sfx/garbage.ogg");
+    pub const HARD_DROP: &[u8] = include_bytes!("sfx/hard-drop.ogg");
+    pub const LOCK: &[u8] = include_bytes!("sfx/lock.ogg");
+    pub const MOVE: &[u8] = include_bytes!("sfx/move.ogg");
+    pub const PAUSE: &[u8] = include_bytes!("sfx/pause.ogg");
+    pub const POP: [&[u8]; super::data::CLEAR_CLASSES] = [
+        include_bytes!("sfx/pop-1.ogg"),
+        include_bytes!("sfx/pop-2.ogg"),
+        include_bytes!("sfx/pop-3.ogg"),
+        include_bytes!("sfx/pop-4.ogg"),
+    ];
+    pub const ROTATE: &[u8] = include_bytes!("sfx/rotate.ogg");
+    pub const SETTLE: &[u8] = include_bytes!("sfx/settle.ogg");
+    pub const SPEED_UP: &[u8] = include_bytes!("sfx/speed-up.ogg");
+    pub const VICTORY: &[u8] = include_bytes!("sfx/victory.ogg");
+
     pub const CHIME: &[u8] = include_bytes!("menu/chime.ogg");
     pub const SELECT: &[u8] = include_bytes!("menu/select.ogg");
     pub const MENU: (&[u8], &[u8]) = (
@@ -72,27 +97,42 @@ pub const MENU_SOUNDS: MenuSounds = MenuSounds {
     high_score: MenuSounds::MODERN.high_score,
 };
 
-/// every theme, in the order a theme sprint plays them
+/// every theme, in the order a theme sprint plays them: oldest hardware first, with the
+/// particle theme last, the way the other two games order theirs
 ///
-/// Phase 3 of the plan adds the three retro themes; until they exist the particle theme has
-/// nothing to size itself against, so it is built once to measure and once to keep. The
-/// other two games take their reference off their retro themes, which are built first and
-/// render their art at a fixed size - see [`reference_block_size`].
+/// The retro themes are built first and the particle theme is sized against them, since a
+/// retro theme renders its art at a fixed size and the particle one does not. Until phase 3
+/// there were no retro themes to measure, so the particle theme was built once to measure
+/// and once to keep - that is gone, and this reads like `dr-rustario` and `rustris` now.
 pub fn all_themes<'a>(
     canvas: &mut WindowCanvas,
     texture_creator: &'a TextureCreator<WindowContext>,
     config: Config,
 ) -> Result<Vec<Theme<'a>>, String> {
-    let provisional =
-        modern::modern_puyo_theme(canvas, texture_creator, config, modern::SRC_BLOCK_SIZE)?;
-    let block_size = reference_block_size(&[&provisional], canvas.window().size(), config.video);
-    drop(provisional);
-    Ok(vec![modern::modern_puyo_theme(
-        canvas,
-        texture_creator,
-        config,
-        block_size,
-    )?])
+    all_themes_with_progress(canvas, texture_creator, config, &mut |_| Ok(()))
+}
+
+/// ... reporting each one as it is built, which is what the loading bar counts
+pub fn all_themes_with_progress<'a>(
+    canvas: &mut WindowCanvas,
+    texture_creator: &'a TextureCreator<WindowContext>,
+    config: Config,
+    built: &mut ThemeProgress,
+) -> Result<Vec<Theme<'a>>, String> {
+    let genesis = genesis::genesis_theme(canvas, texture_creator, config)?;
+    built(canvas)?;
+    let snes = snes::snes_theme(canvas, texture_creator, config)?;
+    built(canvas)?;
+    let three_ds = three_ds::three_ds_theme(canvas, texture_creator, config)?;
+    built(canvas)?;
+    let block_size = reference_block_size(
+        &[&genesis, &snes, &three_ds],
+        canvas.window().size(),
+        config.video,
+    );
+    let modern = modern::modern_puyo_theme(canvas, texture_creator, config, block_size)?;
+    built(canvas)?;
+    Ok(vec![genesis, snes, three_ds, modern])
 }
 
 /// one pair per colour of every set of puyos there is, which is what the race sends past

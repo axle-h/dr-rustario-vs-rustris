@@ -3,6 +3,7 @@
 
 use crate::games::{AnyGame, GameKind, PerGame};
 use crate::modes::{game_mode, Mode, Themes, VersusMode, BACK, HIGH_SCORES, START};
+use engine::app::loading::Loading;
 use engine::app::screens::{
     HighScoreViewScreen, MatchScreen, MenuScreen, NameEntryExit, NameEntryScreen,
 };
@@ -111,6 +112,21 @@ pub struct Shell {
     screen: Screen,
 }
 
+/// How many themes the loading bar is about to watch being built.
+///
+/// Asked of each game rather than counted from the list, because the list does not exist until
+/// they are built. If the two ever disagree the bar arrives early or late and nothing worse.
+fn theme_count() -> u32 {
+    GameKind::ALL
+        .into_iter()
+        .map(|game| match game {
+            GameKind::DrRustario => dr_rustario::game::rules::MatchThemes::count(),
+            GameKind::Rustris => rustris::game::rules::MatchThemes::count(),
+            GameKind::Puyo => puyo_rusto::game::rules::MatchThemes::count(),
+        })
+        .sum::<usize>() as u32
+}
+
 impl Shell {
     pub fn new() -> Result<Self, String> {
         let mut app = App::new(MAX_PLAYERS, include_bytes!("../icon.png"))?;
@@ -119,16 +135,30 @@ impl Shell {
         let tc: &'static TextureCreator<WindowContext> =
             Box::leak(Box::new(app.canvas().texture_creator()));
         let config = app.config();
+        // Every theme of every game is built here, up front, and that is deliberate: the title
+        // screen's sprite race draws from all of them at once and so does the particle field's
+        // silhouette bank, so there is no theme this could afford to defer. What it costs is
+        // time - some thirty megabytes of embedded png and ogg, which on a handheld is a long
+        // wait - so it is done behind a progress bar, one step per theme.
+        let mut loading = Loading::new(theme_count());
+        loading.draw(app.canvas())?;
         // every game's themes in one list, each game's slice of it recorded: built in
         // GameKind::ALL order, so a game's themes keep one place in the list
         let mut all = vec![];
         let mut ranges = vec![];
         for game in GameKind::ALL {
             let start = all.len();
+            let built = &mut |canvas: &mut sdl2::render::WindowCanvas| loading.step(canvas);
             all.extend(match game {
-                GameKind::DrRustario => dr_rustario::theme::all_themes(app.canvas(), tc, config)?,
-                GameKind::Rustris => rustris::theme::all_themes(app.canvas(), tc, config)?,
-                GameKind::Puyo => puyo_rusto::theme::all_themes(app.canvas(), tc, config)?,
+                GameKind::DrRustario => {
+                    dr_rustario::theme::all_themes_with_progress(app.canvas(), tc, config, built)?
+                }
+                GameKind::Rustris => {
+                    rustris::theme::all_themes_with_progress(app.canvas(), tc, config, built)?
+                }
+                GameKind::Puyo => {
+                    puyo_rusto::theme::all_themes_with_progress(app.canvas(), tc, config, built)?
+                }
             });
             ranges.push(start..all.len());
         }
