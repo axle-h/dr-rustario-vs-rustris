@@ -1,6 +1,6 @@
 //! The dials: how many colours a match deals, how fast puyos fall, and how long a stage is.
 
-use crate::game::ai::PuyoAiKind;
+use crate::game::ai::{PuyoAiKind, SKILLS};
 pub use engine::session::MatchRules;
 use std::time::Duration;
 use strum::IntoEnumIterator;
@@ -266,11 +266,17 @@ impl AiDifficulty {
         }
     }
 
-    /// the brain this difficulty thinks with. Every one of them is the placeholder until
-    /// phase 4, so today a harder setting is only a faster one - which is exactly what the
-    /// other two games' handover notes warned about and what phase 4 fixes.
+    /// The brain this difficulty thinks with: one of the six rows of
+    /// [`crate::game::ai::skill`], picked out of the *measured* ranking, so a harder setting
+    /// is a better player as well as a faster one. Dr. Rustario's four difficulties pick out
+    /// of its six N64 skill rows exactly this way.
     pub fn brain(&self) -> PuyoAiKind {
-        PuyoAiKind::Placeholder
+        match self {
+            AiDifficulty::Easy => PuyoAiKind::nth_weakest(0),
+            AiDifficulty::Normal => PuyoAiKind::nth_weakest(1),
+            AiDifficulty::Hard => PuyoAiKind::nth_weakest(SKILLS - 2),
+            AiDifficulty::Impossible => PuyoAiKind::nth_weakest(SKILLS - 1),
+        }
     }
 }
 
@@ -336,10 +342,12 @@ impl GameConfig {
     pub fn ai_players(&self) -> Vec<(u32, Duration, PuyoAiKind)> {
         match self.ai {
             AiMode::Off => vec![],
-            AiMode::Demo => vec![(0, Duration::ZERO, PuyoAiKind::Placeholder)],
+            AiMode::Demo => vec![(0, Duration::ZERO, PuyoAiKind::best())],
+            // the two best rows against each other, the way the other two games field their
+            // second best against their best
             AiMode::VsDemo => vec![
-                (0, Duration::ZERO, PuyoAiKind::Placeholder),
-                (1, Duration::ZERO, PuyoAiKind::Placeholder),
+                (0, Duration::ZERO, PuyoAiKind::nth_weakest(SKILLS - 2)),
+                (1, Duration::ZERO, PuyoAiKind::nth_weakest(SKILLS - 1)),
             ],
             AiMode::Opponent(difficulty) => {
                 vec![(1, difficulty.key_delay(), difficulty.brain())]

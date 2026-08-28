@@ -7,7 +7,7 @@
 | `engine/` | everything that is not game rules: SDL app shell, menus, high scores, config, input, rendering (sprite sheets, themes, fonts, particles, animations), audio mixer, the match session, and the shared AI core (`ai/`: neural network, genetic algorithm, key pacing) |
 | `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), theme data, its neural AI and the deterministic one (`game/ai/n64/`) that actually plays |
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), theme data and its neural AI |
-| `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, the nuisance queue), its particle theme and the placeholder ai that stands in until one is trained |
+| `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, the nuisance queue), its themes and its beam search ai |
 | `launcher/` | the `dr-rustario-vs-rustris` binary: picks games and options and runs a match |
 
 Each game's AI supplies the game-specific half - board features, placement search and the agent -
@@ -216,15 +216,48 @@ time with `Cover`'s own filter. Three rather than five because the art is painte
 gradients, no fine detail, so the interpolation has nothing to lose - and 1200x720 is 685 KiB in
 the binary and 3.4 MiB of texture against 1.5 MiB and 8.6 MiB at full size.
 
-Its ai is phase 4 and its
-place in the vs. playlists phase 5. Two things follow from that. Its four ai
-difficulties are all backed by `PuyoAiKind::Placeholder`, which drops the pair in a column
-picked at random - the menu offers what every other game offers because the launcher's tests
-hold every game to that list, and phase 4 puts a real brain behind it. And a versus playlist
-deals the games in `GameKind::PLAYLIST_ORDER`, which is a *third* list beside `ALL` (how games
-are numbered) and `RUNNING_ORDER` (how they are billed): a game is on the pre-menu as soon as
-it can be played and takes a playlist turn only once it has the themes and the ai to hold up
-its end of one.
+Its place in the vs. playlists is phase 5, and a versus playlist deals the games in
+`GameKind::PLAYLIST_ORDER`, which is a *third* list beside `ALL` (how games are numbered) and
+`RUNNING_ORDER` (how they are billed): a game is on the pre-menu as soon as it can be played
+and takes a playlist turn only once it has the themes and the ai to hold up its end of one.
+
+Puyo Rusto's ai (phase 4, step 1) is the one of the three that had **no original to port**.
+Puyo Puyo's own cpu opponents have never been decompiled into anything readable - Mean Bean
+Machine's is in an unlabelled 68000 disassembly and Puyo VS's `Puyolib/AI.cpp` takes the
+biggest chain in front of it and otherwise places at random - so `game/ai/` is built out of
+the open literature, and mostly out of [ama](https://github.com/citrus610/ama) (MIT), whose
+whole evaluation is fifteen weights in one file. `field.rs` is the board the search thinks on:
+one byte a cell, no link masks, no allocation in a chain, and **always settled**, which is why
+its chain loop pops before it settles where `board.rs`'s settles first. `quiet.rs` is the
+piece that makes it a Puyo player rather than a tidy one - a *quiescence search* that asks
+what chain the field is holding by dropping key puyos into every reachable column, in every
+colour on the board, until a group of four forms, and running the chain out. `eval.rs` is the
+fifteen weights, `placement.rs` has two move generators (the root one replays real `Pair`
+moves so the wall kicks and the keys to press come free; the search one names two columns and
+nothing else), `beam.rs` is the search - it walks the visible queue once and then forks down
+several *invented* continuations, which is takapt's idea by way of ama's six fixed ones - and
+`skill.rs` is the six rows. Which of those is the better player is **measured, not assumed**:
+`ga puyo rank` plays every row over the same seeds and prints the `SKILL_ORDER` to paste back,
+exactly as `SKILL_ORDER` works for Dr. Rustario, and the four difficulties pick out of it.
+There is **no neural model and nothing provisioned for one** - adding it means adding a
+`PuyoAiKind` variant beside `Scorer`, the way `DrAiKind` carries both.
+
+**The search is a state machine, stepped once a frame, and it is always interruptible.**
+`Search::new` plays every placement of the pair in play and stops; each `step` plays the next
+pair onto eight more of the boards it is holding and hands the frame back. That is not a
+performance trick, it is what makes the same search affordable on a handheld: the agent has
+the pair's whole fall time - a second, sixty frames - so the hardest row costs 0.88 ms a frame
+rather than 10.6 ms in one, with no board of the search given up, which is why the ladder is
+**not** also scaled down under the `portmaster` feature. Two things follow and both live in
+`agent.rs`: the pair goes on *falling* while it thinks, so the keys are re-derived at the end
+from where the pair is (`root_moves` costs no evaluations) and the next placement down the
+order is taken if the best is now out of reach - which is why `beam::ranking` returns an order
+rather than a winner; and the pair may come to *rest* first on a board too full to fall
+through, so the root layer is done in `Search::new` and there is always an answer.
+`SearchConfig::steps` is what a measured think time is divided by to get the cost of a frame,
+and `ga puyo rank` prints it. What made the evaluation itself cheap enough is in the plan: a
+compile time neighbour table, cutting the beam's root layer like any other layer, not
+re-walking the visible queue once per continuation, and popping before settling.
 
 Puyo Rusto's particle theme is puyos, music and sound effects all cut out of rips - three
 sources and three scripts, none of the sources carried here. `puyo-rusto/art/rip.py` writes `src/theme/modern/sprites.png` out of a sheet that

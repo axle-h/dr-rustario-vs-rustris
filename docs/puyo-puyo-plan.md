@@ -1769,8 +1769,9 @@ placeholder 3d replaces. Nothing about that changed.
 
 ## Phase 4 — the ai
 
-**Status:** `todo` — no longer blocked on phase 3's themes: all four are built. Not blocked on
-3d either, since an ai does not care what the game sounds like
+**Status:** step 1 `done` — 2026-08-28. Step 2, the neural model, is `todo` and deliberately
+not provisioned for: nothing in `game/ai/` is shaped around one, and adding it means adding a
+`PuyoAiKind` variant beside `Scorer`, the way `DrAiKind` carries both.
 
 **Goal.** Puyo fields the same four difficulties and the same two demo models as the other
 games — for real this time. Phase 2 already put the four names on the menu behind a
@@ -1780,57 +1781,137 @@ honest. `VersusAi` cannot deal a Puyo board worth playing against until it does.
 Follow the Dr. Rustario precedent — a deterministic scorer that actually plays, with a neural
 model alongside it, dispatched through a `PuyoAiKind`.
 
-1. **A hand-written evaluator with a shallow beam search** over the current pair and the
-   queue. Features from the literature and the open source bots: chain potential (the largest
-   chain the field could fire), height and bumpiness, edge and corner penalties (a puyo
-   against the wall can link to fewer neighbours, a corner fewer still), spawn column
-   clearance, buried nuisance, link counts. The difficulty ladder is weight sets × search
-   depth × the engine's existing `KeyPacer` delays (500/400/300/0 ms), so that a harder
-   setting is a better player and not merely a faster one — the standard `SKILL_ORDER` sets
-   for Dr. Rustario. **Rank the weight sets by measurement, not assumption.**
+1. **A hand-written evaluator with a shallow beam search** — `done`. `game/ai/` is seven
+   modules: `field.rs` (the board the search thinks on), `quiet.rs` (chain potential),
+   `eval.rs` (fifteen weights), `placement.rs` (two move generators), `beam.rs` (the search),
+   `skill.rs` (the six rows) and `harness.rs` (`ga puyo play` and `ga puyo rank`).
 2. **A neural model** through `feature_network!` over the same features, trained by
-   `ga puyo auto` on the existing `Fitness` seam. It ships only when it beats the scorer;
-   until then the scorer plays, exactly as `DrAiKind` works today.
+   `ga puyo auto` on the existing `Fitness` seam. `todo`. It ships only when it beats the
+   scorer; until then the scorer plays, exactly as `DrAiKind` works today.
 
-Add `ga puyo play <seed> <level> <cap> <every> <brain>` mirroring `ga dr play`, so strength
-can be measured headlessly.
+`ga puyo play <seed> [difficulty] [pair cap] [report every n pairs] [brain]` plays one brain
+headless; `ga puyo rank [seeds] [pair cap] [difficulty]` plays every row over the same seeds
+and prints the `SKILL_ORDER` to paste back.
 
-**The ghost row is worth a feature of its own.** A puyo in the hidden thirteenth row cannot
-pop and does not count towards a group, so a chain with a foot up there is *held back* until it
-drops - which is a real technique and something a scorer can either exploit or blunder into.
-`Board::is_ghost` is the predicate; the top of the board is not worth what a naive height
-feature would say it is.
+### What was built, and what came from where
+
+There is no decomp to port here, which is the one way this differs from Dr. Rustario. Mean
+Bean Machine *has* a disassembly (`DevsArchive/mean-bean-machine-disassembly`) and its cpu is
+findable in it — `sub_56C0` calls `sub_12E6C` when `control_player_1` says the player is not
+human, and that walks the pair towards a target column and rotation decided behind `sub_12F82`
+— but it is unlabelled 68000 rather than the readable C `aiset.c` was, and the game's cpu is a
+beginner's opponent besides. Puyo VS has an ai (`Puyolib/AI.cpp`, GPL-3.0) and it is two
+hundred lines: take the biggest chain on offer, and if the best is nothing or a single pop,
+place at random away from the spawn column. That is the `greedy` row, roughly, and it is the
+bottom of the ladder.
+
+So the shape came from the open literature instead, and mostly from
+[ama](https://github.com/citrus610/ama) (MIT), the strongest open Puyo Puyo Tsu ai and small
+enough to read end to end — its evaluation is fifteen weights in one file, where
+[puyoai](https://github.com/puyoai/puyoai)'s `mayah` has about a hundred. Also
+takapt's beam search idea (searching past the queue down invented continuations, by way of
+ama's six fixed ones) and Ikeda, Tomizawa, Viennot and Tanaka's *Playing PuyoPuyo*, which both
+of those cite.
+
+**The quiescence search is the thing.** `quiet.rs` is what separates a bot that plays from one
+that tidies: for every column a pair can still be carried over and every colour already on the
+board, drop puyos one at a time until a group of four forms, run the chain out, and report what
+it would have been. A placement's *own* chain is easy to see, but a building player almost
+never fires anything, so scoring that says nothing about nearly every placement on offer. What
+matters is the chain the field is holding, and this is how the evaluation is told about it.
+
+### The ladder, as measured
+
+`ga puyo rank 12 600` on 2026-08-28 — twelve seeds, six hundred pairs each, on `normal`,
+ranked on score banked:
+
+| row | weights | width | queue | ahead | queues | fires at | score/pair | best chain | steps | ms/pair | ms/step |
+|--|--|--|--|--|--|--|--|--|--|--|--|
+| greedy  | greedy    |  1 | 0 | 0 | 1 | anything |  48.4 |  4 |  1 |  0.02 | 0.02 |
+| tidy    | freestyle |  6 | 1 | 0 | 1 |  6 nuisance | 191.1 |  7 |  1 |  0.53 | 0.53 |
+| swift   | fast      | 12 | 2 | 0 | 1 | 12 nuisance | 284.4 |  8 |  4 |  1.97 | 0.49 |
+| builder | build     | 16 | 2 | 1 | 1 | 18 nuisance | 433.0 | 10 |  6 |  4.71 | 0.79 |
+| patient | build     | 20 | 2 | 2 | 1 | 30 nuisance | 571.9 | 12 | 12 |  8.38 | 0.70 |
+| sharp   | build     | 16 | 2 | 2 | 2 | 48 nuisance | 761.8 | 12 | 12 | 10.56 | 0.88 |
+
+The first run of it had `patient` and `builder` within four percent of each other for twice
+the search, which is what made the three rows sharing the `build` weights differ in *how long
+they hold a chain* rather than only in how hard they think. `easy` and `normal` play the two
+weakest, `hard` the runner up and `impossible` the best, which is the shape Dr. Rustario's
+four difficulties already had.
+
+**One thing is known to be left.** The measure is a solo marathon, where no nuisance ever
+arrives, so it ranks what a row *builds* and not how it takes a hit; ranking the rows against
+each other is phase 5's to want.
+
+### Thinking across frames
+
+The hardest row takes 10.6 ms to decide a pair on a desktop and would take a tenth of a second
+on a handheld, which is a stall you can see. The answer is not a smaller search — it is that
+**the agent has no need to answer in a frame**. A pair takes a second or more to fall, which is
+sixty frames, and nothing is waiting on the answer until it lands.
+
+So `beam::Search` is a state machine rather than a function. `Search::new` plays every
+placement of the pair in play, scores them and stops; each `step` after it plays the next pair
+onto eight more of the boards being held and hands the frame back. The agent calls it once per
+frame. What that buys is the whole of the difference between the last two columns above: the
+same search, the same strength, at 0.88 ms a frame instead of 10.6 ms in one lump. It is worth
+roughly a twelvefold budget, and it costs no board of the search at all — which is why the
+ladder was **not** also scaled down under the `portmaster` feature. If a device still cannot
+afford 0.88 ms a frame, `width` is the dial and `SearchConfig::steps` is what a measured think
+time is divided by to find out; `ga puyo rank` prints all three columns and is compiled into
+the handheld build, so measuring it on the device is one command.
+
+Two things follow from thinking slowly, and both are handled in `agent.rs`. The pair goes on
+**falling** while the search runs, so the keys are worked out again at the end from where the
+pair *is* rather than reused from where it was — `root_moves` costs no evaluations, so running
+it twice is free — and if the placement it settled on can no longer be reached, the next one
+down the order is taken, which is why `beam::ranking` hands back an order rather than a winner.
+And the pair may come to **rest** before the search is done, on a board too full to fall
+through, so the search has to be interruptible. It is, and that is what putting the root layer
+in `Search::new` is for: every placement is scored before the first `step`, so there is always
+an answer and every step after only sharpens it.
+
+**The ghost row is worth a feature of its own** — it got two. A puyo in the hidden thirteenth
+row cannot pop and does not count towards a group, so a chain with a foot up there is *held
+back* until it drops. In `field.rs` that is the whole of the `NEIGHBOURS` table: the ghost row
+is nobody's neighbour, so nothing there groups, pops, or is dragged out beside a group, and
+the rule is stated once. In `eval.rs` it is the `ghost` weight, which counts the cells of that
+row walled off from the spawn column — a puyo resting up there is a *door closed*, because a
+pair moves sideways with one half in it, and everything past it is unreachable however empty
+the column below looks. That is also what bounds the quiescence search and the move
+generator: `quiet::reachable_columns`.
 
 **Read colours through the mask, not around it.** Every board feature above is about colour,
 and a `CellId` here is colour *and* link mask, so a feature that compares raw `CellId`s sees
-sixteen different reds and finds no chains at all. It will not fail loudly — it will train to
-a mediocre plateau and look like a tuning problem. Unpack to the colour enum first, the way
-`DrCell::color()` does, and keep the mask for the one place it is genuinely useful: link
-counts come straight off it for free, since that is exactly what it counts.
+sixteen different reds and finds no chains at all. `Field::from_board` is where that is
+handled: it drops the mask on the way in and keeps one byte a cell, because connectivity for
+popping is worked out from the colours themselves and a mask is only ever drawing information.
 
-If phase 2 shipped the stub `ai_players()`, this phase is where the placeholder brain goes and
-the real one takes its slot. Nothing on the menu surface should change.
+**What made it fast enough to run in a frame.** The first version took 190 ms a pair, which is
+twelve dropped frames. Four things fixed it, in the order they were worth:
 
-In the launcher that is smaller than it sounds. Phase 0 replaced the versus mode's brain tuple
-with an `AiBrain` trait (`launcher/src/games.rs`): an ai player carries one boxed brain per
-game, a brain handed a board that is not its game does nothing, and the controller offers the
-board to each in turn. So this phase adds a `puyo_brain()` beside `dr_rustario_brain()` and
-`rustris_brain()`, and one arm to `VersusAi::ai_players` — and touches the versus controller
-not at all.
+* **a neighbour table.** `[[u8; 5]; 78]`, worked out at compile time, in place of the divide
+  and modulo the chain loop was doing three hundred times a scan. On its own: 10.9 µs an
+  evaluation down to 4.9 µs.
+* **cutting the root layer.** A beam cuts every layer to its width, and this one was expanding
+  all twenty two of the pair's placements before its first cut — one layer costing more than
+  every layer after it put together.
+* **not walking the visible queue once per continuation.** The invented continuations only
+  differ *past* the pairs the player can see, so forking before them searches the same three
+  real pairs over and over and calls it a wider search.
+* **popping before settling.** A `Field` is always settled by construction, so the settle the
+  game's own chain loop opens with is a scan of the whole board to move nothing — a dozen
+  times over per placement, because the quiescence search resolves a dozen probes.
 
-**Done when:** the four difficulty names match the other games exactly, the 1- and 2-player
-demos run, and the weight set ranking is recorded in the handover notes with the numbers
-behind it.
-
-### Handover notes
-
-_(to be filled in by the agent that completes this phase)_
-
----
+Together: 4.1 µs an evaluation, and the strongest row went *up* as well as getting cheaper,
+because the budget freed up bought it depth. Spreading the search over frames — above — took
+the same work from 10.6 ms in one frame to 0.88 ms in each of twelve.
 
 ## Phase 5 — vs. integration and attack pricing
 
-**Status:** `todo` — blocked on phase 4
+**Status:** `todo` — no longer blocked: phase 4 step 1 is done, so `VersusAi` has a Puyo brain
+worth dealing a board to
 
 **Goal.** Puyo takes its turn in every vs. playlist, and garbage crosses at sane volumes in
 all six directions.

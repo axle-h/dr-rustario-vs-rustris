@@ -8,8 +8,8 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 * **Dr. Rustario vs Rustris** - play a multi-player focussed playlist over both games.
 
 Puyo Rusto is the newest of them and is not finished: it is playable by one or two people on
-all four of its themes, with its own high score tables, but its ai is a placeholder that drops
-pairs at random and it does not take a turn in the vs. playlists yet. The retro themes are the
+all four of its themes, with its own high score tables and its own ai, but it does not take a
+turn in the vs. playlists yet. The retro themes are the
 three games Compile's original became: **genesis** is Dr. Robotnik's Mean Bean Machine,
 **snes** is Kirby's Avalanche and **3ds** is Puyo Puyo Chronicle. Each keeps its own game's
 furniture and puts the queue and the nuisance tray in the boxes that game drew for them -
@@ -79,7 +79,7 @@ cargo vcpkg build
 cargo build --release --no-default-features --features vcpkg
 ```
 
-All resources are embedded into the binary, including both games' AI opponents, demo mode and
+All resources are embedded into the binary, including every game's AI opponent, demo mode and
 the `ga` training subcommand (`dr-rustario-vs-rustris ga [auto|survival|score|diagnose]`).
 `ga play <seed> [line cap] [report every n lines] [survival|tetris]` plays a built-in model
 headless on a fixed seed, reporting progress; it counts lines and banks the score itself as the
@@ -88,6 +88,10 @@ in-game counters are capped. `ga dr ...` trains and inspects Dr. Rustario instea
 `ga dr play <seed> [virus level] [pill cap] [report every n pills] [brain]` plays it headless,
 where the brain is `n64` (the default), `n64:0` to `n64:5` to pick one of the N64 ai's own rows
 of weights, `neural` for the trained network or `linear` for the hand written baseline.
+`ga puyo ...` plays and ranks Puyo Rusto, which trains nothing: `ga puyo play <seed>
+[difficulty] [pair cap] [report every n pairs] [brain]` plays one of its six skill rows
+headless, and `ga puyo rank [seeds] [pair cap] [difficulty]` plays every row over the same
+seeds and prints the ranking the four difficulties are picked out of.
 
 ### macOS
 
@@ -297,12 +301,13 @@ There are no default player 2 controls.
 
 ## The AI
 
-Both games find every placement the piece in play can reach, score them, and hand the best one
-to an agent that presses the keys. Rustris scores with a small neural network; Dr. Rustario
-plays a port of Dr. Mario 64's own hand written scorer, and has a neural network that is not
-trained yet. The network and the genetic algorithm that trains it are shared in
-`engine/src/ai`; each game supplies its own features, placement search and agent. Only human
-players can enter the high score table.
+All three games find every placement the piece in play can reach, score them, and hand the best
+one to an agent that presses the keys. Rustris scores with a small neural network;
+Dr. Rustario plays a port of Dr. Mario 64's own hand written scorer, and has a neural network
+that is not trained yet; Puyo Rusto searches several pairs ahead with a beam search over a hand
+written evaluation, and has no neural model at all. The network and the genetic algorithm that
+trains it are shared in `engine/src/ai`; each game supplies its own features, placement search
+and agent. Only human players can enter the high score table.
 
 Full write up: [https://ax-h.com/ai/machine-learning-from-scratch](https://ax-h.com/ai/machine-learning-from-scratch)
 
@@ -524,6 +529,77 @@ before stage two starts from it, and how many tries it gets), `PILL_BUDGET` and
 `EFFICIENCY_GENERATIONS` (stage three), and, in [run.rs](dr-rustario/src/game/ai/run.rs),
 `TOP_TRAINING_LEVEL` and `PROVEN_LEVEL` (the two halves of the finish line) with `PROBE_SEEDS`
 and `ABANDON_BELOW` (when a candidate is cut short).
+
+### Puyo Rusto
+
+The **ai** option on a Puyo Rusto main menu offers the same choices, and every difficulty is a
+different player rather than the same one hurried along:
+
+* `off` - human players.
+* `vs easy` / `vs normal` / `vs hard` / `vs impossible` - in a 2-player match the AI plays as
+  player 2, speed limited to one key every 500 ms / 400 ms / 300 ms / instantly, on one of six
+  rows of settings that get progressively better at the game.
+* `1-player ai demo` - the first player's board is played by the best row at full speed.
+* `2-player ai demo` - both boards at full speed: the second best row against the best.
+
+#### How it plays
+
+There is no decompilation to port here, which is the one way this differs from Dr. Rustario.
+Puyo Puyo's own cpu opponents have never been reverse engineered into anything readable - Mean
+Bean Machine's lives in an unlabelled 68000 disassembly, and Puyo VS's own is two hundred
+lines that take the biggest chain in front of them and otherwise place at random. So this one
+is built out of the open literature, and mostly out of
+[ama](https://github.com/citrus610/ama), the strongest open Puyo Puyo Tsu ai.
+
+For every placement of the pair in play it drops the two halves, runs the chain, and scores
+the board that is left; then it plays the next pair onto the best boards, and the one after
+that, keeping only the best handful at each step. What it can see is what a player can see -
+the pair in play and the two behind it - and past those it carries on down *invented*
+continuations, since guessing which colours come next costs nothing when the question being
+asked is whether there is still room to build.
+
+The board is scored on fifteen numbers, and the one that matters is not on the board at all.
+A player who is building a chain almost never fires anything, so scoring what a placement
+clears says nothing about nearly every placement on offer. Instead it asks what chain the
+board is *holding*: for every column the pair could still be carried over, and every colour
+already down there, it drops puyos one at a time until a group of four forms, runs the chain
+out, and takes the best answer. How long that chain runs, how many puyos it would take to set
+off, how much room is left to stretch it further, and how much of the board survives it are
+four of the fifteen. The rest keep the field in a state where such an answer keeps existing:
+its shape, its wells and towers, its pairs and threes, nuisance sitting on it, and how much
+room is left over the spawn column.
+
+The hidden thirteenth row is handled twice over, because it is two different things. Nothing
+up there pops or counts towards a group, so it is nobody's neighbour when the chain loop looks
+for one. And a puyo resting up there is a *door closed* - a pair moves sideways with one half
+in that row, so everything past it is out of reach however empty the column below looks, which
+is both a penalty and the bound on where the search will look at all.
+
+The six rows differ in how far they see, how many boards they hold in mind, and - the part that
+changes the game rather than the strength - how big a chain they will hold out for before
+firing it. Which of them is the better player was measured rather than assumed: every row
+played the same twelve seeds for six hundred pairs and was ranked on the score it banked.
+
+| row | score/pair | best chain | nuisance sent |
+|--|--|--|--|
+| greedy - takes every clear it sees |  48.4 |  4 |  5,126 |
+| tidy - holds out for a small chain | 191.1 |  7 | 19,706 |
+| swift - plays for a fast second chain | 284.4 |  8 | 29,550 |
+| builder - builds properly | 433.0 | 10 | 44,567 |
+| patient - and waits for a whole rock | 571.9 | 12 | 58,822 |
+| sharp - and for one that decides a match | 761.8 | 12 | 78,351 |
+
+`easy` and `normal` play the two weakest, `hard` the runner up and `impossible` the best. There
+is no neural model: Puyo Rusto is the one game here whose scorer was never asked to teach one.
+
+It thinks a piece at a time. The hardest row takes about ten milliseconds to decide where a
+pair goes, which is most of a frame on a desktop and rather more than one on a handheld - but
+nothing is waiting for the answer until the pair lands, and a pair takes a second to fall. So
+the search is stepped once a frame and the answer taken when it is ready, which is the same
+search at under a millisecond a frame rather than ten in one. Two things follow: the pair has
+fallen by the time it has an answer, so the keys are worked out again from where it is; and if
+the board is too full for the pair to fall far, the search is cut short and plays the best it
+had got to, which is why every placement is scored before the first step.
 
 ### Dr. Rustario vs. Rustris
 
