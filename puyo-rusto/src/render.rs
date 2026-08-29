@@ -19,6 +19,12 @@ impl GameRender for Game {
         "Puyo Rusto"
     }
 
+    /// Nuisance is the one thing on this board the player did not put there, and it arrives in
+    /// a slab: it drops in from over the top rather than appearing, and the game waits for it.
+    fn attack_fall_speed(&self) -> Option<f64> {
+        Some(crate::game::rules::NUISANCE_FALL_ROWS_PER_SECOND)
+    }
+
     /// One step of a chain at a time, graded by how far into the chain it is - so a chain is
     /// *heard* climbing, which is the sound the game is known for.
     ///
@@ -87,7 +93,7 @@ impl GameRender for Game {
 mod tests {
     use super::*;
     use crate::game::random::GameRandom;
-    use crate::game::rules::Difficulty;
+    use crate::game::rules::{Difficulty, NUISANCE_FALL_ROWS_PER_SECOND};
     use engine::game::random::Seed;
 
     fn game() -> Game {
@@ -106,6 +112,22 @@ mod tests {
             is_combo: chain > 1,
             detail: ClearDetail { chain, all_clear }.into(),
         }
+    }
+
+    /// nuisance is drawn arriving rather than appearing, which is what a game with a tray of
+    /// it wants; the other two take their hits the instant they are sent and say nothing
+    #[test]
+    fn an_attack_falls_in_rather_than_appearing() {
+        assert_eq!(
+            game().attack_fall_speed(),
+            Some(crate::game::rules::NUISANCE_FALL_ROWS_PER_SECOND)
+        );
+        // the longest fall there is, under a second: quick, and nothing like instant
+        let board_fall = crate::game::board::ROWS as f64 / NUISANCE_FALL_ROWS_PER_SECOND;
+        assert!(
+            (0.6..1.2).contains(&board_fall),
+            "{board_fall}s to cross the board"
+        );
     }
 
     #[test]

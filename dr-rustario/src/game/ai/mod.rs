@@ -28,8 +28,9 @@ pub use models::{DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
 pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 
 /// Which brain an ai player is thinking with. The default is Dr. Mario 64's own deterministic
-/// opponent, ported in [n64]; the neural network is what a `ga dr` run trains, and the linear
-/// scorer is the hand written baseline that training is measured against.
+/// opponent, ported in [n64], which is what every difficulty and the 1-player demo play; the
+/// neural network is what a `ga dr` run trains and is only fielded by the 2-player demo, and
+/// the linear scorer is the hand written baseline that training is measured against.
 #[derive(Clone, Copy, Debug)]
 pub enum DrAiKind {
     N64(N64Ai),

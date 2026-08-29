@@ -17,18 +17,21 @@ two hidden layers deep - sized to their own feature count (Rustris `FeatureNetwo
 1281 weights; Dr. Rustario `BottleFeatureNetwork`: 29 features, 2640), declared by the
 `feature_network!` macro in `engine/src/ai/neural.rs` because the genome conversions belong to
 neither game. Models are embedded as raw weight arrays in each game's
-`ai/models.rs`; Dr. Rustario's are random until a `ga dr auto` run replaces them, which is why
-its opponent and demo play `game/ai/n64/` instead - a port of `aiset.c` from the N64 game's
-decompilation. That is a deterministic scorer: `field.rs` is the bottle in the ai's own 17x8
-`(st, co)` grid, `score.rs` measures the runs the two halves land in, `chain.rs` asks whether
-the placement leaves a chain, `routes.rs` measures how much room the pill has left, `params.rs`
-holds the weights and `mod.rs` picks the skill row and situation column that select them.
+`ai/models.rs`; Dr. Rustario's is `survival_trained()`, which is trained but not yet a good
+enough player to field as a difficulty, so its only outing is as player 1 of the 2-player demo.
+Every difficulty, the 1-player demo and `DrAiKind::default()` play `game/ai/n64/` instead - a
+port of `aiset.c` from the N64 game's decompilation. That is a deterministic scorer: `field.rs` is the
+bottle in the ai's own 17x8 `(st, co)` grid, `score.rs` measures the runs the two halves land
+in, `chain.rs` asks whether the placement leaves a chain, `routes.rs` measures how much room the
+pill has left, `params.rs` holds the weights and `mod.rs` picks the skill row and situation
+column that select them.
 `DrAiAgent` chooses between the two through `DrAiKind`; `ga dr play <seed> <level> <cap>
 <every> <brain>` runs either headless, where a brain is `n64`, `n64:0`..`n64:5`, `neural` or
 `linear`. The six skill rows are the one dial the original has, and `params.rs`'s `SKILL_ORDER`
 ranks them worst to best (measured, not assumed - the rows are personalities, not a ladder):
 that is what Dr. Rustario's four ai difficulties and its 2-player demo pick from, so a harder
-setting is a better player as well as a faster one.
+setting is a better player as well as a faster one. A test in `rules.rs` pins the network to
+that demo, since nothing else would catch a difficulty quietly being handed one.
 
 Training the neural model is three stages, run in order by `ga dr auto` (see the readme's
 *Training Dr. Rustario*): `ai/imitation.rs` teaches a network by gradient descent to rank
@@ -127,12 +130,42 @@ waiting through `Game::pending_attacks`, as its own `CellId`s, and a theme that 
 hanging over them. Dr. Rustario and Rustris both take a hit immediately and have none; Puyo
 Rusto is the game this is for.
 
+Such an attack is also drawn **arriving**: `GameRender::attack_fall_speed` is rows a second,
+`None` on a game whose garbage simply appears, and `animate/nuisance.rs` drops the cells in
+from over the top of the board and holds the game's tick until the last one is down. The rules
+have already put every cell where it comes to rest before the animation exists, so it is only
+where each is *drawn* on the way there and a headless run never plays it at all. A column
+falls as one piece keeping the spacing it lands in - so five rows read as a slab and nothing is
+ever seen appearing in mid-board - with the *bottom* of every column starting one row above the
+board, which means they all enter together and a column landing on an empty well arrives after
+one landing on a full stack. The falling pass is clipped to `BoardGeometry::game_snip`, since a
+theme's board texture may carry a stone lintel or a strip of sky above the top row and an
+attack has to come in over the board's own edge rather than out of the furniture. The speed is
+`rules::NUISANCE_FALL_ROWS_PER_SECOND`, and it is the whole dial there is.
+
+**A defaulted trait method is only heard if `AnyGame` names it.** Every match runs through the
+launcher's wrapper, so a `Game` or `GameRender` method with a default that the wrapper does not
+delegate silently answers the default and the game is never asked - and it costs nothing at
+compile time. `pending_attacks` was one (the tray drew no icons at all), `attack_fall_speed`
+another (nuisance appeared rather than falling), `fall_progress` a third. All three are pinned
+by tests in `launcher/src/games.rs`, since only a test can catch this.
+
+**Nothing in `game/ai/` reads the tray.** `eval.rs`'s `nuisance` weight counts nuisance already
+*on the board*; `pending_nuisance` reaches the search nowhere, so the ai never chains to answer
+an attack and never hurries to cancel before a rock lands. It is why an ai duel looks so
+one-sided - the first big chain decides it and the loser keeps calmly building while a full tray
+empties onto it. The queue itself is right (measured: over a mirror duel both boards fire on the
+same frame and both take the other's 71, and everything received is either down or still
+waiting), and the lopsidedness is the ai and classic offset, not the routing.
+
 Puyo Rusto is being built in phases against [docs/puyo-puyo-plan.md](docs/puyo-puyo-plan.md),
 which is the shared memory for that work - read it before touching the crate. It is on the
-pre-menu and playable by humans on all four of its themes - `genesis` (Dr. Robotnik's Mean Bean
-Machine), `snes` (Kirby's Avalanche), `3ds` (Puyo Puyo Chronicle) and `particle`, in that order,
-which is oldest hardware first the way the other two games order theirs. The three retro themes
-are cut by `puyo-rusto/art/rip_retro.py`, whose sources are not in the repository: it reads each
+pre-menu and playable by humans on all three of its themes - `genesis` (Dr. Robotnik's Mean
+Bean Machine), `snes` (Kirby's Avalanche) and `particle`, in that order, which is oldest
+hardware first the way the other two games order theirs. There was a fourth, `3ds` (Puyo Puyo
+Chronicle); it was dropped on 2026-08-28 - it is modern art in a retro slot, its animations
+would have wanted sprites nobody has cut, and its panel was the tallest of the four, which
+capped the cell size of every theme the game has. The two retro themes are cut by `puyo-rusto/art/rip_retro.py`, whose sources are not in the repository: it reads each
 sheet's own link order off the art rather than being told it, and for `snes` - whose rips carry
 no board, background or font - it renders the SNES's background layers on their own by poking
 `$212C` in a savestate, which is how that theme's panel exists at all.
@@ -186,10 +219,10 @@ came out as. The palette is the *player's*: the left panel draws in the red its 
 in, the right one in white.
 
 **The level is a HUD row on every Puyo theme**, which it never was: `MAX_LEVEL` was there to
-size the digits and nothing drew it. All three source games print it and two of them call it a
+size the digits and nothing drew it. Both source games print it and call it a
 *stage*, and it is the same number the menu offers as the `level` to start on - so it goes in
-the recess under `STAGE` on `snes`, where Mean Bean Machine prints its own on `genesis`, at the
-far end of the score strip on `3ds`, and as a labelled row on the particle theme. Placing it is
+the recess under `STAGE` on `snes`, where Mean Bean Machine prints its own on `genesis`, and as
+a labelled row on the particle theme. Placing it is
 what `theme::data::hud` is for: a retro theme used to map one `MetricSnips` over `HUD_MAX`,
 which is right for one row and draws two on top of each other. `genesis` gets the words
 `SCORE` and `STAGE` back with it, and the two faces the game sets them in. That column's five
@@ -205,16 +238,75 @@ with the red it comes out as. The swap asserts nothing green survives it: that f
 shades, two of them a couple of dozen pixels across the whole row, and a shade left off the
 table lights an edge on three digits and nowhere else.
 
-Chronicle is the odd one out again: it stands both fields on one painted scene rather than
-giving each player a panel, so this theme does too. Its `background.png` is transparent - it is
-written out at all only because the engine sizes a player's side of the window by it - and the
-backdrop is `SceneType::Cover`, which is one picture scaled until it covers the window and
-centred, drawn with linear filtering where every other scene here is a tile that has to keep its
-hard edges. A 3DS top screen is 400x240 and has to hold up at 1080p and beyond, which it gets to
-in two steps: three times in the rip, with Lanczos and a light unsharp, and the rest at draw
-time with `Cover`'s own filter. Three rather than five because the art is painted - all soft
-gradients, no fine detail, so the interpolation has nothing to lose - and 1200x720 is 685 KiB in
-the binary and 3.4 MiB of texture against 1.5 MiB and 8.6 MiB at full size.
+**A Puyo board is thirteen rows and the thirteenth has nothing behind it.** The row above the
+field is played in - a puyo resting up there is still in the game - so it is drawn; but both
+panels are cut *level with the top of their own field* and each board's art stops there too,
+the way a retro Rustris board's frame stops at its skyline and the spawning piece is drawn on
+the backdrop above it. The row is `top_padding`, above the panel and the board alike, so it is
+a cell of bare scene with the panel below it and nothing to either side. Mean Bean Machine's
+course of stone over the well mouth and Kirby's hedge across the top of the screen both go with
+that cut, and on both themes **a point in the padded background is a point on that console's
+screen**. Two other arrangements were built and both were wrong: the row drawn *behind* that
+furniture (a `covered_top` option, since removed), which hid a puyo that mattered as soon as a
+stack reached the top; and the board's own art grown a course higher so the row sat inside it,
+which read as a taller well rather than as room above the board.
+
+**Their scenes are vignettes and were tiles.** Once the row was open, a puyo spawning above the
+board had the same hand-scattered stone behind it that the panel below it is made of, and
+neither plane read as being in front of the other. So each theme now stands on a wash of its
+own backdrop's colour - `rip_retro.py`'s `vignette`, a 96x54 png lifted in the middle and
+falling away to the corners, drawn through `SceneType::Cover`, which scales one picture over
+the window with linear filtering and so is smooth at 4k for a couple of kilobytes. The tiles
+are gone. A flat `Solid` and a dimmed tile were both tried; flat read as flat, and the dimmed
+tile was still the panel's own stone.
+
+**And the panel casts a shadow on it**, which is what lifts it off: `PanelShadow`, declared
+once for both themes in `theme::data::panel_shadow`. It falls **down and to the right only** -
+a light over the panel's top left shoulder - because it grows from its own top left corner
+rather than spreading round the panel: a ring centred on the panel puts a band of shadow along
+its top edge, which is where a spawning pair is the only thing standing on the scene. It is
+cast from the panel and so does *not* move with the hard drop's ricochet, which jolts the
+board inside a panel that stays where it is - as every retro theme here has always done. It is **not** painted into the panel art,
+which is where it would naturally go - a margin round the art comes straight off the board,
+since every theme of a game is drawn at the largest cell all of them can hold and in a two
+player game the panels are sized by the width they have, so eight pixels of margin costs about
+a twentieth of the board. Drawn at composite time (in `ThemeContext::draw_players`, before the
+board, which is the one moment both the board and the panel are still to come) it costs the
+layout nothing and may fall outside the player's own area, which is what a shadow should do.
+Its `skip_top` is the theme's `top_padding`: that band is transparent and is where a pair
+spawns, so it casts nothing - a shadow cast from the whole padded box puts a dark rectangle
+behind the one row that is meant to have nothing behind it.
+
+Bringing the panels down to the field's top cost Kirby its `NEXT` sign, which the game nails
+*above* that edge - so `rip_retro.py` moves it down nine rows. What moves is the whole
+assembly, letters *and* the plank they are nailed to (rows 7 to 31 of the screen): moving any
+less of it leaves a plank sawn through halfway, which is what the first attempt did. The plank
+lands exactly over the game's two name plates - which named one queue per player and had to go
+whichever way - so it covers them outright, and the paint-out and the woodwork that used to
+fill that hole have both gone from the script with them.
+
+Panel height is what sizes the board, since every theme of a game is drawn at the largest cell
+*all* of them can hold, so the tallest panel decides it for the rest. Both retro panels are
+208 source rows and the spawning cell over them makes 224, which is their console's own screen
+height - that took Puyo's cell from 66 pixels to 73, a board 949 pixels tall on a 1080p screen
+where it was 858. What holds it at 73 rather than the 76 the two panels would allow is the
+particle theme, which is built at whatever they can reach and is then the tallest of the three
+itself.
+
+**`genesis` pops the way Mean Bean Machine does**, in four beats over the
+[`DestroyStyle::Pop`] strips in `theme/genesis/animations.png`: the bean sees it coming
+(the surprised face, which is the last frame of the strip at the top of the rip), curls into
+a ball, the ball shrinks, and what is left bursts into droplets over two frames. Every colour
+band on the beans sheet carries all of it - the balls sit under the arrangements, beside the
+halo and wings the same bean wears as an angel - and `rip_retro.py`'s `genesis_animations`
+lays them out one strip per row. A strip's frames are edge to edge because the engine
+addresses one by counting frame widths from the strip's own start; only the rows are spaced.
+The refugee bean has no ball of its own, so it flashes white and shrinks away instead, and -
+alone on the board - it *blinks* where it sits, through a three frame idle strip on a
+`LinearWithPause` that holds its eyes-open frame for two seconds between blinks. Nuisance is
+a `Cell::Garbage` and used to be drawn by the still-sprite path, so the blink also meant
+routing garbage through `draw_stack_cell`; with no idle strip that is the same draw it always
+was, which is every other theme in the repository.
 
 Its place in the vs. playlists is phase 5, and a versus playlist deals the games in
 `GameKind::PLAYLIST_ORDER`, which is a *third* list beside `ALL` (how games are numbered) and

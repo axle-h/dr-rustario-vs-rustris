@@ -36,6 +36,7 @@ impl MatchThemes {
     }
 }
 
+use crate::game::ai::models::survival_trained;
 pub use engine::session::MatchRules;
 
 /// How well and how fast the ai is allowed to play. Every difficulty plays Dr. Mario 64's own
@@ -167,8 +168,10 @@ impl GameConfig {
         match self.ai {
             AiMode::Off => vec![],
             AiMode::Demo => vec![(0, Duration::ZERO, DrAiKind::default())],
+            // the trained network against the best of the N64 ai's rows of weights: the one
+            // place the network plays, since it is not yet good enough to field as a difficulty
             AiMode::VsDemo => vec![
-                (0, Duration::ZERO, DrAiKind::n64_nth_weakest(4)),
+                (0, Duration::ZERO, DrAiKind::Neural(survival_trained())),
                 (1, Duration::ZERO, DrAiKind::n64_nth_weakest(5)),
             ],
             AiMode::Opponent(difficulty) => {
@@ -282,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn the_two_player_demo_puts_two_different_rows_against_each_other() {
+    fn the_two_player_demo_puts_the_network_against_the_best_row() {
         let mut config = GameConfig::default();
         config.set_ai(AiMode::VsDemo);
         let players = config.ai_players();
@@ -293,8 +296,30 @@ mod tests {
         );
         // both at full speed: the demo is a contest of models, not of key rates
         assert!(players.iter().all(|(_, delay, _)| delay.is_zero()));
-        assert_ne!(skill(players[0].2), skill(players[1].2));
-        // and it is the best of them defending player 2, as the hardest difficulty plays
+        // the trained network plays player 1, and this is the only place it plays at all
+        assert!(
+            matches!(players[0].2, DrAiKind::Neural(_)),
+            "{:?}",
+            players[0].2
+        );
+        // and it is the best of the rows defending player 2, as the hardest difficulty plays
         assert_eq!(skill(players[1].2), skill(AiDifficulty::Impossible.brain()));
+    }
+
+    /// The network is not good enough to field as a difficulty yet, so nothing but the 2-player
+    /// demo may hand one out - and [`DrAiKind::default`] is what the 1-player demo takes.
+    #[test]
+    fn nothing_but_the_two_player_demo_plays_the_network() {
+        skill(DrAiKind::default());
+        for difficulty in AiDifficulty::ALL {
+            skill(difficulty.brain());
+        }
+        for mode in [AiMode::Off, AiMode::Demo] {
+            let mut config = GameConfig::default();
+            config.set_ai(mode);
+            for (_, _, brain) in config.ai_players() {
+                skill(brain);
+            }
+        }
     }
 }

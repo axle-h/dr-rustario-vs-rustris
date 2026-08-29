@@ -244,7 +244,7 @@ mod tests {
     fn the_themes_are_listed_oldest_first_and_the_modern_one_is_called_particle() {
         assert_eq!(
             MatchThemes::names(),
-            vec!["all", "genesis", "snes", "3ds", "particle"]
+            vec!["all", "genesis", "snes", "particle"]
         );
     }
 

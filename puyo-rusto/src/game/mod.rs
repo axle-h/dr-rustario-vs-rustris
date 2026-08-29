@@ -1261,6 +1261,58 @@ mod tests {
         }
     }
 
+    /// Two players firing on the same frame both get hit.
+    ///
+    /// The one thing the match screen's ordering guarantees is that every board is updated
+    /// before any attack of that frame is delivered, so a chain resolves against the tray as
+    /// it stood when the chain started - which means neither of two simultaneous chains
+    /// offsets the other, and both trays fill. Get that backwards and whichever player
+    /// happened to be stepped first would cancel the other's attack with a chain that was
+    /// already over.
+    #[test]
+    fn two_chains_fired_on_the_same_frame_both_land() {
+        let staircase = [
+            "g.....", "g.....", "g.....", "b.....", "b.....", "b.....", "r.....", "r.....",
+            "rg....", "rb....",
+        ];
+        let mut games = [game_with(&staircase), game_with(&staircase)];
+        let mut fired = [0u32; 2];
+        let mut frames_with_both = 0;
+
+        for _ in 0..2000 {
+            // every board steps, and only then is anything delivered - the match screen
+            // collects a frame's events from all players before it routes any of them
+            let mut routed = vec![];
+            for (player, game) in games.iter_mut().enumerate() {
+                game.update(STEP);
+                for strength in attacks(&game.drain_events()) {
+                    fired[player] += strength;
+                    routed.push((1 - player, strength));
+                }
+            }
+            if routed.len() > 1 {
+                frames_with_both += 1;
+            }
+            for (victim, strength) in routed {
+                games[victim].receive_attack(Attack::new(GAME_ID, strength));
+            }
+            if fired[0] > 0 && fired[1] > 0 {
+                break;
+            }
+        }
+
+        assert_eq!(
+            frames_with_both, 1,
+            "the two identical boards fired together"
+        );
+        assert_eq!(fired, [14, 14], "and neither chain was spent cancelling");
+        assert_eq!(
+            [games[0].pending_nuisance(), games[1].pending_nuisance()],
+            [14, 14],
+            "both trays took the other's attack, and it waits there for an answer"
+        );
+    }
+
     /// A worked three chain, end to end, against the total Puyo Nexus publishes for a chain
     /// made entirely of four-puyo links: 40 + 320 + 640 = 1000 points, which buys 14 nuisance.
     ///

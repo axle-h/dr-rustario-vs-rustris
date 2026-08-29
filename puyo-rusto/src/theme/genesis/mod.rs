@@ -12,20 +12,21 @@
 //! together and the theme is drawn at whatever size the window allows.
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
-use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
+use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, previews, Sounds, CLEAR_CLASSES};
+use crate::theme::data::{audio, cells, panel_shadow, previews, Sounds, CLEAR_CLASSES};
 use crate::theme::GAME_MUSIC_TRACKS;
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
 use engine::config::Config;
-use engine::game::MetricKind;
+use engine::game::{CellId, MetricKind};
+use engine::render::animation::AnimationSpriteSheetData;
 use engine::render::font::{FontRenderOptions, FontThemeOptions, MetricSnips, ThemedNumeric};
 use engine::render::geometry::BoardGeometry;
 use engine::render::retro::{retro_theme, RetroThemeOptions};
 use engine::render::scene::SceneType;
-use engine::render::sprite_sheet::{BlockSpriteSheetData, GhostStyle};
+use engine::render::sprite_sheet::{BlockSpriteSheetData, CellAnimationData, GhostStyle};
 use engine::render::{PeekLayout, PendingLayout, Theme};
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
@@ -36,8 +37,13 @@ use std::time::Duration;
 mod sprites {
     pub const SPRITES: &[u8] = include_bytes!("sprites.png");
     pub const BACKGROUND: &[u8] = include_bytes!("background.png");
-    pub const BACKGROUND_TILE: &[u8] = include_bytes!("background-tile.png");
     pub const BOARD: &[u8] = include_bytes!("board.png");
+    /// the wash the panels stand on, cut by `rip_retro.py`'s `vignette`
+    pub const SCENE: &[u8] = include_bytes!("scene.png");
+    /// every strip that plays over a cell: a pop per colour, the refugee bean's pop, and
+    /// the refugee bean's blink - one strip per row, cut by `rip_retro.py`'s
+    /// `genesis_animations`
+    pub const ANIMATIONS: &[u8] = include_bytes!("animations.png");
     /// the bold face, in the first player's red - what the game sets its score in
     pub const FONT: &[u8] = include_bytes!("font.png");
     /// ... and the plain white one it prints its stage number in, which is smaller
@@ -112,20 +118,29 @@ const PITCH: i32 = SRC_BLOCK_SIZE as i32 + 2 * PAD;
 /// the row under the five colours, holding the refugee bean and the tray's three symbols
 const EXTRAS_ROW: i32 = PuyoColor::N as i32;
 
-/// The panel is cut at the well's top edge rather than the screen's, so the thirteenth row
-/// has somewhere to float: `top_padding` puts exactly one transparent cell above everything
-/// and the board frame starts under it.
+/// The transparent cell above everything, which is the row a pair spawns in.
+///
+/// A bean resting up there is still in the game, so it is drawn - but nothing is drawn behind
+/// it. The panel is cut level with the top of the well and the board art stops there too, the
+/// way a retro Rustris board's frame stops at its skyline, so the spawning row is a cell of
+/// scene with the panel below it and nothing to either side. Mean Bean Machine's course of
+/// stone over the well mouth goes with that cut. Two other arrangements were built and both
+/// were wrong: the row drawn *behind* that stone, which hid a bean that mattered as soon as a
+/// stack reached the top; and the well grown a course higher so the row sat inside it, which
+/// read as a taller well rather than as room above the board.
 const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 
-/// where the well sits in the panel, which is where it sits on the Genesis screen less the
-/// sixteen rows cut off the top. Not a `Point` constant: `sdl2::rect::Point::new` is not
-/// `const`, and every other theme in the repository builds its points at the call site too.
-const WELL: (i32, i32) = (16, 0);
+/// The board within the padded panel, which is the well with [`TOP_PADDING`] over it.
+///
+/// The panel is cut at the well's top edge and the padding puts exactly that much back, so
+/// **a point in the padded background is a point on the Genesis screen**. Not a `Point`
+/// constant: `sdl2::rect::Point::new` is not `const`, and every other theme in the repository
+/// builds its points at the call site too.
+const BOARD: (i32, i32, u32, u32) = (16, 0, COLUMNS * SRC_BLOCK_SIZE, ROWS * SRC_BLOCK_SIZE);
 
-/// The panel is cut at the well's top edge and [`TOP_PADDING`] puts exactly that much back,
-/// so **a point in the padded background is a point on the Genesis screen**. Every
-/// coordinate below is one, measured off `rip_retro.py`'s own reading of the frame plane -
-/// the boxes the game left empty are holes in it, and their rects are exact.
+/// Every coordinate below is a point on the Genesis screen, measured off `rip_retro.py`'s own
+/// reading of the frame plane - the boxes the game left empty are holes in it, and their rects
+/// are exact.
 ///
 /// The two 32x48 boxes under `NEXT`. Mean Bean Machine fills the left one with the player's
 /// next pair and the right one with the opponent's, but a panel here belongs to one player,
@@ -149,12 +164,32 @@ const SCORE_AT: (i32, i32) = (128, 176);
 /// in the plain face it sets that number in rather than the bold one it scores in.
 const LEVEL_AT: (i32, i32) = (184, 80);
 
-/// how long the beans hold before they go. Under [`crate::game::rules::POP_DELAY`], so a
-/// chain step never waits on the animation - the same bound the particle theme keeps.
-const POP_HOLD: Duration = Duration::from_millis(200);
+/// How long a bean takes to go, over the [`POP_FRAMES`] of its strip. Under
+/// [`crate::game::rules::POP_DELAY`], so a chain step never waits on the animation - the
+/// same bound the particle theme keeps.
+const POP_HOLD: Duration = Duration::from_millis(240);
 
-/// the dungeon wall the boards stand against, read off the board art
-const WALL: Color = Color::RGB(0x42, 0x45, 0x00);
+/// the frames of one pop: the bean sees it coming, curls into a ball, the ball shrinks, and
+/// what is left bursts into droplets over two frames. `rip_retro.py` cuts every strip on the
+/// sheet to this many, so one number covers the beans and the refugee bean alike.
+const POP_FRAMES: usize = 5;
+
+/// The refugee bean's blink, which is the sheet's shrunken one between two of the still one.
+/// It holds still far longer than it blinks, which is what the pause is: the strip runs
+/// once, waits on its last frame - the bean with its eyes open - and starts again.
+const BLINK_FRAMES: usize = 3;
+const BLINK_FPS: u32 = 6;
+const BLINK_EVERY: Duration = Duration::from_millis(2000);
+
+/// What the panels stand on: the dungeon wall's own colour, flat.
+///
+/// The wall is *tiled* on the Genesis, and this theme tiled it too until the board opened at
+/// the top - at which point the spawning row was a bean floating on the same hand scattered
+/// stone the panel beside it is made of, and neither read as being in front of the other. So
+/// the scene is the wall's mean colour at half its brightness: the same wall, unlit and
+/// without its texture, which leaves the panel the only stone on the screen and the board
+/// floating on it.
+const WALL: Color = Color::RGB(0x26, 0x2c, 0x16);
 
 fn block(col: i32, row: i32) -> Point {
     Point::new(PAD + PITCH * col, PAD + PITCH * row)
@@ -170,6 +205,59 @@ fn puyo(_: PuyoSkin, color: PuyoColor, links: LinkMask) -> Point {
     block(links.bits() as i32, color as i32)
 }
 
+/// A strip on the animation sheet: `frames` cells edge to edge, `row` rows down.
+///
+/// The rows are spaced by [`ANIM_ROW_GAP`] and the frames are not, which is the engine's
+/// arrangement rather than a choice: it addresses a frame by counting frame widths from the
+/// strip's own start, so a strip has to be contiguous and only the rows can be given air.
+const ANIM_ROW_GAP: u32 = 4;
+
+fn strip(row: u32, frames: u32) -> AnimationSpriteSheetData {
+    AnimationSpriteSheetData::non_exclusive_linear(
+        sprites::ANIMATIONS,
+        Point::new(0, ((SRC_BLOCK_SIZE + ANIM_ROW_GAP) * row) as i32),
+        frames,
+        SRC_BLOCK_SIZE,
+        SRC_BLOCK_SIZE,
+    )
+}
+
+/// What plays over a cell: every bean of a colour pops through that colour's own strip, and
+/// the refugee bean both pops and - alone among them - blinks where it sits.
+///
+/// A bean is keyed by colour, link mask *and* skin, and the retro themes draw one set of art
+/// for every skin, so a colour's strip is claimed by all sixteen masks of it in each of the
+/// [`PuyoSkin::COUNT`] slots.
+fn animations() -> Vec<(Vec<CellId>, CellAnimationData)> {
+    let mut out = vec![];
+    for (row, color) in PuyoColor::ALL.into_iter().enumerate() {
+        let ids = PuyoSkin::all()
+            .flat_map(|skin| {
+                (0..LinkMask::COUNT as u8)
+                    .map(move |bits| PuyoCell::puyo(color, LinkMask::from_bits(bits)).id(skin))
+            })
+            .collect();
+        out.push((
+            ids,
+            CellAnimationData {
+                idle: None,
+                pop: Some(strip(row as u32, POP_FRAMES as u32)),
+            },
+        ));
+    }
+    let nuisance = PuyoSkin::all()
+        .map(|skin| PuyoCell::Nuisance.id(skin))
+        .collect();
+    out.push((
+        nuisance,
+        CellAnimationData {
+            idle: Some(strip(PuyoColor::N as u32 + 1, BLINK_FRAMES as u32)),
+            pop: Some(strip(PuyoColor::N as u32, POP_FRAMES as u32)),
+        },
+    ));
+    out
+}
+
 pub fn genesis_theme<'a>(
     canvas: &mut WindowCanvas,
     texture_creator: &'a TextureCreator<WindowContext>,
@@ -177,8 +265,8 @@ pub fn genesis_theme<'a>(
 ) -> Result<Theme<'a>, String> {
     let options = RetroThemeOptions {
         name: "genesis",
-        scenes: vec![SceneType::Tile {
-            texture: sprites::BACKGROUND_TILE,
+        scenes: vec![SceneType::Cover {
+            texture: sprites::SCENE,
         }],
         sprites: BlockSpriteSheetData {
             file: sprites::SPRITES,
@@ -195,13 +283,13 @@ pub fn genesis_theme<'a>(
                     ]
                 },
             ),
-            animations: vec![],
+            animations: animations(),
             ghost_alpha: 0x60,
             previews: previews(),
             mascot: None,
         },
-        // every row is drawn, the hidden thirteenth included, so `visible_rows` is ROWS and
-        // the buffer floats above the frame in `top_padding`
+        // every row is drawn, the spawning thirteenth included, so `visible_rows` is ROWS
+        // and the well is cut that many rows tall
         geometry: BoardGeometry::new(SRC_BLOCK_SIZE, 0, (0, 0), COLUMNS, ROWS, ROWS),
         audio: audio(
             config.audio,
@@ -243,7 +331,10 @@ pub fn genesis_theme<'a>(
         board_alpha: 0xff,
         board_snips: vec![],
         top_padding: TOP_PADDING,
-        board_point: Point::new(WELL.0, WELL.1),
+        // ... and the panel casts on it, which is what lifts it off the wash. Down and to
+        // the right, because that is where every shadow in this compendium falls.
+        shadow: Some(panel_shadow(TOP_PADDING)),
+        board_point: Point::new(BOARD.0, BOARD.1),
         background_file: sprites::BACKGROUND,
         background_color: WALL,
         // Mean Bean Machine ends a match on its cutscenes rather than on a card over the
@@ -289,8 +380,15 @@ pub fn genesis_theme<'a>(
         mascot: None,
         mascot_animations: None,
         spawn_arc: None,
-        cell_idle_type: FrameAnimationType::Static,
-        destroy_style: Some(DestroyStyle::Vanish { hold: POP_HOLD }),
+        // the refugee bean's blink, and nothing else on this theme idles: the strip runs
+        // once and then holds its last frame - the bean with its eyes open - for as long as
+        // the pause, which is what makes a blink a blink rather than a flicker
+        cell_idle_type: FrameAnimationType::LinearWithPause {
+            fps: BLINK_FPS,
+            pause_for: BLINK_EVERY,
+            resume_from_frame: 0,
+        },
+        destroy_style: Some(DestroyStyle::pop(POP_FRAMES).for_duration(POP_HOLD)),
         game_over_style: Some(GameOverStyle::Curtain {
             from_top: false,
             rows: VISIBLE_ROWS,
@@ -323,55 +421,61 @@ mod tests {
         assert_eq!(height, (PITCH * (EXTRAS_ROW + 1)) as u32);
     }
 
-    /// the panel has to be exactly as tall as the twelve played rows plus whatever furniture
-    /// stands under them, and the well has to start at its top left corner - the thirteenth
-    /// row lives in `top_padding` above it and nowhere else
+    /// The well has to fill the panel from its own top, with the panel's floor under it.
     ///
-    /// The row under the well is the point. The sheet keeps the screen as the two planes the
-    /// Genesis drew it on and the well's *floor* is on the front one, so a panel cut from the
-    /// back plane alone had open well where the floor should be and the last row of beans
-    /// looked like it had stopped short. One cell, and it is what the panel is one cell
-    /// taller than the well for.
+    /// Both ends are the point. The sheet keeps the screen as the two planes the Genesis drew
+    /// it on and the well's *floor* is on the front one, so a panel cut from the back plane
+    /// alone had open well where the floor should be and the last row of beans looked like it
+    /// had stopped a row short. And the panel is cut level with the top of the well, so that
+    /// the spawning row - [`TOP_PADDING`], above the panel and the board alike - has the
+    /// scene behind it and nothing to either side.
     #[test]
     fn the_well_fills_the_panel_from_its_own_top() {
         let (width, height) = png_size(sprites::BACKGROUND);
         let (board_width, board_height) = png_size(sprites::BOARD);
         assert_eq!(board_width, COLUMNS * SRC_BLOCK_SIZE);
         assert_eq!(board_height, VISIBLE_ROWS * SRC_BLOCK_SIZE);
-        assert!(WELL.0 as u32 + board_width <= width);
+        assert_eq!(BOARD.2, board_width);
         assert_eq!(
-            WELL.1 as u32 + board_height + SRC_BLOCK_SIZE,
+            BOARD.3,
+            board_height + TOP_PADDING,
+            "the board is the well with the spawning row over it"
+        );
+        assert!(BOARD.0 as u32 + BOARD.2 <= width);
+        assert_eq!(
+            BOARD.1, 0,
+            "the padded board starts at the top of the padded panel"
+        );
+        assert_eq!(
+            board_height + SRC_BLOCK_SIZE,
             height,
             "the panel has to carry the well's floor under it"
         );
-        assert_eq!(TOP_PADDING, SRC_BLOCK_SIZE);
+        assert_eq!(TOP_PADDING, SRC_BLOCK_SIZE * HIDDEN_ROWS);
     }
 
-    /// the boxes are holes in the frame plane and their rects are `rip_retro.py`'s reading of
-    /// it, so what this can check is that what goes in them fits and lands on the panel
+    /// Every strip on the animation sheet is addressed by counting frames from its own
+    /// start, so a sheet a row short or a frame narrow draws another strip's art rather than
+    /// failing. One row per colour, then the refugee bean's pop and its blink.
     #[test]
-    fn everything_the_panel_is_told_to_draw_lands_on_it() {
-        let (width, height) = png_size(sprites::BACKGROUND);
-        let panel = |x: i32, y: i32, w: u32, h: u32| {
-            assert!(x >= 0 && y >= 0);
-            assert!(x as u32 + w <= width, "{x}+{w} runs off the panel");
-            assert!(
-                y as u32 + h <= height + TOP_PADDING,
-                "{y}+{h} runs off the panel"
-            );
-        };
-        for (x, y) in NEXT_BOXES {
-            panel(
-                x + NEXT_PAIR.0,
-                y + NEXT_PAIR.1,
-                SRC_BLOCK_SIZE,
-                SRC_BLOCK_SIZE * 2,
-            );
-        }
-        panel(MUGSHOT.0, MUGSHOT.1, MUGSHOT.2, MUGSHOT.3);
-        panel(SCORE_AT.0, SCORE_AT.1, 0, 0);
-        // and the tray fills the mugshot box across, one whole cell per icon
-        assert_eq!(MUGSHOT.2 % SRC_BLOCK_SIZE, 0);
+    fn every_strip_is_where_the_theme_counts_it() {
+        let (width, height) = png_size(sprites::ANIMATIONS);
+        assert_eq!(width, SRC_BLOCK_SIZE * POP_FRAMES as u32);
+        let rows = PuyoColor::N as u32 + 2;
+        assert_eq!(height, (SRC_BLOCK_SIZE + ANIM_ROW_GAP) * rows);
+        assert!(
+            BLINK_FRAMES <= POP_FRAMES,
+            "the blink shares the sheet's width"
+        );
+        // ... and every cell the board can draw claims one of them
+        let strips = animations();
+        assert_eq!(strips.len(), PuyoColor::N + 1);
+        let keyed: usize = strips.iter().map(|(ids, _)| ids.len()).sum();
+        assert_eq!(
+            keyed,
+            PuyoSkin::COUNT * (PuyoColor::N * LinkMask::COUNT + 1),
+            "every puyo and every nuisance, in every skin slot"
+        );
     }
 
     /// `numeric_sprites` divides the sheet by ten and takes its whole height, so a font that

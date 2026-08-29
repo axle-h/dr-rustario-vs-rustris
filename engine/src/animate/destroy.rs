@@ -14,6 +14,8 @@ pub enum DestroyStyle {
     Pop {
         default_frames: usize,
         frames: HashMap<CellId, usize>,
+        /// how long the whole strip takes, and so how long the game is held
+        duration: Duration,
     },
     /// the cleared cells flash on and off
     Flash,
@@ -28,7 +30,18 @@ impl DestroyStyle {
         Self::Pop {
             default_frames,
             frames: HashMap::new(),
+            duration: POP_DURATION,
         }
+    }
+
+    /// how long the strip takes. The game does not tick while a clear plays, so a theme whose
+    /// game already waits on a clear of its own sets this under that wait and costs it
+    /// nothing; left alone it is three hundred milliseconds.
+    pub fn for_duration(mut self, wanted: Duration) -> Self {
+        if let DestroyStyle::Pop { duration, .. } = &mut self {
+            *duration = wanted;
+        }
+        self
     }
 
     pub fn with_pop_frames(mut self, id: CellId, count: usize) -> Self {
@@ -40,7 +53,7 @@ impl DestroyStyle {
 
     fn duration(&self) -> Duration {
         match self {
-            DestroyStyle::Pop { .. } => POP_DURATION,
+            DestroyStyle::Pop { duration, .. } => *duration,
             DestroyStyle::Flash => FLASH_DURATION * MAX_FLASHES,
             DestroyStyle::Sweep => SWEEP_DURATION,
             DestroyStyle::Vanish { hold } => *hold,
@@ -52,6 +65,7 @@ impl DestroyStyle {
             DestroyStyle::Pop {
                 default_frames,
                 frames,
+                ..
             } => frames.get(&id).copied().unwrap_or(*default_frames).max(1),
             _ => 1,
         }
@@ -113,7 +127,7 @@ impl DestroyAnimation {
     pub fn pop_frame(&self, id: CellId) -> Option<usize> {
         let state = self.state.as_ref()?;
         let frames = self.style.pop_frames(id);
-        let frame_duration = POP_DURATION / frames as u32;
+        let frame_duration = self.style.duration() / frames as u32;
         Some((state.duration.as_millis() / frame_duration.as_millis().max(1)) as usize % frames)
     }
 

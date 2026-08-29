@@ -582,7 +582,13 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                 (Some(player), GameEvent::SpeedUp) => {
                     field_events.push(FieldEvent::SpeedUp { player });
                 }
-                (Some(player), GameEvent::AttackReceived { .. }) => {
+                (Some(player), GameEvent::AttackReceived { cells }) => {
+                    // a game that holds its attacks in a tray shows them arriving: the rules
+                    // have already put them where they land, so this is only the fall, and it
+                    // holds the board until the last of them is down
+                    if let Some(speed) = fixture.player(player).game().attack_fall_speed() {
+                        themes.animate_nuisance(player, &cells, speed);
+                    }
                     field_events.push(FieldEvent::AttackReceived { player });
                 }
                 (Some(player), GameEvent::NextTheme) => {

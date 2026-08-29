@@ -3,8 +3,9 @@
 
 use crate::particles::color::ParticleColor;
 use crate::particles::field::context::SceneContext;
+use crate::particles::field::{field_rng, FieldRng};
 use crate::particles::geometry::Vec2D;
-use rand::{rng, rngs::ThreadRng, RngExt};
+use rand::RngExt;
 
 /// how far the wandering hue may stray from the palette it was seeded from
 const HUE_RANGE: f64 = 26.0;
@@ -32,11 +33,11 @@ pub struct ColorDriver {
     /// where the palette ring is being read from, so colour drifts through the field
     phase: f64,
     danger: f64,
-    rng: ThreadRng,
+    rng: FieldRng,
 }
 
 impl ColorDriver {
-    pub fn new() -> Self {
+    pub fn new(rng: FieldRng) -> Self {
         Self {
             hue: 0.0,
             hue_velocity: 0.0,
@@ -44,7 +45,7 @@ impl ColorDriver {
             energy: 0.0,
             phase: 0.0,
             danger: 0.0,
-            rng: rng(),
+            rng,
         }
     }
 
@@ -116,6 +117,6 @@ impl ColorDriver {
 
 impl Default for ColorDriver {
     fn default() -> Self {
-        Self::new()
+        Self::new(field_rng())
     }
 }

@@ -440,6 +440,8 @@ pub fn modern_theme<'a>(
         board_bg_snip,
         background_size,
         background_color: Color::BLACK,
+        // the particle theme's board has a field behind it, not a scene to lift off
+        shadow: None,
         mascot: mascot_layout,
         animation_meta,
         match_end: Some(MatchEndSprites {
