@@ -10,7 +10,7 @@ build = "build.rs"
 # `cargo vcpkg build --manifest-path launcher/Cargo.toml`.
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
-tag = "2024.10.21"
+tag = "2026.07.29"
 dependencies = ["sdl2"]
 
 [package.metadata.vcpkg.target]
