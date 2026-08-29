@@ -99,7 +99,9 @@ const SCORE_AT: (i32, i32) = (104, 207);
 /// ... and where it prints its stage number, in the recess: one cell, right aligned in it
 const LEVEL_AT: (i32, i32) = (STAGE_BOX.0 + STAGE_BOX.2 as i32, STAGE_BOX.1);
 
-/// how long a group holds before it goes, under [`crate::game::rules::POP_DELAY`]
+/// How long a group holds before it goes. It **adds** to
+/// [`crate::game::rules::POP_DELAY`] rather than fitting inside it: the match screen skips
+/// `game.update` outright while an animation blocks the tick.
 const POP_HOLD: Duration = Duration::from_millis(200);
 
 /// What the panels stand on: the canopy's own colour, flat.
@@ -233,6 +235,9 @@ pub fn snes_theme<'a>(
         curtain_cell: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
+        pop_debris: None,
+        nuisance_rumble: None,
+        attack_ball: None,
     };
     retro_theme(canvas, texture_creator, options)
 }

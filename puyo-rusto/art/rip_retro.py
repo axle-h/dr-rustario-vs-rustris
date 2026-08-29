@@ -382,13 +382,18 @@ GENESIS_COLOR_BANDS = {
 }
 GENESIS_IDLE_FRAME = 1
 
-# the refugee bean, which is this game's nuisance puyo, and the two mono versions beside it.
-# Mean Bean Machine has no tray to draw - an attack lands the moment it is sent - so the
-# three tray symbols are the refugee at three weights rather than three sprites the game
-# ever drew: the little one for a single, the bean itself for six, and the black and white
-# one for a rock of thirty.
+# the refugee bean, which is this game's nuisance puyo
 GENESIS_REFUGEE = (627, 32)
-GENESIS_TRAY = [(665, 32), (627, 32), (627, 50)]
+
+# The three tray symbols, smallest first: one nuisance, six, and a rock of thirty.
+#
+# The first two are **measured off the emulated game**, not chosen: at the top of a board the
+# tray draws the little eyeless blob for singles (12x9 on the sheet) and the black bean with
+# the white outline for rows of six (14x12). The rip carries no third symbol at all, and the
+# capture never showed one - so the rock borrows the white-outlined bean, which is the only
+# other refugee on the sheet and at least reads as heavier. Alex has seen a **red** one in
+# the game; if a rip of it turns up, this is the line to change.
+GENESIS_TRAY = [(665, 32), (627, 50), (646, 50)]
 
 # The pop, which Mean Bean Machine plays in four beats: the bean sees it coming, curls into a
 # ball, the ball shrinks, and what is left bursts into droplets. Every colour band carries all
@@ -401,14 +406,14 @@ GENESIS_BALL = (19, 157, 16)
 GENESIS_SMALL_BALL = (19, 147, 8)
 GENESIS_DROPLET = (29, 147, 8)
 
-# how far from the middle of the cell the four droplets have flown, one distance per frame.
-# They are cut to their own ink first and placed by their centres, so the burst stays inside
-# the cell it came out of and no droplet is drawn half off it.
-GENESIS_DROPLET_SPREAD = (3, 5)
-
-# the frames of one pop, which is what `DestroyStyle::Pop` counts. Every strip on the sheet is
-# this many so a theme can name one number for all of them
-GENESIS_POP_FRAMES = 5
+# the frames of one pop, which is what `DestroyStyle::Pop` counts, and the widest strip on
+# the sheet - so it is also the sheet's own width.
+#
+# Three, not five: the bean pulls a face, curls into a ball and the ball shrinks, and then
+# there is nothing of it left. The two frames that used to follow drew four droplets *inside*
+# the cell at two spreads, which is as far as a sprite can throw anything; they are now
+# thrown as debris instead and leave the cell, the board and the panel behind them.
+GENESIS_POP_FRAMES = 3
 
 # The refugee bean blinks where the beans wriggle: the sheet carries it shrunken and eyeless
 # beside the one with its eyes open, which is the whole of the animation. It is the same art
@@ -417,6 +422,42 @@ GENESIS_POP_FRAMES = 5
 GENESIS_REFUGEE_SMALL = (665, 32)
 # ... and the white-outlined refugee, which is what it flashes to on its way out
 GENESIS_REFUGEE_FLASH = (646, 50)
+
+# The squash a bean plays where it lands, which every colour band carries as its own pair on
+# a row of its own: a **flat** bean and a **tall** one, drawn nowhere else on the sheet and
+# used for nothing else. That is the whole of the landing bounce - the bean hits and
+# compresses, springs back past its own height, and the strip runs out into the still sprite
+# it was going to draw anyway. `(dx, y)` along the colour's band, as everything here is.
+#
+# It is deliberately *not* the top strip's middle frames, which look like a squash and are
+# not: those are the faces the bean pulls on its way out, and belong to the pop.
+GENESIS_SQUASH = (0, 70)
+GENESIS_STRETCH = (19, 70)
+
+# the refugee bean's own squash - the flat eyeless one beside it - which is the same art the
+# blink shuts its eyes with. It has no stretch, so it settles straight back instead.
+GENESIS_REFUGEE_SQUASH = (665, 32)
+
+# how many frames a landing takes. Two, and short: a squash that outstays a landing reads as
+# a puyo drawn wrong rather than as a bounce.
+GENESIS_BOUNCE_FRAMES = 2
+
+# One droplet on its own, centred in a cell: what a bean throws off as it bursts, and the
+# only frame of that. The strip drew four of them at two spreads *inside* the cell they came
+# from, which is as far as a sprite can go; thrown as debris one is drawn over and over and
+# leaves the cell, the board and the panel, which is what the game does with them.
+GENESIS_DEBRIS_FRAMES = 1
+
+# The ball an attack crosses the screen as, which is a sprite of its own and not a puyo: a
+# white core inside a coloured rim, 22x20 for a big attack and 16x16 for a small one, in the
+# **sending player's** palette - red for player one, blue for player two, the same rule the
+# score font follows. They sit on the sheet's own teal backdrop rather than on a green matte,
+# below the refugee bean.
+#
+# Cut into cells of [`GENESIS_BALL_CELL`] - the big one is wider than a bean - laid out as
+# one strip: player one big, player one small, player two big, player two small.
+GENESIS_ATTACK_BALLS = [(624, 98, 22, 20), (659, 101, 16, 16), (624, 134, 22, 20), (659, 137, 16, 16)]
+GENESIS_BALL_CELL = 24
 
 # the animation sheet's own grid. The frames of a strip have to be edge to edge - the engine
 # addresses one by counting frame widths from its start - so only the rows are spaced out.
@@ -552,27 +593,13 @@ def genesis_cell(beans, box, size, transparent):
     return cell
 
 
-def genesis_burst(beans, band, spread, transparent):
-    """the four droplets a bean bursts into, this far out from the middle of its cell"""
-    dx, y, size = GENESIS_DROPLET
-    droplet = keyed(beans, (band + dx, y), size, transparent)
-    droplet = droplet.crop(droplet.getbbox())
-    cell = Image.new("RGBA", (GENESIS_BLOCK, GENESIS_BLOCK), (0, 0, 0, 0))
-    middle = GENESIS_BLOCK // 2
-    for ox in (-spread, spread):
-        for oy in (-spread, spread):
-            cell.alpha_composite(
-                droplet,
-                (
-                    middle + ox - droplet.width // 2,
-                    middle + oy - droplet.height // 2,
-                ),
-            )
-    return cell
-
-
 def genesis_animations(beans, transparent):
-    """the pop of each colour, the refugee bean's pop, and the refugee bean's blink.
+    """the pop of each colour, the refugee bean's pop and blink, and every landing squash.
+
+    The rows are laid out in the order `theme/genesis/mod.rs` counts them - the pops, the
+    refugee's pop, its blink, then the squashes - and that file is the only other place the
+    order is written down, so a row moved here and not there draws another strip's art
+    rather than failing.
 
     One strip per row, every frame a whole cell, laid out for
     `AnimationSpriteSheetData::non_exclusive_linear` - which counts frame widths from a
@@ -591,11 +618,8 @@ def genesis_animations(beans, transparent):
                 cut((band + sx, sy), ssize),
                 cut((band + bx, by), bsize),
                 cut((band + mx, my), msize),
-                genesis_burst(beans, band, GENESIS_DROPLET_SPREAD[0], transparent),
-                genesis_burst(beans, band, GENESIS_DROPLET_SPREAD[1], transparent),
             ]
         )
-    blank = Image.new("RGBA", (GENESIS_BLOCK, GENESIS_BLOCK), (0, 0, 0, 0))
     # the refugee bean has no ball and no droplets of its own on the sheet - it flashes white
     # and shrinks away, which is the art it does have
     strips.append(
@@ -603,8 +627,6 @@ def genesis_animations(beans, transparent):
             cut(GENESIS_REFUGEE, GENESIS_BLOCK),
             cut(GENESIS_REFUGEE_FLASH, GENESIS_BLOCK),
             cut(GENESIS_REFUGEE_SMALL, GENESIS_BLOCK),
-            blank,
-            blank,
         ]
     )
     # ... and its blink, which is the same shrunken bean between two of the still one
@@ -615,6 +637,29 @@ def genesis_animations(beans, transparent):
             cut(GENESIS_REFUGEE, GENESIS_BLOCK),
         ]
     )
+    # the landing squash, one row per colour and then the refugee's
+    for color in COLORS:
+        band = GENESIS_COLOR_BANDS[color]
+        sqx, sqy = GENESIS_SQUASH
+        stx, sty = GENESIS_STRETCH
+        strips.append(
+            [
+                cut((band + sqx, sqy), GENESIS_BLOCK),
+                cut((band + stx, sty), GENESIS_BLOCK),
+            ]
+        )
+    strips.append(
+        [
+            cut(GENESIS_REFUGEE_SQUASH, GENESIS_BLOCK),
+            cut(GENESIS_REFUGEE, GENESIS_BLOCK),
+        ]
+    )
+    # one droplet per colour, centred, and the refugee bean's - which has none of its own on
+    # the sheet, so it throws the little mono one it flashes to instead
+    dx, dy, dsize = GENESIS_DROPLET
+    for color in COLORS:
+        strips.append([cut((GENESIS_COLOR_BANDS[color] + dx, dy), dsize)])
+    strips.append([cut(GENESIS_REFUGEE_SMALL, GENESIS_BLOCK)])
     pitch = GENESIS_BLOCK + GENESIS_ANIM_ROW_GAP
     out = Image.new(
         "RGBA",
@@ -624,6 +669,32 @@ def genesis_animations(beans, transparent):
     for row, strip in enumerate(strips):
         for frame, cell in enumerate(strip):
             out.paste(cell, (GENESIS_BLOCK * frame, pitch * row))
+    return out
+
+
+def genesis_attack_balls(beans):
+    """the four attack balls, each centred in its own [`GENESIS_BALL_CELL`] cell.
+
+    They are keyed on the sheet's teal backdrop rather than on the green matte the beans sit
+    on, so they are cut against that instead of through `keyed`.
+    """
+    teal = beans.getpixel((2, 2))[:3]
+    out = Image.new(
+        "RGBA", (GENESIS_BALL_CELL * len(GENESIS_ATTACK_BALLS), GENESIS_BALL_CELL), (0, 0, 0, 0)
+    )
+    for i, (x, y, w, h) in enumerate(GENESIS_ATTACK_BALLS):
+        tile = beans.crop((x, y, x + w, y + h)).convert("RGBA")
+        px = np.array(tile)
+        px[:, :, 3] = np.where(
+            np.abs(px[:, :, :3].astype(int) - np.array(teal)).sum(axis=2) < 30, 0, 255
+        )
+        out.paste(
+            Image.fromarray(px),
+            (
+                GENESIS_BALL_CELL * i + (GENESIS_BALL_CELL - w) // 2,
+                (GENESIS_BALL_CELL - h) // 2,
+            ),
+        )
     return out
 
 
@@ -678,6 +749,7 @@ def genesis():
     write_png(
         os.path.join(out, "animations.png"), genesis_animations(beans, transparent)
     )
+    write_png(os.path.join(out, "attack.png"), genesis_attack_balls(beans))
 
     boards = source(GENESIS_BOARDS)
     bx, by = GENESIS_BOARD_TILE

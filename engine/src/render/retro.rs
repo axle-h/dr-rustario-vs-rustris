@@ -6,7 +6,7 @@ use crate::animate::frames::FrameAnimationType;
 use crate::animate::game_over::GameOverStyle;
 use crate::animate::mascot::MascotAnimationTypes;
 use crate::animate::spawn::SpawnArc;
-use crate::animate::AnimationMeta;
+use crate::animate::{AnimationMeta, PopDebris};
 use crate::game::CellId;
 use crate::render::font::{FontThemeOptions, PopupFont};
 use crate::render::geometry::BoardGeometry;
@@ -14,6 +14,7 @@ use crate::render::helper::{TextureFactory, TextureQuery};
 use crate::render::scene::SceneType;
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
+use crate::render::{AttackBallData, AttackBallSprites};
 use crate::render::{
     HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PanelShadow, PeekLayout, PendingLayout,
     Theme, ThemeFamily,
@@ -23,6 +24,7 @@ use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
+use std::time::Duration;
 
 pub struct RetroThemeOptions {
     pub name: &'static str,
@@ -71,6 +73,12 @@ pub struct RetroThemeOptions {
     pub ghost_style: GhostStyle,
     /// rows the hard drop trail falls per 4ms frame; see `animate::hard_drop`
     pub hard_drop_rows_per_frame: f64,
+    /// what a popping cell throws off, for a theme that bursts rather than simply vanishing
+    pub pop_debris: Option<PopDebris>,
+    /// what an attack crossing the window is drawn as; without it, the popped cell's sprite
+    pub attack_ball: Option<AttackBallData>,
+    /// how hard the board shakes when nuisance lands, if the theme wants it to at all
+    pub nuisance_rumble: Option<(f64, Duration)>,
 }
 
 pub fn retro_theme<'a>(
@@ -155,6 +163,8 @@ pub fn retro_theme<'a>(
         }),
         mascot,
         hard_drop_rows_per_frame: options.hard_drop_rows_per_frame,
+        pop_debris: options.pop_debris,
+        nuisance_rumble: options.nuisance_rumble,
     };
 
     let mut scenes = vec![];
@@ -164,6 +174,16 @@ pub fn retro_theme<'a>(
     assert!(!scenes.is_empty(), "a theme needs at least one scene");
 
     let popup_font = PopupFont::new(canvas, texture_creator, options.geometry.block_size())?;
+    // a theme that cut no ball art falls back to the popped cell's own sprite, which every
+    // theme has - the same rule the pending tray follows
+    let attack_ball = match options.attack_ball {
+        Some(data) => Some(AttackBallSprites::new(
+            data.sheet.sprite_sheet(texture_creator)?,
+            data.scale,
+            data.big_attack,
+        )),
+        None => None,
+    };
     Ok(Theme {
         name: options.name,
         scenes,
@@ -190,6 +210,7 @@ pub fn retro_theme<'a>(
         hold: options.hold,
         peek: options.peek,
         pending: options.pending,
+        attack_ball,
         ghost_style: options.ghost_style,
         particle_color: None,
         particle_palette: vec![],

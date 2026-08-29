@@ -10,7 +10,6 @@
 //! It never blocks the tick. A popup is decoration and the board carries on underneath it.
 
 use crate::game::{CellId, PlacedCell};
-use std::collections::HashMap;
 use std::time::Duration;
 
 /// how long a popup lives; a little longer than a chain step, so a chain leaves a trail of
@@ -98,20 +97,10 @@ impl PopupAnimation {
 
     /// say `text` over the middle of `cells`
     pub fn add(&mut self, text: String, cells: &[PlacedCell]) {
-        if cells.is_empty() {
+        let Some(((column, row), id)) = crate::animate::centre_and_modal(cells) else {
             return;
-        }
-        let column = cells.iter().map(|(p, _)| p.x as f64).sum::<f64>() / cells.len() as f64;
-        let row = cells.iter().map(|(p, _)| p.y as f64).sum::<f64>() / cells.len() as f64;
-        let mut counts: HashMap<CellId, usize> = HashMap::new();
-        for (_, id) in cells {
-            *counts.entry(*id).or_default() += 1;
-        }
-        // ties break on the cell id, so the same group always gives the same answer
-        let cell = counts
-            .into_iter()
-            .max_by_key(|(id, count)| (*count, id.0))
-            .map(|(id, _)| id);
+        };
+        let cell = Some(id);
         self.popups.push(Popup {
             text,
             column,

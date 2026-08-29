@@ -18,10 +18,12 @@ pub mod sprite_sheet;
 pub mod timer;
 
 use crate::animate::game_over::{CurtainPhase, GameOverStyle};
+use crate::animate::nuisance::NuisanceFall;
 use crate::animate::{AnimationMeta, PlayerAnimations};
 use crate::game::{CellId, Game, GameEvent, PieceId, PlacedCell};
 use crate::particles::particle::ParticleAnimationType;
 use crate::particles::prescribed::RaceTheme;
+use crate::render::animation::{AnimationSpriteSheet, AnimationSpriteSheetData};
 use crate::render::font::{FontTheme, PopupFont};
 use crate::render::geometry::BoardGeometry;
 use crate::render::scene::SceneRender;
@@ -71,14 +73,14 @@ pub trait GameRender {
         vec![]
     }
 
-    /// How fast an attack falls in from over the top of the board, in rows a second.
+    /// How an attack falls in from over the top of the board.
     ///
     /// A game that answers holds its play while it lands, which is what a game whose garbage
     /// *waits* wants: a tray full of nuisance dropping in all at once is the moment the player
     /// has been watching for, and it should be seen arriving. `None` - the default, and what
     /// both the games that take their hits the instant they are sent say - draws the cells
     /// where they land and carries straight on.
-    fn attack_fall_speed(&self) -> Option<f64> {
+    fn attack_fall(&self) -> Option<NuisanceFall> {
         None
     }
 }
@@ -150,6 +152,48 @@ impl PendingLayout {
                 )
             })
             .collect()
+    }
+}
+
+/// The art an attack crosses the window as.
+///
+/// Mean Bean Machine draws this as a sprite of its own - a white core inside a coloured rim -
+/// and **not** as one of the puyos that paid for it: the ball is bigger than a cell, and its
+/// colour is the *sending player's* palette rather than the popped group's. A theme with no
+/// art here falls back to the popped cell's own sprite, which every theme has.
+#[derive(Clone, Debug)]
+pub struct AttackBallData {
+    pub sheet: AnimationSpriteSheetData,
+    /// how many blocks across the ball is drawn at its full size
+    pub scale: f64,
+    /// how big an attack, in the receiver's own units, counts as a big one
+    pub big_attack: u32,
+}
+
+pub(crate) struct AttackBallSprites<'a> {
+    sheet: AnimationSpriteSheet<'a>,
+    scale: f64,
+    big_attack: u32,
+}
+
+impl<'a> AttackBallSprites<'a> {
+    pub(crate) fn new(sheet: AnimationSpriteSheet<'a>, scale: f64, big_attack: u32) -> Self {
+        Self {
+            sheet,
+            scale,
+            big_attack,
+        }
+    }
+
+    /// The frame for an attack of `strength` sent by `player`.
+    ///
+    /// The strip is laid out player-major with the big one first - player one big, player
+    /// one small, player two big, player two small - and wraps, so a theme that cut one pair
+    /// serves every player and a third player borrows the first's colour.
+    fn frame(&self, player: u32, strength: u32) -> usize {
+        let pairs = (self.sheet.frame_count() / 2).max(1);
+        let small = usize::from(strength < self.big_attack);
+        (player as usize % pairs) * 2 + small
     }
 }
 
@@ -231,6 +275,8 @@ pub struct Theme<'a> {
     pub(crate) peek: PeekLayout,
     /// where attacks queued against the player are drawn, for a game that holds them
     pub(crate) pending: Option<PendingLayout>,
+    /// what an attack crossing the window is drawn as, for a theme that cut art for it
+    pub(crate) attack_ball: Option<AttackBallSprites<'a>>,
     pub(crate) ghost_style: GhostStyle,
     /// themes that emit particles do so in this colour
     pub(crate) particle_color: Option<Color>,
@@ -452,13 +498,38 @@ impl<'a> Theme<'a> {
         }
     }
 
-    /// the strip of attacks waiting to land, drawn from this theme's own cell sprites
-    fn draw_pending<G: Game>(&self, canvas: &mut WindowCanvas, game: &G) -> Result<(), String> {
+    /// The strip of attacks waiting to land, drawn from this theme's own cell sprites.
+    ///
+    /// An icon whose attack is still crossing the window is not drawn at all, and one that
+    /// has just landed slides into its slot from over the middle of the strip - see
+    /// [`crate::animate::tray`]. A game whose attacks land the instant they are sent has no
+    /// ball and no tray, and every icon is simply where it belongs.
+    fn draw_pending<G: Game>(
+        &self,
+        canvas: &mut WindowCanvas,
+        game: &G,
+        animations: &PlayerAnimations,
+    ) -> Result<(), String> {
         let Some(layout) = &self.pending else {
             return Ok(());
         };
         let pending = game.pending_attacks();
-        for (dest, id) in layout.slots(pending.len()).into_iter().zip(pending) {
+        let tray = animations.tray();
+        let shown = tray.visible(pending.len());
+        for (index, (dest, id)) in layout.slots(shown).into_iter().zip(pending).enumerate() {
+            let dest = match tray.slide(index) {
+                // it comes in from over the middle of the strip, which is over the board
+                Some(t) => {
+                    let back = (layout.max as f64 / 2.0 - index as f64) * (1.0 - t);
+                    Rect::new(
+                        dest.x() + (layout.step.x() as f64 * back).round() as i32,
+                        dest.y() + (layout.step.y() as f64 * back).round() as i32,
+                        dest.width(),
+                        dest.height(),
+                    )
+                }
+                None => dest,
+            };
             self.sprites.draw_cell(canvas, id, false, dest, 0.0, None)?;
         }
         Ok(())
@@ -584,7 +655,7 @@ impl<'a> Theme<'a> {
             }
             self.draw_queue(canvas, &queue, spawn_peek_offset)?;
         }
-        self.draw_pending(canvas, game)?;
+        self.draw_pending(canvas, game, animations)?;
 
         self.font.render_all(canvas, game)
     }
@@ -647,6 +718,72 @@ impl<'a> Theme<'a> {
                 size * scale.factor(),
                 color,
             )?;
+        }
+        Ok(())
+    }
+
+    /// one of this theme's cells at whatever size and wherever, for something drawn off the
+    /// board entirely
+    pub(crate) fn draw_loose_cell(
+        &self,
+        canvas: &mut WindowCanvas,
+        id: CellId,
+        dest: Rect,
+    ) -> Result<(), String> {
+        self.sprites.draw_cell(canvas, id, false, dest, 0.0, None)
+    }
+
+    /// how many blocks across an attack ball is drawn, which is over a cell where a theme has
+    /// its own art and one cell where it does not
+    pub(crate) fn attack_ball_scale(&self) -> f64 {
+        self.attack_ball.as_ref().map_or(1.0, |b| b.scale)
+    }
+
+    /// An attack crossing the window, in this theme's own art where it has some.
+    ///
+    /// Returns `false` when it has none, so the caller can fall back to the popped cell.
+    pub(crate) fn draw_attack_ball(
+        &self,
+        canvas: &mut WindowCanvas,
+        player: u32,
+        strength: u32,
+        dest: Rect,
+    ) -> Result<bool, String> {
+        let Some(ball) = self.attack_ball.as_ref() else {
+            return Ok(false);
+        };
+        ball.sheet
+            .draw_frame_scaled(canvas, dest, ball.frame(player, strength))?;
+        Ok(true)
+    }
+
+    /// Every piece one player has in the air, on the window over the board.
+    ///
+    /// Drawn here rather than into the board texture for the same reason a caption is: a
+    /// droplet leaves the cell it came from and often the board with it, and the board
+    /// texture would clip it at the edge. `origin` is where that texture sits in the window
+    /// and `scale` what it is drawn at, so everything below is worked out in the theme's own
+    /// source pixels and mapped out at the end - the arithmetic `draw_popups` already does.
+    pub(crate) fn draw_debris(
+        &self,
+        canvas: &mut WindowCanvas,
+        animations: &PlayerAnimations,
+        scale: &Scale,
+        origin: Point,
+    ) -> Result<(), String> {
+        let block = self.geometry.block_size() as f64;
+        for piece in animations.debris().pieces() {
+            let size = (block * piece.size).round().max(1.0) as u32;
+            // a piece is placed by its middle, so a burst is centred on the cell it came from
+            let at = self.geometry.point(crate::game::geometry::Point::new(0, 0));
+            let x = at.x() + (piece.x * block).round() as i32 - size as i32 / 2;
+            let y = at.y()
+                + ((piece.y - self.geometry.hidden_rows() as f64) * block).round() as i32
+                - size as i32 / 2;
+            let dest =
+                scale.scale_and_offset_rect(Rect::new(x, y, size, size), origin.x(), origin.y());
+            self.sprites
+                .draw_debris_piece(canvas, piece.art, dest, piece.alpha())?;
         }
         Ok(())
     }

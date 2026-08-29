@@ -6,7 +6,7 @@ use crate::animate::frames::FrameAnimationType;
 use crate::animate::game_over::GameOverStyle;
 use crate::animate::mascot::MascotAnimationTypes;
 use crate::animate::spawn::SpawnArc;
-use crate::animate::AnimationMeta;
+use crate::animate::{AnimationMeta, PopDebris};
 use crate::font::FontType;
 use crate::game::geometry::Point as CellPoint;
 use crate::game::MetricKind;
@@ -17,6 +17,7 @@ use crate::render::metrics_table::{metric_label, GameMetricsTable};
 use crate::render::scene::{ClearParticles, SceneType};
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
+use crate::render::{AttackBallData, AttackBallSprites};
 use crate::render::{
     HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, PendingLayout, Theme,
     ThemeFamily,
@@ -26,6 +27,7 @@ use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
+use std::time::Duration;
 
 const BOARD_TOP_BUFFER_PCT: f64 = 0.15;
 const BOARD_BORDER_PCT_OF_BLOCK: f64 = 0.5;
@@ -91,6 +93,12 @@ pub struct ModernThemeOptions {
     pub ghost_style: GhostStyle,
     /// rows the hard drop trail falls per 4ms frame; see `animate::hard_drop`
     pub hard_drop_rows_per_frame: f64,
+    /// what a popping cell throws off, for a theme that bursts rather than simply vanishing
+    pub pop_debris: Option<PopDebris>,
+    /// what an attack crossing the window is drawn as; without it, the popped cell's sprite
+    pub attack_ball: Option<AttackBallData>,
+    /// how hard the board shakes when nuisance lands, if the theme wants it to at all
+    pub nuisance_rumble: Option<(f64, Duration)>,
     /// art for the captions a clear says over the board, when the theme has some. Without it
     /// they are written in the engine's own face, which is what every theme did before one
     /// had any - see [`PopupSpriteData`].
@@ -326,6 +334,8 @@ pub fn modern_theme<'a>(
         spawn_arc,
         mascot: mascot_meta,
         hard_drop_rows_per_frame: options.hard_drop_rows_per_frame,
+        pop_debris: options.pop_debris,
+        nuisance_rumble: options.nuisance_rumble,
     };
 
     let mut match_end_texture =
@@ -426,6 +436,16 @@ pub fn modern_theme<'a>(
     if let Some(data) = options.popup_sprites.as_ref() {
         popup_font = popup_font.with_sprites(texture_creator, data, block_size)?;
     }
+    // a theme that cut no ball art falls back to the popped cell's own sprite, which every
+    // theme has - the same rule the pending tray follows
+    let attack_ball = match options.attack_ball {
+        Some(data) => Some(AttackBallSprites::new(
+            data.sheet.sprite_sheet(texture_creator)?,
+            data.scale,
+            data.big_attack,
+        )),
+        None => None,
+    };
     Ok(Theme {
         name: options.name,
         scenes: vec![scene_type.build(canvas, texture_creator)?],
@@ -454,6 +474,7 @@ pub fn modern_theme<'a>(
         hold: Some(hold),
         peek,
         pending,
+        attack_ball,
         ghost_style: options.ghost_style,
         particle_color: Some(options.particle_color),
         particle_palette: options.particle_palette,

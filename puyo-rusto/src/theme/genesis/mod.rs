@@ -19,6 +19,7 @@ use crate::theme::GAME_MUSIC_TRACKS;
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
+use engine::animate::PopDebris;
 use engine::config::Config;
 use engine::game::{CellId, MetricKind};
 use engine::render::animation::AnimationSpriteSheetData;
@@ -27,7 +28,7 @@ use engine::render::geometry::BoardGeometry;
 use engine::render::retro::{retro_theme, RetroThemeOptions};
 use engine::render::scene::SceneType;
 use engine::render::sprite_sheet::{BlockSpriteSheetData, CellAnimationData, GhostStyle};
-use engine::render::{PeekLayout, PendingLayout, Theme};
+use engine::render::{AttackBallData, PeekLayout, PendingLayout, Theme};
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
@@ -44,6 +45,8 @@ mod sprites {
     /// the refugee bean's blink - one strip per row, cut by `rip_retro.py`'s
     /// `genesis_animations`
     pub const ANIMATIONS: &[u8] = include_bytes!("animations.png");
+    /// the four attack balls - see `rip_retro.py`'s `genesis_attack_balls`
+    pub const ATTACK: &[u8] = include_bytes!("attack.png");
     /// the bold face, in the first player's red - what the game sets its score in
     pub const FONT: &[u8] = include_bytes!("font.png");
     /// ... and the plain white one it prints its stage number in, which is smaller
@@ -150,9 +153,40 @@ const NEXT_BOXES: [(i32, i32); 2] = [(120, 32), (168, 32)];
 /// draws it
 const NEXT_PAIR: (i32, i32) = (8, 12);
 
-/// the box the game keeps Robotnik's mugshot in, which is the one piece of furniture this
-/// panel has no use for and the only hole big enough for the tray
+/// The box the game keeps Robotnik's mugshot in, which is the one piece of furniture this
+/// panel has no use for. It is where the tray used to be, under a comment saying the Genesis
+/// never drew one; it does, and the tray has gone to where it draws it, so this hole is free
+/// for the character that belongs in it.
+#[allow(dead_code)]
 const MUGSHOT: (i32, i32, u32, u32) = (120, 96, 80, 56);
+
+/// Where Mean Bean Machine puts the nuisance tray: on the wall **immediately above the
+/// board**, anchored at its left edge and growing rightwards.
+///
+/// Measured off the emulated game rather than read off any sheet - the tray is drawn in
+/// sprites and the frame plane carries none of it. An icon is **half a cell**, inset two
+/// pixels from the well's left edge and four rows down, so a full row of them fits across
+/// the well's own width; that band is [`TOP_PADDING`], the row a pair spawns in, and a point
+/// in the padded background is a point on the Genesis screen - so this needs no plumbing
+/// beyond the numbers.
+const TRAY: (i32, i32) = (BOARD.0 + 2, 4);
+const TRAY_ICON: u32 = SRC_BLOCK_SIZE / 2;
+/// as many as fit across the well without the last one hanging off it
+const TRAY_MAX: u32 = (BOARD.2 - 2 * TRAY_ICON) / TRAY_ICON;
+
+/// The ball an attack crosses the screen as, which Mean Bean Machine draws as a sprite of
+/// its own rather than as one of the puyos that paid for it.
+///
+/// It is **wider than a cell** - 22 source pixels against a bean's 16, measured off both the
+/// sheet and the capture - and its colour is the *sending player's* palette, red for player
+/// one and blue for player two, which is the same rule the score font follows. The strip is
+/// player one's pair then player two's, big first, and it wraps.
+const BALL_CELL: u32 = 24;
+const BALL_FRAMES: u32 = 4;
+/// how much of a block the ball is drawn at: 22 of a 16 pixel cell, out of a 24 pixel cut
+const BALL_SCALE: f64 = BALL_CELL as f64 / SRC_BLOCK_SIZE as f64;
+/// an attack of a whole row or more gets the big ball; anything under it the small one
+const BALL_BIG_ATTACK: u32 = crate::game::nuisance::ROW;
 
 /// Where the score goes: the first of the two rows of digits the game keeps under `SCORE`,
 /// which is the player's own. The game zero fills eight digits from 120 and this game's score
@@ -164,20 +198,80 @@ const SCORE_AT: (i32, i32) = (128, 176);
 /// in the plain face it sets that number in rather than the bold one it scores in.
 const LEVEL_AT: (i32, i32) = (184, 80);
 
-/// How long a bean takes to go, over the [`POP_FRAMES`] of its strip. Under
-/// [`crate::game::rules::POP_DELAY`], so a chain step never waits on the animation - the
-/// same bound the particle theme keeps.
-const POP_HOLD: Duration = Duration::from_millis(240);
+/// How long a bean takes to go, over the [`POP_FRAMES`] of its strip.
+///
+/// It **adds** to [`crate::game::rules::POP_DELAY`] rather than fitting inside it, whatever
+/// the comment here used to say: the match screen skips `game.update` outright while an
+/// animation blocks the tick, so a chain step costs the strip *and* the delay. That is why
+/// the delay is short and this is long - the beat of a genesis chain is set here, and it is
+/// the beat Mean Bean Machine plays at.
+const POP_HOLD: Duration = Duration::from_millis(430);
 
-/// the frames of one pop: the bean sees it coming, curls into a ball, the ball shrinks, and
-/// what is left bursts into droplets over two frames. `rip_retro.py` cuts every strip on the
-/// sheet to this many, so one number covers the beans and the refugee bean alike.
-const POP_FRAMES: usize = 5;
+/// How long the bean **holds** its surprised face before the ball frames run.
+///
+/// It is the beat of a Mean Bean Machine pop and by far the longest frame of the strip:
+/// measured off the capture, the face is held for a quarter of a second and the two ball
+/// frames go by in under a tenth each. Split evenly, three frames over [`POP_HOLD`] would
+/// give the face a seventh of a second and read as a flicker on the way to the balls.
+const POP_FACE_HOLD: Duration = Duration::from_millis(260);
+
+/// The tell before the strip: the group flashes where it stands, drawn exactly as it sits on
+/// the board - joined to its neighbours and all - and only then pulls a face and goes.
+///
+/// It is what makes a chain readable: a step announces which group is going before it goes,
+/// so the eye is already in the right place when the next one starts. Measured off the
+/// original at about three flashes over three tenths of a second, and it starts **lit** -
+/// the group is shown and then taken away, not the other way round.
+const POP_BLINK: Duration = Duration::from_millis(300);
+const POP_BLINKS: u32 = 3;
+
+/// The frames of one pop: the bean pulls a face and **holds** it ([`POP_FACE_HOLD`]), then
+/// curls into a ball and the ball shrinks until there is nothing of it left. What it bursts into is not on the strip at all - see
+/// [`POP_DEBRIS`], which throws droplets that leave the cell the way the original's do.
+///
+/// It is the widest strip on the sheet, so it is also the sheet's own width; every other
+/// strip is asserted against it below.
+const POP_FRAMES: usize = 3;
 
 /// The refugee bean's blink, which is the sheet's shrunken one between two of the still one.
 /// It holds still far longer than it blinks, which is what the pause is: the strip runs
 /// once, waits on its last frame - the bean with its eyes open - and starts again.
 const BLINK_FRAMES: usize = 3;
+
+/// The squash a bean plays where it lands: it hits and flattens, springs back past its own
+/// height, and the strip runs out into the still sprite it was going to draw anyway.
+///
+/// Two frames, and short. It is decoration - it holds nothing and the board carries on
+/// underneath it - so a bean that outstays its landing reads as a puyo drawn wrong rather
+/// than as a bounce. Neither frame carries a neck, which is Mean Bean Machine's own art: a
+/// bean is briefly unlinked from its neighbours where it lands, and joins them as it settles.
+const BOUNCE_FRAMES: usize = 2;
+
+/// One droplet, which is the whole of the burst's art: it is thrown many times over and each
+/// piece finds its own way out of the cell.
+const DEBRIS_FRAMES: usize = 1;
+
+/// What a bean throws off as it bursts, and when.
+///
+/// It is thrown on the strip's *last* frame - the bean is a shrinking ball right up to the
+/// moment there is nothing left of it - and it **outlives the clear**: the board settles and
+/// the next chain step starts blinking while the droplets are still in the air, which is
+/// what Mean Bean Machine does and what the strip alone could never do, a sprite being stuck
+/// inside its own cell.
+const POP_DEBRIS: PopDebris = PopDebris {
+    at_frame: POP_FRAMES - 1,
+    pieces: 4,
+    // Far enough to leave the cell and cross a couple, which is what the original throws,
+    // and no further: they are drawn on the window rather than into the board texture, so
+    // one thrown much harder than this ends up out on the panel's stonework.
+    speed: (2.0, 5.0),
+    gravity: 16.0,
+    life: Duration::from_millis(380),
+    // The droplet is cut small and centred in a whole cell, so this is the *cell's* size and
+    // the droplet inside it comes out at about half a block - which is what the original
+    // throws. Measured off the capture: a droplet is a little under half a bean across.
+    size: 0.9,
+};
 const BLINK_FPS: u32 = 6;
 const BLINK_EVERY: Duration = Duration::from_millis(2000);
 
@@ -212,7 +306,22 @@ fn puyo(_: PuyoSkin, color: PuyoColor, links: LinkMask) -> Point {
 /// strip's own start, so a strip has to be contiguous and only the rows can be given air.
 const ANIM_ROW_GAP: u32 = 4;
 
+/// Where each strip sits on the sheet, in rows. `rip_retro.py` lays them out in this order
+/// and nothing else names it, so a row moved there and not here draws another strip's art
+/// rather than failing - which is what [`ANIM_ROWS`] and the test below are for.
+const POP_ROW: u32 = 0;
+const NUISANCE_POP_ROW: u32 = PuyoColor::N as u32;
+const NUISANCE_BLINK_ROW: u32 = NUISANCE_POP_ROW + 1;
+const BOUNCE_ROW: u32 = NUISANCE_BLINK_ROW + 1;
+const NUISANCE_BOUNCE_ROW: u32 = BOUNCE_ROW + PuyoColor::N as u32;
+const DEBRIS_ROW: u32 = NUISANCE_BOUNCE_ROW + 1;
+const NUISANCE_DEBRIS_ROW: u32 = DEBRIS_ROW + PuyoColor::N as u32;
+
+/// how many rows the sheet has altogether
+const ANIM_ROWS: u32 = NUISANCE_DEBRIS_ROW + 1;
+
 fn strip(row: u32, frames: u32) -> AnimationSpriteSheetData {
+    debug_assert!(row < ANIM_ROWS, "the sheet has no row {row}");
     AnimationSpriteSheetData::non_exclusive_linear(
         sprites::ANIMATIONS,
         Point::new(0, ((SRC_BLOCK_SIZE + ANIM_ROW_GAP) * row) as i32),
@@ -240,8 +349,10 @@ fn animations() -> Vec<(Vec<CellId>, CellAnimationData)> {
         out.push((
             ids,
             CellAnimationData {
-                idle: None,
-                pop: Some(strip(row as u32, POP_FRAMES as u32)),
+                pop: Some(strip(POP_ROW + row as u32, POP_FRAMES as u32)),
+                bounce: Some(strip(BOUNCE_ROW + row as u32, BOUNCE_FRAMES as u32)),
+                debris: Some(strip(DEBRIS_ROW + row as u32, DEBRIS_FRAMES as u32)),
+                ..Default::default()
             },
         ));
     }
@@ -251,8 +362,11 @@ fn animations() -> Vec<(Vec<CellId>, CellAnimationData)> {
     out.push((
         nuisance,
         CellAnimationData {
-            idle: Some(strip(PuyoColor::N as u32 + 1, BLINK_FRAMES as u32)),
-            pop: Some(strip(PuyoColor::N as u32, POP_FRAMES as u32)),
+            idle: Some(strip(NUISANCE_BLINK_ROW, BLINK_FRAMES as u32)),
+            pop: Some(strip(NUISANCE_POP_ROW, POP_FRAMES as u32)),
+            bounce: Some(strip(NUISANCE_BOUNCE_ROW, BOUNCE_FRAMES as u32)),
+            debris: Some(strip(NUISANCE_DEBRIS_ROW, DEBRIS_FRAMES as u32)),
+            ..Default::default()
         },
     ));
     out
@@ -362,20 +476,24 @@ pub fn genesis_theme<'a>(
                 .collect(),
             max_scale: 1.0,
         },
-        // the tray, which is the one thing on this panel the Genesis never drew: Mean Bean
-        // Machine lands an attack the moment it is sent and has nothing waiting to show. It
-        // goes in the mugshot box, filling leftwards from the right edge so a long queue
-        // grows towards the board rather than off the panel. Five fit across eighty pixels
-        // at the cell size and a sixth would have to be drawn small, so a queue longer than
-        // that says five and no more.
-        pending: Some(PendingLayout {
-            point: Point::new(
-                MUGSHOT.0 + MUGSHOT.2 as i32 - SRC_BLOCK_SIZE as i32,
-                MUGSHOT.1 + (MUGSHOT.3 as i32 - SRC_BLOCK_SIZE as i32) / 2,
+        // the tray, where the game draws it: on the wall over the board, filling rightwards
+        // from its left edge - see [`TRAY`]
+        attack_ball: Some(AttackBallData {
+            sheet: AnimationSpriteSheetData::non_exclusive_linear(
+                sprites::ATTACK,
+                Point::new(0, 0),
+                BALL_FRAMES,
+                BALL_CELL,
+                BALL_CELL,
             ),
-            step: Point::new(-(SRC_BLOCK_SIZE as i32), 0),
-            size: SRC_BLOCK_SIZE,
-            max: MUGSHOT.2 / SRC_BLOCK_SIZE,
+            scale: BALL_SCALE,
+            big_attack: BALL_BIG_ATTACK,
+        }),
+        pending: Some(PendingLayout {
+            point: Point::new(TRAY.0, TRAY.1),
+            step: Point::new(TRAY_ICON as i32, 0),
+            size: TRAY_ICON,
+            max: TRAY_MAX,
         }),
         mascot: None,
         mascot_animations: None,
@@ -388,7 +506,12 @@ pub fn genesis_theme<'a>(
             pause_for: BLINK_EVERY,
             resume_from_frame: 0,
         },
-        destroy_style: Some(DestroyStyle::pop(POP_FRAMES).for_duration(POP_HOLD)),
+        destroy_style: Some(
+            DestroyStyle::pop(POP_FRAMES)
+                .for_duration(POP_HOLD)
+                .blinking_for(POP_BLINK, POP_BLINKS)
+                .holding_first(POP_FACE_HOLD),
+        ),
         game_over_style: Some(GameOverStyle::Curtain {
             from_top: false,
             rows: VISIBLE_ROWS,
@@ -396,6 +519,8 @@ pub fn genesis_theme<'a>(
         curtain_cell: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
+        pop_debris: Some(POP_DEBRIS),
+        nuisance_rumble: None,
     };
     retro_theme(canvas, texture_creator, options)
 }
@@ -461,11 +586,13 @@ mod tests {
     fn every_strip_is_where_the_theme_counts_it() {
         let (width, height) = png_size(sprites::ANIMATIONS);
         assert_eq!(width, SRC_BLOCK_SIZE * POP_FRAMES as u32);
-        let rows = PuyoColor::N as u32 + 2;
-        assert_eq!(height, (SRC_BLOCK_SIZE + ANIM_ROW_GAP) * rows);
+        assert_eq!(height, (SRC_BLOCK_SIZE + ANIM_ROW_GAP) * ANIM_ROWS);
         assert!(
-            BLINK_FRAMES <= POP_FRAMES,
-            "the blink shares the sheet's width"
+            BLINK_FRAMES <= POP_FRAMES
+                && BOUNCE_FRAMES <= POP_FRAMES
+                && DEBRIS_FRAMES <= POP_FRAMES
+                && POP_DEBRIS.at_frame < POP_FRAMES,
+            "every other strip shares the sheet's width with the pop, which is its widest"
         );
         // ... and every cell the board can draw claims one of them
         let strips = animations();

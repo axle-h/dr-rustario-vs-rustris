@@ -1,6 +1,7 @@
 //! The dials: how many colours a match deals, how fast puyos fall, and how long a stage is.
 
 use crate::game::ai::{PuyoAiKind, SKILLS};
+use engine::animate::nuisance::NuisanceFall;
 pub use engine::session::MatchRules;
 use std::time::Duration;
 use strum::IntoEnumIterator;
@@ -135,8 +136,15 @@ pub const SOFT_DROP_DELAY: Duration = Duration::from_millis(83);
 /// how long a resting pair may still be nudged about before it locks
 pub const LOCK_DELAY: Duration = Duration::from_millis(400);
 
-/// the pause on a popped group before it disappears, so a chain can be watched
-pub const POP_DELAY: Duration = Duration::from_millis(280);
+/// The rules' own pause on a popped group, which is the *floor* under a chain step rather
+/// than the whole of it.
+///
+/// A theme's destroy animation **adds** to this - the match screen skips `game.update`
+/// outright while an animation blocks the tick - so the pace of a chain is set by whichever
+/// theme is on. That is deliberate: `genesis` spends the best part of a second on a step
+/// because Mean Bean Machine does, and `snes` and the particle theme are quick because the
+/// games they are drawn from are. This is only what is left when a theme animates nothing.
+pub const POP_DELAY: Duration = Duration::from_millis(90);
 
 /// the pause while loose puyos fall, after a lock or between chain steps
 pub const SETTLE_DELAY: Duration = Duration::from_millis(120);
@@ -144,17 +152,27 @@ pub const SETTLE_DELAY: Duration = Duration::from_millis(120);
 /// the pause after the queue has emptied onto the board, before the next pair
 pub const NUISANCE_DELAY: Duration = Duration::from_millis(150);
 
-/// How fast nuisance falls in from over the top of the board, in rows a second.
+/// How nuisance falls in from over the top of the board.
 ///
 /// It is drawn falling rather than simply appearing (see
-/// [`engine::render::GameRender::attack_fall_speed`]), which is the one moment of this game
+/// [`engine::render::GameRender::attack_fall`]), which is the one moment of this game
 /// the player has no say in and so the one that most needs to be *seen*: a whole rock landing
 /// is five rows arriving at once, and where they land decides what is left of the chain
-/// underneath. The whole board - a rock landing in an empty well, the longest fall there is -
-/// takes a little under a second at this rate, which is still quicker than a pair falls at any
-/// speed step and slow enough to watch it arrive. A drop onto a stack is shorter in proportion,
-/// so the pause this costs is only ever as long as the drop deserves.
-pub const NUISANCE_FALL_ROWS_PER_SECOND: f64 = 14.0;
+/// underneath.
+///
+/// It falls under **gravity**, which is what the original does and what a constant speed
+/// never looked like: the beans appear level under the lintel, drift down, and are moving
+/// fast by the time they arrive. Each column is held back a little as well, off a hash of its
+/// own index, so the level row they start as breaks into a ragged line on the way down. The
+/// whole board - a rock landing in an empty well, the longest fall there is - takes a little
+/// over a second, and a drop onto a stack is shorter in proportion, so the pause this costs
+/// is only ever as long as the drop deserves.
+pub const NUISANCE_FALL: NuisanceFall = NuisanceFall {
+    initial_speed: 7.0,
+    acceleration: 26.0,
+    max_speed: 26.0,
+    column_jitter: Duration::from_millis(60),
+};
 
 /// the pause before a new pair appears
 pub const SPAWN_DELAY: Duration = Duration::from_millis(120);

@@ -146,13 +146,14 @@ pub fn animations(
             CellAnimationData {
                 idle: Some(virus_idle),
                 pop: Some(virus_pop),
+                ..Default::default()
             },
         ),
         (
             vitamins,
             CellAnimationData {
-                idle: None,
                 pop: Some(vitamin_pop),
+                ..Default::default()
             },
         ),
     ]

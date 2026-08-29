@@ -143,6 +143,9 @@ pub fn modern_rustris_theme<'a>(
         hard_drop_rows_per_frame: HARD_DROP_ROWS_PER_FRAME,
         // no art for a caption, and no captions: see `clear_popup`
         popup_sprites: None,
+        pop_debris: None,
+        nuisance_rumble: None,
+        attack_ball: None,
     };
     let _ = SEND_GARBAGE_ALT_SOUND;
     modern_theme(canvas, texture_creator, options)
