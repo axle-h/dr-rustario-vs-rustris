@@ -270,6 +270,12 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
 
         // a stage boundary was crossed this frame: re-evaluate which player the music follows
         let mut stage_changed = false;
+        // how full each tray is before anything is played: an attack routed this frame is
+        // already in its receiver's tray by the time the routes are drained below, and the
+        // ball carrying it has to know what was there without it
+        let trays_before: Vec<usize> = (0..players)
+            .map(|p| fixture.player(p).game().pending_attacks().len())
+            .collect();
 
         // events tagged with the player that caused them (None for match-wide events) so
         // sound effects are routed through that player's theme
@@ -576,6 +582,9 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     }
                     themes.animate_lock(player, &cells);
                 }
+                (Some(player), GameEvent::Landed { cells }) => {
+                    themes.animate_landed(player, &cells);
+                }
                 (Some(player), GameEvent::Spawn { piece, is_hold, .. }) => {
                     themes.animate_spawn(player, piece, is_hold);
                 }
@@ -586,8 +595,8 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     // a game that holds its attacks in a tray shows them arriving: the rules
                     // have already put them where they land, so this is only the fall, and it
                     // holds the board until the last of them is down
-                    if let Some(speed) = fixture.player(player).game().attack_fall_speed() {
-                        themes.animate_nuisance(player, &cells, speed);
+                    if let Some(fall) = fixture.player(player).game().attack_fall() {
+                        themes.animate_nuisance(player, &cells, fall);
                     }
                     field_events.push(FieldEvent::AttackReceived { player });
                 }
@@ -708,6 +717,14 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         // the attack routes the session took this frame: the events only name the attacker,
         // and the field wants both ends of the comet
         for route in fixture.drain_attack_routes() {
+            // one ball per route, which is one per attack: it leaves the group that paid for
+            // it and shatters over the board it lands on
+            themes.send_attack_ball(
+                route.from,
+                route.to,
+                trays_before[route.to as usize],
+                route.strength,
+            );
             field_events.push(FieldEvent::Attack {
                 from: route.from,
                 to: route.to,
@@ -806,8 +823,16 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     // fg particles
                     fg_particles.draw(c)?;
 
-                    // ... and the captions over them, which is the point of drawing them
-                    // here rather than with the board they belong to
+                    // ... then whatever the board has thrown off itself, which travels too
+                    // far to be drawn into the board's own texture
+                    themes.draw_debris(c)?;
+
+                    // ... then the attacks crossing between the players, which belong to
+                    // neither of them and so are clipped to nothing
+                    themes.draw_attack_balls(c)?;
+
+                    // ... and the captions over all of it, which is the point of drawing
+                    // them here rather than with the board they belong to
                     themes.draw_popups(c)?;
 
                     if fixture.state().is_paused() {

@@ -2,7 +2,10 @@
 //! it draws. Every slot is game-neutral; the optional ones (mascot, spawn arc, idle cells)
 //! are left unset by games that have no such thing.
 
+pub mod attack_ball;
+pub mod bounce;
 pub mod cell_idle;
+pub mod debris;
 pub mod destroy;
 pub mod event;
 pub mod frames;
@@ -16,10 +19,13 @@ pub mod next_stage;
 pub mod nuisance;
 pub mod popup;
 pub mod spawn;
+pub mod tray;
 pub mod victory;
 
+use crate::animate::bounce::BounceAnimation;
 use crate::animate::cell_idle::CellIdleAnimation;
-use crate::animate::destroy::{DestroyAnimation, DestroyStyle};
+use crate::animate::debris::{BurstSpec, DebrisAnimation, DebrisArt, Spread};
+use crate::animate::destroy::{DestroyAnimation, DestroyStyle, PopPhase};
 use crate::animate::event::{AnimationEvent, AnimationType};
 use crate::animate::frames::{FrameAnimation, FrameAnimationType};
 use crate::animate::game_over::{GameOverAnimation, GameOverStyle};
@@ -32,8 +38,12 @@ use crate::animate::next_stage::NextStageAnimation;
 use crate::animate::nuisance::NuisanceAnimation;
 use crate::animate::popup::PopupAnimation;
 use crate::animate::spawn::{SpawnAnimation, SpawnArc};
+use crate::animate::tray::TrayAnimation;
 use crate::animate::victory::VictoryAnimation;
-use crate::game::{CellId, GameEvent};
+use crate::game::geometry::Point;
+use crate::game::CellId;
+use crate::game::PlacedCell;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 /// Everything a theme declares about how its animations run.
@@ -49,6 +59,32 @@ pub struct AnimationMeta {
     pub mascot: Option<MascotMeta>,
     /// how fast the hard drop trail falls, in rows per 4ms frame
     pub hard_drop_rows_per_frame: f64,
+    /// what a cell throws off as it pops, if the theme wants a burst
+    pub pop_debris: Option<PopDebris>,
+    /// How hard the board shakes when a slab of nuisance lands, as a fraction of a block,
+    /// and for how long.
+    ///
+    /// Opt-in, and off by default, because the original **does not shake** - see
+    /// [`crate::animate::impact`], where that is measured rather than remembered. It is a
+    /// modern flare: the particle theme takes it and neither retro theme does.
+    pub nuisance_rumble: Option<(f64, Duration)>,
+}
+
+/// The pieces a popping cell throws, and when in its strip it throws them.
+///
+/// It is fired from [`PlayerAnimations::update`] rather than by the match screen, because
+/// what it needs to know - which frame of which cell's strip is on - lives here, and because
+/// the pieces have to **outlive the clear**: a chain settles and the next step starts
+/// blinking while the last one's droplets are still in the air.
+#[derive(Clone, Copy, Debug)]
+pub struct PopDebris {
+    /// which frame of the pop strip the cell bursts on
+    pub at_frame: usize,
+    pub pieces: usize,
+    pub speed: (f64, f64),
+    pub gravity: f64,
+    pub life: Duration,
+    pub size: f64,
 }
 
 impl AnimationMeta {
@@ -60,11 +96,37 @@ impl AnimationMeta {
     }
 }
 
+/// The middle of a group of cells, in fractional board coordinates, and the cell id most of
+/// them are - which is the group's colour for anything that wants to be drawn in it.
+///
+/// Ties break on the cell id, so the same group always gives the same answer.
+pub fn centre_and_modal(cells: &[PlacedCell]) -> Option<((f64, f64), CellId)> {
+    if cells.is_empty() {
+        return None;
+    }
+    let column = cells.iter().map(|(p, _)| p.x as f64).sum::<f64>() / cells.len() as f64;
+    let row = cells.iter().map(|(p, _)| p.y as f64).sum::<f64>() / cells.len() as f64;
+    let mut counts: HashMap<CellId, usize> = HashMap::new();
+    for (_, id) in cells {
+        *counts.entry(*id).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .max_by_key(|(id, count)| (*count, id.0))
+        .map(|(id, _)| ((column, row), id))
+}
+
 #[derive(Clone, Debug)]
 pub struct PlayerAnimations {
     player: u32,
     mascot_idle: Option<FrameAnimation>,
     cell_idle: CellIdleAnimation,
+    bounce: BounceAnimation,
+    debris: DebrisAnimation,
+    pop_debris: Option<PopDebris>,
+    nuisance_rumble: Option<(f64, Duration)>,
+    /// which cells of the clear in play have already burst, so each does so once
+    burst: HashSet<Point>,
     destroy: DestroyAnimation,
     impact: ImpactAnimation,
     lock: LockAnimation,
@@ -74,6 +136,7 @@ pub struct PlayerAnimations {
     victory: VictoryAnimation,
     next_stage: NextStageAnimation,
     nuisance: NuisanceAnimation,
+    tray: TrayAnimation,
     interstitial: InterstitialAnimation,
     popup: PopupAnimation,
 }
@@ -84,6 +147,11 @@ impl PlayerAnimations {
             player,
             mascot_idle: meta.mascot.map(|m| m.idle()),
             cell_idle: CellIdleAnimation::new(meta.cell_idle_type, &meta.cell_idle),
+            bounce: BounceAnimation::new(),
+            debris: DebrisAnimation::new(),
+            pop_debris: meta.pop_debris,
+            nuisance_rumble: meta.nuisance_rumble,
+            burst: HashSet::new(),
             destroy: DestroyAnimation::new(meta.destroy.clone()),
             impact: ImpactAnimation::new(),
             lock: LockAnimation::new(),
@@ -93,6 +161,7 @@ impl PlayerAnimations {
             victory: VictoryAnimation::new(meta.mascot),
             next_stage: NextStageAnimation::new(),
             nuisance: NuisanceAnimation::new(),
+            tray: TrayAnimation::new(),
             interstitial: InterstitialAnimation::new(meta.interstitial_frames, meta.mascot),
             popup: PopupAnimation::new(),
         }
@@ -103,12 +172,16 @@ impl PlayerAnimations {
             mascot.reset();
         }
         self.cell_idle.reset();
+        self.bounce.reset();
+        self.debris.reset();
+        self.burst.clear();
         self.destroy.reset();
         self.impact.reset();
         self.lock.reset();
         self.hard_drop.reset();
         self.spawn.reset();
         self.nuisance.reset();
+        self.tray.reset();
         self.popup.reset();
     }
 
@@ -122,7 +195,10 @@ impl PlayerAnimations {
             mascot.update(delta);
         }
         self.cell_idle.update(delta);
+        self.bounce.update(delta);
+        self.debris.update(delta);
         self.destroy.update(delta);
+        self.burst_popping_cells();
         self.impact.update(delta);
         self.lock.update(delta);
         self.hard_drop.update(delta);
@@ -135,31 +211,60 @@ impl PlayerAnimations {
         self.game_over.update(delta);
         self.victory.update(delta);
         self.next_stage.update(delta);
-        self.nuisance.update(delta);
+        // a slab arrives one column at a time, and every bean of it bounces where it lands -
+        // which is the rumble a nuisance drop actually has: nothing shakes, but the whole
+        // bottom of the board is jolted at once
+        let landed = self.nuisance.update(delta);
+        if !landed.is_empty() {
+            self.bounce.land(&landed);
+            if let Some((amplitude, duration)) = self.nuisance_rumble {
+                self.impact.rumble(amplitude, duration);
+            }
+        }
+        self.tray.update(delta);
         self.interstitial.update(delta);
         self.popup.update(delta);
         events
     }
 
-    /// react to the unconditional game events; the session decides about game over, victory
-    /// and stage transitions itself
-    pub fn on_event(&mut self, event: &GameEvent) {
-        match event {
-            GameEvent::Clear { cells, .. } => self.destroy.add(cells.clone()),
-            GameEvent::Lock { cells, dropped } => {
-                if *dropped {
-                    self.impact.impact();
+    /// Throw the droplets of every cell that has just reached the burst frame of its strip.
+    ///
+    /// Once each, and only while a clear is playing - the pieces then live on in the debris
+    /// pool, on their own clock, long after the clear that threw them is over.
+    fn burst_popping_cells(&mut self) {
+        let Some(spec) = self.pop_debris else {
+            self.burst.clear();
+            return;
+        };
+        let Some(state) = self.destroy.state() else {
+            self.burst.clear();
+            return;
+        };
+        let mut bursting = vec![];
+        for (point, id) in state.cells().iter().copied() {
+            if self.burst.contains(&point) {
+                continue;
+            }
+            if let Some(PopPhase::Strip { frame }) = self.destroy.pop_phase(id) {
+                if frame >= spec.at_frame {
+                    bursting.push((point, id));
                 }
-                self.lock.lock(cells);
             }
-            GameEvent::HardDrop {
-                cells,
-                dropped_rows,
-            } => self.hard_drop.hard_drop(cells, *dropped_rows),
-            GameEvent::Spawn { piece, is_hold, .. } => {
-                self.spawn.spawn(*piece, *is_hold);
-            }
-            _ => {}
+        }
+        for (point, id) in bursting {
+            self.burst.insert(point);
+            self.debris.burst(BurstSpec {
+                // the middle of the cell it came out of, in the board's own coordinates
+                origin: (point.x as f64 + 0.5, point.y as f64 + 0.5),
+                count: spec.pieces,
+                speed: spec.speed,
+                spread: Spread::AllDirections,
+                gravity: spec.gravity,
+                life: spec.life,
+                fade_last: 0.5,
+                size: spec.size,
+                art: DebrisArt::Debris(id),
+            });
         }
     }
 
@@ -192,6 +297,22 @@ impl PlayerAnimations {
 
     pub fn cell_idle(&self) -> &CellIdleAnimation {
         &self.cell_idle
+    }
+
+    pub fn bounce(&self) -> &BounceAnimation {
+        &self.bounce
+    }
+
+    pub fn bounce_mut(&mut self) -> &mut BounceAnimation {
+        &mut self.bounce
+    }
+
+    pub fn debris(&self) -> &DebrisAnimation {
+        &self.debris
+    }
+
+    pub fn debris_mut(&mut self) -> &mut DebrisAnimation {
+        &mut self.debris
     }
 
     pub fn destroy(&self) -> &DestroyAnimation {
@@ -264,6 +385,14 @@ impl PlayerAnimations {
 
     pub fn nuisance_mut(&mut self) -> &mut NuisanceAnimation {
         &mut self.nuisance
+    }
+
+    pub fn tray(&self) -> &TrayAnimation {
+        &self.tray
+    }
+
+    pub fn tray_mut(&mut self) -> &mut TrayAnimation {
+        &mut self.tray
     }
 
     pub fn interstitial(&self) -> &InterstitialAnimation {

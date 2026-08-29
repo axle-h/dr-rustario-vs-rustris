@@ -5,7 +5,8 @@
 //! variants for ghosts and trails, animated strips for cells that idle or pop, and masks for
 //! particle emission.
 
-use crate::animate::destroy::DestroyStyle;
+use crate::animate::debris::DebrisArt;
+use crate::animate::destroy::{DestroyStyle, PopPhase};
 use crate::animate::PlayerAnimations;
 use crate::game::geometry::Point as CellPoint;
 use crate::game::{Cell, CellId, Game, PieceId, PlacedCell};
@@ -89,13 +90,21 @@ impl CellSpriteData {
     }
 }
 
-/// Animated strips a group of cells share.
-#[derive(Clone, Debug)]
+/// Animated strips a group of cells share. Every one is optional and defaulted, so a theme
+/// names only the strips it has art for and gains a new one without being touched.
+#[derive(Clone, Debug, Default)]
 pub struct CellAnimationData {
     /// plays while the cell sits on the board; its first frame replaces the still sprite
     pub idle: Option<AnimationSpriteSheetData>,
     /// plays when the cell is cleared ([`DestroyStyle::Pop`])
     pub pop: Option<AnimationSpriteSheetData>,
+    /// plays where the cell comes to rest ([`crate::game::GameEvent::Landed`]); a theme with
+    /// none simply draws what it always drew
+    pub bounce: Option<AnimationSpriteSheetData>,
+    /// what one piece thrown off this cell is drawn as
+    /// ([`crate::animate::debris::DebrisArt::Debris`]); one frame is enough, and a theme
+    /// with none throws whole cells instead
+    pub debris: Option<AnimationSpriteSheetData>,
 }
 
 /// How the queue and hold box show a whole piece.
@@ -163,6 +172,8 @@ struct CellSnips {
 struct CellAnimations<'a> {
     idle: Option<AnimationSpriteSheet<'a>>,
     pop: Option<AnimationSpriteSheet<'a>>,
+    bounce: Option<AnimationSpriteSheet<'a>>,
+    debris: Option<AnimationSpriteSheet<'a>>,
 }
 
 pub struct PreviewSpriteSheet<'a> {
@@ -507,10 +518,17 @@ impl<'a> BlockSpriteSheet<'a> {
             };
             let idle = build(&animation.idle)?;
             let pop = build(&animation.pop)?;
+            let bounce = build(&animation.bounce)?;
+            let debris = build(&animation.debris)?;
             for id in ids {
                 animation_index.insert(*id, animations.len());
             }
-            animations.push(CellAnimations { idle, pop });
+            animations.push(CellAnimations {
+                idle,
+                pop,
+                bounce,
+                debris,
+            });
         }
 
         // one readback for the whole atlas, which the masks and the colours are both cut out
@@ -682,6 +700,38 @@ impl<'a> BlockSpriteSheet<'a> {
         self.idle_sheet(id).map(|s| s.frame_count())
     }
 
+    pub fn bounce_sheet(&self, id: CellId) -> Option<&AnimationSpriteSheet<'a>> {
+        self.cell_animations(id).and_then(|a| a.bounce.as_ref())
+    }
+
+    pub fn debris_sheet(&self, id: CellId) -> Option<&AnimationSpriteSheet<'a>> {
+        self.cell_animations(id).and_then(|a| a.debris.as_ref())
+    }
+
+    /// Draw one piece of debris, `dest` already sized and placed.
+    ///
+    /// [`DebrisArt::Debris`] falls back to the whole cell, so a theme that cut no droplet
+    /// still bursts - the way [`crate::render::PendingLayout`] draws a tray out of the
+    /// theme's own cells rather than wanting art of its own.
+    pub fn draw_debris_piece(
+        &self,
+        canvas: &mut WindowCanvas,
+        art: DebrisArt,
+        dest: Rect,
+        alpha: u8,
+    ) -> Result<(), String> {
+        let id = match art {
+            DebrisArt::Cell(id) => id,
+            DebrisArt::Debris(id) => {
+                if let Some(sheet) = self.debris_sheet(id) {
+                    return sheet.draw_frame_scaled_with_alpha(canvas, dest, 0, alpha);
+                }
+                id
+            }
+        };
+        self.draw_cell(canvas, id, false, dest, 0.0, alpha)
+    }
+
     pub fn pop_frames(&self, id: CellId) -> Option<usize> {
         self.cell_animations(id)
             .and_then(|a| a.pop.as_ref())
@@ -756,15 +806,29 @@ impl<'a> BlockSpriteSheet<'a> {
         canvas.copy(&texture, snip, self.offset_by_block_ratio(dest, offset_y))
     }
 
-    /// draw a cell as it sits on the stack: its idle strip if it has one, else the still sprite
+    /// Draw a cell as it sits on the stack: the squash it is playing where it landed, else
+    /// its idle strip if it has one, else the still sprite.
+    ///
+    /// The bounce goes first because it is the one that has just happened; when it runs out
+    /// the cell falls straight back to whichever of the other two it was drawing before.
     fn draw_stack_cell(
         &self,
         canvas: &mut WindowCanvas,
+        point: CellPoint,
         id: CellId,
         dest: Rect,
         offset_y: f64,
         animations: &PlayerAnimations,
     ) -> Result<(), String> {
+        if let Some(sheet) = self.bounce_sheet(id) {
+            if let Some(frame) = animations.bounce().frame(point, sheet.frame_count()) {
+                return sheet.draw_frame_scaled(
+                    canvas,
+                    self.offset_by_block_ratio(dest, offset_y),
+                    frame,
+                );
+            }
+        }
         match (self.idle_sheet(id), animations.cell_idle().frame(id)) {
             (Some(sheet), Some(frame)) => {
                 sheet.draw_frame_scaled(canvas, self.offset_by_block_ratio(dest, offset_y), frame)
@@ -816,7 +880,7 @@ impl<'a> BlockSpriteSheet<'a> {
         if let Some(cells) = animations.next_stage().state().map(|s| s.display_cells()) {
             for (point, id) in cells {
                 let dest = geometry.raw_block(point);
-                self.draw_stack_cell(canvas, id, dest, 0.0, animations)?;
+                self.draw_stack_cell(canvas, point, id, dest, 0.0, animations)?;
             }
             return Ok(());
         }
@@ -894,13 +958,13 @@ impl<'a> BlockSpriteSheet<'a> {
                         } else {
                             0.0
                         };
-                        self.draw_stack_cell(canvas, id, dest, offset_y, animations)?
+                        self.draw_stack_cell(canvas, point, id, dest, offset_y, animations)?
                     }
                     // through the stack path, so garbage that idles gets its strip: a Puyo
                     // nuisance blinks where a Dr. Mario virus wriggles. With no strip this
                     // is the still stacked sprite, which is what every other game gets
                     Cell::Garbage(id) if !in_the_air(point) => {
-                        self.draw_stack_cell(canvas, id, dest, 0.0, animations)?
+                        self.draw_stack_cell(canvas, point, id, dest, 0.0, animations)?
                     }
                     _ => {}
                 }
@@ -929,10 +993,23 @@ impl<'a> BlockSpriteSheet<'a> {
                 DestroyStyle::Pop { .. } => {
                     for (point, id) in destroyed.cells().iter().copied() {
                         let dest = geometry.raw_block(point);
-                        let frame = destroy.pop_frame(id).unwrap_or(0);
-                        match self.cell_animations(id).and_then(|a| a.pop.as_ref()) {
-                            Some(sheet) => sheet.draw_frame_scaled(canvas, dest, frame)?,
-                            None => self.draw_cell(canvas, id, true, dest, 0.0, None)?,
+                        match destroy.pop_phase(id) {
+                            // the tell: the group is still on the board exactly as it sits -
+                            // joined to its neighbours and all - and only flashes
+                            Some(PopPhase::Blink { on: true }) => {
+                                self.draw_stack_cell(canvas, point, id, dest, 0.0, animations)?
+                            }
+                            Some(PopPhase::Blink { on: false }) => {}
+                            phase => {
+                                let frame = match phase {
+                                    Some(PopPhase::Strip { frame }) => frame,
+                                    _ => 0,
+                                };
+                                match self.cell_animations(id).and_then(|a| a.pop.as_ref()) {
+                                    Some(sheet) => sheet.draw_frame_scaled(canvas, dest, frame)?,
+                                    None => self.draw_cell(canvas, id, true, dest, 0.0, None)?,
+                                }
+                            }
                         }
                     }
                 }

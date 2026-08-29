@@ -128,9 +128,53 @@ A game that can hold an attack rather than take it as it arrives reports what is
 waiting through `Game::pending_attacks`, as its own `CellId`s, and a theme that declares a
 `PendingLayout` draws them as a strip from its own cell sprites - so a player can see what is
 hanging over them. Dr. Rustario and Rustris both take a hit immediately and have none; Puyo
-Rusto is the game this is for.
+Rusto is the game this is for. An icon whose attack is still crossing the window is **not
+drawn at all**: an attack is routed the moment the chain that earned it ends and the receiving
+game trays it there and then, so `animate/tray.rs` holds the new ones back until the ball
+carrying them lands and then slides them into their slots. `match_screen` snapshots every
+tray's depth *before* the update loop, since by the time the routes are drained the icons are
+already in it.
 
-Such an attack is also drawn **arriving**: `GameRender::attack_fall_speed` is rows a second,
+**Five things move that a board does not.** `animate/bounce.rs` is the squash a cell plays
+where it lands, keyed by *point* rather than by cell - what bounces is a place on the board,
+so a bounce whose cell has since moved is simply never looked up. It is fed by
+`GameEvent::Landed { cells }`, which is **not** `Settle`: settle fires once for a whole board
+and only when something moved, so a pair landing flat produces none and a half on a ledge
+comes to rest a lock earlier than its partner. An event is data on the wire rather than a
+trait method, so it needs no `AnyGame` arm and no pinning test - the reason it is an event.
+`animate/debris.rs` is a fire-and-forget emitter measured in **board cells, not pixels**, and
+unbounded: a droplet leaves its cell and often the board, which is why it is drawn on the
+window after the foreground particles rather than into the board texture. It is fired from
+`PlayerAnimations::update` off the cells that cross the burst frame of the destroy strip, so
+the droplets **outlive the clear**, and `DebrisArt::Cell` always resolves so a burst needs no
+art. `animate/attack_ball.rs` is the one thing that belongs to no player - every offset a
+player owns is applied inside that player's own panel - so it lives on `ThemeContext` and is
+drawn unclipped, holding its flight in cells and player numbers and resolving both ends
+through whichever theme each player is on *at draw time*. `animate/tray.rs` is above.
+`ImpactAnimation::State::Rumble` is a shake, and it is **opt-in**: Mean Bean Machine does not
+shake at all (measured - the wall between the boards cross-correlates to zero displacement
+over a whole capture, nuisance drop included), and what reads as a rumble there is every
+refugee bean bouncing at once. Only `puyo-rusto`'s particle theme takes it.
+
+`DestroyStyle::Pop` carries a `blink`, the tell before the strip: the group flashes where it
+stands - **starting lit**, drawn exactly as it sits on the board and joined to its neighbours
+- and only then starts its strip. It also carries `holding_first`, because a pop is rarely
+evenly paced: Mean Bean Machine's bean pulls its face and holds it for a quarter of a second
+and then goes in a hurry, so the strip's first frame gets a slot of its own and the rest share
+what is left. Asking for less than an even share changes nothing, which is what every theme
+that asks for none is doing. Both **add** to the game's own `POP_DELAY`, because `match_screen`
+skips `game.update` outright while an animation blocks the tick - which is the whole of why
+`POP_DELAY` is 90 ms and a genesis chain step is ~820.
+
+**An attack ball is a sprite of its own, not a puyo**, wherever a theme has art for it
+(`AttackBallData`): Mean Bean Machine draws a white core inside a coloured rim, wider than a
+cell, in the **sending player's** palette - red for player one and blue for player two, the
+same rule the score font follows - and in two sizes, the big one for an attack of a whole row
+or more. The strip is player-major and big-first and it wraps, so one pair serves every player.
+A theme that cut none falls back to the popped cell's own sprite with a white core over it,
+which is what the particle theme does.
+
+Such an attack is also drawn **arriving**: `GameRender::attack_fall` is a `NuisanceFall`,
 `None` on a game whose garbage simply appears, and `animate/nuisance.rs` drops the cells in
 from over the top of the board and holds the game's tick until the last one is down. The rules
 have already put every cell where it comes to rest before the animation exists, so it is only
@@ -140,15 +184,21 @@ ever seen appearing in mid-board - with the *bottom* of every column starting on
 board, which means they all enter together and a column landing on an empty well arrives after
 one landing on a full stack. The falling pass is clipped to `BoardGeometry::game_snip`, since a
 theme's board texture may carry a stone lintel or a strip of sky above the top row and an
-attack has to come in over the board's own edge rather than out of the furniture. The speed is
-`rules::NUISANCE_FALL_ROWS_PER_SECOND`, and it is the whole dial there is.
+attack has to come in over the board's own edge rather than out of the furniture. It falls
+under **gravity** with a per-column stagger, which is what the original does and what a
+constant speed never looked like: the stagger is a golden-ratio hash of the column index rather
+than an RNG, so neighbouring columns break the level row up rather than tilting it, the same
+board falls the same way twice and there is no randomness on the render path. Every cell
+reports itself as it lands, which is what makes each refugee bean bounce as it arrives.
+`rules::NUISANCE_FALL` is the whole dial.
 
 **A defaulted trait method is only heard if `AnyGame` names it.** Every match runs through the
 launcher's wrapper, so a `Game` or `GameRender` method with a default that the wrapper does not
 delegate silently answers the default and the game is never asked - and it costs nothing at
-compile time. `pending_attacks` was one (the tray drew no icons at all), `attack_fall_speed`
+compile time. `pending_attacks` was one (the tray drew no icons at all), `attack_fall`
 another (nuisance appeared rather than falling), `fall_progress` a third. All three are pinned
-by tests in `launcher/src/games.rs`, since only a test can catch this.
+by tests in `launcher/src/games.rs`, since only a test can catch this. It is also why a new
+seam is a `GameEvent` wherever it can be: an event is data on the wire and needs no arm.
 
 **Nothing in `game/ai/` reads the tray.** `eval.rs`'s `nuisance` weight counts nuisance already
 *on the board*; `pending_nuisance` reaches the search nowhere, so the ai never chains to answer
@@ -293,13 +343,41 @@ where it was 858. What holds it at 73 rather than the 76 the two panels would al
 particle theme, which is built at whatever they can reach and is then the tallest of the three
 itself.
 
-**`genesis` pops the way Mean Bean Machine does**, in four beats over the
-[`DestroyStyle::Pop`] strips in `theme/genesis/animations.png`: the bean sees it coming
-(the surprised face, which is the last frame of the strip at the top of the rip), curls into
-a ball, the ball shrinks, and what is left bursts into droplets over two frames. Every colour
-band on the beans sheet carries all of it - the balls sit under the arrangements, beside the
-halo and wings the same bean wears as an angel - and `rip_retro.py`'s `genesis_animations`
-lays them out one strip per row. A strip's frames are edge to edge because the engine
+**`genesis` pops the way Mean Bean Machine does.** The group first *flashes* where it stands,
+about three times over 300 ms, drawn exactly as it sits on the board and joined to its
+neighbours (`DestroyStyle::Pop`'s `blink`), which is what makes a chain readable - a step says
+which group is going before it goes. Then the three frame strip in
+`theme/genesis/animations.png`: the bean sees it coming (the surprised face, the last frame of
+the strip at the top of the rip), curls into a ball, and the ball shrinks until there is
+nothing of it. What it bursts into is **not on the strip at all** - it is thrown as
+`animate/debris.rs` pieces on the strip's last frame, so the droplets leave the cell, the
+board and the panel, and are still in the air while the next chain step blinks. The strip used
+to draw four droplets *inside* the cell at two spreads, which is as far as a sprite can throw
+anything. Every colour band on the beans sheet carries the balls - under the arrangements,
+beside the halo and wings the same bean wears as an angel - and one droplet of its own, and
+`rip_retro.py`'s `genesis_animations` lays them out one strip per row.
+
+**A bean also squashes where it lands**, over the two frames each colour band carries on a row
+of its own: a **flat** bean and a **tall** one, drawn nowhere else and used for nothing else,
+which is squash and stretch. They are *not* the middle frames of the top strip, which look
+like a squash and are the faces a bean pulls on its way out. Neither frame carries a neck,
+which is the game's own art: a bean is briefly unlinked from its neighbours where it lands and
+joins them as it settles. The refugee bean has a flat of its own - the same art its blink shuts
+its eyes with - and no tall, so it settles straight back.
+
+**Its tray is on the wall above the board**, left-anchored at the well's edge and growing
+rightwards, at **half a cell** - measured off the emulated game rather than off the sheet,
+since the tray is drawn in sprites and the frame plane carries none of it: the icon is 8x8
+source pixels, inset two from the well's left edge, four rows down. That band is
+`TOP_PADDING`, and a point in the padded background is a point on the Genesis screen, so
+placing it there is only the numbers. The mugshot box, where the tray used to be under a
+comment saying the Genesis never drew one, is free for phase 6's character.
+
+Its three symbols are the classic **1 / 6 / 30** (`NuisanceIcon`, decomposed biggest first),
+and the first two are measured off the game: the little eyeless blob for a single and the
+black bean with the white outline for a row of six. The rock of thirty is a **placeholder** -
+the game draws a red symbol for it and the beans rip carries none, so it borrows the
+white-outlined bean; `GENESIS_TRAY` in `rip_retro.py` is the one line to change. A strip's frames are edge to edge because the engine
 addresses one by counting frame widths from the strip's own start; only the rows are spaced.
 The refugee bean has no ball of its own, so it flashes white and shrinks away instead, and -
 alone on the board - it *blinks* where it sits, through a three frame idle strip on a

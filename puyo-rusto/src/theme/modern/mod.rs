@@ -124,8 +124,19 @@ const PUYO_PALETTE: [Color; PuyoColor::N] = [
 ];
 
 /// how long the popped puyos hold before the particles take over. Under the game's own
-/// [`crate::game::rules::POP_DELAY`], so a chain step is never waiting on the animation
+/// It **adds** to [`crate::game::rules::POP_DELAY`] rather than fitting inside it: the match
+/// screen skips `game.update` outright while an animation blocks the tick, so a chain step
+/// costs this *and* the delay.
 const POP_HOLD: Duration = Duration::from_millis(200);
+
+/// How hard the board shakes when a slab of nuisance lands, and for how long.
+///
+/// This is a flare and not fidelity: neither game this one is drawn from shakes at all - see
+/// [`engine::animate::impact`], where that is measured - and neither retro theme here asks
+/// for it. The particle theme is the one that may take a liberty, and a rock arriving is the
+/// moment worth taking one on. A twelfth of a block, which is a jolt rather than an
+/// earthquake, and it is the board that moves: the panel and its shadow stay put.
+const NUISANCE_RUMBLE: (f64, Duration) = (1.0 / 12.0, Duration::from_millis(280));
 
 fn block(col: i32, row: i32) -> Point {
     Point::new(PAD + PITCH * col, PAD + PITCH * row)
@@ -219,6 +230,9 @@ pub fn modern_puyo_theme<'a>(
         }),
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
+        pop_debris: None,
+        nuisance_rumble: Some(NUISANCE_RUMBLE),
+        attack_ball: None,
         // "2 chain" in the game's own face rather than the engine's, which is worth the one
         // extra sheet: the chain count is the only thing a Puyo player is reading while the
         // board goes off, and `clear_popup` says it on every step of one

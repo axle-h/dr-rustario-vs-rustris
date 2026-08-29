@@ -2,11 +2,14 @@
 //! cross-fade when a player changes theme. Every theme keeps animation state for every
 //! player so a mid-match theme change is seamless.
 
+use crate::animate::attack_ball::AttackBallAnimation;
+use crate::animate::debris::{BurstSpec, DebrisArt, Spread};
 use crate::animate::event::AnimationEvent;
+use crate::animate::nuisance::NuisanceFall;
 use crate::animate::PlayerAnimations;
 use crate::config::VideoConfig;
 use crate::game::geometry::Point as CellPoint;
-use crate::game::{Game, PieceId, PlacedCell};
+use crate::game::{CellId, Game, PieceId, PlacedCell};
 use crate::particles::field::context::Palette;
 use crate::render::layout::BoardLayout;
 use crate::render::sound::AudioTheme;
@@ -15,6 +18,7 @@ use crate::scale::{Scale, ScaleMode};
 use crate::session::MatchState;
 use rand::prelude::ThreadRng;
 use rand::rng;
+use sdl2::pixels::Color;
 use sdl2::pixels::PixelFormatEnum::RGBA8888;
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{
@@ -26,6 +30,8 @@ use std::ops::Range;
 use std::time::Duration;
 
 const THEME_FADE_DURATION: Duration = Duration::from_millis(1000);
+/// how many pieces an arriving attack ball shatters into over the board it hit
+const ARRIVAL_SHARDS: usize = 20;
 /// moving to another game of a playlist fades more gently
 pub const GAME_SWITCH_FADE_DURATION: Duration = Duration::from_millis(1800);
 
@@ -189,11 +195,11 @@ impl<'a> ScaledTheme<'a> {
 
     /// how far above the board an attack starts is this theme's geometry, not the game's:
     /// the same cells fall from the top of whichever board the player is looking at
-    pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], rows_per_second: f64) {
+    pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], fall: NuisanceFall) {
         let hidden_rows = self.theme.geometry().hidden_rows();
         self.animations_mut(player)
             .nuisance_mut()
-            .drop_in(cells, hidden_rows, rows_per_second);
+            .drop_in(cells, hidden_rows, fall);
     }
 }
 
@@ -233,6 +239,11 @@ pub struct ThemeContext<'a> {
     /// dealing a random track is the only thing this rolls for, and it is shared with
     /// nothing: no game reads it and no replay depends on it
     music_rng: ThreadRng,
+    window_size: (u32, u32),
+    /// the attacks crossing the window, which belong to no one player
+    attack_balls: AttackBallAnimation,
+    /// the middle and colour of each player's last clear, which is where a ball leaves from
+    last_clear: Vec<Option<((f64, f64), CellId)>>,
 }
 
 impl<'a> ThemeContext<'a> {
@@ -271,6 +282,9 @@ impl<'a> ThemeContext<'a> {
             music_player: 0,
             music_theme: None,
             music_rng: rng(),
+            window_size,
+            attack_balls: AttackBallAnimation::new(),
+            last_clear: vec![None; players],
         })
     }
 
@@ -359,6 +373,42 @@ impl<'a> ThemeContext<'a> {
     }
 
     pub fn update_animations(&mut self, delta: Duration) -> Vec<AnimationEvent> {
+        self.attack_balls.update(delta);
+        // a ball that has arrived shatters over the board it hit, in its own colour
+        for flight in self.attack_balls.arrived().to_vec() {
+            let columns = self.current(flight.to_player).theme.geometry().columns();
+            let hidden = self
+                .current(flight.to_player)
+                .theme
+                .geometry()
+                .hidden_rows();
+            for theme in self.themes.iter_mut() {
+                theme.animations_mut(flight.to_player).tray_mut().arrive();
+                theme
+                    .animations_mut(flight.to_player)
+                    .debris_mut()
+                    .burst(BurstSpec {
+                        spread: Spread::AllDirections,
+                        // it shatters over the top row and the pieces drop back onto the
+                        // board rather than sailing off it: they are drawn on the window, so
+                        // one thrown much harder than this ends up out in the bare scene
+                        speed: (2.0, 5.0),
+                        gravity: 22.0,
+                        life: Duration::from_millis(320),
+                        // the same size the pop throws: a theme's droplet is cut small and
+                        // centred in a whole cell, so this is the cell's size and the piece
+                        // inside it comes out at about half of it
+                        size: 0.8,
+                        ..BurstSpec::burst(
+                            (columns as f64 / 2.0, hidden as f64),
+                            ARRIVAL_SHARDS,
+                            // the theme's own droplet where it cut one, and the whole cell
+                            // where it did not - a burst never wants art of its own
+                            DebrisArt::Debris(flight.cell),
+                        )
+                    });
+            }
+        }
         let mut events = vec![];
         for (id, theme) in self.themes.iter_mut().enumerate() {
             for event in theme.update_animations(delta).into_iter() {
@@ -373,12 +423,39 @@ impl<'a> ThemeContext<'a> {
     }
 
     pub fn animate_destroy(&mut self, player: u32, cells: &[PlacedCell]) {
+        // remembered because an attack is routed *after* the chain that earned it has
+        // finished, by which time the group that paid for it is off the board - and the ball
+        // has to leave from where it was, in the colour it was
+        if let Some(clear) = crate::animate::centre_and_modal(cells) {
+            self.last_clear[player as usize] = Some(clear);
+        }
         for theme in self.themes.iter_mut() {
             theme
                 .animations_mut(player)
                 .destroy_mut()
                 .add(cells.to_vec());
         }
+    }
+
+    /// Throw a ball from the group `from` last cleared to `to`'s board.
+    ///
+    /// One per attack route, which is one per attack. A player who has cleared nothing has
+    /// nothing to throw from - an attack can only ever follow a clear - so this is the one
+    /// case where nothing is drawn.
+    pub fn send_attack_ball(&mut self, from: u32, to: u32, held: usize, strength: u32) {
+        let Some((at, cell)) = self.last_clear.get(from as usize).copied().flatten() else {
+            return;
+        };
+        self.attack_balls.send(from, at, to, cell, strength);
+        // ... and the receiver's tray holds back whatever it has just been given until the
+        // ball carrying it lands, or the icons appear a third of a second before it does
+        for theme in self.themes.iter_mut() {
+            theme.animations_mut(to).tray_mut().expect(held);
+        }
+    }
+
+    pub fn attack_balls(&self) -> &AttackBallAnimation {
+        &self.attack_balls
     }
 
     /// say `text` over the middle of `cells`, on whichever theme the player is on when it
@@ -401,6 +478,13 @@ impl<'a> ThemeContext<'a> {
     pub fn animate_lock(&mut self, player: u32, cells: &[PlacedCell]) {
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).lock_mut().lock(cells);
+        }
+    }
+
+    /// a cell came to rest, and every theme that has a squash for it plays one
+    pub fn animate_landed(&mut self, player: u32, cells: &[PlacedCell]) {
+        for theme in self.themes.iter_mut() {
+            theme.animations_mut(player).bounce_mut().land(cells);
         }
     }
 
@@ -442,9 +526,9 @@ impl<'a> ThemeContext<'a> {
 
     /// an attack that waited in the tray falls in from over the top of the board, at
     /// `rows_per_second`, and holds the game while it does
-    pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], rows_per_second: f64) {
+    pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], fall: NuisanceFall) {
         for theme in self.themes.iter_mut() {
-            theme.animate_nuisance(player, cells, rows_per_second);
+            theme.animate_nuisance(player, cells, fall);
         }
     }
 
@@ -747,6 +831,105 @@ impl<'a> ThemeContext<'a> {
     /// The board is drawn into a texture and composited, and the foreground particles go on
     /// top of that - so a caption drawn with the board is under the very burst it is about.
     /// This is called last instead, after the particles.
+    /// Every player's debris, on the window between the foreground particles and the
+    /// captions - so a burst is over the particles and a caption is over the burst.
+    ///
+    /// Clipped to the player, because a droplet may travel a long way and has no business in
+    /// the other player's half.
+    pub fn draw_debris(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
+        for player in 0..self.players() {
+            let current = self.current(player);
+            let themed = &current.player_themes[player as usize];
+            if themed.animations.debris().pieces().is_empty() {
+                continue;
+            }
+            let (offset_x, offset_y) = themed.animations.impact().current_offset();
+            let board = current.scale.offset_proportional_to_block_size(
+                themed.board_snip,
+                offset_x,
+                offset_y,
+            );
+            canvas.set_clip_rect(current.scale.player_clip(player));
+            let result = current.theme.draw_debris(
+                canvas,
+                &themed.animations,
+                &current.scale,
+                Point::new(board.x(), board.y()),
+            );
+            canvas.set_clip_rect(None);
+            result?;
+        }
+        Ok(())
+    }
+
+    /// Every attack in the air, on the window and **unclipped** - it is the one thing here
+    /// that crosses between two players, so it belongs to neither one's area.
+    ///
+    /// Both ends are resolved through whichever theme each player is on right now, so a
+    /// theme change mid-flight moves them rather than leaving the ball flying to where a
+    /// board used to be.
+    pub fn draw_attack_balls(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
+        if self.attack_balls.is_empty() {
+            return Ok(());
+        }
+        canvas.set_clip_rect(None);
+        for flight in self.attack_balls.flights() {
+            let from = self.cell_in_window(flight.from_player, flight.from_cell);
+            // ... to just above the top of the board it is going to, which is where the tray
+            // is on the theme this was built for
+            let to_theme = self.current(flight.to_player);
+            let to_columns = to_theme.theme.geometry().columns() as f64;
+            let to_hidden = to_theme.theme.geometry().hidden_rows() as f64;
+            let to = self.cell_in_window(flight.to_player, (to_columns / 2.0, to_hidden - 1.0));
+
+            let (x, y) = flight.at(from, to, self.window_size.1);
+            let block = to_theme
+                .scale
+                .scale_length(to_theme.theme.geometry().block_size());
+            // the sender's theme owns the ball, since it is the sender's own art and palette
+            let sender = self.current(flight.from_player).theme;
+            let full = block as f64 * sender.attack_ball_scale();
+            let size = (full * flight.scale()).round().max(1.0) as u32;
+            let dest = Rect::new(
+                x.round() as i32 - size as i32 / 2,
+                y.round() as i32 - size as i32 / 2,
+                size,
+                size,
+            );
+            if !sender.draw_attack_ball(canvas, flight.from_player, flight.strength, dest)? {
+                // no ball art: the popped colour's own cell, and a white core over it, which
+                // is the nearest a theme with nothing cut can get
+                sender.draw_loose_cell(canvas, flight.cell, dest)?;
+                let core = flight.core();
+                if core > 0.0 {
+                    let core_size = (size as f64 * core * 0.6).round().max(1.0) as u32;
+                    canvas.set_blend_mode(BlendMode::Blend);
+                    canvas.set_draw_color(Color::RGBA(255, 255, 255, (core * 255.0) as u8));
+                    canvas.fill_rect(Rect::from_center(dest.center(), core_size, core_size))?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// where a point in a player's board cells falls in the window, in pixels
+    fn cell_in_window(&self, player: u32, cell: (f64, f64)) -> (f64, f64) {
+        let current = self.current(player);
+        let themed = &current.player_themes[player as usize];
+        let geometry = current.theme.geometry();
+        let origin = geometry.point(CellPoint::new(0, geometry.hidden_rows() as i32));
+        let block = geometry.block_size() as f64;
+        let at = Point::new(
+            origin.x() + ((cell.0 + 0.5) * block).round() as i32,
+            origin.y() + ((cell.1 - geometry.hidden_rows() as f64 + 0.5) * block).round() as i32,
+        );
+        let mapped =
+            current
+                .scale
+                .scale_and_offset_point(at, themed.board_snip.x(), themed.board_snip.y());
+        (mapped.x() as f64, mapped.y() as f64)
+    }
+
     pub fn draw_popups(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
         for player in 0..self.players() {
             let current = self.current(player);

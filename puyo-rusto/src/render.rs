@@ -2,6 +2,7 @@
 
 use crate::game::board::{Board, SPAWN};
 use crate::game::{ClearDetail, Game, BIG_CLEAR_PUYOS, LONG_CHAIN};
+use engine::animate::nuisance::NuisanceFall;
 use engine::game::geometry::Point;
 use engine::game::GameEvent;
 use engine::particles::field::reaction::words;
@@ -21,8 +22,8 @@ impl GameRender for Game {
 
     /// Nuisance is the one thing on this board the player did not put there, and it arrives in
     /// a slab: it drops in from over the top rather than appearing, and the game waits for it.
-    fn attack_fall_speed(&self) -> Option<f64> {
-        Some(crate::game::rules::NUISANCE_FALL_ROWS_PER_SECOND)
+    fn attack_fall(&self) -> Option<NuisanceFall> {
+        Some(crate::game::rules::NUISANCE_FALL)
     }
 
     /// One step of a chain at a time, graded by how far into the chain it is - so a chain is
@@ -93,7 +94,7 @@ impl GameRender for Game {
 mod tests {
     use super::*;
     use crate::game::random::GameRandom;
-    use crate::game::rules::{Difficulty, NUISANCE_FALL_ROWS_PER_SECOND};
+    use crate::game::rules::Difficulty;
     use engine::game::random::Seed;
 
     fn game() -> Game {
@@ -119,14 +120,8 @@ mod tests {
     #[test]
     fn an_attack_falls_in_rather_than_appearing() {
         assert_eq!(
-            game().attack_fall_speed(),
-            Some(crate::game::rules::NUISANCE_FALL_ROWS_PER_SECOND)
-        );
-        // the longest fall there is, under a second: quick, and nothing like instant
-        let board_fall = crate::game::board::ROWS as f64 / NUISANCE_FALL_ROWS_PER_SECOND;
-        assert!(
-            (0.6..1.2).contains(&board_fall),
-            "{board_fall}s to cross the board"
+            game().attack_fall(),
+            Some(crate::game::rules::NUISANCE_FALL)
         );
     }
 

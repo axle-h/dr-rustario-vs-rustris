@@ -18,7 +18,8 @@ use crate::game::rules::Difficulty;
 use crate::game::score::step_score;
 use engine::game::geometry::Point;
 use engine::game::{
-    ids, Attack, Cell, CellId, GameEvent, GameId, MetricKind, PieceId, StageState, StageTransition,
+    ids, Attack, Cell, CellId, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState,
+    StageTransition,
 };
 use std::time::Duration;
 
@@ -199,7 +200,17 @@ impl Game {
         let Some(pair) = self.pair.take() else { return };
         let cells = pair.cells(self.skin);
         pair.lock(&mut self.board);
+        // whichever half is already resting on something has *landed*; the other is about to
+        // come apart from it and falls, and reports itself out of the settle below instead
+        let landed: Vec<_> = cells
+            .iter()
+            .copied()
+            .filter(|(at, _)| self.board.is_supported(*at))
+            .collect();
         self.events.push(GameEvent::Lock { cells, dropped });
+        if !landed.is_empty() {
+            self.events.push(GameEvent::Landed { cells: landed });
+        }
         self.chain_score = 0;
         self.state = State::Resolving {
             chain: 0,
@@ -207,13 +218,25 @@ impl Game {
         };
     }
 
+    /// what the board holds at each of `points`, as the engine's own placed cells
+    fn placed(&self, points: &[Point]) -> Vec<PlacedCell> {
+        points
+            .iter()
+            .filter_map(|at| self.board.get(*at).map(|cell| (*at, cell.id(self.skin))))
+            .collect()
+    }
+
     /// One turn of the chain loop: let gravity finish, then pop whatever is ready.
     ///
     /// Gravity comes first so that the halves of the pair come apart before anything is
     /// measured, and so that each chain step lands before the next is looked for.
     fn resolve(&mut self, chain: u32) {
-        if self.board.settle() {
+        let settled = self.board.settle();
+        if !settled.is_empty() {
             self.events.push(GameEvent::Settle);
+            self.events.push(GameEvent::Landed {
+                cells: self.placed(&settled),
+            });
             self.state = State::Resolving {
                 chain,
                 timer: rules::SETTLE_DELAY,
@@ -598,7 +621,7 @@ pub fn foreign_attack(receiver: GameId, _nuisance: u32) -> u32 {
 mod tests {
     use super::*;
     use crate::game::board::tests::{board as build_board, render};
-    use crate::game::cell::PuyoColor;
+    use crate::game::cell::{LinkMask, PuyoColor};
     use crate::game::random::Seed;
     use engine::game::Game as _;
 
@@ -650,6 +673,79 @@ mod tests {
             }
         }
         events
+    }
+
+    /// A pair locks with one half resting and the other over a well, so only the resting one
+    /// has landed - the other reports itself out of the settle a moment later.
+    ///
+    /// This is why the event exists at all: `Settle` fires once for a whole board and only
+    /// when something moved, so a pair landing flat on the stack would be seen not at all
+    /// and a pair over a ledge only half a beat late.
+    #[test]
+    fn only_the_half_that_is_resting_lands_with_the_lock() {
+        let floor = ROWS as i32 - 1;
+        let mut game = game_with(&["......", "......", "......", "......", "......", "r....."]);
+        // laid across the ledge the red bean makes: the pivot on it, the child over the well
+        let piece = game.random.next_pair();
+        let mut pair = Pair::new(Point::new(0, floor - 1), piece);
+        pair.rotate(&game.board, true);
+        assert_eq!(
+            pair.child(),
+            Point::new(1, floor - 1),
+            "laid flat, to the right"
+        );
+        game.pair = Some(pair);
+        game.events.clear();
+        game.lock_pair(true);
+
+        let landed: Vec<Vec<Point>> = game
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                GameEvent::Landed { cells } => Some(cells.iter().map(|(p, _)| *p).collect()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            landed,
+            vec![vec![Point::new(0, floor - 1)]],
+            "the half on the ledge landed; the one over the well is still in the air"
+        );
+
+        // ... and the other half reports itself when gravity finishes with it
+        game.drain_events();
+        let settled: Vec<Point> = resolve(&mut game)
+            .iter()
+            .filter_map(|e| match e {
+                GameEvent::Landed { cells } => Some(cells.iter().map(|(p, _)| *p)),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(settled, vec![Point::new(1, floor)], "and then it lands too");
+    }
+
+    /// a settle names every cell it moved, at the point it came to rest on
+    #[test]
+    fn a_settle_says_where_everything_came_to_rest() {
+        let floor = ROWS as i32 - 1;
+        let mut game = game_with(&["......", "......", "......", "......", "r.....", "......"]);
+        let landed: Vec<_> = resolve(&mut game)
+            .iter()
+            .filter_map(|e| match e {
+                GameEvent::Landed { cells } => Some(cells.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(
+            landed,
+            vec![(
+                Point::new(0, floor),
+                PuyoCell::puyo(PuyoColor::Red, LinkMask::NONE).id(game.skin)
+            )],
+            "the red bean fell to the floor, and says so at the point it landed on"
+        );
     }
 
     fn clears(events: &[GameEvent]) -> Vec<(u32, bool, ClearDetail)> {

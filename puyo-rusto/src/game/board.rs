@@ -120,6 +120,13 @@ impl Board {
         Self::index(point).is_some_and(|i| self.cells[i].is_none())
     }
 
+    /// whether whatever is at `point` has something under it, and so has come to rest
+    ///
+    /// Off the board counts as occupied, which is what puts the floor under the bottom row.
+    pub fn is_supported(&self, point: Point) -> bool {
+        !self.is_free(Point::new(point.x, point.y + 1))
+    }
+
     pub fn set(&mut self, point: Point, cell: Option<PuyoCell>) {
         if let Some(i) = Self::index(point) {
             self.cells[i] = cell;
@@ -167,27 +174,32 @@ impl Board {
             .unwrap_or(0)
     }
 
-    /// Let everything floating fall, one column at a time, and report whether anything moved.
+    /// Let everything floating fall, one column at a time, and report where each cell that
+    /// moved came to rest.
     ///
     /// A settle is what happens between chain steps: a pop leaves holes and whatever was
-    /// resting on the group comes down into them.
-    pub fn settle(&mut self) -> bool {
-        let mut moved = false;
+    /// resting on the group comes down into them. The points are the *new* ones, and the ids
+    /// are read after [`Board::recompute_links`] rather than before it - a cell that has just
+    /// landed beside a match of its own colour is drawn joined to it, and reading the id
+    /// first would draw a frame of the mask it had in the air.
+    pub fn settle(&mut self) -> Vec<Point> {
+        let mut moved = vec![];
         for x in 0..COLUMNS as i32 {
             let mut write = ROWS as i32 - 1;
             for y in (0..ROWS as i32).rev() {
                 let point = Point::new(x, y);
                 if let Some(cell) = self.get(point) {
                     if y != write {
+                        let landed = Point::new(x, write);
                         self.set(point, None);
-                        self.set(Point::new(x, write), Some(cell));
-                        moved = true;
+                        self.set(landed, Some(cell));
+                        moved.push(landed);
                     }
                     write -= 1;
                 }
             }
         }
-        if moved {
+        if !moved.is_empty() {
             self.recompute_links();
         }
         moved
@@ -520,7 +532,7 @@ pub mod tests {
     fn a_pop_leaves_what_was_above_it_to_fall() {
         let mut board = board(&["b.....", "r.....", "r.....", "r.....", "r....."]);
         board.pop().expect("the reds pop");
-        assert!(board.settle(), "the blue falls");
+        assert!(!board.settle().is_empty(), "the blue falls");
         assert_eq!(
             board.get(Point::new(0, ROWS as i32 - 1)).unwrap().color(),
             Some(PuyoColor::Blue)
@@ -538,7 +550,7 @@ pub mod tests {
         ]);
         let first = board.pop().expect("the reds pop");
         assert_eq!(first.groups[0].color, PuyoColor::Red);
-        assert!(board.settle());
+        assert!(!board.settle().is_empty());
         let second = board.pop().expect("the blues then reach each other");
         assert_eq!(second.groups[0].color, PuyoColor::Blue);
         assert_eq!(second.groups[0].size, 4);
@@ -550,14 +562,17 @@ pub mod tests {
         let mut board = Board::new(PuyoSkin::FIRST);
         board.set(Point::new(0, 0), Some(PuyoCell::loose(PuyoColor::Red)));
         board.set(Point::new(3, 5), Some(PuyoCell::Nuisance));
-        assert!(board.settle());
+        assert!(!board.settle().is_empty());
         let floor = ROWS as i32 - 1;
         assert_eq!(
             board.get(Point::new(0, floor)).unwrap().color(),
             Some(PuyoColor::Red)
         );
         assert_eq!(board.get(Point::new(3, floor)), Some(PuyoCell::Nuisance));
-        assert!(!board.settle(), "a settled board settles no further");
+        assert!(
+            board.settle().is_empty(),
+            "a settled board settles no further"
+        );
     }
 
     #[test]
@@ -723,7 +738,7 @@ pub mod tests {
         // take a puyo out from under the stack: everything shifts down a row and the ghost
         // becomes an ordinary puyo
         board.set(Point::new(0, ROWS as i32 - 1), None);
-        assert!(board.settle());
+        assert!(!board.settle().is_empty());
         let step = board.pop().expect("now it is four in view");
         assert_eq!(step.groups.len(), 1);
         assert_eq!(step.groups[0].size, 4);

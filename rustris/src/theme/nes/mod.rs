@@ -148,6 +148,9 @@ pub fn nes_theme<'a>(
         // Dr. Rustario and Rustris take a hit as it arrives, so nothing ever waits
         pending: None,
         ghost_style: GhostStyle::Alpha,
+        pop_debris: None,
+        nuisance_rumble: None,
+        attack_ball: None,
         hard_drop_rows_per_frame: HARD_DROP_ROWS_PER_FRAME,
     };
     retro_theme(canvas, texture_creator, options)

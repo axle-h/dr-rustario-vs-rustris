@@ -1,6 +1,7 @@
 use crate::render::block_mask::BlockMask;
 use crate::render::helper::{TextureFactory, TextureQuery};
 use sdl2::pixels::Color;
+use std::cell::RefCell;
 
 use sdl2::rect::{Point, Rect};
 use sdl2::render::{Texture, TextureCreator, WindowCanvas};
@@ -178,7 +179,10 @@ impl AnimationSpriteSheetData {
 }
 
 pub struct AnimationSpriteSheet<'a> {
-    texture: Texture<'a>,
+    /// Behind a `RefCell` because fading one is `set_alpha_mod`, which is a mutation, and
+    /// every draw here takes `&self` - the same trick the block atlas and the popup font's
+    /// fill already use, and for the same reason.
+    texture: RefCell<Texture<'a>>,
     frames: Vec<Rect>,
     frame_width: u32,
     frame_height: u32,
@@ -188,7 +192,7 @@ impl<'a> AnimationSpriteSheet<'a> {
     pub fn new(texture: Texture<'a>, frames: Vec<Rect>) -> Self {
         let first_frame = frames.first().expect("empty animation");
         Self {
-            texture,
+            texture: RefCell::new(texture),
             frame_width: first_frame.width(),
             frame_height: first_frame.height(),
             frames,
@@ -211,7 +215,7 @@ impl<'a> AnimationSpriteSheet<'a> {
     ) -> Result<(), String> {
         let snip = self.frames[frame];
         canvas.copy(
-            &self.texture,
+            &self.texture.borrow(),
             snip,
             Rect::new(dest.x, dest.y, snip.width(), snip.height()),
         )
@@ -224,7 +228,25 @@ impl<'a> AnimationSpriteSheet<'a> {
         frame: usize,
     ) -> Result<(), String> {
         let snip = self.frames[frame];
-        canvas.copy(&self.texture, snip, dest)
+        canvas.copy(&self.texture.borrow(), snip, dest)
+    }
+
+    /// one frame at `alpha`, for something thrown off the board that fades as it goes
+    pub fn draw_frame_scaled_with_alpha(
+        &self,
+        canvas: &mut WindowCanvas,
+        dest: Rect,
+        frame: usize,
+        alpha: u8,
+    ) -> Result<(), String> {
+        let snip = self.frames[frame];
+        let mut texture = self.texture.borrow_mut();
+        texture.set_alpha_mod(alpha);
+        let result = canvas.copy(&texture, snip, dest);
+        // put it back: every other draw here takes the sheet as it finds it, so a fade left
+        // behind would quietly fade the next frame drawn from it
+        texture.set_alpha_mod(u8::MAX);
+        result
     }
 
     pub fn draw_frame_ex(
@@ -235,7 +257,15 @@ impl<'a> AnimationSpriteSheet<'a> {
         frame: usize,
     ) -> Result<(), String> {
         let snip = self.frames[frame];
-        canvas.copy_ex(&self.texture, snip, dest, rotation, None, false, false)
+        canvas.copy_ex(
+            &self.texture.borrow(),
+            snip,
+            dest,
+            rotation,
+            None,
+            false,
+            false,
+        )
     }
 
     pub fn scale<'b>(
@@ -268,7 +298,7 @@ impl<'a> AnimationSpriteSheet<'a> {
                 c.set_draw_color(Color::RGBA(0, 0, 0, 0));
                 c.clear();
                 for (src, dest) in self.frames.iter().zip(scaled_frames.iter()) {
-                    c.copy(&self.texture, *src, *dest).unwrap();
+                    c.copy(&self.texture.borrow(), *src, *dest).unwrap();
                 }
             })
             .map_err(|e| e.to_string())?;
@@ -294,13 +324,13 @@ impl<'a> AnimationSpriteSheet<'a> {
         canvas: &mut WindowCanvas,
         texture_creator: &'b TextureCreator<WindowContext>,
     ) -> Result<AnimationSpriteSheet<'b>, String> {
-        let (width, height) = self.texture.size();
+        let (width, height) = self.texture.borrow().size();
         let mut texture = texture_creator.create_texture_target_blended(width, height)?;
         canvas
             .with_texture_canvas(&mut texture, |c| {
                 c.set_draw_color(Color::RGBA(0, 0, 0, 0));
                 c.clear();
-                c.copy(&self.texture, None, None).unwrap();
+                c.copy(&self.texture.borrow(), None, None).unwrap();
             })
             .map_err(|e| e.to_string())?;
 
@@ -312,6 +342,6 @@ impl<'a> AnimationSpriteSheet<'a> {
         canvas: &mut WindowCanvas,
         frame: usize,
     ) -> Result<BlockMask, String> {
-        BlockMask::from_texture(canvas, &mut self.texture, self.frames[frame])
+        BlockMask::from_texture(canvas, &mut self.texture.borrow_mut(), self.frames[frame])
     }
 }

@@ -26,10 +26,22 @@ sends all eleven past. It has a soundtrack the same way: one track over its menu
 more that a match is dealt one of - the track dealt at the start of a match plays to the end
 of it, changing only if the theme does. The **genesis** theme has a soundtrack of its own:
 Mean Bean Machine's four stage tunes, each with the lead-in the game writes as a separate
-track, and its sound effects with them, and it pops the way the game does: a bean sees it
-coming, curls into a ball, the ball shrinks, and what is left bursts into droplets - while a
-refugee bean sitting in the well blinks every couple of seconds. Every step of a chain counts
-itself out over the puyos it just took, in the game's own face rather than the engine's.
+track, and its sound effects with them - while a refugee bean sitting alone in the well blinks
+every couple of seconds. Every step of a chain counts itself out over the puyos it just took,
+in the game's own face rather than the engine's.
+
+It also *moves* the way the game does. A group about to go flashes where it stands, joined to
+its neighbours and all, before it pulls a face, curls into a ball and bursts - and the droplets
+it throws leave the cell they came from and are still in the air when the next step of the
+chain starts. Every bean squashes where it lands, so the two halves of a pair jolt separately
+and a slab of nuisance arrives one column at a time. Nuisance falls under gravity and raggedly,
+each column a little behind the last, rather than dropping as a level wall. An attack crosses
+the window as the game's own ball - a white core inside a rim in the sending player's colour,
+red for player one and blue for player two - arcing over to burst above the other player's
+board and leave a refugee bean in their tray - which is on the wall over the
+board where Mean Bean Machine puts it, and where the new icon slides into place as the ball
+lands. Nothing shakes: the original does not, and what reads as a rumble there is every bean
+bouncing at once. The particle theme, which owes nobody fidelity, shakes anyway.
 
 Rustris follows the guideline: the Super Rotation System and its wall kicks, a seven bag
 randomiser, hold, extended placement lock down, and guideline scoring. A T rotated into a slot

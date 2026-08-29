@@ -151,6 +151,9 @@ pub fn snes_theme<'a>(
         pending: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: HARD_DROP_ROWS_PER_FRAME,
+        pop_debris: None,
+        nuisance_rumble: None,
+        attack_ball: None,
     };
     retro_theme(canvas, texture_creator, options)
 }

@@ -239,6 +239,17 @@ pub enum GameEvent {
     },
     /// loose blocks fell after a clear
     Settle,
+    /// Cells that just came to rest, at the points they came to rest on.
+    ///
+    /// Decoration: it holds nothing, makes no sound and costs a game that never sends it
+    /// nothing at all. It is not [`GameEvent::Settle`], which fires once for a whole board
+    /// and only when a settle *moved* something - a pair landing flat on the stack produces
+    /// no settle, and a half resting on a ledge comes to rest a lock earlier than its
+    /// partner. A theme that bounces a landing cell needs both of those, and needs to know
+    /// *which* cells and *where*.
+    Landed {
+        cells: Vec<PlacedCell>,
+    },
     AttackSent(Attack),
     AttackReceived {
         cells: Vec<PlacedCell>,

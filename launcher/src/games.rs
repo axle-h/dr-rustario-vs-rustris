@@ -1,5 +1,6 @@
 //! The games the launcher can run, as one type the engine's generic match loop accepts.
 
+use engine::animate::nuisance::NuisanceFall;
 use engine::game::geometry::Point;
 use engine::game::{
     Attack, Cell, CellId, Game, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState,
@@ -359,8 +360,8 @@ impl GameRender for AnyGame {
         delegate!(self, g => GameRender::stage_intro_cells(g))
     }
 
-    fn attack_fall_speed(&self) -> Option<f64> {
-        delegate!(self, g => GameRender::attack_fall_speed(g))
+    fn attack_fall(&self) -> Option<NuisanceFall> {
+        delegate!(self, g => GameRender::attack_fall(g))
     }
 }
 
@@ -420,8 +421,8 @@ mod tests {
     #[test]
     fn a_wrapped_game_is_asked_how_fast_an_attack_falls_in() {
         assert_eq!(
-            GameRender::attack_fall_speed(&puyo()),
-            Some(puyo_rusto::game::rules::NUISANCE_FALL_ROWS_PER_SECOND),
+            GameRender::attack_fall(&puyo()),
+            Some(puyo_rusto::game::rules::NUISANCE_FALL),
             "the wrapper answered None - the default, not the game, so nuisance appears \
              instead of falling"
         );

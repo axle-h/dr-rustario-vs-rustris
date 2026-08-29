@@ -232,6 +232,9 @@ pub fn nes_theme<'a>(
         pending: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
+        pop_debris: None,
+        nuisance_rumble: None,
+        attack_ball: None,
     };
     retro_theme(canvas, texture_creator, options)
 }
