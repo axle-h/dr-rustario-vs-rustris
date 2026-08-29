@@ -26,7 +26,7 @@ chaining back at it, which is what turns two people racing into two people fight
   group bonus tables, target points, the nuisance queue and classic Tsu offset. Cross-game
   attacks are **tuned down** so a Puyo chain does not overwhelm a Rustris or Dr. Rustario
   player; that pricing is measured, not guessed (phase 5).
-* **Scope.** A full citizen of the compendium: four themes, an ai offering the same four
+* **Scope.** A full citizen of the compendium: its themes, an ai offering the same four
   difficulties and the same two demo models as the other games, high score tables, menus, and
   three-way attack pricing.
 * **Crate name: `puyo-rusto`**, displayed "Puyo Rusto". Settled with Alex at the start of
@@ -77,12 +77,12 @@ chaining back at it, which is what turns two people racing into two people fight
   speed band scenes their meaning here. Margin time still arrives in phase 5, on top of the
   ramp rather than in place of it. The long form is in phase 2's amendments, where the question
   was raised.
-* **The three retro themes are `genesis`, `snes` and `3ds`** — Mean Bean Machine, Kirby's
-  Avalanche and Puyo Puyo Chronicle, oldest first. Chosen with Alex on 2026-08-27: two drafts
-  named a third Sega title in the last slot (the Master System Mean Bean Machine, then Compile's
-  Mega Drive original) and both were dropped for Chronicle, which is a real Puyo Puyo rather
-  than a reskin and is drawn for a screen. Every theme is named for its platform, as everywhere
-  else in this repository. Sources and the reasoning are at the head of phase 3.
+* **The retro themes are `genesis` and `snes`** — Mean Bean Machine and Kirby's Avalanche,
+  oldest first. There was a third, `3ds` (Puyo Puyo Chronicle), chosen with Alex on 2026-08-27
+  over two drafts that named another Sega title in that slot; it was built and then **cut on
+  2026-08-28**, for being modern art in a retro slot and for capping the cell size of every
+  theme the game has. Phase 3c carries the whole reasoning. Every theme is named for its
+  platform, as everywhere else in this repository. Sources are at the head of phase 3.
 * **`pair.rs` is a sibling of `pill.rs`, not an extraction from it.** The two pieces rhyme —
   two halves, a pivot, kicks, splitting on lock — but the kick tables, the double-rotate quick
   turn and what happens to the halves afterwards all differ. A shared engine pair-piece would
@@ -1145,9 +1145,11 @@ speed band exactly as the other games' retro themes do.
 
 ## Phase 3 — retro themes
 
-**Status:** `in progress` — 3a, 3b, 3c and 3e are all `done` (2026-08-28); 3d is `in
-progress`, `genesis` done and `snes` and `3ds` still on the particle theme's audio. Puyo
-Rusto has its four themes. **3e was added on 2026-08-28** after Alex played the first three:
+**Status:** `in progress` — 3a, 3b and 3e are `done` (2026-08-28); **3c was done and then
+reverted** — `3ds` was cut from the repository on 2026-08-28, see its section; 3d is `in
+progress`, `genesis` done and `snes` still on the particle theme's audio; **3f is `done`**
+(2026-08-28). Puyo Rusto has three themes and that is the intended number. **3e was added on
+2026-08-28** after Alex played the first three:
 the panels were built from the rips alone and the rips disagree with the games, so every board
 and every preview was out. See it for what was wrong and how each number was measured. **Split into 3a, 3b, 3c and 3d on
 2026-08-27**, with Alex, because three themes is three separate slicing jobs that share one
@@ -1156,8 +1158,8 @@ third. 3a carries the groundwork and `genesis`; 3b is `snes`, which is the same 
 and so the same job again for much less; 3c is `3ds`, which shares nothing with either and is
 the most work of the three; 3d is the audio, deliberately left as placeholders until then.
 
-**Goal.** Three retro themes alongside the particle one, so Puyo has the same four as the
-other games and can take its turn in the retro playlist.
+**Goal.** Retro themes alongside the particle one, so Puyo can take its turn in the retro
+playlist. It was three of them until `3ds` was cut; it is two.
 
 ### The three sources, and what they are called
 
@@ -1165,35 +1167,33 @@ other games and can take its turn in the retro playlist.
 |---|---|---|---|
 | `genesis` | `genesis` | Dr. Robotnik's Mean Bean Machine — [rip](https://www.spriters-resource.com/sega_genesis/drrobmbm/) | 1993 |
 | `snes` | `snes` | Kirby's Avalanche — [rip](https://www.spriters-resource.com/snes/kirbysavalanche/) | 1995 |
-| `3ds` | `3ds` | Puyo Puyo Chronicle — [rip](https://www.spriters-resource.com/3ds/puyopuyochronicle/) | 2016 |
+| ~~`3ds`~~ | ~~`3ds`~~ | ~~Puyo Puyo Chronicle — [rip](https://www.spriters-resource.com/3ds/puyopuyochronicle/)~~ — built, then cut, see 3c | 2016 |
 
-Three things about that table were decided with Alex on 2026-08-27 and are not open:
+Two things about that table were decided with Alex on 2026-08-27 and are not open:
 
-* **The third theme is Puyo Puyo Chronicle on the 3DS.** Two earlier drafts named something
-  else in that slot — first the Master System Mean Bean Machine, then Compile's Mega Drive
-  original — and both are superseded. What the slot is for is a theme that is *actually Puyo
-  Puyo* rather than a reskin, and Chronicle is that while also being the only one of the four
-  with art drawn for a screen anything like the one this runs on.
 * **Every theme is named for its platform**, which is the convention the whole repository keeps
-  (`gameboy`, `nes`, `snes`, `n64`, `particle`), and with the second Sega game gone there is
-  nothing left to tie-break: `genesis`, `snes`, `3ds`. The two earlier drafts both put two Sega
-  titles in the list and needed a region split to tell them apart; that problem does not exist
-  any more and the reasoning behind it has been deleted rather than left lying about.
-* **`all_themes` runs them oldest first** — `genesis`, `snes`, `3ds`, `particle` — which
+  (`gameboy`, `nes`, `snes`, `n64`, `particle`): `genesis`, `snes`. Two earlier drafts put two
+  Sega titles in the list and needed a region split to tell them apart; that problem does not
+  exist any more and the reasoning behind it has been deleted rather than left lying about.
+
+A third row was decided that day and has since gone: **Puyo Puyo Chronicle on the 3DS**, which
+the slot wanted because it is *actually Puyo Puyo* rather than a reskin and is drawn for a
+screen anything like the one this runs on. Both of those were true and neither survived being
+played — 3c has what happened. If the slot is ever filled again, it wants something 16-bit or
+thereabouts, and something whose sheet carries the frames a bean needs to pop.
+* **`all_themes` runs them oldest first** — `genesis`, `snes`, `particle` — which
   is the order the other two games use and which makes the theme sprint a walk forwards through
   the hardware. That order *is* the theme sprint's, and it is the order the retro playlist
   alternates through, so it is a user-visible decision and not an implementation detail.
 
-**"Retro" here means the engine's `ThemeFamily`, not the calendar.** A 2016 handheld game is
-not retro by any ordinary reading, and this phase is still the right home for it: what the
-retro playlist and `Theme::family` sort on is *art-based theme* against *particle theme*, so
-`3ds` is a retro theme in the only sense the code has. The one thing to watch is that
-Chronicle's puyos are the modern glossy design, which is the same lineage as the Puyo Puyo
-Tetris rip the particle theme is already cut from — so the two themes will read as closer to
-each other than `genesis` and `snes` do. What separates them is everything *around* the board:
-`3ds` gets a real background, board frame and mascot out of the rip where the particle theme has
-a particle field and `mascot: None`. If they still look too alike side by side once `3ds` is
-built, that is worth raising with Alex rather than quietly restyling one of them.
+**"Retro" here means the engine's `ThemeFamily`, not the calendar.** What the retro playlist
+and `Theme::family` sort on is *art-based theme* against *particle theme*, and nothing in the
+code knows what year a game came out. That was written here to justify putting a 2016 handheld
+game in this phase; it did not survive being played — see 3c, where `3ds` was cut partly for
+being the theme nearest the particle one. The warning it carried is still worth keeping for
+whatever fills that slot next: a theme cut from modern glossy art will read as a second
+particle theme unless everything *around* the board separates it, and if it still does not,
+raise it with Alex rather than quietly restyling one of them.
 
 **The sheets are not in the repository and will not be.** Spriters-resource rejects automated
 fetches (403 to anything that is not a browser), and megabytes of source for a few hundred KiB
@@ -1248,9 +1248,10 @@ Per theme, in a directory beside that file:
   one.
 * mascot strips `{idle,throw,victory,game-over}.png`. **This is where Puyo gets mascots at
   all** — phase 2 shipped `mascot: None` deliberately, having no art and no honest way to
-  generate a four-strip character animation, and all three of these rips carry characters
-  (Robotnik, Kirby, and Chronicle's whole cast — Arle and Carbuncle are the obvious pick, being
-  the series' own). The particle field's mascot silhouettes come with them for free, since it
+  generate a four-strip character animation, and both of these rips carry characters (Robotnik
+  and Kirby; Chronicle's cast went with its theme in 3c, and with it the one source here that
+  had the series' own Arle and Carbuncle). The particle field's mascot silhouettes come with
+  them for free, since it
   outlines the sprites of every theme in play rather than one.
 * the twelve or so sound effects, and the music — **which phase 3d does, not 3a–3c.** See below.
 
@@ -1315,39 +1316,29 @@ should not end up a recolour of 3a's by accident.
 
 ### Phase 3c — `3ds`
 
-**Status:** `done` — 2026-08-28, out of order: it was done second, because 3b turned out to be
-the one whose art was not in a sheet. It shares nothing with either reskin, which is exactly why
-it could go ahead without them.
+**Status:** `done`, then **reverted** — built on 2026-08-28 and cut from the repository the
+same day, with Alex. The theme, its art and its whole section of `rip_retro.py` are gone;
+`git log` has them if it is ever wanted back.
 
-Puyo Puyo Chronicle, and the odd one out of the three in every way that costs time, which is
-why it is last:
+Two reasons, and the second is the one that cost something:
 
-* **Its own grid, and nothing learned from the two reskins carries over.** 3a and 3b share a
-  lineage; this shares none of it, so `rip_retro.py` gains a third entry in its offsets table
-  that is written from scratch rather than adapted.
-* **Modern art at a modern size.** The rip is drawn for a 3DS screen rather than a 1993 console,
-  so expect larger cells, more colours per sprite and alpha that actually matters. Pick
-  `source_block_size` off the sheet's real pitch and let `reference_block_size` scale it, the
-  way every other theme does — do not resample the art to match the other two.
-* **It is the theme nearest the particle one**, per the note at the head of this phase, so its
-  background, board frame and mascot are what make it a distinct theme rather than a second
-  glossy board. Budget for those rather than treating them as trim.
-* **`3ds` cannot be a Rust module name.** An identifier may not begin with a digit and no raw
-  identifier rescues one that does, so `mod 3ds;` will not compile and neither will a
-  `MatchThemes::3ds`. Only the *menu row* is the string `3ds` — that is a
-  `#[strum(serialize = "3ds")]` on a variant called something legal, exactly as `MatchThemes`
-  already spells `gameboy` and `particle` out separately from its variant names. Use
-  `three_ds` for the module and the directory and `ThreeDs` for the variant; the alternative,
-  `#[path = "3ds/mod.rs"]`, buys a prettier directory listing at the price of a `#[path]`
-  attribute nobody else in this repository has. Worth knowing at 3a rather than at 3c, because
-  it is the sort of thing that gets discovered halfway through writing the theme.
+* **It is modern art in a retro slot.** Chronicle is 2016 and looks it. The note at the head
+  of this phase already worried that it was the theme nearest the particle one; playing it,
+  Alex's reading was that it is not a retro theme at all, and that the animation work the
+  other two are getting (see 3f) would want sprites the Chronicle rip does not carry and
+  nobody has cut.
+* **Its panel sized the board for every other theme.** Every theme of a game is drawn at the
+  largest cell *all* of them can hold, so the tallest panel decides it for the rest.
+  Chronicle's was 290 source pixels tall for a 216 pixel field - a frame with air over it and
+  a score strip under it - against `genesis`'s 224 for 192. It held Puyo's cell at 66 pixels
+  where the two 16-bit panels could manage 76. Cutting it, and then taking back the spawn
+  cell in 3f, moved the board from 858 pixels tall on a 1080p screen to 949.
 
-With this one Puyo has four themes, which is the count phase 5 needs before it can add
-`GameKind::Puyo` to `PLAYLIST_ORDER` without collapsing the theme race or emptying the retro
-playlist.
-
-**Done when:** all four themes render, `field_preview sheet` outlines the new sprites cleanly,
-and matching puyos join up on all three retro themes the way they do on the particle one.
+What went with it: the `MatchThemes::ThreeDs` row, `three_ds` and its art, `THREE_DS_*` and
+`three_ds()` in `rip_retro.py`, and the `THEME_DIRS` indirection that existed only because
+`3ds` cannot begin a Rust identifier. `SceneType::Cover` was written for it and is left in
+the engine - it is a general thing for a scene that is one painted picture, and the next
+theme like that will want it.
 
 ### Phase 3e — the alignment pass (2026-08-28)
 
@@ -1484,9 +1475,9 @@ are, and the `3ds` backdrop fills the window at 1080p. All three check out in `f
 ### Phase 3d — the retro soundtracks and sound effects
 
 **Status:** `in progress` — 2026-08-28. **`genesis` is cut and wired, with seven of its sound
-effects waiting on a listen** (see below); `snes` and `3ds` still play the placeholder. Until
-2026-08-28 all three shipped placeholders, which was Alex's call of 2026-08-27 and not a
-shortcut taken quietly.
+effects waiting on a listen** (see below); `snes` still plays the placeholder, and `3ds` is
+gone (see 3c). Until 2026-08-28 all three shipped placeholders, which was Alex's call of
+2026-08-27 and not a shortcut taken quietly.
 
 **The placeholder is the particle theme's audio, referenced rather than copied.** A retro theme
 hands `data::audio` the same `Sounds` the particle theme does. The music half is already free:
@@ -1583,18 +1574,142 @@ Not in doubt: `move`, the four `chain_N` steps (they are a rising ladder - 1456 
 2280 - which is the sound Puyo is known for) and `level_start`. Also wanted: whether `Victory!`
 and `Continue` are the right tracks for a win and a burial.
 
-**What is left after that:** `snes` (Kirby's Avalanche) and `3ds` (Puyo Puyo Chronicle). Both
-write their tables into their own `mod sound` and their own `GAME_MUSIC` the way
-`genesis/mod.rs` does, and both need four tracks. `retro_audio.py` grows a subcommand each;
-whether their rips are laid out the same way is the first thing to find out, and `split`'s
-assertion is what will say.
+**What is left after that:** `snes` (Kirby's Avalanche), and only that one now `3ds` has been
+cut. It writes its tables into its own `mod sound` and its own `GAME_MUSIC` the way
+`genesis/mod.rs` does, and needs four tracks. `retro_audio.py` grows a subcommand for it;
+whether its rip is laid out the way Mean Bean Machine's is is the first thing to find out, and
+`split`'s assertion is what will say.
+
+### Phase 3f — how a bean pops, and how tall the board is (2026-08-28)
+
+**Status:** `done` — 2026-08-28. Added after Alex played the retro themes. Four things he
+asked for, in his words: close the top of the `genesis` board so beans spawn behind it; pop
+the beans the way the game does; blink the refugee bean; and make the board fill more of the
+screen's height on every theme. The fourth is why `3ds` was cut - see 3c. **The first he
+reversed after seeing it**, and the reversal took two more goes; that is the first note below.
+
+**The board is thirteen rows now, and the thirteenth has nothing behind it.** This took four
+goes and all four are worth recording, because Alex asked for the first, saw it, and reversed
+himself, and then narrowed the reversal twice.
+
+1. **Closed.** A `covered_top` on `RetroThemeOptions` - transparent rows over the board art
+   alone, which the background is then drawn over - put the spawning row behind Mean Bean
+   Machine's course of stone and Kirby's hedge, and a pair was revealed as it fell in. It
+   looked right and it is wrong: the row above the field is *played in*. A puyo up there is
+   still in the game, still part of a group, still what a stack dies against, and hiding it
+   reads as a bug the moment a board fills. `covered_top` is gone; nothing else used it.
+2. **Open, with the board's own art grown a course.** The rip grew a row of each board's own
+   texture over the top - found rather than picked, by asking which course of the art best
+   continues into its top row (Genesis came out at row 20, one cell short of the wall's 36 row
+   period; Kirby at row 8, deep in the canopy). It read as a *taller well* rather than as room
+   above the board.
+3. **Open, art stopping at the field, panel still a row taller.** The board art carried an
+   empty cell and the panel's hole was cut a row taller, so the spawning row was a notch in
+   the panel with stone either side of it. Nearly right, and the sides gave it away.
+4. **Open, panel cut level with the field** - which is where it landed, and is exactly what
+   the retro Rustris themes do. Both panels are cut at the top of their own field, both boards
+   are the twelve rows their games drew, and the thirteenth row is `top_padding` above the
+   panel and the board alike: a cell of bare scene with the panel below it and nothing to
+   either side. Mean Bean Machine's course of stone and Kirby's hedge go with the cut, the
+   hedge over the queue's column as well as over the field, so the panel is level all the way
+   across.
+
+The happy accident of (4) is that **a point in either padded background is a point on that
+console's screen**, which `genesis` always relied on and `snes` now gets for free: every
+`+ TOP_PADDING` that `snes/mod.rs` used to add to its HUD, queue and tray coordinates is gone.
+
+**The scenes are vignettes and were tiles**, which is the other half of the same problem: with
+the row open, a puyo spawning above the board had the same hand-scattered stone behind it that
+the panel below it is made of, and neither plane read as being in front of the other. Four
+backdrops were rendered and shown to Alex - the game's own tile, that tile dimmed, a flat
+colour, a `Checkerboard` of two close shades, and a vignette - and he took the **vignette**.
+`rip_retro.py`'s `vignette` writes it: a 96x54 png of the backdrop's own colour, lifted in the
+middle and falling away to the corners, drawn through `SceneType::Cover`, which scales one
+picture over the window with linear filtering - so it is smooth at 4k for a couple of
+kilobytes, and `Cover` has a second user now `3ds` has gone. `background-tile.png` and the code
+that cut it are gone from both themes.
+
+**And the panel casts a shadow on it**, which is what actually lifts it: `PanelShadow` on
+`RetroThemeOptions`, declared once for both themes in `theme::data::panel_shadow` (3 px down
+and right, 5 px of spread, black at 0xa0). Four things about it are worth knowing.
+
+It falls **down and to the right only**, which is a light over the panel's top left shoulder
+and was Alex's call on seeing the first version. Every ring keeps the body's own top left
+corner rather than being centred on it, so the top and left edges of the shadow are inside the
+panel and never drawn. A centred ring puts a band of shadow along the panel's top edge, which
+is exactly where a spawning pair is the only thing standing on the scene.
+
+It does **not** move with the hard drop's ricochet, and should not: the impact offsets the
+*board* texture inside a panel that stays where it is - which is what every retro theme in the
+repository has always done - so a shadow that shook with it would be the shadow of something
+that had not moved.
+
+It is **not painted into the panel art**, which is where it would naturally go. A panel is
+measured in source pixels and every theme of a game is drawn at the largest cell all of them
+can hold, so a margin round the art comes straight off the board: in one player the panels are
+height-limited and there are 11 free pixels, but in two players they are *width*-limited at
+exactly 73, and eight pixels of margin takes the cell to 68. Drawn at composite time it costs
+the layout nothing and is free to fall outside the player's own area, which is what a shadow
+should do.
+
+And its `skip_top` is the theme's `top_padding`. Cast from the whole padded box, the shadow put
+a dark rectangle behind the spawning row - the one row the whole exercise was about giving a
+clear backdrop to.
+
+**Kirby lost its `NEXT` sign to the level cut and got it back, twice.** The game nails the sign
+*above* the top edge of the field, so cutting the panel there took the top half of it. The
+first fix moved the letters and the hedge behind them down onto the plank - and sawed the plank
+in half, because the plank was still where it was. What moves now is the **whole assembly**,
+letters and plank together, rows 7 to 31 of the screen, down by nine. The plank lands exactly
+over the game's two name plates; they named one queue per player and this panel has both boxes
+to itself, so they had to go whichever way, and the plank covers them outright. The paint-out
+that used to erase them and the woodwork that used to fill the hole are both gone from the
+script - checked by re-cutting the panel and diffing it, which came out identical.
+
+**What the height is worth.** At 1920x1080, one player: the cell was 66 pixels and is 73, the
+board 858 pixels tall and 949. Two separate steps. Cutting `3ds` took the cap from 66 to 71
+(its panel was 290 source pixels for a 216 pixel field); the two retro panels are 208 rows plus
+the spawning cell, which is 224 - their console's own screen height - and that is 76. It does
+not reach 76 because the *particle* theme is then the tallest: it is built at whatever the
+retro themes can reach, and its own frame, border and pending strip need about 1.7 cells more
+than the board, so `BoardLayout` settles everyone at 73. Getting past that means the modern
+theme's furniture, not the retro panels'.
+
+**The pop is four beats and the sheet had all of them.** Mean Bean Machine's beans sheet
+carries, per colour band: a surprised face (the *last* frame of the animation strip at the
+top, not the first - the first is the white flash), a whole-cell ball, an eight pixel ball and
+a six pixel droplet, the last three sitting in a block under the arrangements beside the halo
+and wings the same bean wears as an angel. `genesis_animations` in `rip_retro.py` composes
+them into `animations.png`, one strip per row, the droplet frames being four copies of the one
+droplet flown out from the middle at two distances. The refugee bean has no ball of its own,
+so its pop is the sheet's white-outlined refugee and then the shrunken one; and the shrunken
+one is also its **blink**, on a three frame idle strip with a two second pause on the
+eyes-open frame.
+
+Three things in the engine, all small:
+
+* `DestroyStyle::Pop` gained a `duration`, because it was a fixed 300 ms and Puyo's own
+  `POP_DELAY` is 280 - so the animation would have set the pace of a chain rather than fitting
+  inside it. `genesis` asks for 240.
+* A strip's frames have to be **edge to edge**: `non_exclusive_linear` addresses frame *i* by
+  counting frame widths from the strip's start. Only the rows of the sheet are spaced apart.
+* Nuisance is a `Cell::Garbage` and that arm drew the still sprite, so it could never idle.
+  It now goes through `draw_stack_cell`, which without an idle strip is the identical draw -
+  which is every other theme in the repository.
+
+**Verified:** `cargo test --workspace` green; `frame_shot` on all three themes; the pop and the
+blink were stepped frame by frame through a throwaway example (drawn, looked at, deleted) since
+`frame_shot` replays only the caption of a clear and not the clear's own animation. The pop and
+the blink have been played by Alex and are what he wanted; the open board has not been played
+at the time of writing, only shot.
 
 ### Handover notes
 
-Worked on 2026-08-28. **3a, 3b and 3c are all `done`; Puyo Rusto has its four themes.**
-`cargo test --workspace` is green (753 tests, up from 746); `puyo-rusto` is 180 of them and is
-clippy clean. `cargo run --example frame_shot -- 900 700 2 out/ puyo` draws `genesis`, `snes`,
-`3ds` and `particle`, and `menu_shot` walks the grown theme row.
+Worked on 2026-08-28. **3a, 3b and 3c were all `done` at the time this was written; 3c has
+since been reverted and Puyo Rusto has three themes, not four** — read 3c and 3f before this
+paragraph. `cargo test --workspace` is green (753 tests, up from 746); `puyo-rusto` is 180 of
+them and is clippy clean. `cargo run --example frame_shot -- 900 700 2 out/ puyo` draws
+`genesis`, `snes` and `particle`, and `menu_shot` walks the grown theme row.
 
 **The order the phase was done in changed, and the plan above is amended to match.** 3a was
 written as "groundwork plus `genesis`" and that is what it is; but `snes` turned out to be the
@@ -1922,7 +2037,7 @@ directed attack prices** are set.
 **Puyo joins the playlists by being added to `GameKind::PLAYLIST_ORDER`** (`launcher/src/games.rs`),
 which is one line. Phase 2 introduced that list precisely so this could be a deliberate step:
 a game is billed on the pre-menu as soon as it is playable and deals a playlist turn only once
-it has the four themes and the ai to take one. Everything that sequences a playlist -
+it has the themes and the ai to take one. Everything that sequences a playlist -
 `PlaylistThemes::slots`, `stage_count`, `first_game`, `fixed_stages`, `random_game` and the
 tests - already reads that list, so nothing else in the launcher changes. `Difficulty::level`
 already has a Puyo arm; it returns the dial unchanged as a placeholder and this is the phase
@@ -1963,6 +2078,775 @@ one the way `dr_rustario_speed()` is Dr. Rustario's. Left as a shape in phase 0.
 
 **Done when:** a 2-player vs. match on each playlist has the three games taking turns, garbage
 crossing sensibly in all six directions, and the README table updated with the measurements.
+
+### Handover notes
+
+_(to be filled in by the agent that completes this phase)_
+
+---
+
+## Phase 6 — the characters
+
+**Status:** `todo` — raised by Alex on 2026-08-28, after `genesis` got its own audio. Nothing
+built yet; this section is the write-up so the reading of the sheet is not done twice.
+
+**It is numbered after phase 5 but does not depend on it**, which is the one place the working
+agreement's "in order" needs a word: this is theme art and per-player animation, and it touches
+nothing the vs. playlists or the attack prices touch. If Alex wants the faces before the
+crossings, take it out of order deliberately rather than by drift.
+
+**Goal.** Every retro theme draws a **character** beside each player's board, in the box its
+own game drew one in, and the face it wears answers what is happening on that board. `genesis`
+first, because Mean Bean Machine's sheet is the one that has been read.
+
+### The source, and the grid it is on
+
+`puyo-rusto/art/retro/Sega Genesis - Dr. Robotnik's Mean Bean Machine - Miscellaneous -
+Mugshots.png`, 1095x971, keyed on teal `(0, 108, 108)` — the same rip directory as everything
+else in phase 3 and, like the rest of it, **not in the repository**.
+
+Thirteen characters, and the ripper wrote the reading down on the sheet itself:
+
+> Note: All animations go in the same order (from top to bottom): -Idle -Winning -Losing -Defeat
+
+Which is Alex's reading exactly, and is now sourced rather than assumed.
+
+**Every frame is 80x56 on an 81x57 pitch**, without exception — one pixel of key between
+frames, four rows of frames per character, each character block starting wherever its name
+label ends. So the whole sheet is `origin + (81 * col, 57 * row)` and a character is an origin
+and four frame counts. This was measured by connected components over the keyed background,
+not read off by eye.
+
+**80x56 is exactly `MUGSHOT` in `theme/genesis/mod.rs`.** The box the panel already names —
+`(120, 96, 80, 56)`, a hole in the frame plane, so its rect is the game's own to the pixel —
+takes a portrait with nothing to scale and nothing to centre. That is not a coincidence; it is
+the box these were drawn for.
+
+**Key the background out and draw the portrait over the wall.** ~~Draw the frame opaque,
+including its background.~~ **Corrected 2026-08-28 against the Arms captures**, which settle it:
+brighten the box interior in any of them and the dungeon stone is plainly there behind the
+character, the same speckled dark course the ripper already cut into `background.png`'s hole.
+The uniform `(0, 0, 96)` behind every face on the sheet is the *ripper's* key, not the Genesis's
+backdrop. So the box stays a hole and the character is composited into it.
+
+Two things follow. The key colour appears **enclosed** inside some characters — 253 pixels of it
+in a Frankly frame, 108 in a Humpty, 60 in a Robotnik — and that is right rather than wrong:
+they are the gaps his bent springs leave, wall showing through. So key by colour and do not try
+to be clever about interior holes. But a character with a dark navy *detail* the same colour
+would be punched through by the same rule, so the cut wants eyeballing per character, which is
+what `rip_retro.py check` already exists to do.
+
+| character | origin | idle | winning | losing | defeat | extras |
+|---|---|--:|--:|--:|--:|---|
+| Arms | (1, 14) | 4 | 3 | 2 | 2 | palette cycle |
+| Frankly | (327, 14) | 2 | **1** | 2 | 2 | 4 bolts |
+| Humpty | (493, 14) | 2 | 4 | 3 | 2 | 2 + 3 + 3 |
+| Coconuts | (846, 14) | 2 | 2 | 3 | 2 | palette cycle ×2 |
+| Davy Sprocket | (1, 257) | 2 | 2 | 2 | 2 | — |
+| Skweel | (202, 257) | 3 | 3 | **6** | 2 | — |
+| Dynamight | (690, 257) | 2 | **5** | 2 | 2 | — |
+| Grounder | (1, 500) | 3 | 2 | 2 | 2 | — |
+| Spike | (246, 500) | 3 | 2 | 2 | 2 | — |
+| Sir Ffuzzy-Logik | (491, 500) | 3 | 3 | 3 | **4** | palette cycle, 3 eyes |
+| Dragon Breath | (835, 500) | 3 | 2 | 3 | 2 | — |
+| Scratch | (1, 743) | 2 | 2 | 2 | **1** | — |
+| Dr. Robotnik | (169, 743) | 3 | 2 | 2 | **1** | — |
+
+127 frames in all. `Border (Ending Only)` at (414, 743) is an empty box outline for the ending
+cutscene and is **not** a character.
+
+**A frame count is not a pose count**, which Arms showed and which the table above cannot say.
+Two frames of a row can differ *only* in colour, because the ripper grabbed them at different
+points in a palette cycle — Arms' idle frames 1 and 2 are the same face and differ solely in the
+rim rows the lights are on. And the **last frame of a defeat row is usually not a pose at all**:
+for ten of the thirteen it is the frame before it at exactly half brightness, pixel for pixel —
+the fade the game dips him out on. All but Dynamight, whose two defeat frames genuinely differ,
+and Scratch and Dr. Robotnik, who have one frame each. Sir Ffuzzy-Logik's four are three poses
+and then the halving.
+
+So before treating a row as N poses, **diff its frames**: what differs only in one band of rows
+is a palette state, and what is an exact halving is a fade.
+
+### Whose face it is
+
+In Mean Bean Machine the box holds the **opponent** — the stage's boss, reacting to you. Here a
+panel belongs to one player and there may be one of them, so the character is that **player's
+own**, and the states are read from that player's board. Alex's call, and it is the same move
+the `NEXT` boxes already made: the game drew one box for you and one for the opponent, and this
+panel runs one player's queue through both.
+
+**Which character is dealt at random**, per player, per match, and it goes through the seed the
+way `PuyoSkin::deal` does and for the same reason — a playlist that swaps a player's board onto
+Puyo mid-match must hand them back the character they had, and the two players of a two player
+game must not be dealt the same face. Thirteen characters and at most two players, so unlike
+the skins there is no cycling to worry about.
+
+### The four states, and what moves between them
+
+The sheet's four rows map onto the match like this. **State is per player**, read from that
+player's own board and nobody else's.
+
+| state | row | entered when | left when |
+|---|---|---|---|
+| `idle` | 1 | the resting state | something below happens |
+| `winning` | 2 | a chain, and a won match | its hold runs out |
+| `losing` | 3 | nuisance is waiting, or the stack is high | neither is true any more |
+| `defeat` | 4 | game over | never — the match is finished |
+
+**`winning` runs the whole chain and lingers.** The trigger is `GameEvent::Clear`; a chain is a
+run of them, one per step, with a `Settle` between, so the rule is *enter on a `Clear`, and
+hold until `LINGER` after the last one*. Every further step of the same chain refreshes the
+hold, so a nine chain holds the face for nine steps and a bit rather than restarting it. The
+open question is whether a **single** pop counts — see below.
+
+**`losing` has two triggers and no event for either.** Nuisance waiting is
+`Game::pending_attacks()`, which is non-empty exactly when an opponent has sent something that
+has not landed — the tray this theme already draws. Board height is
+`MatchScreen::stack_danger`, which is already computed every frame for the particle field:
+0 when the board is empty, 1 when the stack is at the top. Note what it measures — **the
+highest column as a fraction of the visible height**, not the fraction of cells filled — so
+"60% full" reads as *the stack is 60% of the way up*, which is the number that matters and is
+the one already on hand. Both are read per frame; neither is an event.
+
+**Do not flip-flop.** Three rules, all of them needed:
+
+* **A minimum dwell.** Once entered, a state holds for `MIN_DWELL` whatever else happens short
+  of game over, so a state cannot be entered and left inside one animation cycle.
+* **Hysteresis on the height trigger.** Enter `losing` above `DANGER_ENTER`, leave it only
+  below `DANGER_LEAVE`, with a real gap between them (0.60 and 0.45 to start). A stack sitting
+  exactly on one threshold otherwise strobes as each pair locks.
+* **A linger, not an edge.** `winning` outlives its last `Clear` by `LINGER`, and `losing`
+  outlives the last nuisance landing by the same, so a chain that clears the tray does not
+  snap the face back mid-pop.
+
+**Precedence, while a match is running: `winning` beats `losing`.** A player who chains while
+buried is answering the nuisance — cancelling it outright, which is what `nuisance.rs` does —
+and the face that says so is the right one. `losing` resumes when the hold runs out, if
+whatever put it there is still true.
+
+**`defeat` and victory are terminal.** `GameEvent::GameOver` enters `defeat` and nothing leaves
+it; `GameEvent::Victory` enters `winning` and holds it for the rest of the match rather than
+lingering. Alex's call, and it means `winning` needs a *held* mode as well as a lingering one.
+
+### What the engine needs, and what it already has
+
+The engine already has a character beside the board — `animate/mascot.rs`, which is Dr. Mario —
+and it is **close but not this**. `MascotMeta` has four strips too, but they are `idle`,
+`spawn`, `victory` and `game_over`, and which one plays is decided entirely by the animation
+phase in `Theme::draw_board`: a piece is spawning, the match is over, the match was won,
+otherwise idle. There is no strip for *how the board is going* and no seam that reads the
+board at all. So this is a new thing beside the mascot rather than a fifth `MascotKind`:
+
+* **`engine/src/animate/character.rs`** — a `CharacterAnimation` holding the current state, its
+  `FrameAnimation`, the dwell and linger clocks and the hysteresis latch. It goes in
+  `PlayerAnimations`, which is per player, is already `update(delta)`d every frame and already
+  takes `on_event(&GameEvent)` — which is where `Clear`, `GameOver` and `Victory` arrive. The
+  two per-frame numbers (`danger`, and whether anything is pending) have no event, so they need
+  one new call alongside `update`, fed from the match screen the same way `SceneContext` is fed
+  `Self::stack_danger(game)` today.
+* **`CharacterLayout` and character sprites on `RetroThemeOptions`**, both `Option`, beside
+  `mascot`/`mascot_animations`. A layout is a `Rect` and nothing else here, since the art is
+  the size of the box.
+* **One `AnimationSpriteSheetData` per state**, which
+  `AnimationSpriteSheetData::non_exclusive_linear(file, start, frames, 80, 56)` expresses
+  exactly — one PNG per character, four rows, start at `(0, 57 * row)`. Thirteen PNGs of at
+  most 480x228 each; nowhere near `MAX_ATLAS_WIDTH`, and about 2 MB of texture for the lot if
+  all thirteen are built, which they must be, since which one is dealt is not known until a
+  match starts.
+* **The deal has to reach the theme.** `Theme::draw_board(&self, canvas, game, animations)` is
+  `&self` and a theme is `&'static`, so the character index cannot live on the theme — it
+  belongs on `PlayerAnimations`, dealt when the match screen builds one. This is the same
+  constraint that put `PuyoSkin` on the `CellId` rather than on the theme, arrived at from the
+  other end.
+
+### The one conflict on `genesis`: the tray is in that box
+
+`PendingLayout` currently fills the mugshot box with the nuisance tray — five icons at a whole
+cell each, right to left — because it is the only hole on the panel big enough and Mean Bean
+Machine, which lands an attack the moment it is sent, drew nothing that needs it. A character
+wants the whole box. **These cannot both have it**, and the tray is a rule this game has and
+the original did not, so it cannot simply be dropped.
+
+This is Alex's to decide. What is available:
+
+* the two `NEXT` boxes are 32x48 and hold one pair each — full;
+* the strip under `SCORE` at the foot of the panel is stone, unboxed, and about 80x16 clear;
+* the tray could be drawn **over** the character, along the bottom of the box, which is 80x16
+  of a face's chin;
+* or the character could be dropped on `genesis` and the theme keep its tray.
+
+### Per-character notes, and the questions to ask
+
+The rip carries loose sprites beside some rows that are **not** part of any 80x56 frame. They
+are drawn to the right of the row they belong to, at no stated offset, so *where they go over
+the portrait is not on the sheet* — this is the part that has to come off the video, one
+character at a time. Their rects, and what they appear to be:
+
+* **Arms** — 4 idle frames, the most of any character. `Palette cycle: replace (224,224,0) with`
+  a ramp of eight, `(96,64,0)` → `(128,64,0)` → `(160,96,32)` → `(192,128,64)` → `(224,160,96)`
+  → `(224,192,128)` → `(224,224,160)` → `(224,224,224)`. That is the bright yellow of the lights
+  round his saucer's rim pulsing dark-to-white. ~~*Which row does it apply to?*~~ **Read off the
+  game on 2026-08-28: all of them, at two different speeds — see *Arms — reconstructed* below.**
+* **Frankly** — **one** winning frame and four 8x16 lightning bolts at `(408, 71)`, `(417, 71)`,
+  `(426, 71)`, `(435, 71)`. So his win is a single pose with the bolts flashing over it, which
+  is the clearest evidence on the sheet of how the loose sprites are meant to work: they are
+  extra frames of an overlay, not extra frames of the face. **Read off the game on 2026-08-28 —
+  see *Frankly — reconstructed* below**, which confirms it.
+* **Humpty** — three sets. Two 24x8 yellow squiggles at `(655, 14)` and `(655, 23)` on the idle
+  row; three 8x16 bolts at `(817, 71)`, `(826, 71)`, `(835, 71)` on the winning row, where he is
+  already pointing a finger; three 24x16 green bent limbs at `(736, 128)`, `(736, 145)`,
+  `(736, 162)` on the losing row, where his hands are already wringing. *The idle pair is the
+  unclear one* — antennae, or a sparkle on the antenna balls?
+* **Coconuts** — the only character with **two** palette cycles, and the only one where the rip
+  says which row each is for. Replace the pair `(224,128,0)` / `(224,192,96)`;
+  **winning** with eight pairs running `(64,32,0)` up to `(224,224,160)`/`(224,224,224)`,
+  **losing** with six running `(224,192,128)`/`(224,224,224)` down through two reds to
+  `(32,0,0)`. Bright flash to win, red flush to lose. His fur, by the look of the swatch.
+* **Davy Sprocket** — two frames in every row, no extras. The simplest character on the sheet
+  and therefore the one to build the plumbing against.
+* **Skweel** — **six** losing frames, three times any other row he has. Worth watching for
+  whether it is a one-shot that settles on a pose rather than a loop.
+* **Dynamight** — **five** winning frames, and his defeat frame is an explosion. No extras.
+* **Grounder**, **Spike**, **Dragon Breath** — three idle frames each, otherwise unremarkable
+  and extra-free.
+* **Sir Ffuzzy-Logik** — three 32x24 sprites at `(734, 614)`, `(767, 614)`, `(800, 614)` on the
+  losing row, which are **his eyes**: yellow open, yellow narrowed, and shut. Plus a palette
+  cycle replacing the pair `(192,192,0)` / `(160,128,0)` — the same eye yellow — with five
+  pairs from `(96,96,0)`/`(64,32,0)` up to `(224,224,64)`/`(192,160,32)`. So his eyes are
+  animated twice over, by sprite and by palette. He is also the only character with **four**
+  defeat frames.
+* **Scratch** and **Dr. Robotnik** — one defeat frame each, so their defeat is a still.
+  Robotnik is the player character of the original and the odd one out of thirteen: *should he
+  be in the deal at all, or is he the boss of the set and out of it?*
+
+Questions that are not per-character:
+
+1. ~~**Does a single pop count as `winning`?**~~ **Settled with Alex, 2026-08-28: it does
+   not.** `GameEvent::Clear` fires once per chain *step*, so a one-step clear — which is most
+   clears — would enter `winning` several times a minute, and it sends no nuisance either. It
+   takes **two chain steps or more**; a one-chain leaves the face alone.
+2. **Does incoming nuisance mean `pending`, or `landing`?** The tray means an attack is coming;
+   the hit is when it drops. Reacting to the tray is the earlier and more useful signal and is
+   what the state table above says, but the original reacted to the hit.
+3. **Does the character animate over the pause, the stage clear card, and the game over
+   curtain?** The mascot does not.
+4. ~~**What frame rate?**~~ **Answered by Arms, 2026-08-28.** A face frame runs **6 to 11
+   frames at 60 Hz** (0.10-0.18 s), and `FrameAnimationType`'s existing vocabulary covers every
+   row seen so far: Arms' idle is a **ping-pong** (a blink on a timer), his winning row a
+   ping-pong (arms pumping), his losing row a plain two-frame alternation, and Frankly's rows are
+   `Static`. What the vocabulary does *not* cover is a held pose with a short action on a long
+   timer, which is what an idle turns out to be — see Arms below.
+5. **Palette cycling is not a thing the renderer does.** Three characters need it. Either bake
+   each cycle step as an extra frame in the ripper — which is cheap, since a cycle is a colour
+   swap over one pose and the ripper is already doing palette swaps for the `genesis` fonts —
+   or leave those three characters' cycles out and accept a still colour. Baking is the
+   recommendation: it costs sheet space and nothing else, and it keeps the renderer free of a
+   feature exactly three sprites want.
+
+### Reading the animations off the game, one character at a time
+
+The loose sprites, the palette cycles and the timings are not on the sheet, and neither is what
+any of it *does*. So Alex records the emulated game a character at a time and it is read off the
+clips here. This is the backlog; work down it, and write each one up under its own heading as it
+is done. **How to read a clip is written out below**, and so is **what the sheet already says about
+each of the ten still to go** — do the prep before opening a video, it is what tells you where to
+look.
+
+| # | character | status |
+|--:|---|---|
+| 1 | **Frankly** | **done** — 2026-08-28, two captures. See below. |
+| 2 | **Arms** | **done** — 2026-08-28, three captures. See below. |
+| 3 | **Humpty** | **done** — 2026-08-28, three captures. See below. |
+| 4 | **Coconuts** | **next**, captures pending — two palette cycles, the only ones the rip labels by row, so he is the check on whether a labelled cycle does what the label says |
+| 5 | Skweel | six losing frames — a loop, or a one-shot settling on a pose? |
+| 6 | Dynamight | five winning frames, and his defeat is an explosion |
+| 7 | Sir Ffuzzy-Logik | loose eyes *and* a palette cycle on the same eyes |
+| 8 | Grounder | three idle frames |
+| 9 | Spike | three idle frames |
+| 10 | Dragon Breath | three idle, three losing |
+| 11 | Davy Sprocket | 2/2/2/2 and no extras — nothing to learn, but it is what the plumbing gets built against |
+| 12 | Scratch | one defeat frame — a still, or is something else moving? |
+| 13 | Dr. Robotnik | one defeat frame, and is he in the deal at all |
+
+**~~The gap Frankly left.~~** Closed by Arms: a face frame runs 6-11 frames at 60 Hz, an idle is
+a held pose with a blink on a ~1.2 s timer, and a row's frame count is not its pose count.
+
+**~~The gap Arms left.~~** Closed by Humpty: an idle does have loose sprites, and they *flicker
+in place* rather than being emitted — which split the loose sprites into two kinds. See his
+section for what that does to the design.
+
+**~~Frame the next captures wider if you can.~~** Not needed — **Alex settled it on 2026-08-29**:
+the travelling effects (Frankly's sparks, his sweat, Humpty's bolts) **leave the box and fade
+away, like particles**. So the question every zoomed capture leaves open is already answered for
+the whole cast, and a capture cropped to the box costs nothing but the confirmation.
+
+That makes the **emitter** kind unambiguously a particle source and not a sprite strip: emitted,
+free of the box, and dying by fading rather than by being clipped. Note what is measured and what
+is not — Frankly's sparks were *last seen* about 40 box pixels out and Humpty's bolts about 10,
+but no capture resolves a fade, at these scales, against dark stone. So **fade them out over the
+last of their life** on Alex's word, and treat the distance as when they are gone rather than as a
+hard edge. The **overlay** kind is untouched by this: an arc between two antennae and a pair of
+wrung hands stay where the character is.
+
+**Where the captures live.** `~/Videos/Screencasts/`, named for the character and the row —
+`frankly-winning.mp4`, `frankly-losing.mp4`. Alex leaves them in place; they are not in the
+repository and are not meant to be, on the same footing as every other rip source here. Keep
+the naming for the ones that follow.
+
+**What a capture can and cannot settle.** Both of Frankly's are screen recordings of an
+upscaled window at a *variable* frame rate — 161 frames over 8.71 s and 132 over 6.07 s, with
+the second panning mid-clip. Positions and directions come out clean, because they are
+geometry; **timings do not**, because a capture frame's timestamp is when it was captured and
+not when the Genesis drew it. So take speeds and periods below as measured to about ±20%.
+**That is good enough** — Alex's call of 2026-08-28: nothing here has to match the Genesis
+frame for frame, it has to read as the same effect. Do not go back to the emulator for a
+number; take the measured one and tune it by eye.
+
+#### How to read a capture — the method
+
+Alex records short clips of the emulated game, one per row that does anything, and drops them in
+`~/Videos/Screencasts/` as `<character>-<row>.mp4`. What follows is how the three characters
+above were read off them. It is written out because the context that produced them does not
+survive, and because the same dozen steps answered every question for all three.
+
+**Nothing here needs to be exact.** Alex's call of 2026-08-29: these have to *read* as the same
+effect, not match the Genesis frame for frame. Take the measurement and tune by eye.
+
+**0. Prep from the sheet before opening the video.** The table further down already carries it for
+every character: how many frames each row has, and **what actually differs between them**. Do this
+first, because it tells you where to look. A pair that differs only in rows 17-27 is an eye
+change; a pair that differs over the whole 80x56 is a different animal.
+
+**1. Extract.** Frames and their timestamps, separately:
+
+```
+ffmpeg -v error -i <clip>.mp4 -vsync 0 out/f%03d.png
+ffprobe -v error -select_streams v -show_entries frame=pts_time -of csv=p=0 <clip>.mp4 > pts.txt
+```
+
+`-vsync 0` matters: these are **variable frame rate** captures, roughly 20-30 fps against the
+Genesis's 60, and the timestamps are when the frame was *captured*, not when it was drawn. Frames
+repeat. Expect ±20% on any period and do not chase better.
+
+**2. Calibrate to box coordinates.** Every number worth writing down is in the 80x56 box, so find
+the mapping first. Three ways, best first:
+
+* **The clip is the box.** Humpty's three are cropped to it, so `box = video / (width / 80)`.
+  Check by comparing the character's outline against the sheet frame.
+* **The `STAGE` and `SCORE` labels.** Their ink starts at screen y=85 and y=161 — measured off
+  `background.png`, and `GENESIS_LABELS` in `rip_retro.py` has their nominal positions. The gap is
+  76 screen rows, which gives the vertical scale from one subtraction. `STAGE 2` spans screen
+  x 128-184 for the horizontal.
+* **The box edges.** Find where the character's colours stop against the stone. Least reliable —
+  the character rarely fills the box.
+
+Sanity check the two axes against each other; they came out within 3% on every clip, and a bigger
+disagreement means one of the readings is wrong.
+
+**3. Classify the face over time.** The trick that did all the work: keep a list of reference
+crops, and for each frame either match it to one or add it as a new state.
+
+```python
+refs, labels = [], []
+for f in frames:
+    reg = np.array(Image.open(f).convert('RGB')).astype(float)[y0:y1, x0:x1]
+    lab = next((i for i, r in enumerate(refs) if np.abs(reg - r).mean() < 4.0), None)
+    if lab is None: refs.append(reg); lab = len(refs) - 1
+    labels.append(lab)
+```
+
+A threshold of 4-5 absorbs compression noise and keeps real frames apart. Then print only the
+*transitions* with their timestamps and the animation reads itself out.
+
+**Choosing the region is the whole game**, and getting it wrong is the one mistake that cost time
+here. It must contain what the sheet's diff says changes and **exclude the loose sprites**, or
+every flicker becomes a state — Humpty came out as 11 states until the region was pulled down off
+his antennae. Use the sheet diff's row range, converted to video coordinates.
+
+**4. Find the loose sprites.** They are one or two flat Genesis colours, so a colour mask finds
+them, and a **temporal** mask removes the character:
+
+```python
+M = np.array([mask(frame) for frame in frames])     # e.g. gold: r>150, g>110, b<110, r-b>90
+static = M.mean(axis=0) > 0.6                       # anything present most of the time is him
+loose = M & ~static
+```
+
+Then connected components per frame, with a minimum size, gives centroids and bounding boxes.
+Sort them and print per frame with the timestamp.
+
+**5. Composite every frame's loose sprites over one still.** This one picture answered more than
+all the numbers:
+
+```python
+acc = (M & ~static).sum(axis=0)
+still = frames[len(frames)//2].copy(); still[acc > 0] = [255, 0, 255]
+```
+
+Frankly's six rays leapt out of it; so did Humpty's arc filling the gap between his antennae, and
+his bolts leaving from the tips. **Draw this before measuring anything.**
+
+**6. Decide which kind it is** — see Humpty's section for why this is the question. A composite
+that shows **rays** is an emitter. One that shows a **band or a few blobs** is an overlay. Confirm
+by tracking one sprite across consecutive frames: an emitter's moves in a straight line at a
+steady speed, an overlay's teleports between a handful of anchors.
+
+**7. Check the character is not moving.** Track something small and bright — the eye whites work
+on everything so far:
+
+```python
+m = (r>170)&(g>170)&(b>170); cx, cy = xs.mean(), ys.mean()
+```
+
+Held within a pixel across a clip means nothing shakes, which is what all three showed. And check
+the **stone in a corner** against frame one at the same time: a diff over about 5 means the
+capture is panning, and Frankly's losing clip does exactly that halfway through.
+
+**8. For a palette cycle**, sample a 7x7 patch at the centre of one lit element and match it to the
+nearest entry of the sheet's `With:` ramp each frame. Print the transitions. Sample **two adjacent**
+elements as well: same shade every frame means a pulse, different shades means a chase. Arms is a
+pulse. Beware of picking a patch that is not on the element — a flat answer for a whole clip means
+the patch missed, not that nothing happened.
+
+**What to write down, per row:** the number of *poses* (not frames — see below), what is held and
+what moves, the dwell of each pose in seconds and in 60 Hz frames, the period of the whole thing,
+and for each loose sprite its kind, its anchor or source in box coordinates, its directions, its
+speed in box pixels an axis a frame, and its lifetime.
+
+**Pitfalls, all of them paid for:**
+
+* **A frame count is not a pose count.** Two frames can differ only in a palette state, and the
+  last frame of a defeat row is usually a fade. The table below has this worked out per row.
+* **An automated "palette only" test lies.** Colours mapping *to* the key `(0, 0, 96)` or to black
+  is a sprite shrinking or an eye closing, not a swap. Only a map among shades of one ramp, in
+  place, is a palette cycle. Read the map before believing it.
+* **A one-frame flash is invisible** at 20-30 fps. Humpty's arc was caught eight times in four
+  seconds and certainly fired more often. Never report a rate as an upper bound.
+* **The static mask hides a moving character part.** Humpty's antenna balls move in his winning
+  row, so they survive `~static` and turn up among the loose sprites — which was useful, but only
+  once it was noticed. Check the blob sizes: his balls are ~300 px and his bolts ~120.
+* **Do not measure speed from two adjacent capture frames.** Fit across a whole burst instead;
+  adjacent frames gave 1.5 and 1.7 px for the same spark.
+
+If the remaining ten are done in one sitting, all of the above wants to be a script in
+`puyo-rusto/art/` beside the ripper rather than retyped — it is about a hundred lines.
+
+#### Frankly — reconstructed, 2026-08-28
+
+Two captures: `Screencast From 2026-08-28 15-41-17.mp4` (winning) and
+`Screencast From 2026-08-28 15-49-00.mp4` (losing, running on into defeat). Both are of the
+in-match centre column at stage 2 — `STAGE`, the mugshot box, `SCORE` — so the box in them is
+the game's own `(120, 96, 80, 56)` and every number below is in **box coordinates**, measured
+by calibrating each capture against the `STAGE` and `SCORE` labels, whose screen positions the
+ripper already knows.
+
+**Winning: one pose, and six sparks thrown from the antenna balls.**
+
+* **The face does not animate.** The sheet gives the winning row one frame and the capture
+  agrees: the portrait is one held pose for the whole clip. Everything that moves is the loose
+  sprites.
+* **Six sparks a burst, three from each antenna tip ball.** In the winning frame the balls are
+  at box `(6, 15)` and `(77, 15)` — found as the gold blobs in the art, and confirmed by
+  back-projecting the tracks, which meet them.
+* **Each ball throws three, on the 45° diagonals, and omits the one that would go into his
+  body**: the left ball throws ↖ ↗ ↙, the right ball ↗ ↖ ↘. Composite every frame's sparks over
+  one still and the six rays are unmistakable.
+* **They travel out at about 1.5–1.7 box pixels an axis per 60 Hz frame** (≈100 px/s an axis,
+  ≈140 px/s along the diagonal). Whether the original steps one whole pixel an axis a frame or
+  two is exactly the thing a variable-rate capture cannot tell you.
+* **They live about 40 box pixels of travel** — roughly 28 px on each axis, so about 17 frames —
+  and are last seen at box x from `-22` to `+98` and y from `-18` down to `+48`.
+* **Which means they are drawn well outside the box, and are not clipped to it.** On the Genesis
+  they cross the stone of the centre column *and go over the playfield* — the captures show them
+  over both players' beans. Our panel belongs to one player, so the same thing here means the
+  sparks cross that player's own well. **This is a decision for Alex** and the first real one
+  the characters raise: keep it, or clip the sparks to the centre column.
+* **A burst about every 0.67 s** (~40 frames at 60 Hz) — but the ten intervals measured ran from
+  0.19 s to 1.28 s, which is either a randomised delay or the capture lying. Treat the mean as
+  the number to implement and the spread as a question.
+* **The four bolt sprites are 8x16 and a single colour, `(192, 160, 0)`** — a dark gold, about
+  24 lit pixels each, four different little crackle shapes. Four sprites and six sparks means
+  they are *not* one per spark. The likely reading is that each spark cycles through all four as
+  it flies, which is the ordinary Genesis idiom and is what four frames are for; the capture is
+  too soft at this scale to prove it.
+
+**Losing: the face is held too, and something sweats that is not on the sheet.**
+
+* **The portrait does not change.** Over a steady six-second stretch the box region is
+  pixel-identical bar compression noise, even though the sheet gives the losing row two frames.
+  So either the second frame is used somewhere this capture never reached, or it alternates far
+  more slowly than the clip is long. **Worth a second look on the emulator.**
+* **Small round blue drops fly up and out**, one or two at a time, from the **upper corners of
+  his head** — not from the antenna balls, which hang low in this pose. Same 45° diagonals as
+  the sparks, up-left and up-right, about 3-4 screen pixels across.
+* **They carry on into the defeat state**, which the same clip runs into.
+* **There is no drop sprite anywhere in the rips**, and Alex could not find one either
+  (2026-08-28). Frankly's block on the Mugshots sheet carries the four gold bolts and nothing
+  else; `Opponents.png` is full-body cutscene art and `Has Bean.png` is the victory bean. So the
+  sweat is shared art the game keeps somewhere these rips do not go.
+* **So cut it out of the video instead.** `frankly-losing.mp4` has dozens of drops crossing
+  plain dark stone, an upscaled 3-4 pixel sprite each. The job is a small one and belongs in
+  `rip_retro.py` beside everything else that reads art: find the drops by colour outside the
+  box, take the *median* of every one after registering them on their centres — which is what
+  kills the compression noise, since the sprite is the same every time and the noise is not —
+  and quantise the result back onto the Genesis's own palette steps (multiples of 32). Write it
+  out as one small png beside the character sheets. The same routine serves any other character
+  whose effect turns out not to be on a sheet, so write it to take a colour and a clip rather
+  than to know about sweat.
+
+**What Frankly settles for every other character**, and what it opens:
+
+* A row with **one** frame is a held pose with an overlay doing the moving. That is now shown,
+  not guessed, and it is how Frankly's single winning frame was always going to have to work.
+* Overlay sprites travel on **45° diagonals from a point on the character**, outward, and are
+  **not clipped to the box**. So the character surface needs to be able to draw outside its own
+  rect — which the `CharacterLayout` sketched above, a bare `Rect`, cannot do. It needs a
+  **canvas** to draw into (the panel) and an anchor within it, not a clip.
+* The loose sprites are an **emitter**, not a strip: a source point, a set of directions, a
+  speed, a lifetime and a period. That is `particles/source.rs`'s model exactly — fire and
+  forget, a group emitted and then left alone — and it is worth asking whether the character's
+  extras should be a particle source rather than bespoke code, since the engine already has one
+  and it is already what every foreground effect uses.
+* And at least one character wants art the rip does not carry.
+
+
+#### Arms — reconstructed, 2026-08-28
+
+Three captures — `arms-idle.mp4`, `arms-winning.mp4`, `arms-losing.mp4` — which is what a
+character costs when every row does something. He is the red saucer with a ring of lights round
+its rim, and he answers most of what Frankly could not.
+
+**The lights: one palette cycle, every row, at two speeds.** The sheet's note is right and
+under-specified. One colour index cycles — the `(224, 224, 0)` of the lights — through the eight
+`With:` shades, and **every light moves together**; adjacent lights sampled frame by frame are
+always the same shade, so it is a pulse and not a chase. What the sheet cannot say is that the
+*rate and the shape both change with the row*:
+
+| row | shape | a step | a cycle |
+|---|---|--:|--:|
+| idle | **ping-pong**, bright → dark → bright | ~0.12 s (7 frames) | ~1.65 s |
+| winning | **sawtooth**, bright → dark, then snap back | ~0.04 s (2-3 frames) | ~0.33 s |
+| losing | sawtooth, the same | ~0.04 s | ~0.32 s |
+
+So the lights *breathe* while nothing is happening and *spin* once the match is going somewhere,
+five times faster and one way. That is a free piece of characterisation and it costs one number.
+
+**Idle: three poses, and a blink on a timer.** The row's four frames are not four poses. Frames
+1 and 2 differ **only** in the rim rows the lights are on — the ripper caught the same face at
+two points in the cycle — and frames 2, 3 and 4 differ only in the eye rows. So it is three
+poses: eyes open, half, shut. The capture agrees exactly, finding three states and nothing else.
+
+What it does with them is the useful part:
+
+* **open is held for about 0.82 s**, then **half ~0.10 s → shut ~0.18 s → half ~0.09 s** and back
+  to open. A ping-pong blink, about 0.37 s of it.
+* **and it comes round every 1.19 s**, measured over five blinks at 1.185, 1.201, 1.184 and 1.200
+  seconds. That is as regular as anything here has been.
+
+**An idle is therefore a held pose with an action on a timer, not a loop** — which is a shape
+`FrameAnimationType` does not have. Frankly's idle was a single frame, so it did not show; Arms'
+does. Every character with 2-4 idle frames is probably this: a rest, and a blink or a twitch
+every second or so.
+
+**Winning: the arms pump.** Three frames, and the metal arms rise from below the rim and bend
+over him. The capture ping-pongs 1 → 2 → 3 → 2 → 1 continuously, fully-up recurring every
+**0.56 s**, which over the four steps of a three-frame ping-pong is about **0.14 s (8 frames) a
+step**. It never rests.
+
+**Losing: two frames alternating**, about **0.18 s (11 frames) each**, a 0.36 s cycle, measured
+over twelve cycles. No rest and no ping-pong — just the two, back and forth.
+
+**Defeat: one pose and a fade.** Frame 2 is frame 1 at exactly half brightness, every pixel. See
+the correction above — this holds for ten of the thirteen characters, so it is a property of the
+sheet rather than of Arms.
+
+**What Arms settles for every other character:**
+
+* **The box is a hole.** The most important thing either character has shown, and it is written
+  up above where the sheet is described, because it changes how every one of them is cut.
+* **Face frames run 6-11 frames at 60 Hz.** That is the number the whole phase was missing.
+* **Diff a row's frames before counting poses.** A palette state and a fade both look like frames.
+* **The palette cycle is worth having** and baking it as frames is now clearly right: eight shades
+  over one pose, and the *rate* is the theme's to choose per row. Baking is cheap because the
+  cycling index is one colour and the poses are few — Arms needs 8 shades over 3 idle poses only
+  if the blink and the cycle have to stay independent, and they do: 1.19 s and 1.65 s do not
+  divide. **So the lights cannot be baked into the face frames at all** — they are a second,
+  independently timed layer over the same portrait. Either the renderer gets a palette swap after
+  all, or the lights are cut as their own small overlay sprite with eight colour variants and
+  drawn on top. The overlay is the cheaper of the two and matches how Frankly's sparks already
+  have to work.
+
+
+#### Humpty — reconstructed, 2026-08-28
+
+Three captures again — `humpty-idle.mp4`, `humpty-winning.mp4`, `humpty-losing.mp4` — and this
+time **zoomed to the box**, which is worth knowing before reading the numbers: unlike Frankly's,
+these cannot say whether anything leaves the 80x56 rect, because nothing outside it was filmed.
+Everything below is in box coordinates, which here is simply the video divided by 4.65.
+
+He is the green frog in a gold pot with two antennae, and he is the character with loose sprites
+on **three** rows, which is why he went next.
+
+**Idle: a blink, and an arc that crackles between his antennae.**
+
+* Two poses, differing **only** in the eye rows (16-26, cols 24-48). Open is held about **1.0 s**,
+  shut about **0.33 s**, and it comes round every **~1.35 s** — 1.369 and 1.335 measured. The same
+  shape as Arms at 1.19 s, so this is now a pattern rather than a coincidence: **an idle is a held
+  pose with a blink on a timer of about a second and a third.**
+* The two 24x8 gold zigzags are an **electric arc between the two antenna balls**. The balls sit at
+  box `(16, 8)` and `(63, 8)`; composite every frame's arcs over one still and they fill the band
+  between them, box x 17-60 at y 5-14, and nothing outside it.
+* **It does not travel.** It appears at one of about **four positions on an ~8 pixel pitch** across
+  that gap, flashes for a frame or two, and goes. The gaps between flashes were 0.12, 0.25, 0.43,
+  0.63, 0.72, 0.80 and 0.82 s — irregular enough to read as random rather than periodic, and a
+  20-30 fps capture will miss a one-frame flash outright, so the true rate is higher than the eight
+  flashes seen in four seconds.
+
+**Winning: he flexes his antennae, and fires from the tips.**
+
+The antennae are part of the 80x56 frame, not an overlay, and the row's four frames are their
+positions. Tracking the gold balls gives the whole gesture:
+
+| what | balls at box x |
+|---|---|
+| rest | 16 and 60 |
+| drawn **in** | 28 and 48 |
+| flung **out** | 11.6 and 64.5 |
+
+and the cycle is **in → fire → back → rest → out → rest**, about **0.70 s**, run **twice**, then
+about **2 s of rest** before it goes again. So the winning row is a gesture on a timer too, not a
+loop — the same shape as the idle, with a bigger action.
+
+The three 8x16 bolts are fired **at the moment the antennae are drawn in**, from the tips: two of
+them, left and right (occasionally a third up the middle), travelling up and out at about 45° and
+**~2.2 box pixels an axis a frame**, alive about 0.1 s. That is faster than Frankly's sparks and
+much shorter lived. Whether they carry on past the box is exactly what this capture cannot say.
+
+**Losing: he ducks into the pot and wrings his hands.**
+
+The face alternates two poses, and the three 24x16 green sprites are his **hands**. They are not
+projectiles and they do not travel: they appear at a handful of fixed slots either side of him —
+box `(18, 24)`, `(18, 27)`, `(50, 32)`, `(56, 34)`, `(57, 27)`, `(63, 31)` — and flicker between
+them every 0.1-0.2 s, which reads as wringing.
+
+**The character does not move.** Tracking his eye whites across all three clips puts them within a
+pixel of the same place throughout, so nothing here shakes, and the apparent movement in the
+losing row is entirely the antennae and hands.
+
+**What Humpty settles, and it is the biggest thing yet:**
+
+**There are three kinds of loose sprite, not one.** Frankly's sparks *travel* — emitted, given a
+direction and a speed, and left to fly. Humpty's idle arc *flickers in place*, at one of a few
+slots on a pitch. Humpty's losing hands *flicker between fixed anchors*. Two of those three are not
+an emitter at all; they are **an overlay slot holding a sprite index, switched on a clock**, which
+is much simpler than what the Frankly write-up above reaches for.
+
+So the character surface wants **both**, and the overlay is the commoner and cheaper case:
+
+* an **overlay**: a list of anchor points in box coordinates, a set of sprites, and a rule for
+  which is showing when (a flicker, a sequence, or off). Humpty's idle and losing rows, and
+  Sir Ffuzzy-Logik's eyes, are all this.
+* an **emitter**: a source point, directions, a speed, a lifetime, a period. Frankly's sparks and
+  Humpty's winning bolts are this, and only this.
+
+And **a row can be ordinary frame animation as well** — Humpty's winning row animates the
+character's own antennae inside the 80x56 frame *and* fires an emitter off them, at a
+frame-accurate moment in the gesture. So the two are not alternatives: a row is frames, plus
+whichever of the two overlays it wants, and the emitter needs to be able to fire on a nominated
+frame rather than on a timer of its own.
+
+#### The ten still to read, and what the sheet already says about each
+
+Prep, done once against the sheet so nobody does it again. **`diff`** is what actually changes
+between consecutive frames of a row, as `rows` of the 80x56 frame — which is where to point the
+classifier of step 3, and which is how you tell three poses from four frames. `FADE` is the exact
+halving. Frame counts are the ones in the big table above.
+
+Anything not listed under **loose** has none: **Sir Ffuzzy-Logik is the only one of the ten with
+loose sprites left**, so the remaining nine are frames, palettes and timing only.
+
+**Coconuts** — `(846, 14)`. idle 2: diff rows 24-29, cols 19-34 (39 px, tiny — his mouth or an eye).
+win 2: rows 25-30, cols 29-36 (32 px, tinier still). lose 3: rows 0-23 then rows 0-13, both in the
+left third — something above and to his left, moving. beat 2: FADE.
+*The point of him:* **two palette cycles, the only ones on the sheet labelled by row.** Replace the
+pair `(224,128,0)` / `(224,192,96)`; **winning** with eight pairs climbing `(64,32,0)` →
+`(224,224,160)`/`(224,224,224)`, **losing** with six falling `(224,192,128)`/`(224,224,224)` through
+two reds to `(32,0,0)`. Arms showed a cycle's shape and rate change per row without the sheet saying
+so; Coconuts is the check on whether a *labelled* one does what its label says. Watch for a bright
+flash on the win and a red flush on the loss, and time both.
+
+**Skweel** — `(202, 257)`. idle 3: rows 18-29 then 11-30, cols 22-48 — a face animation.
+win 3: rows 0-55 across nearly the full width, ~1960 px a step — **the whole character moves**, so
+this is real frame animation and the classifier can use any region. lose **6**: rows 20-40, 9-41,
+8-28, then a pair whose difference maps `(96,96,96)`/`(160,160,160)` to the key — *pixels
+disappearing, not a palette swap* — then rows 26-41. Six frames is three times any other row on the
+sheet: **is it a loop, or a one-shot settling on a pose?** That is the question he is for.
+beat 2: FADE.
+
+**Dynamight** — `(690, 257)`. idle 2: rows 39-55, cols 24-52 — low down, at his feet or his fuse.
+win **5**: four small steps, rows 8-15/0-12/0-8/0-11 and all in cols 44-78 — **something moving up
+the right-hand side over five frames**, 52-88 px a step. That is a fuse burning, or a stick of
+dynamite being raised. lose 2: rows 1-15.
+beat 2: **the only two-frame defeat that is not a fade** — 4464 px differ over the whole frame. His
+defeat is an explosion, so watch it: does it play once and stop, or loop?
+
+**Sir Ffuzzy-Logik** — `(491, 500)`. **The odd one out, and the one to leave until last.** Every
+row's consecutive frames differ over the **whole 80x56**, 1386-1463 px each time — and it is not a
+palette cycle: the differences are a *shuffle* among five oranges, `(224,128,96)`, `(192,96,64)`,
+`(224,160,160)`, `(160,64,32)` and `(96,32,0)`, swapping in both directions all over the frame. That
+is an animated dither — his fur or the water rippling — so **all three frames are needed and none
+can be folded away**. On top of that he has the three loose 32x24 **eyes** and a palette cycle on the
+eye yellow, replacing `(192,192,0)`/`(160,128,0)` with five pairs from `(96,96,0)`/`(64,32,0)` up to
+`(224,224,64)`/`(192,160,32)`. So: three animated poses, an overlay, and a cycle, all at once.
+beat 4: three poses then FADE — the only four-frame defeat.
+
+**Grounder** — `(1, 500)`. idle 3: rows 13-29 then 10-29, cols 21-43. win 2: rows 8-45, cols 28-57.
+lose 2: rows 5-49, cols 23-52 — a big change, most of his height. beat 2: FADE. Nothing exotic;
+he is a timing job.
+
+**Spike** — `(246, 500)`. idle 3: rows 22-33 then 14-34, cols 28-54. win 2: rows 15-55, cols 26-79
+(890 px — the largest single step of any two-frame row, so he throws his whole right side about).
+lose 2: rows 30-53. beat 2: FADE. Also a timing job.
+
+**Dragon Breath** — `(835, 500)`. idle 3: rows 6-24 then 6-26, cols 27-51 — up at his head.
+win 2: rows 21-45. lose 3: rows 33-48 then 33-49, cols 24-48 — two steps in the same small box low
+down, which will be a three-frame loop rather than a one-shot. beat 2: FADE.
+
+**Davy Sprocket** — `(1, 257)`. 2/2/2/2 and no extras, no cycle, no surprises: idle rows 22-26,
+win rows 7-41 (cols 24-79, his right arm), lose rows 28-55, beat FADE. **He is the one to build the
+plumbing against**, and his capture is worth taking early even though there is nothing to learn from
+it, because a character that exercises every seam and nothing else is what you want under a first
+implementation.
+
+**Scratch** — `(1, 743)`. idle 2: rows 26-39, cols 35-54. win 2: rows 4-14, cols 28-46 — high up,
+his crest or beak. lose 2: rows 36-55, cols 14-48 — low. **beat: one frame**, so no fade on the
+sheet. Which raises the question he is for: **does the game fade him some other way, or not at all?**
+
+**Dr. Robotnik** — `(169, 743)`. idle 3: rows 22-25, cols 41-50 — 14 px, the smallest difference on
+the whole sheet — then a pair mapping `(64,64,96)` and `(160,128,192)` to black, which is an eye
+closing rather than a palette step. So his idle is a blink of two pixels' worth, and worth checking
+that it is not something the capture will miss entirely. win 2: rows 1-41, the whole of him.
+lose 2: rows 31-55, cols 0-26. **beat: one frame**, like Scratch.
+And the standing question: he is the player character of the original, so **is he in the deal at
+all, or is he the boss of the set and out of it?** That one is Alex's, not the capture's.
+
+### `snes` and `3ds` afterwards
+
+Kirby's Avalanche has the same idea and its own sheet — `SNES - Kirby's Avalanche -
+Miscellaneous - Battle Faces.gif`, 662x1742, unread so far — and its panel has the arch at the
+foot of the centre column, where the game stands Kirby and this one currently stands nothing.
+That arch is the box on that theme, and it is why the plank was laid across its mouth in
+phase 3e rather than the hole being left. Chronicle stands both fields on one painted scene
+and has no box at all; whether it gets a character, and where, is open.
+
+Do `genesis` first and completely, and do not generalise the plumbing across the other two
+until it has been played.
+
+### Done when
+
+`genesis` deals every player a character, the four states move as the table says without
+flip-flopping in a real match, both players of a two player match get different faces, the
+nuisance tray still has somewhere to live, and `frame_shot` still runs.
 
 ### Handover notes
 
