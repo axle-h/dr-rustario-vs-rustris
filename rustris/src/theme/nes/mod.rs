@@ -116,6 +116,7 @@ pub fn nes_theme<'a>(
         board_alpha: 0xff,
         board_snips: vec![],
         top_padding: BUFFER_PIXELS,
+        shadow: None,
         board_point: Point::new(66, 0),
         background_file: BACKGROUND_FILE,
         background_color: BACKGROUND_COLOR,

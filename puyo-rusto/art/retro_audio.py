@@ -4,7 +4,7 @@
     python3 puyo-rusto/art/retro_audio.py genesis    # needs ffmpeg with libvorbis
 
 One subcommand per theme, the shape `rip_retro.py` already has - `genesis` is Dr. Robotnik's
-Mean Bean Machine; `snes` and `3ds` join it when their rips are found. The sources sit under
+Mean Bean Machine; `snes` joins it when its rips are found. The sources sit under
 `puyo-rusto/art/retro/<theme>-music` and `<theme>-sfx` and are **not in the repository**, on
 the same footing as everything else in `art/`: they are downloads under their own names and
 re-running this means finding them again.

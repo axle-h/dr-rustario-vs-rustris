@@ -16,7 +16,7 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, hud, previews, Sounds};
+use crate::theme::data::{audio, cells, hud, panel_shadow, previews, Sounds};
 use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
@@ -37,8 +37,9 @@ use std::time::Duration;
 mod sprites {
     pub const SPRITES: &[u8] = include_bytes!("sprites.png");
     pub const BACKGROUND: &[u8] = include_bytes!("background.png");
-    pub const BACKGROUND_TILE: &[u8] = include_bytes!("background-tile.png");
     pub const BOARD: &[u8] = include_bytes!("board.png");
+    /// the wash the panels stand on, cut by `rip_retro.py`'s `vignette`
+    pub const SCENE: &[u8] = include_bytes!("scene.png");
     pub const FONT: &[u8] = include_bytes!("font.png");
 }
 
@@ -50,15 +51,20 @@ const PITCH: i32 = SRC_BLOCK_SIZE as i32 + 2 * PAD;
 /// the row under the five colours, holding the boulder and the tray's three symbols
 const EXTRAS_ROW: i32 = PuyoColor::N as i32;
 
-/// one transparent cell above everything, for the thirteenth row to float in
-const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
-
-/// Where the field sits in the panel. The panel is the whole SNES screen cut off at the
-/// second player's field, so **a point here is a point on the SNES screen** - and a point
-/// handed to the *engine* is that plus [`TOP_PADDING`], since the padding sits above
-/// everything and the HUD is measured from the top of that. `board_point` is the exception:
-/// the board texture carries the same padding, so it is given the panel point as it stands.
+/// Where the game's own field sits in the panel. The panel is the whole SNES screen cut off
+/// at the second player's field, so **a point here is a point on the SNES screen**, the
+/// engine's included.
 const FIELD: (i32, i32) = (8, 16);
+
+/// ... and the transparent cell above everything, which is the row a pair spawns in.
+///
+/// A blob resting up there is still in the game, so it is drawn - but nothing is drawn behind
+/// it. The panel is cut level with the top of the field and the board art stops there too,
+/// the way a retro Rustris board's frame stops at its skyline, so the spawning row is a cell
+/// of scene with the panel below it and nothing to either side. The hedge the game lays
+/// across the top of the screen goes with that cut, over the queue's column as well as over
+/// the field: what is left of the panel is level all the way across.
+const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 
 /// The two boxes under `NEXT`: the gaps between the three wooden posts that run down the
 /// column, which is what the game frames its queues with. Kirby's Avalanche puts the player's
@@ -96,8 +102,14 @@ const LEVEL_AT: (i32, i32) = (STAGE_BOX.0 + STAGE_BOX.2 as i32, STAGE_BOX.1);
 /// how long a group holds before it goes, under [`crate::game::rules::POP_DELAY`]
 const POP_HOLD: Duration = Duration::from_millis(200);
 
-/// the canopy the boards stand against, read off the forest layer
-const FOREST: Color = Color::RGB(0x08, 0x28, 0x10);
+/// What the panels stand on: the canopy's own colour, flat.
+///
+/// Kirby's Avalanche tiles a leafy canopy behind its two fields and this theme tiled it too,
+/// until the board opened at the top and a blob spawning above the field had that same
+/// canopy behind it. Flat, at three quarters of its brightness, it is still the same forest
+/// and the panel is the only thing on the screen with a texture - see the note on `genesis`'s
+/// wall, which is the same problem and the same answer.
+const FOREST: Color = Color::RGB(0x00, 0x15, 0x00);
 
 fn block(col: i32, row: i32) -> Point {
     Point::new(PAD + PITCH * col, PAD + PITCH * row)
@@ -116,8 +128,8 @@ pub fn snes_theme<'a>(
 ) -> Result<Theme<'a>, String> {
     let options = RetroThemeOptions {
         name: "snes",
-        scenes: vec![SceneType::Tile {
-            texture: sprites::BACKGROUND_TILE,
+        scenes: vec![SceneType::Cover {
+            texture: sprites::SCENE,
         }],
         sprites: BlockSpriteSheetData {
             file: sprites::SPRITES,
@@ -158,22 +170,24 @@ pub fn snes_theme<'a>(
                 game_over: sound::GAME_OVER,
             },
         )?,
-        // Right aligned where the game printed its own, just after the `SC` its border keeps.
-        // Every point on this panel is in the *padded* background's coordinates, so it is one
-        // cell lower than the same place in the art `rip_retro.py` wrote - `top_padding` sits
-        // above everything and the HUD is measured from the top of that.
+        // right aligned where the game printed its own, just after the `SC` its border keeps
         font: FontThemeOptions::simple(
             FontRenderOptions::numeric_sprites(sprites::FONT, texture_creator, 0)?,
             hud(
-                MetricSnips::right((SCORE_AT.0, SCORE_AT.1 + TOP_PADDING as i32), MAX_SCORE),
-                MetricSnips::right((LEVEL_AT.0, LEVEL_AT.1 + TOP_PADDING as i32), MAX_LEVEL),
+                MetricSnips::right(SCORE_AT, MAX_SCORE),
+                MetricSnips::right(LEVEL_AT, MAX_LEVEL),
             ),
         ),
         board_file: sprites::BOARD,
         board_alpha: 0xff,
         board_snips: vec![],
         top_padding: TOP_PADDING,
-        board_point: Point::new(FIELD.0, FIELD.1),
+        // ... and the panel casts on it, which is what lifts it off the wash. Down and to
+        // the right, because that is where every shadow in this compendium falls.
+        shadow: Some(panel_shadow(TOP_PADDING)),
+        // the padding is above the panel and the board alike, so the field's art lands back
+        // on the field: a point here is a point on the SNES screen
+        board_point: Point::new(FIELD.0, 0),
         background_file: sprites::BACKGROUND,
         background_color: FOREST,
         match_end_file: None,
@@ -187,7 +201,7 @@ pub fn snes_theme<'a>(
                 .iter()
                 .map(|(x, y, w, h)| {
                     Rect::from_center(
-                        Point::new(x + *w as i32 / 2, y + TOP_PADDING as i32 + *h as i32 / 2),
+                        Point::new(x + *w as i32 / 2, y + *h as i32 / 2),
                         SRC_BLOCK_SIZE,
                         SRC_BLOCK_SIZE * 2,
                     )
@@ -201,7 +215,7 @@ pub fn snes_theme<'a>(
         pending: Some(PendingLayout {
             point: Point::new(
                 ARCH_MOUTH.0,
-                ARCH_MOUTH.1 + TOP_PADDING as i32 + (ARCH_MOUTH.3 as i32 - TRAY_ICON as i32) / 2,
+                ARCH_MOUTH.1 + (ARCH_MOUTH.3 as i32 - TRAY_ICON as i32) / 2,
             ),
             step: Point::new(TRAY_ICON as i32, 0),
             size: TRAY_ICON,
@@ -239,8 +253,11 @@ mod tests {
         assert_eq!(height, (PITCH * (EXTRAS_ROW + 1)) as u32);
     }
 
-    /// the board is drawn *under* the panel, so the panel needs a hole exactly where the field
-    /// is - the one thing about a retro theme that nothing but the art records
+    /// The board is drawn *under* the panel, so the panel needs a hole exactly where the
+    /// field is - the one thing about a retro theme that nothing but the art records. The
+    /// panel is cut level with the top of the field, so that the spawning row -
+    /// [`TOP_PADDING`], above the panel and the board alike - has the scene behind it and
+    /// nothing to either side.
     #[test]
     fn the_field_fits_the_hole_it_is_drawn_into() {
         let (width, height) = png_size(sprites::BACKGROUND);
@@ -248,10 +265,12 @@ mod tests {
         assert_eq!(board_width, COLUMNS * SRC_BLOCK_SIZE);
         assert_eq!(board_height, VISIBLE_ROWS * SRC_BLOCK_SIZE);
         assert!(FIELD.0 as u32 + board_width <= width);
-        // the flower border above the field and the grass under it are a cell each, which is
-        // what puts the field at 16 rather than the 15 the layer render read
+        // the field's own top is where the panel now starts, and the grass under it is a cell
+        // - which is what puts the field at 16 on the screen rather than the 15 the layer
+        // render read
         assert_eq!(FIELD.1 as u32, SRC_BLOCK_SIZE);
-        assert_eq!(FIELD.1 as u32 + board_height + SRC_BLOCK_SIZE, height);
+        assert_eq!(board_height + SRC_BLOCK_SIZE, height);
+        assert_eq!(TOP_PADDING, SRC_BLOCK_SIZE * HIDDEN_ROWS);
     }
 
     /// the boxes are the game's own furniture, measured off the layer render by

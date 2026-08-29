@@ -13,6 +13,7 @@ pub mod interstitial;
 pub mod lock;
 pub mod mascot;
 pub mod next_stage;
+pub mod nuisance;
 pub mod popup;
 pub mod spawn;
 pub mod victory;
@@ -28,6 +29,7 @@ use crate::animate::interstitial::InterstitialAnimation;
 use crate::animate::lock::LockAnimation;
 use crate::animate::mascot::MascotMeta;
 use crate::animate::next_stage::NextStageAnimation;
+use crate::animate::nuisance::NuisanceAnimation;
 use crate::animate::popup::PopupAnimation;
 use crate::animate::spawn::{SpawnAnimation, SpawnArc};
 use crate::animate::victory::VictoryAnimation;
@@ -71,6 +73,7 @@ pub struct PlayerAnimations {
     game_over: GameOverAnimation,
     victory: VictoryAnimation,
     next_stage: NextStageAnimation,
+    nuisance: NuisanceAnimation,
     interstitial: InterstitialAnimation,
     popup: PopupAnimation,
 }
@@ -89,6 +92,7 @@ impl PlayerAnimations {
             game_over: GameOverAnimation::new(meta.game_over, meta.mascot),
             victory: VictoryAnimation::new(meta.mascot),
             next_stage: NextStageAnimation::new(),
+            nuisance: NuisanceAnimation::new(),
             interstitial: InterstitialAnimation::new(meta.interstitial_frames, meta.mascot),
             popup: PopupAnimation::new(),
         }
@@ -104,6 +108,7 @@ impl PlayerAnimations {
         self.lock.reset();
         self.hard_drop.reset();
         self.spawn.reset();
+        self.nuisance.reset();
         self.popup.reset();
     }
 
@@ -130,6 +135,7 @@ impl PlayerAnimations {
         self.game_over.update(delta);
         self.victory.update(delta);
         self.next_stage.update(delta);
+        self.nuisance.update(delta);
         self.interstitial.update(delta);
         self.popup.update(delta);
         events
@@ -167,6 +173,7 @@ impl PlayerAnimations {
             || self.game_over.state().is_some()
             || self.victory.state().is_some()
             || self.next_stage.state().is_some()
+            || self.nuisance.state().is_some()
             || self.interstitial.state().is_some()
     }
 
@@ -249,6 +256,14 @@ impl PlayerAnimations {
 
     pub fn next_stage_mut(&mut self) -> &mut NextStageAnimation {
         &mut self.next_stage
+    }
+
+    pub fn nuisance(&self) -> &NuisanceAnimation {
+        &self.nuisance
+    }
+
+    pub fn nuisance_mut(&mut self) -> &mut NuisanceAnimation {
+        &mut self.nuisance
     }
 
     pub fn interstitial(&self) -> &InterstitialAnimation {

@@ -69,7 +69,7 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
     let mut game = Game::new(level, GameSpeed::Medium, random)?;
     let mut agent = match brain {
         "linear" => DrAiAgent::linear(),
-        "neural" => DrAiAgent::new(models::virus_clear_trained()),
+        "neural" => DrAiAgent::new(models::survival_trained()),
         "n64" => DrAiAgent::n64(),
         other => match other
             .strip_prefix("n64:")

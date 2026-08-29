@@ -8,6 +8,8 @@ use engine::game::{CellId, MetricKind};
 use engine::render::font::MetricSnips;
 use engine::render::sound::{AudioTheme, SfxKey};
 use engine::render::sprite_sheet::{CellSpriteData, PreviewData};
+use engine::render::PanelShadow;
+use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 
 /// A chain step's grade, which is what a theme has a sound per.
@@ -78,6 +80,29 @@ pub fn previews() -> PreviewData {
                 })
             })
             .collect(),
+    }
+}
+
+/// What a retro panel casts on the wash behind it, which is what lifts it off one.
+///
+/// Both retro themes take the same shadow, because both are one panel standing on one
+/// vignette and nothing about either says it should fall differently. Down and to the right,
+/// which is a light over the panel's top left shoulder and is all the direction there is:
+/// [`PanelShadow`] grows only that way, so there is none along the top edge, where a spawning
+/// pair is the only thing standing on the scene. `skip_top` is the theme's `top_padding`: that band
+/// is transparent and is where a pair spawns, so it casts nothing.
+///
+/// It is **not** painted into the panel art, which is where it would naturally go: a margin
+/// round the art comes straight off the board, since every theme of a game is drawn at the
+/// largest cell all of them can hold and in a two player game the panels are sized by the
+/// width they have. [`PanelShadow`] draws it at composite time instead, for nothing.
+pub fn panel_shadow(skip_top: u32) -> PanelShadow {
+    PanelShadow {
+        offset: (3, 3),
+        spread: 5,
+        color: Color::BLACK,
+        alpha: 0xa0,
+        skip_top,
     }
 }
 

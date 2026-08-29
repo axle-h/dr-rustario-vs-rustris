@@ -141,8 +141,20 @@ pub const POP_DELAY: Duration = Duration::from_millis(280);
 /// the pause while loose puyos fall, after a lock or between chain steps
 pub const SETTLE_DELAY: Duration = Duration::from_millis(120);
 
-/// the pause while the queue empties onto the board
-pub const NUISANCE_DELAY: Duration = Duration::from_millis(300);
+/// the pause after the queue has emptied onto the board, before the next pair
+pub const NUISANCE_DELAY: Duration = Duration::from_millis(150);
+
+/// How fast nuisance falls in from over the top of the board, in rows a second.
+///
+/// It is drawn falling rather than simply appearing (see
+/// [`engine::render::GameRender::attack_fall_speed`]), which is the one moment of this game
+/// the player has no say in and so the one that most needs to be *seen*: a whole rock landing
+/// is five rows arriving at once, and where they land decides what is left of the chain
+/// underneath. The whole board - a rock landing in an empty well, the longest fall there is -
+/// takes a little under a second at this rate, which is still quicker than a pair falls at any
+/// speed step and slow enough to watch it arrive. A drop onto a stack is shorter in proportion,
+/// so the pause this costs is only ever as long as the drop deserves.
+pub const NUISANCE_FALL_ROWS_PER_SECOND: f64 = 14.0;
 
 /// the pause before a new pair appears
 pub const SPAWN_DELAY: Duration = Duration::from_millis(120);
@@ -189,10 +201,6 @@ pub enum MatchThemes {
     Genesis,
     #[strum(serialize = "snes")]
     Snes,
-    /// Puyo Puyo Chronicle. `3ds` cannot begin a Rust identifier, so only the menu row is
-    /// spelt that way and the variant and its module are `ThreeDs` / `three_ds`.
-    #[strum(serialize = "3ds")]
-    ThreeDs,
     #[strum(serialize = "particle")]
     Particle,
 }
@@ -217,8 +225,7 @@ impl MatchThemes {
         match self {
             MatchThemes::All | MatchThemes::Genesis => 0,
             MatchThemes::Snes => 1,
-            MatchThemes::ThreeDs => 2,
-            MatchThemes::Particle => 3,
+            MatchThemes::Particle => 2,
         }
     }
 }

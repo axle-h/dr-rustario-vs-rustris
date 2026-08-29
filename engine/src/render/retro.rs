@@ -15,8 +15,8 @@ use crate::render::scene::SceneType;
 use crate::render::sound::AudioTheme;
 use crate::render::sprite_sheet::{BlockSpriteSheet, BlockSpriteSheetData, GhostStyle, MascotKind};
 use crate::render::{
-    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PeekLayout, PendingLayout, Theme,
-    ThemeFamily,
+    HoldLayout, MascotLayout, MatchEndSprites, OverlayFit, PanelShadow, PeekLayout, PendingLayout,
+    Theme, ThemeFamily,
 };
 use crate::scale::ScaleMode;
 use sdl2::pixels::Color;
@@ -40,6 +40,9 @@ pub struct RetroThemeOptions {
     /// transparent rows added above the board and background art, for a visible buffer
     /// above the skyline
     pub top_padding: u32,
+    /// what the panel casts on the scene behind it; `None` for a theme whose panel fills the
+    /// window, or whose scene is busy enough that a shadow would only muddy it
+    pub shadow: Option<PanelShadow>,
     /// where the board frame sits in the background
     pub board_point: Point,
     pub background_file: &'static [u8],
@@ -194,6 +197,7 @@ pub fn retro_theme<'a>(
         scale_mode: ScaleMode::Source,
         // the band above the skyline is where pieces spawn, so it is not empty
         top_slack: 0,
+        shadow: options.shadow,
     })
 }
 

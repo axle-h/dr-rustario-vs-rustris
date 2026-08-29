@@ -124,6 +124,7 @@ pub fn game_boy_theme<'a>(
         board_alpha: 0xbb,
         board_snips: vec![],
         top_padding: BUFFER_PIXELS,
+        shadow: None,
         board_point: Point::new(55, 0),
         background_file: BACKGROUND_FILE,
         background_color: BACKGROUND_COLOR,

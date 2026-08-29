@@ -4,29 +4,32 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 
 * **Dr. Rustario** - a Dr. Mario clone (NES, SNES, N64 and particle themes)
 * **Rustris** - Tetris with the guideline ruleset (Game Boy, NES, SNES and particle themes)
-* **Puyo Rusto** - Puyo Puyo Tsu (Genesis, SNES, 3DS and particle themes)
+* **Puyo Rusto** - Puyo Puyo Tsu (Genesis, SNES and particle themes)
 * **Dr. Rustario vs Rustris** - play a multi-player focussed playlist over both games.
 
 Puyo Rusto is the newest of them and is not finished: it is playable by one or two people on
-all four of its themes, with its own high score tables and its own ai, but it does not take a
-turn in the vs. playlists yet. The retro themes are the
-three games Compile's original became: **genesis** is Dr. Robotnik's Mean Bean Machine,
-**snes** is Kirby's Avalanche and **3ds** is Puyo Puyo Chronicle. Each keeps its own game's
-furniture and puts the queue and the nuisance tray in the boxes that game drew for them -
-Mean Bean Machine's two `NEXT` boxes and the box it keeps Robotnik's mugshot in, Kirby's two
-name plates and the arch at the foot of its centre column. Chronicle has none of that: it
-stands both fields on one painted scene rather than giving each player a panel, and so does
-this - the scene covers the whole window at any size, so a 1080p screen is filled by it and
-not letterboxed round a strip in the middle. Its particle theme carries
-eleven sets
+all three of its themes, with its own high score tables and its own ai, but it does not take a
+turn in the vs. playlists yet. The retro themes are the two 16-bit games Compile's original
+became: **genesis** is Dr. Robotnik's Mean Bean Machine and **snes** is Kirby's Avalanche.
+Each keeps its own game's furniture and puts the queue and the nuisance tray in the boxes
+that game drew for them - Mean Bean Machine's two `NEXT` boxes and the box it keeps
+Robotnik's mugshot in, Kirby's two name plates and the arch at the foot of its centre column.
+Both panels stop level with the top of their own field, so the row a pair spawns in - which is
+played in, and so is drawn - sits above the board against the backdrop with nothing to either
+side, the way a piece does on the retro Rustris themes. They stand on a wash of their own game's own colour rather than on
+its tiled wall, and each casts a shadow on it, which is what leaves the board looking like a
+board. Its particle theme
+carries eleven sets
 of puyos and deals a different one to each player at the start of every match, so a two player
 game is never two boards of the same puyos and no two matches look alike; the title screen
 sends all eleven past. It has a soundtrack the same way: one track over its menus, and four
 more that a match is dealt one of - the track dealt at the start of a match plays to the end
 of it, changing only if the theme does. The **genesis** theme has a soundtrack of its own:
 Mean Bean Machine's four stage tunes, each with the lead-in the game writes as a separate
-track, and its sound effects with them. Every step of a chain counts itself out over the
-puyos it just took, in the game's own face rather than the engine's.
+track, and its sound effects with them, and it pops the way the game does: a bean sees it
+coming, curls into a ball, the ball shrinks, and what is left bursts into droplets - while a
+refugee bean sitting in the well blinks every couple of seconds. Every step of a chain counts
+itself out over the puyos it just took, in the game's own face rather than the engine's.
 
 Rustris follows the guideline: the Super Rotation System and its wall kicks, a seven bag
 randomiser, hold, extended placement lock down, and guideline scoring. A T rotated into a slot
@@ -304,10 +307,11 @@ There are no default player 2 controls.
 All three games find every placement the piece in play can reach, score them, and hand the best
 one to an agent that presses the keys. Rustris scores with a small neural network;
 Dr. Rustario plays a port of Dr. Mario 64's own hand written scorer, and has a neural network
-that is not trained yet; Puyo Rusto searches several pairs ahead with a beam search over a hand
-written evaluation, and has no neural model at all. The network and the genetic algorithm that
-trains it are shared in `engine/src/ai`; each game supplies its own features, placement search
-and agent. Only human players can enter the high score table.
+that is trained but not yet strong enough to field as a difficulty; Puyo Rusto searches several
+pairs ahead with a beam search over a hand written evaluation, and has no neural model at all.
+The network and the genetic algorithm that trains it are shared in `engine/src/ai`; each game
+supplies its own features, placement search and agent. Only human players can enter the high
+score table.
 
 Full write up: [https://ax-h.com/ai/machine-learning-from-scratch](https://ax-h.com/ai/machine-learning-from-scratch)
 
@@ -339,13 +343,15 @@ The **ai** option on a Dr. Rustario main menu offers the same choices:
   harder setting is a better player and not merely a faster one: `easy` and `normal` play the two rows
   that hardly get past the first few bottles, `hard` the runner up and `impossible` the best of them.
 * `1-player ai demo` - the first player's bottle is played by the AI at full speed; their controls are
-  disabled.
-* `2-player ai demo` - the AI plays both bottles at full speed: the second best row of weights as
-  player 1 against the best as player 2.
+  disabled. It plays the same scorer, on the row `DrAiKind::default()` hands out.
+* `2-player ai demo` - the AI plays both bottles at full speed: the trained neural network as player 1
+  against the best of the N64 ai's rows of weights as player 2. That demo is the only place the
+  network plays.
 
 #### Dr. Mario 64's own ai
 
-What all of those play is a port of `aiset.c` from the Nintendo 64 game's decompilation, in
+What every difficulty and the 1-player demo play - and what defends player 2 in the 2-player
+demo - is a port of `aiset.c` from the Nintendo 64 game's decompilation, in
 `dr-rustario/src/game/ai/n64`: a deterministic scorer with no learning in it anywhere. For
 every place the pill can come to rest it drops the two halves into a copy of the bottle,
 measures the run of colour each one lands in, takes away whatever clears, measures what is
@@ -363,7 +369,8 @@ viruses than with two left in the corner. The six skill rows are personalities r
 ladder - the original picks one per character, not per skill setting - so which of them is the
 better player was measured rather than assumed: each row played twenty seeds at virus levels 5,
 10, 15 and 20, ranked on bottles cleared less four per burial. That ranking (`SKILL_ORDER` in
-`dr-rustario/src/game/ai/n64/params.rs`) is what the four difficulties pick from.
+`dr-rustario/src/game/ai/n64/params.rs`) is what the four difficulties pick from, and what the
+2-player demo takes the best of them from.
 
 Left out of the port: the sixteen characters and the moods that nudge their weights about, the
 deliberate mistakes, and the frame level key pacing, which the engine's own key pacer already
@@ -409,8 +416,12 @@ answer that sounds reasonable and is not. Taught with hold on offer a model play
 over five games and buries itself in every one; taught without it, the same model plays 3143 and
 finishes 80 bottles. Hold is worth having back, but only behind something that can judge it.
 
-The weights currently embedded are **random, not trained**, which is why the opponent and the
-demo play the deterministic ai above instead. To watch the network play, run
+The weights currently embedded are a **survival trained** model, in `models::survival_trained()`:
+4635 viruses, 101 bottles and 18615 pills over five games, buried in three of them. It is not
+good enough to field as a difficulty yet - watching it play is what settled that - so the four
+difficulties and the 1-player demo all play the deterministic ai above, and the network's one
+outing is as player 1 of the 2-player demo, against the best row of weights the N64 ai has. To
+watch it on a seed of your own, run
 `ga dr play <seed> <level> <pill cap> <report every> neural`.
 
 #### Training Dr. Rustario
@@ -496,11 +507,11 @@ default: stage two from random weights), `taught` (stage two from a quick imitat
 it finishes a run.
 
 **Getting the result into the binary.** Every stage that finishes prints its weights as the body
-of `virus_clear_trained`, ready to paste over the one in
+of `survival_trained`, ready to paste over the one in
 [dr-rustario/src/game/ai/models.rs](dr-rustario/src/game/ai/models.rs):
 
 ```
-// the model to embed: paste this over the body of models::virus_clear_trained
+// the model to embed: paste this over the body of models::survival_trained
     DrNeuralNetwork::new(&[
         0.051050, -0.697642, ...
     ])
@@ -616,7 +627,7 @@ has gone.
 * `1-player ai demo` - one board, played by the ai at full speed through the whole playlist.
 * `2-player ai demo` - both boards at full speed, each game fielding the two models it puts against
   each other in its own 2-player demo: Rustris's survival model against its high scoring one, and
-  the N64 ai's second best row of weights against its best.
+  Dr. Rustario's trained network against the best of the N64 ai's rows of weights.
 
 The vs. **difficulty** dial is a separate thing that applies to everyone: it is how hard the games
 are, not how well the ai plays them.

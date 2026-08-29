@@ -2,7 +2,8 @@
 //! ambient routine and the occasional feature, with a weighted playlist that never repeats a
 //! feature twice running.
 
-use rand::{rng, rngs::ThreadRng, RngExt};
+use crate::particles::field::{field_rng, FieldRng};
+use rand::RngExt;
 
 /// the resting state
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -144,11 +145,11 @@ pub struct Director {
     stage: Stage,
     last_feature: Option<Feature>,
     last_ambient: Option<Ambient>,
-    rng: ThreadRng,
+    rng: FieldRng,
 }
 
 impl Director {
-    pub fn new() -> Self {
+    pub fn new(rng: FieldRng) -> Self {
         let mut director = Self {
             stage: Stage::Ambient {
                 routine: Ambient::Orbit,
@@ -156,7 +157,7 @@ impl Director {
             },
             last_feature: None,
             last_ambient: Some(Ambient::Orbit),
-            rng: rng(),
+            rng,
         };
         director.stage = Stage::Ambient {
             routine: Ambient::Orbit,
@@ -297,7 +298,7 @@ impl Director {
         Self::weighted(&mut self.rng, &choices)
     }
 
-    fn weighted<T: Copy>(rng: &mut ThreadRng, choices: &[(T, f64)]) -> T {
+    fn weighted<T: Copy>(rng: &mut FieldRng, choices: &[(T, f64)]) -> T {
         let total: f64 = choices.iter().map(|(_, weight)| weight).sum();
         let mut pick = rng.random::<f64>() * total;
         for (choice, weight) in choices.iter() {
@@ -312,13 +313,14 @@ impl Director {
 
 impl Default for Director {
     fn default() -> Self {
-        Self::new()
+        Self::new(field_rng())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::particles::field::test_rng;
 
     fn run(director: &mut Director, seconds: f64) -> Vec<Transition> {
         let mut transitions = vec![];
@@ -334,7 +336,7 @@ mod tests {
 
     #[test]
     fn a_feature_runs_gather_then_hold_then_shatter_then_ambient() {
-        let mut director = Director::new();
+        let mut director = Director::new(test_rng());
         let transitions = run(&mut director, 60.0);
         let features = transitions
             .iter()
@@ -355,7 +357,7 @@ mod tests {
 
     #[test]
     fn a_feature_never_repeats_twice_running() {
-        let mut director = Director::new();
+        let mut director = Director::new(test_rng());
         let features = run(&mut director, 600.0)
             .into_iter()
             .filter_map(|t| match t {
@@ -369,7 +371,7 @@ mod tests {
 
     #[test]
     fn an_ambient_routine_never_repeats_twice_running() {
-        let mut director = Director::new();
+        let mut director = Director::new(test_rng());
         let ambients = run(&mut director, 600.0)
             .into_iter()
             .filter_map(|t| match t {
@@ -383,7 +385,7 @@ mod tests {
 
     #[test]
     fn the_field_spends_more_of_its_time_in_a_feature_than_resting() {
-        let mut director = Director::new();
+        let mut director = Director::new(test_rng());
         let mut featuring = 0.0;
         let mut total = 0.0;
         for _ in 0..(600.0 / 0.016) as u32 {
@@ -399,7 +401,7 @@ mod tests {
 
     #[test]
     fn every_feature_comes_up_over_a_long_enough_match() {
-        let mut director = Director::new();
+        let mut director = Director::new(test_rng());
         let seen = run(&mut director, 3_000.0)
             .into_iter()
             .filter_map(|t| match t {
@@ -414,7 +416,7 @@ mod tests {
 
     #[test]
     fn an_interrupt_takes_the_field_over_whatever_it_was_doing() {
-        let mut director = Director::new();
+        let mut director = Director::new(test_rng());
         assert_eq!(
             director.interrupt(Feature::Sprite),
             Transition::Gather(Feature::Sprite)
@@ -431,7 +433,7 @@ mod tests {
 
     #[test]
     fn abandoning_drops_straight_back_to_ambient() {
-        let mut director = Director::new();
+        let mut director = Director::new(test_rng());
         director.interrupt(Feature::Lattice);
         assert!(matches!(director.abandon(), Transition::Ambient(_)));
         assert!(matches!(director.stage(), Stage::Ambient { .. }));

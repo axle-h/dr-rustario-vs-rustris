@@ -304,10 +304,10 @@ fn pretrain(pills: usize, threshold: u32) -> DrNeuralGenome {
 /// Print a genome as the weights [`models`] embeds. A finished run is only useful if its result
 /// can be got into the binary, and a genome's own `Display` is the raw coefficients the
 /// algorithm works in rather than the numbers the network is built from - so this prints the
-/// body of `virus_clear_trained`, ready to paste over the one that is there.
+/// body of `survival_trained`, ready to paste over the one that is there.
 fn print_weights(what: &str, genome: DrNeuralGenome) {
     let weights: [f64; DR_NEURAL_GENOME_SIZE] = genome.into();
-    println!("\n// {}, for models::virus_clear_trained", what);
+    println!("\n// {}, for models::survival_trained", what);
     println!("    DrNeuralNetwork::new(&[");
     for line in weights.chunks(8) {
         let numbers: Vec<String> = line.iter().map(|w| format!("{:.6}", w)).collect();
@@ -375,7 +375,7 @@ pub fn ga_main_auto() -> Result<(), String> {
 
 /// the same three stages, seeded from the built in model rather than taught from scratch
 pub fn ga_main_tune() -> Result<(), String> {
-    let seed: DrNeuralGenome = models::virus_clear_trained().into();
+    let seed: DrNeuralGenome = models::survival_trained().into();
     report_play("embedded model", seed);
     let survivor = survive(Some(seed));
     report_play("stage 2 model", survivor);
@@ -456,7 +456,7 @@ pub fn ga_diagnose() -> Result<(), String> {
         "embedded model, bottles 0 to {}, {} viruses in all",
         TOP_TRAINING_LEVEL, VIRUSES_TO_CLEAR
     );
-    report_unseen(models::virus_clear_trained().into());
+    report_unseen(models::survival_trained().into());
     Ok(())
 }
 

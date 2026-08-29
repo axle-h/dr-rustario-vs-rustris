@@ -30,7 +30,7 @@ use crate::render::sprite_sheet::{BlockSpriteSheet, GhostStyle, MascotKind};
 use crate::scale::{Scale, ScaleMode};
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
-use sdl2::render::{Texture, WindowCanvas};
+use sdl2::render::{BlendMode, Texture, WindowCanvas};
 
 /// What a game tells the renderer beyond its board: how to grade events for sound and
 /// particles. Everything visual comes from theme data.
@@ -69,6 +69,17 @@ pub trait GameRender {
     /// cells already on the board when a stage starts (Dr. Mario's viruses); they pop in
     fn stage_intro_cells(&self) -> Vec<PlacedCell> {
         vec![]
+    }
+
+    /// How fast an attack falls in from over the top of the board, in rows a second.
+    ///
+    /// A game that answers holds its play while it lands, which is what a game whose garbage
+    /// *waits* wants: a tray full of nuisance dropping in all at once is the moment the player
+    /// has been watching for, and it should be seen arriving. `None` - the default, and what
+    /// both the games that take their hits the instant they are sent say - draws the cells
+    /// where they land and carries straight on.
+    fn attack_fall_speed(&self) -> Option<f64> {
+        None
     }
 }
 
@@ -231,6 +242,81 @@ pub struct Theme<'a> {
     /// source pixels at the top of the background that nothing is ever drawn into, so they
     /// may fall outside the window rather than cost the board a whole step
     pub(crate) top_slack: u32,
+    /// what the panel casts on the scene behind it, for a theme that wants lifting off one
+    pub(crate) shadow: Option<PanelShadow>,
+}
+
+/// A shadow under a theme's panel, drawn on the scene behind it at composite time.
+///
+/// **Not painted into the panel art**, which is where it would naturally go. A panel is
+/// measured in source pixels and every theme of a game is drawn at the largest cell all of
+/// them can hold, so a margin painted round the art comes straight off the board: in a two
+/// player game, where the panels are sized by the width they have rather than the height,
+/// eight pixels of it costs about a twentieth of the board. Drawn here it costs the layout
+/// nothing, and it may fall outside the player's own area - which is what a shadow should do.
+#[derive(Clone, Copy, Debug)]
+pub struct PanelShadow {
+    /// how far down and to the right of the panel it falls, in source pixels
+    pub offset: (i32, i32),
+    /// how far past the panel it fades out, in source pixels - down and to the right only
+    pub spread: u32,
+    pub color: Color,
+    /// how dark it is against the panel's own edge, fading to nothing at the spread
+    pub alpha: u8,
+    /// Source pixels at the top of the background that the panel's art does not fill, and so
+    /// casts nothing.
+    ///
+    /// `top_padding` is exactly that band on the themes that have one, and it is where a
+    /// piece spawns - so a shadow cast from the whole padded box puts a dark rectangle behind
+    /// the one row that has nothing else behind it, which is the opposite of the point.
+    pub skip_top: u32,
+}
+
+impl PanelShadow {
+    /// Draw it under `panel`, which is where the panel goes in the window.
+    ///
+    /// The light is over the panel's top left shoulder, so the shadow only ever grows down
+    /// and to the right: every ring keeps the body's own top left corner, which is inside the
+    /// panel and so never drawn. A ring centred on the body instead would put a band of it
+    /// over the panel's top edge, where a spawning piece is the only thing on the scene.
+    ///
+    /// The body is one fill and the fade is one 1-pixel outline per *window* pixel rather
+    /// than per source pixel: a spread of six source pixels is thirty on a 4k screen, and six
+    /// steps across thirty pixels is a stack of bands rather than a shadow. Outlines rather
+    /// than filled rects because everything inside the first one is already painted.
+    pub fn draw(
+        &self,
+        canvas: &mut WindowCanvas,
+        panel: Rect,
+        scale: &Scale,
+    ) -> Result<(), String> {
+        let px = |value: i32| scale.scale_coordinate(value);
+        let skipped = px(self.skip_top as i32);
+        let body = Rect::new(
+            panel.x() + px(self.offset.0),
+            panel.y() + px(self.offset.1) + skipped,
+            panel.width(),
+            panel.height().saturating_sub(skipped as u32),
+        );
+        let blend = canvas.blend_mode();
+        canvas.set_blend_mode(BlendMode::Blend);
+        let color = |alpha: u8| Color::RGBA(self.color.r, self.color.g, self.color.b, alpha);
+        canvas.set_draw_color(color(self.alpha));
+        canvas.fill_rect(body)?;
+        let spread = px(self.spread as i32).max(1);
+        for step in 1..=spread {
+            let fade = self.alpha as i32 * (spread - step) / spread;
+            canvas.set_draw_color(color(fade as u8));
+            canvas.draw_rect(Rect::new(
+                body.x(),
+                body.y(),
+                body.width() + step as u32,
+                body.height() + step as u32,
+            ))?;
+        }
+        canvas.set_blend_mode(blend);
+        Ok(())
+    }
 }
 
 impl<'a> Theme<'a> {
@@ -292,6 +378,10 @@ impl<'a> Theme<'a> {
 
     pub fn top_slack(&self) -> u32 {
         self.top_slack
+    }
+
+    pub fn shadow(&self) -> Option<PanelShadow> {
+        self.shadow
     }
 
     /// the playfield within the background, in source pixels: the board frame's place in the

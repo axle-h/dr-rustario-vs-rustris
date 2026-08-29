@@ -33,3 +33,5 @@ menu-*.png
 # footing as the Puyo Puyo Tetris sheet above: they are spriters-resource downloads under their
 # own names, and re-running the script means finding them again.
 /puyo-rusto/art/retro/
+
+*.log

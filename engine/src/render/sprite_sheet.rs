@@ -852,6 +852,11 @@ impl<'a> BlockSpriteSheet<'a> {
         // doing between two of them
         let fall_offset = game.fall_progress();
 
+        // a cell that is still falling in from over the top is drawn after the board, on its
+        // way down, and not where the rules have already put it
+        let falling = animations.nuisance().state();
+        let in_the_air = |point: CellPoint| falling.is_some_and(|s| s.is_falling(point));
+
         let hidden = geometry.hidden_rows();
         let mut ghosts = HashSet::new();
         if let GhostStyle::Outline { .. } = ghost_style {
@@ -891,10 +896,31 @@ impl<'a> BlockSpriteSheet<'a> {
                         };
                         self.draw_stack_cell(canvas, id, dest, offset_y, animations)?
                     }
-                    Cell::Garbage(id) => self.draw_cell(canvas, id, true, dest, 0.0, None)?,
+                    // through the stack path, so garbage that idles gets its strip: a Puyo
+                    // nuisance blinks where a Dr. Mario virus wriggles. With no strip this
+                    // is the still stacked sprite, which is what every other game gets
+                    Cell::Garbage(id) if !in_the_air(point) => {
+                        self.draw_stack_cell(canvas, id, dest, 0.0, animations)?
+                    }
                     _ => {}
                 }
             }
+        }
+
+        if let Some(falling) = falling {
+            // clipped to the playfield: a theme's board texture may carry room above the top
+            // row - a stone border, the sky over a well - and an attack coming in has to
+            // appear over the board's own top edge rather than out of the furniture
+            let clip = canvas.clip_rect();
+            canvas.set_clip_rect(geometry.game_snip());
+            let result = falling
+                .frames()
+                .into_iter()
+                .try_for_each(|(point, id, offset_y)| {
+                    self.draw_cell(canvas, id, true, geometry.raw_block(point), offset_y, None)
+                });
+            canvas.set_clip_rect(clip);
+            result?;
         }
 
         if let Some(destroyed) = animations.destroy().state() {

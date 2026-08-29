@@ -31,10 +31,33 @@ use crate::particles::geometry::{RectF, Vec2D};
 use crate::particles::meta::ParticleSprite;
 use crate::particles::particle::{Field, Particle, ParticleTarget};
 use crate::particles::pool::{ParticleLink, ParticlePool};
-use rand::{rng, rngs::ThreadRng, RngExt};
+use rand::{rng, RngExt, SeedableRng};
+use rand_chacha::ChaChaRng;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
+
+/// The field's own randomness. It is a seedable generator rather than the thread's because a
+/// routine's whole look is drawn from it, and a test that measures what the field does over
+/// thirty frames can only assert anything if those frames are the same ones every run. It is
+/// still seeded from entropy in a match ([`ParticleField::new`]), and from nothing the games
+/// have ever touched.
+pub type FieldRng = ChaChaRng;
+
+/// a generator seeded from the thread's, for everything that is not a test
+pub fn field_rng() -> FieldRng {
+    FieldRng::from_rng(&mut rng())
+}
+
+/// the one seed every test in here runs on. Nothing about it is special - it is a seed that
+/// was passing, pinned so that a run that fails is a change and not a draw
+#[cfg(test)]
+pub(crate) const TEST_SEED: u64 = 20_260_829;
+
+#[cfg(test)]
+pub(crate) fn test_rng() -> FieldRng {
+    FieldRng::seed_from_u64(TEST_SEED)
+}
 
 /// how much of the pool stays ambient while a feature runs, so the field is never empty and
 /// never fully hijacked
@@ -152,7 +175,7 @@ pub struct ParticleField {
     /// a word the match has called for, spelt by the next text formation
     word: Option<&'static str>,
     time: f64,
-    rng: ThreadRng,
+    rng: FieldRng,
 }
 
 impl ParticleField {
@@ -162,16 +185,48 @@ impl ParticleField {
         density: ParticleDensity,
         bus: SharedBus,
     ) -> Self {
+        Self::with_rng(canvas, window_size, density, bus, field_rng())
+    }
+
+    /// the same field, playing out the same way every time: what the director picks, where a
+    /// formation lands and where every particle starts all come off this one seed
+    pub fn seeded(
+        canvas: RectF,
+        window_size: (u32, u32),
+        density: ParticleDensity,
+        bus: SharedBus,
+        seed: u64,
+    ) -> Self {
+        Self::with_rng(
+            canvas,
+            window_size,
+            density,
+            bus,
+            FieldRng::seed_from_u64(seed),
+        )
+    }
+
+    fn with_rng(
+        canvas: RectF,
+        window_size: (u32, u32),
+        density: ParticleDensity,
+        bus: SharedBus,
+        mut rng: FieldRng,
+    ) -> Self {
         let window_aspect = window_size.0 as f64 / window_size.1.max(1) as f64;
+        // the director and the colour walk each get their own stream off the field's, so one
+        // of them drawing a number more often than it used to cannot shift the others
+        let director = Director::new(FieldRng::from_rng(&mut rng));
+        let colors = ColorDriver::new(FieldRng::from_rng(&mut rng));
         let mut field = Self {
             canvas,
             window_aspect,
             density,
             particles: vec![],
             members: vec![],
-            director: Director::new(),
+            director,
             ambient: Ambient::Orbit,
-            colors: ColorDriver::new(),
+            colors,
             formation: Formation::Free,
             cast: vec![],
             link_builder: LinkBuilder::new(),
@@ -184,7 +239,7 @@ impl ParticleField {
             forced: None,
             word: None,
             time: 0.0,
-            rng: rng(),
+            rng,
         };
         field.resize();
         field
@@ -1082,12 +1137,16 @@ mod tests {
         .unwrap()
     }
 
+    /// every test here measures a randomised field, several of them statistically over a
+    /// run of frames, so all of them are handed the same seed: a failure is then a change to
+    /// the field and never a bad draw
     fn field(ctx: &SceneContext) -> ParticleField {
-        ParticleField::new(
+        ParticleField::seeded(
             ctx.canvas,
             (1920, 1080),
             ParticleDensity::High,
             Rc::new(RefCell::new(FieldBus::default())),
+            TEST_SEED,
         )
     }
 

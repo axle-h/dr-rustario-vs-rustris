@@ -186,6 +186,15 @@ impl<'a> ScaledTheme<'a> {
     pub fn is_pause_required_for_animation(&self, player: u32) -> bool {
         self.player_themes[player as usize].animations.blocks_tick()
     }
+
+    /// how far above the board an attack starts is this theme's geometry, not the game's:
+    /// the same cells fall from the top of whichever board the player is looking at
+    pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], rows_per_second: f64) {
+        let hidden_rows = self.theme.geometry().hidden_rows();
+        self.animations_mut(player)
+            .nuisance_mut()
+            .drop_in(cells, hidden_rows, rows_per_second);
+    }
 }
 
 /// The themes one player may use: a range of indices into the context's theme list, so a
@@ -428,6 +437,14 @@ impl<'a> ThemeContext<'a> {
     pub fn animate_interstitial(&mut self, player: u32) {
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).interstitial_mut().display();
+        }
+    }
+
+    /// an attack that waited in the tray falls in from over the top of the board, at
+    /// `rows_per_second`, and holds the game while it does
+    pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], rows_per_second: f64) {
+        for theme in self.themes.iter_mut() {
+            theme.animate_nuisance(player, cells, rows_per_second);
         }
     }
 
@@ -683,6 +700,17 @@ impl<'a> ThemeContext<'a> {
                 TextureMode::Board(pid) => {
                     let current = self.current(*pid);
                     let player = &current.player_themes[*pid as usize];
+                    // the panel's shadow goes on the scene first: the board is the first
+                    // thing composited for a player and the panel is laid over it, so this
+                    // is the one moment both of them are still to come.
+                    //
+                    // It is cast from the *panel*, and so it does not move with the impact
+                    // below: a hard drop jolts the board inside a panel that stays where it
+                    // is, which is what every retro theme here has always done, so a shadow
+                    // that shook with it would be a shadow of something that had not moved
+                    if let Some(shadow) = current.theme.shadow() {
+                        shadow.draw(canvas, player.bg_snip, &current.scale)?;
+                    }
                     let (offset_x, offset_y) = player.animations.impact().current_offset();
                     let dst = current.scale.offset_proportional_to_block_size(
                         player.board_snip,

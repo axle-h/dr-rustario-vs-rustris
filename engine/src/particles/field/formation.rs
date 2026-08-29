@@ -7,8 +7,9 @@
 //! silhouette is never stretched.
 
 use crate::particles::field::shapes::EdgeShape;
+use crate::particles::field::FieldRng;
 use crate::particles::geometry::{RectF, Vec2D};
-use rand::{rngs::ThreadRng, RngExt};
+use rand::RngExt;
 
 /// how many placements a formation tries before settling for the least bad one. This runs
 /// once when a feature starts, so it can afford to be thorough.
@@ -90,7 +91,7 @@ impl Formation {
     /// `boards` are the players' playfields in canvas-normalised coordinates: a silhouette
     /// gathers away from them where it can, so it is not drawn over the one thing the player
     /// is reading
-    pub fn sprite(shape: &EdgeShape, aspect: f64, rng: &mut ThreadRng, boards: &[RectF]) -> Self {
+    pub fn sprite(shape: &EdgeShape, aspect: f64, rng: &mut FieldRng, boards: &[RectF]) -> Self {
         Self::sprite_sized(
             shape,
             aspect,
@@ -106,7 +107,7 @@ impl Formation {
     /// enough to be read. Not the whole of it: a word stretched wall to wall is one the eye
     /// has to track rather than take in, and its letters end up further apart than the
     /// particles that spell them
-    pub fn text(shape: &EdgeShape, aspect: f64, rng: &mut ThreadRng, boards: &[RectF]) -> Self {
+    pub fn text(shape: &EdgeShape, aspect: f64, rng: &mut FieldRng, boards: &[RectF]) -> Self {
         Self::sprite_sized(
             shape,
             aspect,
@@ -124,7 +125,7 @@ impl Formation {
     fn sprite_sized(
         shape: &EdgeShape,
         aspect: f64,
-        rng: &mut ThreadRng,
+        rng: &mut FieldRng,
         boards: &[RectF],
         (fill_min, fill_max): (f64, f64),
         spin: (f64, f64),
@@ -191,7 +192,7 @@ impl Formation {
         }
     }
 
-    pub fn lattice(rng: &mut ThreadRng) -> Self {
+    pub fn lattice(rng: &mut FieldRng) -> Self {
         let cols = 8 + rng.random_range(0..7);
         Self::Lattice {
             cols,
@@ -200,7 +201,7 @@ impl Formation {
         }
     }
 
-    pub fn ribbon(rng: &mut ThreadRng) -> Self {
+    pub fn ribbon(rng: &mut FieldRng) -> Self {
         Self::Ribbon {
             amplitude: 0.12 + 0.1 * rng.random::<f64>(),
             frequency: 2.0 + 4.0 * rng.random::<f64>(),
@@ -209,7 +210,7 @@ impl Formation {
     }
 
     /// three or four rings about a point somewhere in the middle of the canvas, set drifting
-    pub fn haloes(rng: &mut ThreadRng, aspect: f64) -> Self {
+    pub fn haloes(rng: &mut FieldRng, aspect: f64) -> Self {
         let rings = 3 + rng.random_range(0..2);
         // the rings wander, so they are sized against the tightest they will ever be boxed in
         let outer = (0.3 + 0.1 * rng.random::<f64>()).min(0.45 * aspect.max(0.01));
@@ -228,7 +229,7 @@ impl Formation {
         }
     }
 
-    pub fn spiral(rng: &mut ThreadRng, aspect: f64) -> Self {
+    pub fn spiral(rng: &mut FieldRng, aspect: f64) -> Self {
         let centre = Vec2D::new(
             0.4 + 0.2 * rng.random::<f64>(),
             0.4 + 0.2 * rng.random::<f64>(),
@@ -250,7 +251,7 @@ impl Formation {
         across.min(centre.y().min(1.0 - centre.y())).max(0.0)
     }
 
-    pub fn lissajous(rng: &mut ThreadRng, aspect: f64) -> Self {
+    pub fn lissajous(rng: &mut FieldRng, aspect: f64) -> Self {
         // the small integer ratios are the ones that close into a figure rather than a
         // scribble; anything larger is too busy to read at this size
         const RATIOS: [(f64, f64); 6] = [
@@ -276,7 +277,7 @@ impl Formation {
     }
 
     /// a magnitude between `min` and `max`, either way round
-    fn signed(rng: &mut ThreadRng, min: f64, max: f64) -> f64 {
+    fn signed(rng: &mut FieldRng, min: f64, max: f64) -> f64 {
         let magnitude = min + (max - min) * rng.random::<f64>();
         if rng.random::<bool>() {
             magnitude
@@ -465,6 +466,7 @@ impl Formation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::particles::field::test_rng;
 
     #[test]
     fn a_ribbon_spans_the_canvas_left_to_right() {
@@ -512,7 +514,7 @@ mod tests {
 
     #[test]
     fn the_curves_stay_on_the_canvas_for_as_long_as_they_hold() {
-        let mut rng = rand::rng();
+        let mut rng = test_rng();
         for _ in 0..40 {
             // a whole 16:9 window, half of one, and a square
             for aspect in [1.78, 0.89, 1.0] {
@@ -538,7 +540,7 @@ mod tests {
         // an outline far wider than it is tall, which is the one that swings off the canvas
         // if it is placed by the box it happens to fill rather than the circle it turns in
         let shape = EdgeShape::wide_bar();
-        let mut rng = rand::rng();
+        let mut rng = test_rng();
         for _ in 0..40 {
             let formation = Formation::sprite(&shape, 1.78, &mut rng, &[]);
             let (low, high) = bounds(&formation, 4.5, 1.78);
@@ -551,7 +553,7 @@ mod tests {
 
     #[test]
     fn one_set_of_haloes_however_many_players_there_are() {
-        let mut rng = rand::rng();
+        let mut rng = test_rng();
         let Formation::Haloes { radii, .. } = Formation::haloes(&mut rng, 1.78) else {
             panic!("not haloes")
         };
@@ -582,7 +584,7 @@ mod tests {
     /// how much board the average placement covers, over enough tries to be stable
     fn mean_cover(boards: &[RectF]) -> f64 {
         let shape = EdgeShape::unit_square();
-        let mut rng = rand::rng();
+        let mut rng = test_rng();
         let mut total = 0.0;
         const TRIES: usize = 200;
         for _ in 0..TRIES {
@@ -610,7 +612,7 @@ mod tests {
         let nowhere = [RectF::new(-9.0, -9.0, 0.01, 0.01)];
         let blind = {
             let shape = EdgeShape::unit_square();
-            let mut rng = rand::rng();
+            let mut rng = test_rng();
             let mut total = 0.0;
             for _ in 0..200 {
                 let Formation::Sprite { centre, size, .. } =
@@ -636,7 +638,7 @@ mod tests {
     #[test]
     fn a_silhouette_still_appears_when_the_boards_leave_nowhere_to_go() {
         let shape = EdgeShape::unit_square();
-        let mut rng = rand::rng();
+        let mut rng = test_rng();
         let boards = [RectF::new(0.0, 0.0, 1.0, 1.0)];
         let Formation::Sprite { centre, .. } = Formation::sprite(&shape, 1.0, &mut rng, &boards)
         else {

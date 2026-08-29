@@ -2,7 +2,7 @@
 
 use engine::game::geometry::Point;
 use engine::game::{
-    Attack, Cell, Game, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState,
+    Attack, Cell, CellId, Game, GameEvent, GameId, MetricKind, PieceId, PlacedCell, StageState,
     StageTransition,
 };
 use engine::render::GameRender;
@@ -328,6 +328,10 @@ impl Game for AnyGame {
     fn receive_attack(&mut self, attack: Attack) {
         delegate!(self, g => Game::receive_attack(g, attack))
     }
+
+    fn pending_attacks(&self) -> Vec<CellId> {
+        delegate!(self, g => Game::pending_attacks(g))
+    }
 }
 
 impl GameRender for AnyGame {
@@ -354,22 +358,22 @@ impl GameRender for AnyGame {
     fn stage_intro_cells(&self) -> Vec<PlacedCell> {
         delegate!(self, g => GameRender::stage_intro_cells(g))
     }
+
+    fn attack_fall_speed(&self) -> Option<f64> {
+        delegate!(self, g => GameRender::attack_fall_speed(g))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// [`Game::fall_progress`] is the one method on the trait with a default, so a game that
-    /// answers it is only heard if this wrapper names it - and forgetting to costs nothing at
-    /// compile time and silently draws every piece on the grid. Puyo is the game that answers.
-    #[test]
-    fn a_wrapped_game_is_asked_how_far_it_has_fallen() {
+    fn puyo() -> AnyGame {
         use puyo_rusto::game::rules::Difficulty;
         let difficulty = Difficulty::Normal;
         let seed = puyo_rusto::game::random::Seed::from_u64(42);
         let skin = puyo_rusto::game::cell::PuyoSkin::deal(seed, 1)[0];
-        let mut game = AnyGame::Puyo(puyo_rusto::game::Game::new(
+        AnyGame::Puyo(puyo_rusto::game::Game::new(
             difficulty,
             0,
             puyo_rusto::game::random::from_seed(seed, 1, difficulty.colors())
@@ -377,7 +381,18 @@ mod tests {
                 .next()
                 .unwrap(),
             skin,
-        ));
+        ))
+    }
+
+    /// Every defaulted method of [`Game`] and [`GameRender`] that a game actually answers has
+    /// to be named here, and forgetting one costs nothing at compile time: the wrapper simply
+    /// answers the default and the game is never asked. Puyo is the game that answers all
+    /// three of these, and all three are invisible when they go missing - a piece drawn on the
+    /// grid instead of sliding, a tray that draws no icons, an attack that appears instead of
+    /// falling in - so each one is pinned by a test rather than by the compiler.
+    #[test]
+    fn a_wrapped_game_is_asked_how_far_it_has_fallen() {
+        let mut game = puyo();
         game.set_soft_drop(true);
 
         let mut seen: Vec<f64> = vec![];
@@ -388,6 +403,27 @@ mod tests {
         assert!(
             seen.iter().any(|p| *p > 0.0),
             "the wrapper answered 0.0 for a falling pair - the default, not the game: {seen:?}"
+        );
+    }
+
+    #[test]
+    fn a_wrapped_game_is_asked_what_is_in_its_tray() {
+        let mut game = puyo();
+        assert!(game.pending_attacks().is_empty());
+        game.receive_attack(Attack::new(puyo_rusto::game::GAME_ID, 7));
+        assert!(
+            !game.pending_attacks().is_empty(),
+            "the wrapper answered an empty tray - the default, not the game, so nothing is drawn"
+        );
+    }
+
+    #[test]
+    fn a_wrapped_game_is_asked_how_fast_an_attack_falls_in() {
+        assert_eq!(
+            GameRender::attack_fall_speed(&puyo()),
+            Some(puyo_rusto::game::rules::NUISANCE_FALL_ROWS_PER_SECOND),
+            "the wrapper answered None - the default, not the game, so nuisance appears \
+             instead of falling"
         );
     }
 

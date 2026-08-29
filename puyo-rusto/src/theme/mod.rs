@@ -4,7 +4,6 @@ pub mod data;
 pub mod genesis;
 pub mod modern;
 pub mod snes;
-pub mod three_ds;
 
 use crate::game::cell::{PuyoColor, PuyoPiece, PuyoSkin};
 use engine::config::Config;
@@ -130,16 +129,10 @@ pub fn all_themes_with_progress<'a>(
     built(canvas)?;
     let snes = snes::snes_theme(canvas, texture_creator, config)?;
     built(canvas)?;
-    let three_ds = three_ds::three_ds_theme(canvas, texture_creator, config)?;
-    built(canvas)?;
-    let block_size = reference_block_size(
-        &[&genesis, &snes, &three_ds],
-        canvas.window().size(),
-        config.video,
-    );
+    let block_size = reference_block_size(&[&genesis, &snes], canvas.window().size(), config.video);
     let modern = modern::modern_puyo_theme(canvas, texture_creator, config, block_size)?;
     built(canvas)?;
-    Ok(vec![genesis, snes, three_ds, modern])
+    Ok(vec![genesis, snes, modern])
 }
 
 /// one pair per colour of every set of puyos there is, which is what the race sends past

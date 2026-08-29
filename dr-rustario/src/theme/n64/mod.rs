@@ -202,6 +202,7 @@ pub fn n64_theme<'a>(
         board_alpha: 0xff,
         board_snips: vec![Rect::new(0, 0, 96, 209)],
         top_padding: 0,
+        shadow: None,
         board_point: Point::new(0, 0),
         background_file: sprites::BACKGROUND,
         background_color: Color::BLACK,

@@ -142,7 +142,7 @@ fn the_deterministic_ai_clears_several_bottles() {
 #[ignore = "needs a trained model: run with --ignored after a ga dr auto run"]
 fn the_trained_model_clears_bottles() {
     let played = play_with(
-        DrAiAgent::new(models::virus_clear_trained()),
+        DrAiAgent::new(models::survival_trained()),
         0,
         Duration::ZERO,
         3_000,

@@ -281,7 +281,7 @@ fn decision(
     // what a scorer of the kind being trained today actually sees when it looks at this pill:
     // one number per placement, and how far apart those numbers are
     let seen = [
-        Scorer::Network(models::virus_clear_trained()),
+        Scorer::Network(models::survival_trained()),
         Scorer::Linear,
     ]
     .map(|scorer| {
