@@ -5,6 +5,17 @@ authors.workspace = true
 edition.workspace = true
 build = "build.rs"
 
+# cargo-vcpkg only reads `package.metadata` and only from the crate `cargo metadata` was asked
+# about, so this cannot live in the workspace manifest: run it as
+# `cargo vcpkg build --manifest-path launcher/Cargo.toml`.
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+tag = "2024.10.21"
+dependencies = ["sdl2"]
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md" }
+
 [lints]
 workspace = true
 

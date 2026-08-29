@@ -27,13 +27,5 @@ titlecase = "3.6.0"
 # the moment a match started in a release build and in no test run at all.
 debug_assert_with_mut_call = "deny"
 
-[workspace.metadata.vcpkg]
-git = "https://github.com/microsoft/vcpkg"
-tag = "2024.10.21"
-dependencies = ["sdl2"]
-
-[workspace.metadata.vcpkg.target]
-x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md" }
-
 [profile.release]
 strip = "symbols"

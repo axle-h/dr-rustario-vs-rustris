@@ -86,13 +86,18 @@ eight wide bottle.
 
 ## Building
 
-Requires vcpkg to build on macos and Windows.
+SDL2 is the only native dependency, and there are two ways of finding it - a feature apiece on
+the `dr-rustario-vs-rustris` package in [launcher/](launcher), which is the workspace's default
+member, so every command below is run from the repository root:
 
-```bash
-cargo install cargo-vcpkg
-cargo vcpkg build
-cargo build --release --no-default-features --features vcpkg
-```
+* `pkgconfig` (the default) - link the SDL2 the system already has, through `pkg-config`. This
+  is the Linux and macOS route.
+* `vcpkg` - build SDL2 from source with [vcpkg](https://vcpkg.io) and link it statically, so
+  the binary carries it and needs no SDL2 beside it. This is the Windows route.
+
+Whichever it is, pass `--no-default-features` with it: the two are alternatives rather than
+additions, and with both on SDL2's build script probes both - which on Windows means a
+`pkg-config` probe that panics the build before vcpkg is ever reached.
 
 All resources are embedded into the binary, including every game's AI opponent, demo mode and
 the `ga` training subcommand (`dr-rustario-vs-rustris ga [auto|survival|score|diagnose]`).
@@ -108,14 +113,29 @@ of weights, `neural` for the trained network or `linear` for the hand written ba
 headless, and `ga puyo rank [seeds] [pair cap] [difficulty]` plays every row over the same
 seeds and prints the ranking the four difficulties are picked out of.
 
-### macOS
+### Windows
 
-The linker will fail to link SDL2 haptics. You will need to add the following to `~/.cargo/config.toml`:
+Needs the MSVC toolchain (Visual Studio Build Tools with the C++ workload) and `git` on the
+path - vcpkg compiles SDL2 itself, so the first run takes a while. In a developer prompt:
 
-```toml
-[target.aarch64-apple-darwin]
-rustflags = ["-C", "link-args=-weak_framework CoreHaptics"]
+```powershell
+rustup default stable-x86_64-pc-windows-msvc
+cargo install cargo-vcpkg
+cargo vcpkg build --manifest-path launcher/Cargo.toml
+cargo build --release --no-default-features --features vcpkg
 ```
+
+`--manifest-path` is not optional: cargo-vcpkg runs against a *package* and the manifest at the
+root of the repository is a virtual one (a `[workspace]` with no `[package]` of its own), which
+is what `cannot run on a virtual manifest` means when it is left off. The vcpkg metadata it
+reads therefore lives in [launcher/Cargo.toml](launcher/Cargo.toml) rather than in the
+workspace manifest, since cargo-vcpkg reads `package.metadata` and never `workspace.metadata`.
+
+Nothing needs to be set in the environment: the tree lands in `target\vcpkg` and the SDL2 build
+script walks up from its own output directory to find it, taking the `x64-windows-static-md`
+triplet the manifest declares. Both commands do have to see the same `CARGO_TARGET_DIR`, since
+that is the tree it walks up to. The result is
+`target\release\dr-rustario-vs-rustris.exe`, with SDL2 inside it.
 
 ### Linux
 
@@ -124,13 +144,34 @@ rustflags = ["-C", "link-args=-weak_framework CoreHaptics"]
 sudo dnf install SDL2-devel
 
 # Ubuntu/Debian
-sudo apt install libsdl2-dev
+sudo apt install libsdl2-dev pkg-config
+
+cargo build --release --no-default-features --features pkgconfig
 ```
 
-Build with pkgconfig:
+`pkgconfig` is the default feature, so a plain `cargo build --release` does the same thing.
+
+### macOS
 
 ```shell
+brew install sdl2 pkg-config
 cargo build --release --no-default-features --features pkgconfig
+```
+
+The linker will fail to link SDL2 haptics. You will need to add the following to `~/.cargo/config.toml`:
+
+```toml
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-args=-weak_framework CoreHaptics"]
+```
+
+vcpkg works here too, if a self-contained binary is wanted - the same three commands as
+Windows, and vcpkg's one macOS triplet is a static one:
+
+```shell
+cargo install cargo-vcpkg
+cargo vcpkg build --manifest-path launcher/Cargo.toml
+cargo build --release --no-default-features --features vcpkg
 ```
 
 ### Retro handhelds (PortMaster)
