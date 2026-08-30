@@ -193,6 +193,7 @@ pub fn nes_theme<'a>(
             Rect::new(162, 0, 80, 176),
         ],
         top_padding: 0,
+        bottom_padding: 0,
         shadow: None,
         board_point: Point::new(0, 0),
         background_file: sprites::BACKGROUND,

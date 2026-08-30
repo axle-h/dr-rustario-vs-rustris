@@ -136,6 +136,39 @@ const EXTRAS_ROW: i32 = PuyoColor::N as i32;
 /// read as a taller well rather than as room above the board.
 const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 
+/// Transparent rows under the panel, which is where its bottom edge comes from.
+///
+/// The last course of the panel is the well's own floor, and it is the only edge that says
+/// where the board ends - so with the panel as tall as the window it ran off the bottom of
+/// one and the board read as a wall rather than as something standing on the scene. Unlike
+/// [`SIDE_TRIM`] this cannot be had for nothing: the rows are bought out of the fit like any
+/// other source pixel, the background being that much taller and scaling to that much less.
+///
+/// Eight is the cheapest band that reads. In a two player game it is **free** - the panel is
+/// width bound there and the height has room for eleven rows before it starts binding - and
+/// the whole bill is a single player, whose panel is height bound from the first row: a cell
+/// of 74 where it was 76. That single player panel was flush against the bottom of the window
+/// too, so the row that costs it is the row that fixes it.
+const BOTTOM_PADDING: u32 = 8;
+
+/// The outer rock `rip_retro.py` cuts off the panel and pads back as scene: `(left, right)`.
+///
+/// The png stays 208 wide, which is the whole point: the block size, the layout and every
+/// coordinate below are exactly what they were, and what changes is that the outermost stone
+/// is scene. The panel is the widest art on a two player screen - 208 source pixels into a
+/// 952 pixel half - so it is what the cell size falls out of, 73 where the other two themes
+/// could hold 76, and it left the two boards sixteen pixels apart with a course of stone
+/// doing nothing on either side of them. Trimming it is air between them for no board at all:
+/// 16 pixels becomes 66.
+///
+/// The left course is the well's own wall, so it is halved rather than taken; the right is
+/// the outside edge of the score column and has less to lose. `GENESIS_PANEL_TRIM` in
+/// `rip_retro.py` is this same pair - it is the one that does the cutting, and this one is
+/// what tells the shadow which part of the box is not art. The test below holds the two
+/// together, since nothing else could: art trimmed and a constant left behind would draw a
+/// shadow hanging in the scene rather than under the panel.
+const SIDE_TRIM: (u32, u32) = (8, 4);
+
 /// The board within the padded panel, which is the well with [`TOP_PADDING`] over it.
 ///
 /// The panel is cut at the well's top edge and the padding puts exactly that much back, so
@@ -461,9 +494,15 @@ pub fn genesis_theme<'a>(
         board_alpha: 0xff,
         board_snips: vec![],
         top_padding: TOP_PADDING,
+        bottom_padding: BOTTOM_PADDING,
         // ... and the panel casts on it, which is what lifts it off the wash. Down and to
         // the right, because that is where every shadow in this compendium falls.
-        shadow: Some(panel_shadow(TOP_PADDING)),
+        shadow: Some(panel_shadow((
+            SIDE_TRIM.0,
+            TOP_PADDING,
+            SIDE_TRIM.1,
+            BOTTOM_PADDING,
+        ))),
         board_point: Point::new(BOARD.0, BOARD.1),
         background_file: sprites::BACKGROUND,
         background_color: WALL,
@@ -604,6 +643,34 @@ mod tests {
             "the panel has to carry the well's floor under it"
         );
         assert_eq!(TOP_PADDING, SRC_BLOCK_SIZE * HIDDEN_ROWS);
+    }
+
+    /// The panel's art has to stop exactly where [`SIDE_TRIM`] says it does.
+    ///
+    /// Two things read that pair and only one of them cuts anything: `rip_retro.py` clears
+    /// the outer rock and this theme tells the shadow to skip it. A trim widened in the
+    /// script and not here hangs a band of shadow out in the scene, and one narrowed there
+    /// and not here casts nothing off the panel's own edge - and both look like a bug in the
+    /// shadow rather than in a number. So the columns are read off the art itself: cleared
+    /// where the trim says cleared, and drawn on the very first column inside it.
+    #[test]
+    fn the_panel_art_stops_where_the_trim_says_it_does() {
+        let panel = image::load_from_memory(sprites::BACKGROUND)
+            .expect("the panel is a png")
+            .to_rgba8();
+        let (left, right) = SIDE_TRIM;
+        let opaque = |x: u32| (0..panel.height()).any(|y| panel.get_pixel(x, y)[3] > 0);
+        for x in (0..left).chain(panel.width() - right..panel.width()) {
+            assert!(
+                !opaque(x),
+                "column {x} is trimmed but the art still fills it"
+            );
+        }
+        assert!(opaque(left), "the art does not start where the trim ends");
+        assert!(
+            opaque(panel.width() - right - 1),
+            "the art stops short of the trim on the right"
+        );
     }
 
     /// The tray shares its band with the row a pair spawns in, and the pair is drawn over

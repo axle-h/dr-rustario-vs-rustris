@@ -501,6 +501,20 @@ GENESIS_WELL = (16, 16, 96, 192)
 # player's well begins
 GENESIS_PANEL_WIDTH = 208
 
+# The outer rock, cut off the panel and padded straight back as transparency: `(left, right)`.
+#
+# The panel is the widest thing on a two player screen - 208 source pixels into a 952 pixel
+# half - so it is what the cell size is worked out from, and the two boards end up sixteen
+# pixels apart with a course of stone doing nothing on either side of them. Cutting the stone
+# and *keeping the box* is the whole trick: the png is still 208 wide, so the cell is still
+# 73 and every coordinate in `genesis/mod.rs` still lands where it did, and what was rock is
+# scene. The left course is the well's own wall and is halved rather than removed; the right
+# is the outside edge of the score column, which has less to lose.
+#
+# `SIDE_TRIM` in `genesis/mod.rs` is this same pair, since the shadow has to know which part
+# of the box is not art - and a test there holds the two together.
+GENESIS_PANEL_TRIM = (8, 4)
+
 # Every face on the fonts sheet is laid out the same way: eight pixels wide on a nine pixel
 # pitch, thirty glyphs to a row - the ten digits and then A to T. So one reading serves all of
 # them and a word is a lookup into the alphabet.
@@ -785,6 +799,12 @@ def genesis():
     # same hole; nothing says so anywhere but the art.
     hole = np.array(panel)
     hole[0:wh, wx : wx + ww, 3] = 0
+    # ... and the outer rock cut off both sides and padded back as nothing - see
+    # [`GENESIS_PANEL_TRIM`]. Cleared outright rather than only made transparent, so no
+    # colour is left behind an edge for a filter to find.
+    left, right = GENESIS_PANEL_TRIM
+    hole[:, :left] = 0
+    hole[:, GENESIS_PANEL_WIDTH - right :] = 0
     panel = Image.fromarray(hole)
     # ... and the one word of the middle column's furniture this rip can put back, added
     # after the fonts are read, further down
@@ -893,6 +913,11 @@ SNES_STATE = "kirby-avalanche.state"
 # three rows into its cell, and in a frame with the field full they land on 99, 115, 131 ...
 # 195, so the bottom row is 192 and the top of the field is 208 - 192 = 16.
 SNES_SCREEN = (256, 224)
+# ... whose last row is one flat blue-grey run right across it: the console's own border row
+# rather than any of the game's art. The panel used to be cut through it and it never showed,
+# because the panel ran off the bottom of the window; with air under the panel it is a stripe
+# along the bottom of every match, so the cut stops a row short of the screen.
+SNES_SCREEN_BOTTOM = SNES_SCREEN[1] - 1
 SNES_FIELD = (8, 16, 96, 192)
 # one player's panel is the field and the wooden column beside it, cut where the second
 # player's field begins
@@ -1100,7 +1125,7 @@ def snes_art(out):
     # the padded background is a point on the SNES screen.
     write_png(
         os.path.join(out, "background.png"),
-        Image.fromarray(holed).crop((0, gy, SNES_PANEL_WIDTH, SNES_SCREEN[1])),
+        Image.fromarray(holed).crop((0, gy, SNES_PANEL_WIDTH, SNES_SCREEN_BOTTOM)),
     )
 
     # the field is the backdrop showing through, so its art is the scenery behind it: the

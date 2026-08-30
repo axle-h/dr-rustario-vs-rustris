@@ -66,6 +66,22 @@ const FIELD: (i32, i32) = (8, 16);
 /// the field: what is left of the panel is level all the way across.
 const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 
+/// Transparent rows under the panel, so the course the score is printed on - the panel's own
+/// bottom edge - stands clear of the window rather than running off it. The same band the
+/// genesis panel gets, since both are one panel standing on one vignette.
+///
+/// This theme has no side trim to go with it: at 152 wide it has never been the theme that
+/// binds the cell size, and it has 129 pixels of scene either side of it in a two player
+/// game already. It is only ever the bottom that runs off.
+///
+/// The panel had to lose a row for it. The SNES screen's last row is one flat blue-grey run
+/// right across it - the console's own border, under both players' fields alike, and none of
+/// the game's art - and `rip_retro.py` used to cut the panel through it, which never showed
+/// while the panel ran off the bottom of the window. See `SNES_SCREEN_BOTTOM` there, and
+/// `SCREEN_BORDER_ROW` in the tests below, which is what the panel's height is measured
+/// against now.
+const BOTTOM_PADDING: u32 = 8;
+
 /// The two boxes under `NEXT`: the gaps between the three wooden posts that run down the
 /// column, which is what the game frames its queues with. Kirby's Avalanche puts the player's
 /// next pair in one and the opponent's in the other and names them over the top; a panel here
@@ -194,9 +210,10 @@ pub fn snes_theme<'a>(
         board_alpha: 0xff,
         board_snips: vec![],
         top_padding: TOP_PADDING,
+        bottom_padding: BOTTOM_PADDING,
         // ... and the panel casts on it, which is what lifts it off the wash. Down and to
         // the right, because that is where every shadow in this compendium falls.
-        shadow: Some(panel_shadow(TOP_PADDING)),
+        shadow: Some(panel_shadow((0, TOP_PADDING, 0, BOTTOM_PADDING))),
         // the padding is above the panel and the board alike, so the field's art lands back
         // on the field: a point here is a point on the SNES screen
         board_point: Point::new(FIELD.0, 0),
@@ -271,6 +288,10 @@ mod tests {
         assert_eq!(height, (PITCH * (EXTRAS_ROW + 1)) as u32);
     }
 
+    /// The console's own border row, which the panel stops a row short of - see
+    /// [`BOTTOM_PADDING`], which is why it had to.
+    const SCREEN_BORDER_ROW: u32 = 1;
+
     /// The board is drawn *under* the panel, so the panel needs a hole exactly where the
     /// field is - the one thing about a retro theme that nothing but the art records. The
     /// panel is cut level with the top of the field, so that the spawning row -
@@ -287,7 +308,11 @@ mod tests {
         // - which is what puts the field at 16 on the screen rather than the 15 the layer
         // render read
         assert_eq!(FIELD.1 as u32, SRC_BLOCK_SIZE);
-        assert_eq!(board_height + SRC_BLOCK_SIZE, height);
+        assert_eq!(
+            board_height + SRC_BLOCK_SIZE - SCREEN_BORDER_ROW,
+            height,
+            "the panel is the field and the border under it, less the screen's own last row"
+        );
         assert_eq!(TOP_PADDING, SRC_BLOCK_SIZE * HIDDEN_ROWS);
     }
 
@@ -295,7 +320,12 @@ mod tests {
     /// `rip_retro.py`; what this checks is that what is put in them fits and lands on the panel
     #[test]
     fn everything_the_panel_is_told_to_draw_lands_on_it() {
-        let (width, height) = png_size(sprites::BACKGROUND);
+        let (width, panel_height) = png_size(sprites::BACKGROUND);
+        // every rect below is a point on the SNES screen, which is a point in the *padded*
+        // background - so what they have to fit is the panel with the spawning row over it,
+        // and not the panel's own png. It passed either way while the panel was the height of
+        // the screen; it stopped being that when the console's border row went.
+        let height = panel_height + TOP_PADDING;
         for (x, y, w, h) in NEXT_BOXES {
             assert!(x as u32 + w <= width, "a next box runs off the panel");
             assert!(y as u32 + h <= height);

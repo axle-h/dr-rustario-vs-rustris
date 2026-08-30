@@ -1703,6 +1703,86 @@ blink were stepped frame by frame through a throwaway example (drawn, looked at,
 the blink have been played by Alex and are what he wanted; the open board has not been played
 at the time of writing, only shot.
 
+### Phase 3g — the panel as an object, not a wall (2026-08-30)
+
+**Status:** `done` — 2026-08-30. Alex played two players on `genesis` and asked for the board
+to read as *a material*: its bottom edge was off the bottom of the window and there was almost
+nothing between the two boards. His own suggestion was to reduce the rock border and scale down
+slightly, and both halves of that turned out to be right for different reasons.
+
+**What was measured first.** At 1920x1080 with two players each side has a 952x1076 area.
+
+* The `genesis` panel is **208 source pixels wide** and so is width bound there: 952/208 gives
+  a cell of 73. `snes` (152 wide) and the particle theme both reach 76 in the same area, so
+  this panel alone is what holds the cell down - the note in 3f says the particle theme is what
+  holds it at 73, which is true of *one* player and not of two.
+* `BoardLayout` centres the **playfield**, not the panel, and the panel carries a 16 row well
+  floor below the playfield. So the whole thing is pushed down until the floor runs off the
+  bottom of the window. The single player panel does the same.
+* Which left 16 pixels between the two panels and none under either.
+
+**Two levers, and only one of them is free.**
+
+* **`SIDE_TRIM`** (`genesis/mod.rs`), matched by `GENESIS_PANEL_TRIM` in `rip_retro.py`: the
+  outer rock is cut off the panel and padded straight back as transparency, so **the png is
+  still 208 wide**. Nothing about the fit, the cell, the placement or any coordinate in the
+  theme changes - the outermost stone is simply scene now. `(8, 4)`: the left course is the
+  well's own wall and is halved rather than taken, the right is the outside edge of the score
+  column. 16 pixels between the boards becomes 66, for no board at all.
+* **`BOTTOM_PADDING`** (`RetroThemeOptions`, both retro themes): transparent rows under the
+  background art alone, which is where the panel's bottom edge comes from - it cannot be
+  trimmed into existence, since the last course *is* the well floor. These are bought out of
+  the fit like any other source pixel. In two players they are free up to eleven rows, the
+  panel being width bound with slack in the height; one player is height bound from the first
+  row and pays for all of them. Eight rows: two player cell unchanged at 73, single player 76
+  down to 74.
+
+**What was offered, and what was taken.** Five options were rendered as real two-player frames
+and put to Alex as an artifact; he took C, "the cheapest options".
+
+| | trim | rows under | cell 2P | cell 1P | between panels | under panel |
+|--|--|--|--|--|--|--|
+| today | - | - | 73 | 76 | 16 px | none |
+| A | (8, 4) | 0 | 73 | 76 | 71 px | none |
+| B | - | 11 | 73 | 73 | 20 px | 51 px |
+| **C** | **(8, 4)** | **8** | **73** | **74** | **66 px** | **42 px** |
+| D | (8, 4) | 16 | 71 | 71 | 91 px | 76 px |
+| E | (8, 4) | 24 | 69 | 69 | 115 px | 109 px |
+
+D and E buy their extra air twice over: past eleven rows the height binds, the cell comes down
+and the panel narrows with it. They are there if C ever reads as still too tight, and are two
+constants away.
+
+**Three things went with it.**
+
+* `PanelShadow`'s `skip_top` became a **`margin` on all four sides**. It existed because
+  `top_padding` is transparent and casts nothing; a trim and a bottom pad are the same thing on
+  three more sides, and without it the shadow hangs out in the scene away from the edge that is
+  meant to be casting it. `panel_shadow` in `theme/data.rs` takes the tuple; nothing outside
+  Puyo's two retro themes uses a shadow.
+* `padded_texture` in `render/retro.rs` pads above *and* below, and only the background is
+  padded below - the board is untouched, this being air under the panel rather than more panel.
+  Every other retro theme in the repository passes `bottom_padding: 0`.
+* **The `snes` panel was cut a row too tall.** The SNES screen's last row is one flat blue-grey
+  run right across it - the console's own border, under both players' fields alike. It never
+  showed while the panel ran off the bottom of the window; with air under the panel it is a
+  stripe along the bottom of every match. `SNES_SCREEN_BOTTOM` in `rip_retro.py` stops the cut
+  a row short and `SCREEN_BORDER_ROW` in `snes/mod.rs` is what the two panel tests now measure
+  against. That also corrected a bound in `everything_the_panel_is_told_to_draw_lands_on_it`:
+  those rects are screen coordinates and so belong against the *padded* height, which passed by
+  coincidence while the panel was exactly the height of the screen.
+
+`the_panel_art_stops_where_the_trim_says_it_does` in `genesis/mod.rs` reads the columns off the
+png and is the only thing that can hold the art and `SIDE_TRIM` together - a trim widened in
+the script and not here hangs shadow in the scene, and narrowed there and not here casts none
+off the panel's own edge, and both look like a bug in the shadow rather than in a number. It
+wants `image` as a dev-dependency of `puyo-rusto`; nothing in the crate proper decodes a png.
+
+**Verified:** `cargo test` green across `engine`, `rustris`, `puyo-rusto` and the launcher;
+`frame_shot` at 1920x1080 and 1280x720, one and two players, on all three themes. `snes` gets
+the rows and no trim - it has never been the theme that binds, and has 129 pixels of scene
+either side of it already - and the particle theme follows the shared centre up with them.
+
 ### Handover notes
 
 Worked on 2026-08-28. **3a, 3b and 3c were all `done` at the time this was written; 3c has

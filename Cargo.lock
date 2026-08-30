@@ -575,6 +575,7 @@ name = "puyo-rusto"
 version = "1.0.0"
 dependencies = [
  "engine",
+ "image",
  "rand",
  "rand_chacha",
  "sdl2",
