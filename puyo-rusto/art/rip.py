@@ -7,8 +7,9 @@ the one thing in the repository that looks like the game it is a clone of.
 
 The rip is sixteen skins laid out four by four, every one of them on the same 72 pixel grid,
 and fifteen of them are whole skins: the last (row 3, column 3) is a grab bag of odds and
-ends on no grid at all and is skipped. Each of the fifteen contributes the cells this game
-can draw, and the theme deals one skin per player - see `theme/modern/mod.rs`.
+ends on no grid at all and is skipped. `SKINS` says which of the fifteen are cut - seven of
+them - and each contributes the cells this game can draw; the theme deals one skin per
+player, see `theme/modern/mod.rs`.
 
     rows 0-4    a colour each, sixteen link variants along the row
     (1, 18)     the nuisance puyo, which is also what the tray shows for six
@@ -36,10 +37,10 @@ either the same way:
     row 5     col 0 nuisance, cols 1-3 the tray's small, large and rock symbols
 
 The bands run BANDS_ACROSS at a time rather than all in one column, because the whole sheet
-is loaded as a single texture: stacked, the fourteen skins cut before three were dropped stood
+is loaded as a single texture: stacked, the fourteen skins cut before any were dropped stood
 6720 pixels tall - past the 4096 a handheld's driver will allocate in a dimension, which is
-the same ceiling `MAX_ATLAS_WIDTH` keeps the built atlas under. Two across is 2560x2880 now,
-and the same pixels either way.
+the same ceiling `MAX_ATLAS_WIDTH` keeps the built atlas under. Seven of them would fit
+either way; the layout is kept because it is the same pixels and one fewer thing to agree on.
 """
 
 import os
@@ -70,8 +71,8 @@ SKIN_ORIGIN = (-2, 53)
 SKIN_PITCH = (2048, 1024)
 SKIN_COLUMNS = 4
 
-# The whole skins, in the rip's own reading order. Skin 0 is the glossy Tsu one, which is what
-# the theme showed when it was the only one cut out.
+# The skins this theme draws, in the rip's own reading order. Skin 0 is the glossy Tsu one,
+# which is what the theme showed when it was the only one cut out.
 #
 # Fifteen of the sixteen are whole - the sixteenth (row 3, column 3) is a grab bag on no grid.
 # Skin 7 is left out as well: its sixteen link variants are only eight, paired so that a puyo
@@ -84,7 +85,18 @@ SKIN_COLUMNS = 4
 # between; 8 is a stick figure that joins into an elongated humanoid; 11 is a small round face
 # that merges but leaves a gappy mesh. `check` is how to see it - a whole board of one skin,
 # which is the only way any of this reads.
-SKINS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 14]
+#
+# The last four are left out for what they *are* rather than for how they cut. Skin 5 is a
+# pixel art face and 14 a bevelled gem brick: this game already has two retro themes cut from
+# the consoles that drew them, and a retro set here is one of those without the console. Skin
+# 13 is the Sonic cast (Knuckles, Shadow, Sonic, Tails, Amy), which belongs to Mean Bean
+# Machine's side of the game and not to this one. And skin 9 spells its colours out as the
+# letters R, G, B, Y, P, which is a legend rather than a puyo - four in a row read as a word.
+#
+# Skin 2 is a brick as well and is **kept**, which is the line being drawn by eye rather than
+# by rule: it was cut with the other two and put back. What is left is seven sets that are all
+# the same five colours and all drawn as pieces of one board.
+SKINS = [0, 1, 2, 3, 4, 6, 12]
 
 # the sheet's own eighty coloured cells are in the order this game numbers its colours
 COLOR_ROWS = [0, 1, 2, 3, 4]  # red, green, blue, yellow, purple
