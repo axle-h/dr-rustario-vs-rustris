@@ -163,18 +163,32 @@ const NEXT_PAIR: (i32, i32) = (8, 12);
 const MUGSHOT: (i32, i32, u32, u32) = (120, 96, 80, 56);
 
 /// Where Mean Bean Machine puts the nuisance tray: on the wall **immediately above the
-/// board**, anchored at its left edge and growing rightwards.
+/// board**, in the band that is [`TOP_PADDING`] - so a point here is a point on the Genesis
+/// screen and this needs no plumbing beyond the numbers.
 ///
-/// Measured off the emulated game rather than read off any sheet - the tray is drawn in
-/// sprites and the frame plane carries none of it. An icon is **half a cell**, inset two
-/// pixels from the well's left edge and four rows down, so a full row of them fits across
-/// the well's own width; that band is [`TOP_PADDING`], the row a pair spawns in, and a point
-/// in the padded background is a point on the Genesis screen - so this needs no plumbing
-/// beyond the numbers.
-const TRAY: (i32, i32) = (BOARD.0 + 2, 4);
-const TRAY_ICON: u32 = SRC_BLOCK_SIZE / 2;
-/// as many as fit across the well without the last one hanging off it
-const TRAY_MAX: u32 = (BOARD.2 - 2 * TRAY_ICON) / TRAY_ICON;
+/// It is anchored at the well's **right** edge and fills leftwards, which is the one thing
+/// here the game does not do. The band is the row a pair spawns in and the pair is drawn
+/// over it: left anchored, the front of the tray sat under the spawn column and was hidden
+/// by every pair that came out of it. Filling the other way puts the icons a player reads
+/// first - the heaviest, since a tray is decomposed biggest first - furthest from the spawn.
+///
+/// What is left is the three columns of the well the spawn column is not, which is 48
+/// pixels; [`TRAY_MAX`] icons of [`TRAY_ICON`] at [`TRAY_STEP`] is exactly that, so the
+/// strip fills columns 3, 4 and 5 and stops.
+const TRAY: (i32, i32) = (BOARD.0 + BOARD.2 as i32 - TRAY_ICON as i32, 2);
+/// How big an icon is drawn, and the pitch it is laid on - which are the same number, so
+/// nothing overlaps.
+///
+/// Three quarters of a cell rather than the half the game draws. The three symbols are cut
+/// as whole cells like every other sprite here and the art inside one runs 12 to 16 pixels
+/// across a 16 pixel cell, so at half a cell a 12 pixel blob comes out at 6 and the black
+/// bean's white outline and eyes mush into a smudge. At three quarters they read as the
+/// beans they are.
+const TRAY_ICON: u32 = SRC_BLOCK_SIZE * 3 / 4;
+const TRAY_STEP: u32 = TRAY_ICON;
+/// As many as stand in those three columns. Four rocks is 120 nuisance and the well holds
+/// 72, so this has never been what a tray runs out of.
+const TRAY_MAX: u32 = 4;
 
 /// The ball an attack crosses the screen as, which Mean Bean Machine draws as a sprite of
 /// its own rather than as one of the puyos that paid for it.
@@ -478,8 +492,8 @@ pub fn genesis_theme<'a>(
                 .collect(),
             max_scale: 1.0,
         },
-        // the tray, where the game draws it: on the wall over the board, filling rightwards
-        // from its left edge - see [`TRAY`]
+        // the tray, where the game draws it: on the wall over the board, filling leftwards
+        // from its right edge - see [`TRAY`]
         attack_ball: Some(AttackBallData {
             sheet: AnimationSpriteSheetData::non_exclusive_linear(
                 sprites::ATTACK,
@@ -493,7 +507,7 @@ pub fn genesis_theme<'a>(
         }),
         pending: Some(PendingLayout {
             point: Point::new(TRAY.0, TRAY.1),
-            step: Point::new(TRAY_ICON as i32, 0),
+            step: Point::new(-(TRAY_STEP as i32), 0),
             size: TRAY_ICON,
             max: TRAY_MAX,
         }),
@@ -540,6 +554,7 @@ pub fn genesis_theme<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::board::SPAWN;
 
     /// a PNG's width and height are big endian at a fixed offset, which is enough to check a
     /// sheet without decoding one
@@ -589,6 +604,29 @@ mod tests {
             "the panel has to carry the well's floor under it"
         );
         assert_eq!(TOP_PADDING, SRC_BLOCK_SIZE * HIDDEN_ROWS);
+    }
+
+    /// The tray shares its band with the row a pair spawns in, and the pair is drawn over
+    /// it - so every slot of it has to stand clear of the spawn column, and only a test can
+    /// say so: the strip is laid out in numbers that read as a tidy row either way round.
+    #[test]
+    fn the_whole_tray_stands_clear_of_the_spawn_column() {
+        let last = TRAY.0 - (TRAY_STEP * (TRAY_MAX - 1)) as i32;
+        let spawn_right = BOARD.0 + (SPAWN.x + 1) * SRC_BLOCK_SIZE as i32;
+        assert!(
+            last >= spawn_right,
+            "slot {} of the tray is at {last}, over the spawn column, which ends at \
+             {spawn_right}",
+            TRAY_MAX - 1
+        );
+        assert!(
+            TRAY.0 + TRAY_ICON as i32 <= BOARD.0 + BOARD.2 as i32,
+            "the front of the tray hangs off the well"
+        );
+        assert!(
+            TRAY.1 as u32 + TRAY_ICON <= TOP_PADDING,
+            "the tray has to fit the band over the well"
+        );
     }
 
     /// Every strip on the animation sheet is addressed by counting frames from its own

@@ -44,10 +44,10 @@ chain starts. Every bean squashes where it lands, so the two halves of a pair jo
 and a slab of nuisance arrives one column at a time. Nuisance falls under gravity and raggedly,
 each column a little behind the last, rather than dropping as a level wall. An attack crosses
 the window as the game's own ball - a white core inside a rim in the sending player's colour,
-red for player one and blue for player two - arcing over to burst above the other player's
-board and leave a refugee bean in their tray - which is on the wall over the
-board where Mean Bean Machine puts it, and where the new icon slides into place as the ball
-lands. Nothing shakes: the original does not, and what reads as a rumble there is every bean
+red for player one and blue for player two - arcing over to burst on the other player's tray
+and leave a refugee bean in it. The tray is on the wall over the board where Mean Bean Machine
+puts it, stacked in from the right so the pair coming out of the spawn never covers it, and
+the new icon slides into place out of the burst as the ball lands. Nothing shakes: the original does not, and what reads as a rumble there is every bean
 bouncing at once. The particle theme, which owes nobody fidelity, shakes anyway.
 
 Rustris follows the guideline: the Super Rotation System and its wall kicks, a seven bag

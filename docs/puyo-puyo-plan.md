@@ -4223,6 +4223,52 @@ the measurements above were amended rather than appended to.
   column stray too far onto the panel's stonework. Both are one constant each - `POP_HOLD` and
   `POP_DEBRIS.speed` in `puyo-rusto/src/theme/genesis/mod.rs`.
 
+### The third pass, 2026-08-30 — where the tray goes, and how big it is drawn
+
+Watched on all three themes, and two things were wrong with the tray everywhere.
+
+* **The genesis tray was under the spawn column.** It is drawn in `TOP_PADDING`, the band a
+  pair spawns in, and the pair is drawn *over* it - so left anchored at the well's edge, the
+  front of the strip sat behind every pair that came out of the spawn and was simply not
+  visible. It is now anchored at the well's **right** edge and fills leftwards, which is the
+  one thing on this theme the original does not do: the heaviest icons, which a tray is
+  decomposed into first, end up furthest from the spawn. What is left is the three columns of
+  the well the spawn column is not - 48 source pixels - and the strip is sized to fill exactly
+  that and stop. `the_whole_tray_stands_clear_of_the_spawn_column` in `genesis/mod.rs` pins
+  it, since the numbers read as a tidy row either way round and only a test can tell.
+* **Every tray icon was drawn at half the size of its own art.** The three symbols are cut as
+  whole 16 pixel cells like every other sprite, and the art inside one runs 12 to 16 pixels
+  across - so drawing the cell at the tray's half-cell *pitch* put a 12 pixel blob out at 6.
+  The genesis six-symbol's white outline and eyes mushed into a smudge and the snes boulders
+  were grey specks on woodgrain. Both themes now draw an icon at three quarters of a cell,
+  on a pitch of the same number so nothing overlaps: four icons on genesis (columns 3, 4 and
+  5 of the well) and four on snes (the 48 pixel plank across the arch). Four rocks is 120
+  nuisance against a field that holds 72, so capacity was never what a tray ran out of.
+* **The rock of thirty is painted, not borrowed.** It was the solid white refugee - the frame
+  a bean flashes to on its way out - which in a tray reads as a hole in the wall. It is still
+  that sprite and it is now **red**, swapped to the ink player one's score is printed in by
+  `rip_retro.py`'s `GENESIS_ROCK_INK`. Authored art, like the sweat in `mugshots.py`: the game
+  draws a red symbol here and no rip carries one. The three symbols now differ in size *and*
+  colour - a small olive blob, an outlined bean, a red one.
+* **The particle theme's tray went down the left of the board.** It had the same problem for
+  the same reason - a row in the gap above the board, under the spawning piece - and that
+  column is empty on the only game with a tray, so it costs the layout nothing. It also hands
+  the gap above the board back to `top_slack`, which a short window may crop, where the tray
+  used to keep a block of it back. A game with a hold box *and* a tray would want another
+  arrangement, since the hold box is in that column; none has one.
+
+* **And the ball now flies to the tray**, on Alex's call, rather than to the middle of the
+  receiving board - which after the moves above was where no tray is on any of the three
+  themes. It aims at `PendingLayout::origin`, the middle of the strip, because that is the one
+  point on it that means anything: `draw_pending` slides *every* arriving icon out of exactly
+  there, so the ball bursts where its own icons then spread from.
+  `an_arriving_icon_starts_where_the_ball_burst` pins the two together, since they are worked
+  out in different files and would drift apart silently. The shards it throws are `debris`,
+  measured in board cells where the tray is in background pixels, so `attack_arrival_cell` is
+  that same point converted rather than a second opinion about where a hit lands - without it
+  the ball landed on the tray and the burst still happened over the middle of the board. A
+  theme with no tray keeps the top row it always had.
+
 ---
 
 ## Verification

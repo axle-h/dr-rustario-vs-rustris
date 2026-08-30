@@ -390,10 +390,17 @@ GENESIS_REFUGEE = (627, 32)
 # The first two are **measured off the emulated game**, not chosen: at the top of a board the
 # tray draws the little eyeless blob for singles (12x9 on the sheet) and the black bean with
 # the white outline for rows of six (14x12). The rip carries no third symbol at all, and the
-# capture never showed one - so the rock borrows the white-outlined bean, which is the only
-# other refugee on the sheet and at least reads as heavier. Alex has seen a **red** one in
-# the game; if a rip of it turns up, this is the line to change.
+# capture never showed one - so the rock borrows the *solid* refugee, the one a bean flashes
+# to on its way out, which is 16x13 and so the biggest of the three. That gives the strip a
+# size as well as a shape to read: a small blob, an outlined bean, a whole one.
 GENESIS_TRAY = [(665, 32), (627, 50), (646, 50)]
+
+# ... and the solid one is white on the sheet, which in a tray reads as a hole in the wall
+# rather than as the heaviest thing in it. Alex has seen a **red** rock in the game and no
+# rip carries it, so the third symbol is painted: white to the red player one's score is
+# printed in, which is the only red this theme owns. It is authored art, like the sweat in
+# `mugshots.py` - if a rip of the real symbol ever turns up, drop this and cut that instead.
+GENESIS_ROCK_INK = {(255, 255, 255): (224, 64, 96)}
 
 # The pop, which Mean Bean Machine plays in four beats: the bean sees it coming, curls into a
 # ball, the ball shrinks, and what is left bursts into droplets. Every colour band carries all
@@ -546,6 +553,16 @@ def keyed_box(image, box, transparent):
     return Image.fromarray(px)
 
 
+def repaint(cell, table):
+    """swap flat colours for others, leaving everything the table does not name alone"""
+    px = np.array(cell)
+    flat = px[:, :, :3].astype(int)
+    for source_color, target in table.items():
+        hit = np.abs(flat - source_color).sum(2) < 12
+        px[:, :, 0][hit], px[:, :, 1][hit], px[:, :, 2][hit] = target
+    return Image.fromarray(px)
+
+
 def genesis_glyphs(fonts, band, text, transparent, recolour=None):
     """one word out of one of the fonts sheet's faces, keyed and optionally palette swapped"""
     first, pitch, width = GENESIS_GLYPH
@@ -559,11 +576,7 @@ def genesis_glyphs(fonts, band, text, transparent, recolour=None):
         out.paste(cell, (width * i, 0))
     if not recolour:
         return out
-    px = np.array(out)
-    flat = px[:, :, :3].astype(int)
-    for source, target in recolour.items():
-        hit = np.abs(flat - source).sum(2) < 12
-        px[:, :, 0][hit], px[:, :, 1][hit], px[:, :, 2][hit] = target
+    px = np.array(repaint(out, recolour))
     # ... and nothing green may survive a swap out of a green face. The sheet has seven
     # shades in it, two of them a couple of dozen pixels across the whole row, and a shade
     # left off the table shows up as a lit edge on three of the ten digits and nowhere else -
@@ -745,6 +758,9 @@ def genesis():
     tiles[(COLOR_ROWS, 0)] = keyed(beans, GENESIS_REFUGEE, GENESIS_BLOCK, transparent)
     for i, at in enumerate(GENESIS_TRAY):
         tiles[(COLOR_ROWS, 1 + i)] = keyed(beans, at, GENESIS_BLOCK, transparent)
+    tiles[(COLOR_ROWS, len(GENESIS_TRAY))] = repaint(
+        tiles[(COLOR_ROWS, len(GENESIS_TRAY))], GENESIS_ROCK_INK
+    )
     write_sheet(os.path.join(out, "sprites.png"), GENESIS_BLOCK, tiles)
     write_png(
         os.path.join(out, "animations.png"), genesis_animations(beans, transparent)

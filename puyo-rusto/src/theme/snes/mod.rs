@@ -80,12 +80,22 @@ const NEXT_BOXES: [(i32, i32, u32, u32); 2] = [(108, 32, 16, 47), (130, 32, 18, 
 const STAGE_BOX: (i32, i32, u32, u32) = (120, 103, 16, 16);
 
 /// The course of plank across the mouth of the arch, which `rip_retro.py` lays where the
-/// game stands Kirby and this one stands nothing. Forty eight pixels across, which is exactly
-/// six tray icons at half a cell, and the only run this column has that is as wide as the
-/// tray needs - so the tray stands on it.
+/// game stands Kirby and this one stands nothing. Forty eight pixels across, and the only
+/// run this column has that is as wide as a tray needs - so the tray stands on it.
 const ARCH_MOUTH: (i32, i32, u32, u32) = (104, 192, 48, 16);
-/// ... at which the tray's icons are drawn, half the cell so six of them fit
-const TRAY_ICON: u32 = SRC_BLOCK_SIZE / 2;
+/// How big a tray icon is drawn, and the pitch it is laid on - which are the same number,
+/// so nothing overlaps.
+///
+/// Three quarters of a cell, not the half it was. The three symbols are the boulder at three
+/// weights and each is cut as a whole cell with its art to the edges, so at half a cell a
+/// sixteen pixel rock came out at eight - eight pixels *on woodgrain*, which is where they
+/// stopped reading as rocks at all. Three quarters is as big as the plank will take, and
+/// [`TRAY_MAX`] of them fill it exactly.
+const TRAY_ICON: u32 = SRC_BLOCK_SIZE * 3 / 4;
+const TRAY_STEP: u32 = TRAY_ICON;
+/// As many as stand on the plank at that size. Four thirty-rocks is 120 nuisance and the
+/// field holds 72, so this has never been what a tray runs out of.
+const TRAY_MAX: u32 = ARCH_MOUTH.2 / TRAY_ICON;
 
 /// The game's own digits are two 8x8 tiles stacked - see `snes_font` in `rip_retro.py`, which
 /// found the pair by matching the two digits the layer render happens to carry against a
@@ -216,12 +226,13 @@ pub fn snes_theme<'a>(
         // carry six cells at their own size anywhere else
         pending: Some(PendingLayout {
             point: Point::new(
-                ARCH_MOUTH.0,
+                ARCH_MOUTH.0
+                    + (ARCH_MOUTH.2 as i32 - (TRAY_STEP * (TRAY_MAX - 1) + TRAY_ICON) as i32) / 2,
                 ARCH_MOUTH.1 + (ARCH_MOUTH.3 as i32 - TRAY_ICON as i32) / 2,
             ),
-            step: Point::new(TRAY_ICON as i32, 0),
+            step: Point::new(TRAY_STEP as i32, 0),
             size: TRAY_ICON,
-            max: COLUMNS,
+            max: TRAY_MAX,
         }),
         // no cast on this theme; see `engine::render::character`
         characters: None,
@@ -300,8 +311,9 @@ mod tests {
         assert!(STAGE_BOX.1 as u32 + STAGE_BOX.3 <= height);
         assert!(ARCH_MOUTH.0 as u32 + ARCH_MOUTH.2 <= width);
         assert!(ARCH_MOUTH.1 as u32 + ARCH_MOUTH.3 <= height);
-        // six icons across the arch, at whole pixels, which is what half a cell buys
-        assert_eq!(TRAY_ICON * COLUMNS, ARCH_MOUTH.2);
+        // the whole tray stands on the plank: a rock is drawn bigger than the pitch it is
+        // laid on, so the last one reaches past the last slot and can hang off the end
+        assert!(TRAY_STEP * (TRAY_MAX - 1) + TRAY_ICON <= ARCH_MOUTH.2);
     }
 
     #[test]

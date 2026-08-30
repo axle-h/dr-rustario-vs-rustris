@@ -389,14 +389,10 @@ impl<'a> ThemeContext<'a> {
 
     pub fn update_animations(&mut self, delta: Duration) -> Vec<AnimationEvent> {
         self.attack_balls.update(delta);
-        // a ball that has arrived shatters over the board it hit, in its own colour
+        // a ball that has arrived shatters where it landed, in its own colour - which is over
+        // the tray on a theme with one and over the middle of the top row on a theme without
         for flight in self.attack_balls.arrived().to_vec() {
-            let columns = self.current(flight.to_player).theme.geometry().columns();
-            let hidden = self
-                .current(flight.to_player)
-                .theme
-                .geometry()
-                .hidden_rows();
+            let at = self.current(flight.to_player).theme.attack_arrival_cell();
             for theme in self.themes.iter_mut() {
                 theme.animations_mut(flight.to_player).tray_mut().arrive();
                 theme
@@ -404,9 +400,9 @@ impl<'a> ThemeContext<'a> {
                     .debris_mut()
                     .burst(BurstSpec {
                         spread: Spread::AllDirections,
-                        // it shatters over the top row and the pieces drop back onto the
-                        // board rather than sailing off it: they are drawn on the window, so
-                        // one thrown much harder than this ends up out in the bare scene
+                        // the pieces drop back rather than sailing off: they are drawn on
+                        // the window, so one thrown much harder than this ends up out in the
+                        // bare scene
                         speed: (2.0, 5.0),
                         gravity: 22.0,
                         life: Duration::from_millis(320),
@@ -415,7 +411,7 @@ impl<'a> ThemeContext<'a> {
                         // inside it comes out at about half of it
                         size: 0.8,
                         ..BurstSpec::burst(
-                            (columns as f64 / 2.0, hidden as f64),
+                            at,
                             ARRIVAL_SHARDS,
                             // the theme's own droplet where it cut one, and the whole cell
                             // where it did not - a burst never wants art of its own
@@ -1021,12 +1017,22 @@ impl<'a> ThemeContext<'a> {
         canvas.set_clip_rect(None);
         for flight in self.attack_balls.flights() {
             let from = self.cell_in_window(flight.from_player, flight.from_cell);
-            // ... to just above the top of the board it is going to, which is where the tray
-            // is on the theme this was built for
+            // ... to the **tray** it is landing in, which is where its icons then slide out
+            // of. Resolved through whichever theme the receiver is on right now, like both
+            // ends of everything else here: the tray is on the wall over the board on
+            // `genesis`, down the arch on `snes` and beside the board on the particle theme,
+            // and a ball that always burst over the middle of the board would be flying to
+            // none of them. A theme with no tray keeps that middle - there is nowhere else
+            // for a hit that lands the moment it is sent.
             let to_theme = self.current(flight.to_player);
-            let to_columns = to_theme.theme.geometry().columns() as f64;
-            let to_hidden = to_theme.theme.geometry().hidden_rows() as f64;
-            let to = self.cell_in_window(flight.to_player, (to_columns / 2.0, to_hidden - 1.0));
+            let to = match to_theme.theme.pending_origin() {
+                Some(at) => self.background_point_in_window(flight.to_player, at),
+                None => {
+                    let columns = to_theme.theme.geometry().columns() as f64;
+                    let hidden = to_theme.theme.geometry().hidden_rows() as f64;
+                    self.cell_in_window(flight.to_player, (columns / 2.0, hidden - 1.0))
+                }
+            };
 
             let (x, y) = flight.at(from, to, self.window_size.1);
             let block = to_theme
@@ -1059,6 +1065,18 @@ impl<'a> ThemeContext<'a> {
     }
 
     /// where a point in a player's board cells falls in the window, in pixels
+    /// A point in a player's theme's own background pixels, on the window - the same
+    /// mapping the background texture itself is blitted through.
+    fn background_point_in_window(&self, player: u32, at: Point) -> (f64, f64) {
+        let current = self.current(player);
+        let themed = &current.player_themes[player as usize];
+        let mapped =
+            current
+                .scale
+                .scale_and_offset_point(at, themed.bg_snip.x(), themed.bg_snip.y());
+        (mapped.x() as f64, mapped.y() as f64)
+    }
+
     fn cell_in_window(&self, player: u32, cell: (f64, f64)) -> (f64, f64) {
         let current = self.current(player);
         let themed = &current.player_themes[player as usize];
