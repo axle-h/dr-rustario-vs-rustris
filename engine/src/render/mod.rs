@@ -155,6 +155,20 @@ impl PendingLayout {
             })
             .collect()
     }
+
+    /// Where an arriving attack belongs: the middle of the strip, in this theme's own
+    /// background pixels.
+    ///
+    /// It is the one point on the strip that means something rather than merely being on it -
+    /// [`crate::render::Theme::draw_pending`] slides *every* new icon out of exactly here, so
+    /// a ball that bursts on it is the icons' own source and they spread from where it went.
+    pub fn origin(&self) -> Point {
+        let middle = self.max as f64 / 2.0;
+        Point::new(
+            self.point.x() + (self.step.x() as f64 * middle).round() as i32 + self.size as i32 / 2,
+            self.point.y() + (self.step.y() as f64 * middle).round() as i32 + self.size as i32 / 2,
+        )
+    }
 }
 
 /// The art an attack crosses the window as.
@@ -847,6 +861,38 @@ impl<'a> Theme<'a> {
         self.sprites.draw_cell(canvas, id, false, dest, 0.0, None)
     }
 
+    /// Where an attack arriving at this theme bursts, in its own background pixels: the
+    /// middle of the tray it is landing in - see [`PendingLayout::origin`].
+    ///
+    /// `None` on a theme with no tray, which is every game that takes its hits the moment
+    /// they are sent and so has nowhere in particular for a ball to go.
+    pub(crate) fn pending_origin(&self) -> Option<Point> {
+        self.pending.as_ref().map(PendingLayout::origin)
+    }
+
+    /// Where an arriving attack shatters, in this board's own **cells** - which is the unit
+    /// [`crate::animate::debris`] is measured in, where [`Theme::pending_origin`] is in
+    /// background pixels.
+    ///
+    /// The same point in the other unit rather than a second opinion about where a hit
+    /// lands: the ball flies to the tray, so its shards have to burst there too. A theme with
+    /// no tray bursts over the middle of its own top row, which is what every one of them did
+    /// before any had a tray.
+    pub(crate) fn attack_arrival_cell(&self) -> (f64, f64) {
+        let hidden = self.geometry.hidden_rows() as f64;
+        let Some(at) = self.pending_origin() else {
+            return (self.geometry.columns() as f64 / 2.0, hidden);
+        };
+        let origin = self
+            .geometry
+            .point(crate::game::geometry::Point::new(0, hidden as i32));
+        let block = self.geometry.block_size() as f64;
+        (
+            (at.x() - self.board_bg_snip.x() - origin.x()) as f64 / block - 0.5,
+            (at.y() - self.board_bg_snip.y() - origin.y()) as f64 / block - 0.5 + hidden,
+        )
+    }
+
     /// how many blocks across an attack ball is drawn, which is over a cell where a theme has
     /// its own art and one cell where it does not
     pub(crate) fn attack_ball_scale(&self) -> f64 {
@@ -1012,6 +1058,36 @@ mod tests {
     #[test]
     fn the_pending_strip_stops_when_it_runs_out_of_room() {
         assert_eq!(strip().slots(99).len(), 4);
+    }
+
+    /// The ball flies to `origin` and the icons slide out of it, so the two have to be the
+    /// same point: `draw_pending` puts every arriving icon at slot `max / 2` on the frame it
+    /// lands, whatever slot it is bound for.
+    #[test]
+    fn an_arriving_icon_starts_where_the_ball_burst() {
+        for layout in [
+            strip(),
+            PendingLayout {
+                step: Point::new(0, 16),
+                ..strip()
+            },
+        ] {
+            let middle = layout.max as usize / 2;
+            for index in 0..layout.max as usize {
+                let slot = layout.slots(layout.max as usize)[index];
+                // the offset `draw_pending` applies at t = 0
+                let back = layout.max as f64 / 2.0 - index as f64;
+                let at = Point::new(
+                    slot.x()
+                        + (layout.step.x() as f64 * back).round() as i32
+                        + slot.width() as i32 / 2,
+                    slot.y()
+                        + (layout.step.y() as f64 * back).round() as i32
+                        + slot.height() as i32 / 2,
+                );
+                assert_eq!(at, layout.origin(), "icon {index} of {middle}");
+            }
+        }
     }
 
     /// ... and a negative step fills the other way, for a theme whose room is to the left

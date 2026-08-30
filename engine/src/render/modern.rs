@@ -374,25 +374,26 @@ pub fn modern_theme<'a>(
         clear: options.clear_particles,
     };
 
-    // the tray of attacks still to land goes in the gap above the board, a cell to an icon:
-    // the one part of the HUD a player has to read while looking at their own skyline. The
-    // gap is otherwise slack the window may crop, so a theme with a tray keeps back exactly
-    // the room the tray takes and lets the rest go as before
-    let pending_height = if options.pending_max > 0 {
-        (block_size + vertical_gutter).min(board_top_buffer)
-    } else {
-        0
-    };
-    let top_slack = board_top_buffer - pending_height;
+    // The tray of attacks still to land runs **down the left of the board**, a cell to an
+    // icon, hanging from the skyline the way what it stands for hangs over the player.
+    //
+    // It was a row in the gap above the board, which is where the retro themes take it from
+    // - and there it was under the spawning piece, which is drawn over it and hides the one
+    // part of the HUD a player has to read while looking at their own skyline. The left
+    // column is otherwise empty on the only game with a tray, so it costs the layout
+    // nothing and gives the gap above the board back to the slack a short window may crop.
+    // A game with a hold box *and* a tray would have both in that column and want another
+    // arrangement; none has one today.
     let pending = (options.pending_max > 0).then(|| PendingLayout {
         point: Point::new(
-            board_bg_snip.left() + border_weight as i32,
-            top_slack as i32,
+            board_bg_snip.left() - vertical_gutter as i32 - block_size as i32,
+            skyline as i32,
         ),
-        step: Point::new(block_size as i32, 0),
+        step: Point::new(0, block_size as i32),
         size: block_size,
         max: options.pending_max,
     });
+    let top_slack = board_top_buffer;
 
     let (hold, peek) = if mascot_layout.is_some() {
         (
@@ -482,8 +483,8 @@ pub fn modern_theme<'a>(
         particle_palette: options.particle_palette,
         family: ThemeFamily::Particle,
         scale_mode: ScaleMode::Native,
-        // nothing is ever drawn in the gap above the board, unlike the rows below it - bar
-        // the pending tray, which keeps its own room back out of it
+        // nothing is ever drawn in the gap above the board, unlike the rows below it: the
+        // whole of it is slack a short window may crop
         top_slack,
     })
 }

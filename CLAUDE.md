@@ -126,8 +126,10 @@ game with menu music of its own besides Rustris, through `Mode::menu_sounds`.
 
 A game that can hold an attack rather than take it as it arrives reports what is still
 waiting through `Game::pending_attacks`, as its own `CellId`s, and a theme that declares a
-`PendingLayout` draws them as a strip from its own cell sprites - so a player can see what is
-hanging over them. Dr. Rustario and Rustris both take a hit immediately and have none; Puyo
+`PendingLayout` draws them as a strip from its own cell sprites - in the theme's own
+background pixels, so the strip goes wherever that theme's furniture has room for it and the
+ball that fills it is aimed there rather than at the board. A player can see what is hanging
+over them. Dr. Rustario and Rustris both take a hit immediately and have none; Puyo
 Rusto is the game this is for. An icon whose attack is still crossing the window is **not
 drawn at all**: an attack is routed the moment the chain that earned it ends and the receiving
 game trays it there and then, so `animate/tray.rs` holds the new ones back until the ball
@@ -150,7 +152,15 @@ the droplets **outlive the clear**, and `DebrisArt::Cell` always resolves so a b
 art. `animate/attack_ball.rs` is the one thing that belongs to no player - every offset a
 player owns is applied inside that player's own panel - so it lives on `ThemeContext` and is
 drawn unclipped, holding its flight in cells and player numbers and resolving both ends
-through whichever theme each player is on *at draw time*. `animate/tray.rs` is above.
+through whichever theme each player is on *at draw time*. It flies to the receiver's **tray**
+rather than to the middle of their board: `Theme::pending_origin` is the middle of the strip,
+which is the one point on it that means something - `draw_pending` slides *every* arriving
+icon out of exactly there, so the ball bursts where its own icons then spread from, and a
+test pins the two together. The shards it throws are `debris`, measured in board cells rather
+than background pixels, so `Theme::attack_arrival_cell` is that same point in the other unit
+rather than a second opinion about where a hit lands. A theme with no tray keeps the middle of
+its own top row, which is where every one of them took a ball before any had a tray.
+`animate/tray.rs` is above.
 `ImpactAnimation::State::Rumble` is a shake, and it is **opt-in**: Mean Bean Machine does not
 shake at all (measured - the wall between the boards cross-correlates to zero displacement
 over a whole capture, nuisance drop included), and what reads as a rumble there is every
@@ -254,8 +264,9 @@ boxes to itself - so its queue goes in the gaps between the three wooden posts t
 Painting anything out of that column leaves a hole, and a flat dark band in a wooden column
 reads as one, so the column's own woodwork closes them: the posts are run up to meet the plank
 the `NEXT` sign is nailed to, and a whole course of plank is laid across the mouth of the arch
-where the game stands Kirby and this one stands nothing. The tray stands on that course, at
-half a cell, which is the only run in a forty eight pixel column as wide as six icons.
+where the game stands Kirby and this one stands nothing. The tray stands on that course - the
+only run in the column as wide as a tray needs - four boulders at three quarters of a cell,
+which fills its forty eight pixels exactly.
 
 **Its numbers are the game's own sixteen row face and not the eight row one**, which is two
 tiles stacked - the top at VRAM tile 769 and the bottom sixteen further on, since the font is
@@ -365,13 +376,28 @@ which is the game's own art: a bean is briefly unlinked from its neighbours wher
 joins them as it settles. The refugee bean has a flat of its own - the same art its blink shuts
 its eyes with - and no tall, so it settles straight back.
 
-**Its tray is on the wall above the board**, left-anchored at the well's edge and growing
-rightwards, at **half a cell** - measured off the emulated game rather than off the sheet,
-since the tray is drawn in sprites and the frame plane carries none of it: the icon is 8x8
-source pixels, inset two from the well's left edge, four rows down. That band is
-`TOP_PADDING`, and a point in the padded background is a point on the Genesis screen, so
-placing it there is only the numbers. The mugshot box, where the tray used to be under a
-comment saying the Genesis never drew one, holds the character.
+**Its tray is on the wall above the board**, where the game draws it - the band is
+`TOP_PADDING` and a point in the padded background is a point on the Genesis screen, so
+placing it there is only the numbers. It is anchored at the well's **right** edge and fills
+leftwards, which is the one thing here the original does not do: that band is also the row a
+pair spawns in and the pair is drawn *over* the tray, so left-anchored the front of the strip
+sat behind every pair that came out of the spawn. Filling the other way puts the heaviest
+icons - a tray is decomposed biggest first - furthest from it, and what is left over is the
+three columns of the well the spawn column is not. An icon is drawn at **three quarters of a
+cell** on a pitch of the same number, so four of them fill those 48 pixels exactly and
+nothing overlaps; a test pins the whole strip clear of the spawn, since the numbers read as a
+tidy row either way round. Three quarters and not the half the game draws, because the three
+symbols are cut as whole cells like every other sprite and the art inside one runs 12 to 16
+pixels across - at the pitch a 12 pixel blob came out at 6 and the black bean's white outline
+and eyes mushed into a smudge. The same correction is the whole of the `snes` tray's, on its
+plank. The mugshot box, where the tray used to be under a comment saying the Genesis never
+drew one, holds the character.
+
+Its rock of thirty is **painted rather than borrowed**: it is the solid white refugee, the
+frame a bean flashes to on its way out, swapped to the red player one's score is printed in
+by `rip_retro.py`'s `GENESIS_ROCK_INK`. White in a tray reads as a hole in the wall, the game
+draws a red symbol here and no rip carries one - so it is authored art, the way the sweat in
+`mugshots.py` is.
 
 **A character stands in the mugshot box and answers how that player's match is going.**
 `engine/animate/character.rs` is the state machine - four states (`Idle`, `Winning`, `Losing`,

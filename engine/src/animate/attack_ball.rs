@@ -2,8 +2,10 @@
 //!
 //! Mean Bean Machine draws one of these for every attack sent: a ball in the popped group's
 //! own colour appears over the group, its core flashes white, and it arcs up and across the
-//! whole screen to just above the top of the opponent's board, where it bursts and leaves a
-//! refugee bean in their tray.
+//! whole screen to the opponent's **tray**, where it bursts and leaves a refugee bean behind.
+//! Where that is depends on the theme they are on and is resolved at draw time, like both
+//! ends of everything here; a theme with no tray takes the ball just above the top of its
+//! board, which is where every one of them took it before any had one.
 //!
 //! It is the one thing here that belongs to **no player**, which is why it lives on
 //! [`crate::render::context::ThemeContext`] rather than on a `PlayerAnimations`: every
