@@ -122,6 +122,12 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             None
         };
 
+        // Deal every player a character, once, for the whole match: a theme that has a cast
+        // draws one beside the board and reads its face off that player's own game. Dealt here
+        // rather than per stage so a playlist swapping the board to another game and back hands
+        // the player the face they already had.
+        themes.deal_characters(rand::random::<u64>(), players);
+
         for player in 0..players {
             let cells = fixture.player(player).game().stage_intro_cells();
             themes.animate_next_stage(player, &cells);
@@ -452,6 +458,18 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             _ => {}
         }
 
+        // The character's two triggers with no event between them, read every frame the way
+        // the particle field reads the same danger number: how high this player's stack is,
+        // and whether an attack is waiting in their tray.
+        if !fixture.state().is_paused() {
+            for player in 0..players {
+                let game = fixture.player(player).game();
+                let danger = Self::stack_danger(game);
+                let pending = !game.pending_attacks().is_empty();
+                themes.character_danger(player, danger, pending);
+            }
+        }
+
         // update animations
         if !fixture.state().is_paused() {
             let animation_events = themes.update_animations(delta);
@@ -566,6 +584,11 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         count,
                         is_combo,
                     });
+                    // ... and the player's character pulls a face at a chain. Only a chain:
+                    // one pop is most clears, several a minute, and it sends nothing either.
+                    if is_combo {
+                        themes.animate_character_chain(player);
+                    }
                     // a tetris or a combo is worth spelling out
                     if let Some(word) = clear_word {
                         field_events.push(FieldEvent::Spell { word });
@@ -826,6 +849,10 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     // ... then whatever the board has thrown off itself, which travels too
                     // far to be drawn into the board's own texture
                     themes.draw_debris(c)?;
+
+                    // ... and whatever the character has thrown, which leaves its box the
+                    // same way and crosses this player's own well
+                    themes.draw_character_particles(c)?;
 
                     // ... then the attacks crossing between the players, which belong to
                     // neither of them and so are clipped to nothing

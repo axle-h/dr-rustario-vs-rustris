@@ -2087,69 +2087,24 @@ _(to be filled in by the agent that completes this phase)_
 
 ## Phase 6 — the characters
 
-**Status:** `todo` — raised by Alex on 2026-08-28, after `genesis` got its own audio. **Nothing
-is built.** What is done is the *reading*, which is the part that cannot be recovered from the
-code and is why this section is as long as it is. Start at *Resume here*, immediately below.
+**Status:** `done` — raised by Alex on 2026-08-28 after `genesis` got its own audio, read off
+the emulated game over 2026-08-28 to 30, and built on 2026-08-29 and 30. Every character is
+dealt, moves, wears its layers and throws its particles. What follows is the reading, which is
+the part that cannot be recovered from the code and is why this section is as long as it is;
+**what was built is at the foot of the phase**, above *Done when*.
 
-### Resume here — 2026-08-29
+### What was found that a reader would not guess
 
-A session ended mid-task; this is where it got to and what to do next. **Read the handover notes
-at the foot of this phase before starting.**
+Four things cost the most and none of them is in the code that resulted:
 
-**State of play.** All thirteen characters are read off the sheet. Ten are read off the emulated
-game and written up under their own headings below. Three are not: **Davy Sprocket, Scratch and
-Dr. Robotnik**, whose captures exist but were never processed, because the shell in that session
-stopped working. **Nothing has been built.** One file was added and nothing imports it:
-[`puyo-rusto/art/mugshots.py`](../puyo-rusto/art/mugshots.py), the analysis script — assembled
-from working code but **never run in one piece**, so its first run is a shakedown.
-
-**Also gone with that session:** the extracted frames, the `*_cal.json` files and the strip pngs,
-which all lived in a scratch directory. None of that matters — the calibrations are in the table
-in the method section and re-extracting a clip is one `ffmpeg` call, which `extract()` does for
-you. Nothing needs recovering.
-
-**Do these in order.**
-
-1. **Shake down the script.** `python3 puyo-rusto/art/mugshots.py prep grounder` should print
-   his frame diffs and reproduce what his section says — 128 px at rows 13-29 on the first idle
-   step, a `halving` of 1.000 on the defeat pair, no teal and no enclosed navy. If it does, the
-   sheet half works. Then `Clip('grounder', 'idle', CALIBRATION['grounder']['idle'])` and
-   `against_ncc(c, cut('grounder')['idle'], (19, 8, 46, 32))` should give a blink every ~2.33 s.
-   That exercises the capture half against a known answer. Fix whatever typos surface.
-2. **Read Davy Sprocket, then Scratch, then Dr. Robotnik**, following *How to read a capture*
-   below. Their own section has the sheet prep and what each row draws; the **regions to point
-   the classifier at** are the last three rows of the region table in step 2 of the method,
-   worked out from their sheet diffs but never tried against a capture. So this is timing and
-   confirmation rather than discovery. Davy first: he is the simplest and he is what the
-   plumbing gets built against. None of the three has a calibration yet — fit one, and
-   **checkerboard it before trusting it**. Write each one up under its own heading beside the
-   other ten, and update the two summary tables (*the timers* and *what each row is*), the
-   calibration table and the region table.
-3. **Answer the two questions their sections raise** — Davy's silver/gold cap studs (an
-   unlabelled palette cycle?) and Dr. Robotnik's 48 px of enclosed key (real gaps, or detail a
-   colour key would punch through?).
-4. **Take one more game over capture and leave it running for ten seconds.** The single number
-   missing from this whole phase is how long a defeat pose holds before the halved frame — five
-   captures, the longest 2.32 s, none of them long enough. Any character will do.
-5. **Then build**, starting from *What the engine needs, and what it already has*.
-
-**Two decisions of Alex's that are already made**, so do not re-open them: the **danger flash is
-not being implemented**, and the **sweat is one shared effect on a dial**, not per-character art.
-Both are written up in *Two things that are not the character*.
-
-**One question still standing that is Alex's, not a capture's:** is Dr. Robotnik in the deal at
-all, or is he the boss of the set and out of it?
-
----
-
-**It is numbered after phase 5 but does not depend on it**, which is the one place the working
-agreement's "in order" needs a word: this is theme art and per-player animation, and it touches
-nothing the vs. playlists or the attack prices touch. If Alex wants the faces before the
-crossings, take it out of order deliberately rather than by drift.
-
-**Goal.** Every retro theme draws a **character** beside each player's board, in the box its
-own game drew one in, and the face it wears answers what is happening on that board. `genesis`
-first, because Mean Bean Machine's sheet is the one that has been read.
+1. **The box is a hole.** A character is drawn on the ripper's navy, which in the game is the
+   dungeon wall showing through — so every frame keys on colour, and the key appears *enclosed*
+   inside several characters where it is meant to.
+2. **`FrameAnimationType::YoYo` is the wrong shape**, and two rate formulas were wrong with it.
+   See the vocabulary table in the handover notes.
+3. **An overlay and a palette cycle are the same thing** — one `Layer`, cut as only the pixels
+   that change, on a clock per row.
+4. **The sweat belongs to nobody**, is on a dial rather than a state, and is not on any sheet.
 
 ### The source, and the grid it is on
 
@@ -2436,20 +2391,27 @@ board at all. So this is a new thing beside the mascot rather than a fifth `Masc
 
 * **`engine/src/animate/character.rs`** — a `CharacterAnimation` holding the current state, its
   `FrameAnimation`, the dwell and linger clocks and the hysteresis latch. It goes in
-  `PlayerAnimations`, which is per player, is already `update(delta)`d every frame and already
-  takes `on_event(&GameEvent)` — which is where `Clear`, `GameOver` and `Victory` arrive. The
-  two per-frame numbers (`danger`, and whether anything is pending) have no event, so they need
-  one new call alongside `update`, fed from the match screen the same way `SceneContext` is fed
-  `Self::stack_danger(game)` today.
+  `PlayerAnimations`, which is per player and is already `update(delta)`d every frame.
+  ~~and already takes `on_event(&GameEvent)` — which is where `Clear`, `GameOver` and `Victory`
+  arrive.~~ **Both halves of that are wrong and were corrected on 2026-08-29 when it was
+  built.** `PlayerAnimations` has **no `on_event`**: events are dispatched by hand from
+  `match_screen.rs` through `ThemeContext::animate_*`, each of which loops every theme, so a
+  new trigger is a new `animate_*` and a new arm in the match screen's event match. And
+  **`GameEvent::Victory` is never emitted by any game** — it is synthesised for the particle
+  field alone — so a win has to come from `check_for_winning_player()` instead. The two
+  per-frame numbers (`danger`, and whether anything is pending) have no event either, and are
+  fed the same way `SceneContext` is fed `Self::stack_danger(game)` today.
 * **`CharacterLayout` and character sprites on `RetroThemeOptions`**, both `Option`, beside
   `mascot`/`mascot_animations`. A layout is a `Rect` and nothing else here, since the art is
   the size of the box.
-* **One `AnimationSpriteSheetData` per state**, which
-  `AnimationSpriteSheetData::non_exclusive_linear(file, start, frames, 80, 56)` expresses
-  exactly — one PNG per character, four rows, start at `(0, 57 * row)`. Thirteen PNGs of at
-  most 480x228 each; nowhere near `MAX_ATLAS_WIDTH`, and about 2 MB of texture for the lot if
-  all thirteen are built, which they must be, since which one is dealt is not known until a
-  match starts.
+* **One PNG per character**, four rows, a row per state on a 57 pitch. Thirteen of them,
+  nowhere near `MAX_ATLAS_WIDTH`, and about 2 MB of texture for the lot. ~~which they must be,
+  since which one is dealt is not known until a match starts~~ — **no**: a `CharacterSet` holds
+  the bytes and builds a face's texture the moment it is *dealt*, out of a
+  `RefCell<HashMap<usize, _>>` behind the `&self` draw, so eleven of the thirteen are never
+  turned into textures at all. One png per character rather than one sheet for the cast is
+  exactly what makes that worth anything: a single sheet would have to be loaded whole to build
+  any one of them.
 * **The deal has to reach the theme.** `Theme::draw_board(&self, canvas, game, animations)` is
   `&self` and a theme is `&'static`, so the character index cannot live on the theme — it
   belongs on `PlayerAnimations`, dealt when the match screen builds one. This is the same
@@ -2526,9 +2488,10 @@ character at a time. Their rects, and what they appear to be:
   row does.
 * **Scratch** and **Dr. Robotnik** — one defeat frame each, so their defeat is a still and they
   never fade, which the game over rule above now explains rather than leaving as an oddity: the
-  first frame and the last frame are the same frame. Robotnik is the player character of the
-  original and the odd one out of thirteen: *should he be in the deal at all, or is he the boss
-  of the set and out of it?*
+  first frame and the last frame are the same frame. ~~Robotnik is the player character of the
+  original and the odd one out of thirteen: should he be in the deal at all?~~ **Settled with
+  Alex, 2026-08-29: the premise was false.** Dr. Robotnik is Mean Bean Machine's **final boss**,
+  not its player character, so he is a face like any other and is in the deal.
 
 Questions that are not per-character:
 
@@ -2580,7 +2543,7 @@ other ten predict, clearly marked; **finishing them is an hour and it is the fir
 
 | # | character | status |
 |--:|---|---|
-| 1 | **Frankly** | **done** — 2026-08-28, two captures. See below. |
+| 1 | **Frankly** | **done** — 2026-08-28, two captures, and **re-captured on 2026-08-30** with all three rows. See below. |
 | 2 | **Arms** | **done** — 2026-08-28, three captures. See below. |
 | 3 | **Humpty** | **done** — 2026-08-28, three captures. See below. |
 | 4 | **Coconuts** | **done** — 2026-08-29, three captures. See below. |
@@ -2590,9 +2553,9 @@ other ten predict, clearly marked; **finishing them is an hour and it is the fir
 | 8 | **Grounder** | **done** — 2026-08-29, four captures including a game over. See below. |
 | 9 | **Spike** | **done** — 2026-08-29, three captures, one of them losing straight into the game over. See below. |
 | 10 | **Dragon Breath** | **done** — 2026-08-29, four captures including a game over. See below. |
-| 11 | Davy Sprocket | **sheet only** — captures taken, never processed. **Do him first**: 2/2/2/2, no extras, and he is what the plumbing gets built against |
-| 12 | Scratch | **sheet only** — captures taken, never processed. His one defeat frame is now explained rather than open |
-| 13 | Dr. Robotnik | **sheet only** — captures taken, never processed. Two things need a human: his 48 px of enclosed key, and whether he is in the deal at all |
+| 11 | Davy Sprocket | **done** — 2026-08-29, four captures. 2/2/2/2 and no extras, so he is what the plumbing was built against |
+| 12 | Scratch | **done** — 2026-08-29, three captures, the losing one running into his game over |
+| 13 | Dr. Robotnik | **done** — 2026-08-29. His 48 px of enclosed key are the gaps between his moustache strands and key out correctly; he is in the deal like anybody else, being the final boss and not the player character |
 
 **~~The gap Frankly left.~~** Closed by Arms: a face frame runs 6-11 frames at 60 Hz, an idle is
 a held pose with a blink on a ~1.2 s timer, and a row's frame count is not its pose count.
@@ -3016,10 +2979,10 @@ ripper already knows.
 
 **Losing: the face is held too, and something sweats that is not on the sheet.**
 
-* **The portrait does not change.** Over a steady six-second stretch the box region is
-  pixel-identical bar compression noise, even though the sheet gives the losing row two frames.
-  So either the second frame is used somewhere this capture never reached, or it alternates far
-  more slowly than the clip is long. **Worth a second look on the emulator.**
+* ~~**The portrait does not change.** Over a steady six-second stretch the box region is
+  pixel-identical bar compression noise, even though the sheet gives the losing row two frames.~~
+  **Wrong, and it is the oldest reading in the phase** — Frankly went first and got the least
+  method. It does change; see *Frankly, re-read* below.
 * **Small round blue drops fly up and out**, one or two at a time, from the **upper corners of
   his head** — not from the antenna balls, which hang low in this pose. Same 45° diagonals as
   the sparks, up-left and up-right, about 3-4 screen pixels across.
@@ -3057,6 +3020,58 @@ ripper already knows.
   and it is already what every foreground effect uses.
 * And at least one character wants art the rip does not carry.
 
+
+#### Frankly — re-read, 2026-08-30
+
+Three fresh captures — `frankly-idle.mp4`, `frankly-winning.mp4`,
+`frankly-losing-and-game-over.mp4` — taken because his was the one row of the thirteen with no
+idle clip at all and because the reading above was the phase's oldest and least careful. They
+close both gaps. The idle and losing clips share a framing, box at video `(62, 38)` and 3.81
+across by 3.79 down; the winning clip is `(50, 41)` at 2.85 square, and its higher residual is
+the recorder's own pause glyph sitting over his face rather than a bad fit — the checkerboard
+is exact on all three.
+
+**Idle is not `Static`, and it is the regularest thing any of the thirteen does.** The two
+frames differ over rows 11-26 across the whole width — 173 px, which is his **antennae**, not
+his eyes — and the clip alternates them cleanly for its whole 5.4 s: fifteen transitions at
+0.33, 0.35, 0.35, 0.36, 0.33, 0.37, 0.35, 0.33, 0.37, 0.33, 0.35, 0.38, 0.34 and 0.38 s. So
+**0.35 s a step, 0.70 s round**, and his antennae wobble rather than his face doing anything.
+
+**Losing alternates two poses at 0.37 s**, which confirms the 2026-08-29 correction and tightens
+it. The frames differ over rows 24-46, cols 17-54 — his **mouth**. The clean first second gives
+transitions 0.18, 0.22, 0.15, 0.20, 0.17 s and the median over the whole clip is 0.185, so
+**0.185 s a step**. The long runs later in the clip are the danger flash defeating the
+classifier, not the row slowing down: they coincide exactly with the residual jumping from 33
+to 44 and 54.
+
+**Defeat arrives at t = 3.96 s and holds `defeat[0]` for the remaining 1.1 s**, which is one
+more capture agreeing that a defeat is a still and the halved frame is never reached.
+
+**Winning: the sparks, measured properly.** Classifying the whole clip finds the portrait held
+for all 8.7 s, and blob-tracking the gold gives nine bursts of **six sparks each** with a mean
+gap of about **0.7 s** (0.73, 1.27, 0.87, 0.86, 0.27, 0.67, 0.71, 0.67 — the same irregular
+spread the first reading found, so implement the mean). One clean burst reads:
+
+| t | the six, in box coordinates |
+|--:|---|
+| 5.45 | (2.4, 6.6) (81.1, 6.5) (17.3, 8.7) (67.1, 9.6) (0.6, 30.7) (75.9, 31.5) |
+| 5.55 | (-2.9, 0.0) (87.6, 1.2) (22.9, 3.1) (61.8, 3.9) (-5.4, 36.9) (78.3, 37.8) |
+| 5.60 | (-9.0, -7.8) (93.0, -4.7) (28.5, -2.5) (55.7, -1.8) (-9.6, 41.0) (81.9, 43.3) |
+| 5.65 | (-14.0, -10.2) (98.1, -10.2) (34.4, -7.7) (50.7, -7.8) (-13.4, 44.4) (83.4, 46.9) |
+
+Six tracks, all on the 45° diagonals, three per ball, and each ball omitting the one that would
+go into his body — **exactly** what the first reading said. Back-projecting them meets the
+balls, which are the gold blobs of the winning frame at box **(5.8, 14.8)** and **(77.0,
+15.4)**. They travel **1.8 box px an axis a frame** and are last seen 20-25 px outside the box,
+so about 33 px of travel and **17 frames of life**. They are drawn well outside the box and are
+not clipped to it.
+
+**And the sweat is his losing clip's, cut from it for the whole cast.** 518 drops registered on
+their own centres give a blob about 2x3 box px with a light core; the 80th percentile of the
+aligned patches, quantised back onto the Genesis's 32-steps, is a body of `(64, 128, 224)` and a
+core of `(160, 224, 224)`. First sightings put the sources at box **(7, 18)** on the left and
+**(73, 16)** on the right, and 482 frame-to-frame links give **1.0-1.4 box px an axis a frame**,
+up and outward. See *what was built*, below.
 
 #### Arms — reconstructed, 2026-08-28
 
@@ -3755,15 +3770,19 @@ over.
   strands, which is right; some may be dark detail in his goggles, which a plain colour key
   would punch a hole through. **Look at him keyed before shipping him**, which is what
   `rip_retro.py check` is for.
-* And the standing question, which is Alex's rather than the capture's: he is the player
-  character of the original, so **is he in the deal at all, or is he the boss of the set and out
-  of it?**
+* ~~And the standing question, which is Alex's rather than the capture's: he is the player
+  character of the original, so is he in the deal at all?~~ **Settled with Alex on 2026-08-29,
+  and the premise was false**: Dr. Robotnik is Mean Bean Machine's *final boss*, not its player
+  character. He is in the deal like anybody else.
 
 **The enclosed-key census**, since it only matters for the cut and it is now complete: Grounder,
-Spike, Dragon Breath, Davy Sprocket, Arms, Frankly and Humpty have **none**; Coconuts, Skweel and
-Scratch have one or two stray pixels; Dynamight has 13, inside the explosion's smoke; Sir
-Ffuzzy-Logik has a steady 8 and 2 on the same two frames of every row; **Dr. Robotnik has 48 to
-60**. Key by colour for all of them and eyeball only the last two.
+Spike, Dragon Breath and Davy Sprocket have **none**; ~~Arms, Frankly and Humpty~~ **have 253
+and 108 and so on** — corrected on 2026-08-29 against the sheet section above, which had counted
+them all along; Coconuts, Skweel and Scratch have one or two stray pixels; Dynamight has 13,
+inside the explosion's smoke; Sir Ffuzzy-Logik has a steady 8 and 2 on the same two frames of
+every row; **Dr. Robotnik has 48 to 60**. Every one of them was rendered keyed and looked at,
+character by character: they are all wall showing through and nothing of anybody's own art goes
+with them. **Key by colour for all thirteen.**
 
 ### `snes` and `3ds` afterwards
 
@@ -3777,11 +3796,132 @@ and has no box at all; whether it gets a character, and where, is open.
 Do `genesis` first and completely, and do not generalise the plumbing across the other two
 until it has been played.
 
+### What was built, 2026-08-29 and 2026-08-30
+
+**Done.** The engine half is game-neutral and the `genesis` half is data.
+
+**`engine/src/animate/character.rs`** is the state machine and its clocks. `CharacterMeta` is
+what a theme declares — four `(frames, FrameAnimationType)` rows, a `Vec<LayerMeta>` and a
+`Vec<EmitterMeta>`; `CharacterAnimation` is what one player has. `MIN_DWELL` (0.7 s) holds a
+state whatever the board does next, `LINGER` (1.2 s) keeps `winning` up past its last clear and
+is refreshed rather than restarted by each step of a chain, and `DANGER_ENTER`/`DANGER_LEAVE`
+(0.60/0.45) are two thresholds with a real gap so a stack sitting on one does not strobe. A
+game over is the one thing nothing refuses; a victory latches.
+
+**One `Layer`, not two.** The reading found what looked like two kinds of loose sprite — an
+*overlay* (Humpty's arc and wrung hands, Ffuzzy's eyes) and a *palette cycle* (Arms' rim lights,
+Coconuts' coin, Ffuzzy's eye yellow) — and they collapse: both are a small sprite at an anchor
+in box coordinates on a clock of its own, and a cycle's variants merely happen to be recolours.
+The cutter bakes each ramp step as a frame, so **palette cycling stays out of the renderer**.
+Two things make that work:
+
+* **A layer's strip is per *row*, exactly like the portrait's**, four of them on a pitch, and a
+  row with **zero frames is a layer that is not drawn in that state at all** — which is
+  Coconuts' coin on idle and Ffuzzy's eyes off every row but his losing one. That is what lets
+  one declaration carry Arms' ping-pong on idle and his sawtooth on the other two, which the
+  sheet's single ramp cannot express.
+* **A cycle is cut as *only* the cycled pixels**, everything else transparent. That is what
+  makes it safe over a portrait animating underneath: Ffuzzy's fur dithers over the whole 80x56
+  and his eyes still land on it. The mask is the union over the frames the row **plays**, and a
+  row whose played frames disagree on which pixels cycle now stops the cutter outright.
+
+**The one bug this design produced, and it was a play order and not a mask** (Alex spotted it
+twice, 2026-08-30). ~~The cycled pixels are identical across every pose of every row, so which
+pose the mask comes off does not matter.~~ **Arms' idle row is three poses, not four.** Sheet
+frames 1, 2 and 3 are eyes open, half and shut; **frame 0 is frame 1 over again with the rim
+lights caught at a different point of their cycle** — 193 px apart in rows 40-55 and **0 px
+apart in the face**, which is as unambiguous as it gets. The write-up above his section says
+exactly this and the first build cut against frame 0 anyway.
+
+Two things went wrong from that one choice, and only the second is visible:
+
+* only 101 of his 212 lights are the cycled `(224,224,0)` in frame 0, so a mask taken off it
+  covered half the ring — fixed by the union, which was not enough;
+* and **70 pixels of the lights' haloes on the red rim are not the cycled colour at all**
+  (`(64,0,0)`, `(224,32,0)`, `(160,0,0)` …), so no mask covers them. Resting the portrait on
+  frame 0 for 0.69 s of every 1.19 s and then blinking to frames 2 and 3 jerked the rim a cycle
+  step on every blink, underneath the smooth pulse the layer was drawing.
+
+The fix is one digit — rest on sheet frame 1 — and it makes his idle mask 212 px, identical to
+his winning and losing rows and to the rest of the sheet, which is drawn at one clean cycle
+point (idle frames 1-3 match the winning row's rim to 2 px; frame 0 is 195 px out).
+
+**Two lessons worth more than the fix.** A layer's strip **looks correct on its own when it is
+wrong** — the cut idle strip showed four lights a frame cycling cleanly, and only the composite
+shows the half that is missing, so check a cycle in `character_shot` or the video and never in
+the cut art. And **a cycled element is rarely only the cycled colour**: a light has a halo, and
+the halo cycles with it on the hardware and cannot here, so the portrait frame under a cycle
+layer has to be at the *same* phase as every other frame the sheet was drawn at.
+
+**A layer that flickers rather than plays** needed one thing more: `anchors` and a `wander`
+clock. Humpty's arc does not travel — it appears at one of four slots on an 8 px pitch across
+the gap between his antenna balls, flashes and goes — and his hands flicker between six slots.
+The next slot is a golden-ratio walk rather than an RNG (deterministic, and it only has to
+*spread*), and never twice the same, since a flash that does not move is not a flash.
+
+**Emitters** are the things that leave the box, and they are drawn on the **window** rather than
+into the panel — `ThemeContext::draw_character_particles`, a near-copy of `draw_debris`
+differing only in being anchored on `themed.bg_snip` (the panel) rather than the board. Three
+triggers, and each is somebody's:
+
+| trigger | whose | what it does |
+|---|---|---|
+| `Every(period)` | Frankly's sparks | a whole burst on a clock while the row is up |
+| `OnFrame(&[..])` | Humpty's bolts | a burst as the portrait reaches a named frame — a **slice**, because his winning row runs its gesture twice |
+| `Danger { above, per_second }` | the sweat | one particle at a time, at a rate scaling with how bad the board is |
+
+The sweat is the only one of the three whose *state* mattered as much as its dial. It was built
+running in all four, on the reading that it is "a separate, graded thing" and not the losing
+face - which is true of the *dial* and not of the row. **Alex's call, 2026-08-30: the losing row
+and nowhere else.** A character who is winning is not sweating however full their board is, and
+a buried one has stopped. So it is gated twice: the state machine says whether they are worried
+at all and the dial says how much, which is why a losing face with a low stack still throws
+nothing. Particles already in the air finish their flight rather than vanishing with the state.
+
+A source carries **its own directions**, because Frankly's two balls do not throw the same way —
+each omits the diagonal that would go into his body. Speeds are declared in **box pixels an axis
+per 60 Hz frame**, which is the unit every capture was measured in, and turned into pixels a
+second in exactly one place. A particle carries its own frame index, so a spark cycles through
+all four bolts as it flies rather than there being one bolt per spark.
+
+**The sweat is cut once for the whole cast and written into every character's png at the same
+place**, at `(0, 4 * ROW_PITCH)`, with a test pinning that. It is authored rather than ripped —
+no rip carries a drop — from the measurement in *Frankly, re-read*, and it is declared on
+`CharacterSetData` rather than on a character, so it is appended to every character's emitter
+list and a cast that declares none still has it. Its threshold is **0.55, above `DANGER_ENTER`**,
+because the sweat comes on *later* than the losing face: Grounder holds the losing face for a
+whole capture with a low stack and sweats nothing.
+
+**Mirroring** is one flip at draw time, and it has to reach three things, not one: the portrait,
+a layer's anchor (`x -> box_width - x - w`) and a particle's box x (`box_width - x`, and the
+sprite flipped with it). Nothing else in the compendium flips a sprite — every other `copy_ex`
+passes `false, false` — so `draw_frame_scaled_flipped` and `draw_frame_scaled_faded` are new.
+
+**What the cutter does now.** `mugshots.py cut` writes all thirteen pngs *and prints the Rust
+table and the sweat declaration to paste back*, so the geometry of every strip is derived from
+the art rather than typed twice. A loose sprite keys on **both** backdrops, the navy and the
+ripper's teal: Humpty's hands carry blocks of teal *inside* their rect which are holes rather
+than art, and keying only the navy left them opaque.
+
+**One deliberate departure from the original**, and it is three pixels wide. Sir Ffuzzy-Logik's
+eyes are animated twice over on the Genesis, by sprite *and* by palette, and the palette applies
+to the loose sprites too. Here the eye-yellow cycle is **off on his losing row**, where the
+blink overlay has the eyes instead, and on for the other three. Running both would have them
+fighting over the same nine pixels, and the blink is the one a viewer sees.
+
 ### Done when
 
 `genesis` deals every player a character, the four states move as the table says without
 flip-flopping in a real match, both players of a two player match get different faces, the
-nuisance tray still has somewhere to live, and `frame_shot` still runs.
+nuisance tray still has somewhere to live, and `frame_shot` still runs. **All of it holds**, and
+`cargo run --example character_shot` writes the contact sheet that shows it.
+
+The cast was reviewed **moving** before it was signed off, which is the only way to catch a rate
+that is out or a cycle that is half painted, and none of that footage is kept: a temporary
+harness recorded every character playing all four states, the thirteen clips were compared frame
+by frame against Alex's captures of the emulated game, and both went when he signed the cast off
+on 2026-08-30. `character_shot` is the same drive with a still at the end of it, so anything that
+wants reviewing again starts from there.
 
 ### Handover notes
 
@@ -3815,10 +3955,19 @@ sections; what follows is only what a reader would not otherwise find.
   | what the row does | how to build it |
   |---|---|
   | a held pose | `Static` |
-  | a continuous alternation or ping-pong | `YoYo` (two frames: either) |
+  | a continuous alternation or ping-pong | ~~`YoYo`~~ **`Linear` over an unrolled strip** |
   | a straight loop | `Linear` |
   | a held pose with an action on a timer, once or twice or thrice | `LinearWithPause` over a strip cut **action first, rest last**, `resume_from_frame: 0` |
-  | defeat | `Static`, except Sir Ffuzzy-Logik's `YoYo` |
+  | defeat | `Static`, except Sir Ffuzzy-Logik's |
+
+  **`YoYo` is the wrong shape and nothing here uses it** — found on 2026-08-29 by probing the
+  engine rather than reading it. It runs `0..n` and then back down, which **repeats each end**
+  (`0 1 2 2 1 0`), where every ping-pong measured off the game holds each end once (`0 1 2 1`).
+  So a ping-pong is cut unrolled and played as a plain `Linear`. Two rate formulas were wrong
+  with it: a `YoYo` pass is `2n` steps and not `2(n-1)`, and — the one that mattered more —
+  **`LinearWithPause` gives its last frame a whole frame of its own *and then* the pause**, so
+  a pass is `n/fps + pause`. Between them every continuous row was running 2-3x slow and every
+  paused row was one frame long.
 
   The fourth is the refugee bean's existing trick in `theme/genesis/mod.rs`, so it is already
   implemented. What is *not* in the vocabulary is the second layer some characters need — a
@@ -3830,11 +3979,27 @@ sections; what follows is only what a reader would not otherwise find.
 * **One number is still missing from the whole phase**: how long the defeat poses run before the
   halved frame is held. Five game over captures, the longest 2.32 s, none of them long enough.
   The next one just needs leaving to run.
-* **A question the reading raised and did not answer**, for Alex: Davy Sprocket's cap studs
+* ~~**A question the reading raised and did not answer**, for Alex: Davy Sprocket's cap studs
   change from silver to gold between his two winning frames, and his defeat halving is 0.992
-  rather than 1.000. If those are the same pixels it is an **unlabelled palette cycle**, which
-  the sheet claims only Arms, Coconuts and Sir Ffuzzy-Logik have. Worth ten minutes when his
-  clips are processed.
+  rather than 1.000.~~ **Both answered on 2026-08-29 and both remove work.** The winning-row
+  diff is dominated by the rocket *moving*; the only in-place recolour is 20 px of
+  `(224,224,224) -> (224,192,64)`, a highlight drawn into the two poses with no ramp behind it,
+  so it bakes into the frames for free. And the 0.992 is rounding: the 35 mismatched pixels are
+  ±1 steps of a dark purple ramp in the rocket tail, because the Genesis halves the palette
+  entry rather than the pixel.
+
+**2026-08-30, Frankly re-captured and the effects built.** What is left open after it:
+
+* **How long a defeat pose holds before the fade** is still unmeasured, now bounded at
+  **≥ 3.96 s** by Frankly's own game over clip. Off the critical path, since the halved frame is
+  not drawn at all. One game over capture left running would close it.
+* **Frankly's spark period** is a mean of nine intervals spanning 0.27-1.27 s, which is either a
+  randomised delay or the capture lying. The mean is implemented; a randomised delay is one line
+  if it looks wrong.
+* **Humpty's losing face** has poses but no measured dwell, and **Scratch's losing period** ran
+  into his game over after one beat. Both are estimated from their other rows.
+* **The sweat's rate** (10 a second at a full board) is eyeballed off "one to three in the air at
+  a time" rather than fitted; the *threshold* and the velocity are measured.
 
 ---
 

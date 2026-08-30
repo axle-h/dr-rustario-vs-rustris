@@ -220,6 +220,8 @@ pub fn n64_theme<'a>(
             max: 2,
             scale: Some(0.82),
         },
+        // no cast on this theme; see `engine::render::character`
+        characters: None,
         mascot: Some(MascotLayout {
             hand_point: Point::new(108, 39),
             spawn_point: Point::new(113, 6),

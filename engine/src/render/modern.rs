@@ -463,6 +463,8 @@ pub fn modern_theme<'a>(
         // the particle theme's board has a field behind it, not a scene to lift off
         shadow: None,
         mascot: mascot_layout,
+        // no game has asked for a cast on a particle theme yet; the seam is the same one
+        characters: None,
         animation_meta,
         match_end: Some(MatchEndSprites {
             texture: match_end_texture,

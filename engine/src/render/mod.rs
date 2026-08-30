@@ -3,6 +3,7 @@
 
 pub mod animation;
 pub mod block_mask;
+pub mod character;
 pub mod context;
 pub mod font;
 pub mod geometry;
@@ -24,6 +25,7 @@ use crate::game::{CellId, Game, GameEvent, PieceId, PlacedCell};
 use crate::particles::particle::ParticleAnimationType;
 use crate::particles::prescribed::RaceTheme;
 use crate::render::animation::{AnimationSpriteSheet, AnimationSpriteSheetData};
+use crate::render::character::{CharacterLayout, CharacterSet};
 use crate::render::font::{FontTheme, PopupFont};
 use crate::render::geometry::BoardGeometry;
 use crate::render::scene::SceneRender;
@@ -267,6 +269,8 @@ pub struct Theme<'a> {
     pub(crate) background_size: (u32, u32),
     pub(crate) background_color: Color,
     pub(crate) mascot: Option<MascotLayout>,
+    /// the cast this theme draws beside the board, and where it puts one
+    pub(crate) characters: Option<(CharacterSet<'a>, CharacterLayout)>,
     pub(crate) animation_meta: AnimationMeta,
     pub(crate) match_end: Option<MatchEndSprites<'a>>,
     /// the cell drawn by a curtain game over
@@ -498,6 +502,115 @@ impl<'a> Theme<'a> {
         }
     }
 
+    /// The player's character, in the box its own game drew one in.
+    ///
+    /// Furniture: it is drawn into the panel texture with the tray and the queue, because it
+    /// never leaves its box. Nothing is drawn until a character has been dealt, so a theme
+    /// with no cast - which is every theme but `genesis` today - pays one `Option` check.
+    fn draw_character(
+        &self,
+        canvas: &mut WindowCanvas,
+        animations: &PlayerAnimations,
+    ) -> Result<(), String> {
+        let Some((set, layout)) = self.characters.as_ref() else {
+            return Ok(());
+        };
+        let character = animations.character();
+        let Some(index) = character.character() else {
+            return Ok(());
+        };
+        let mirrored = character.mirrored();
+        let box_width = layout.rect.width() as i32;
+        set.with(index, |sprites| {
+            sprites.draw(
+                canvas,
+                layout.rect,
+                character.state(),
+                character.frame(),
+                mirrored,
+            )?;
+            // ... and everything drawn over it, in the order the theme declared them
+            for (layer, frame, anchor) in character.layers() {
+                let Some((width, height)) = set.layer_size(index, layer) else {
+                    continue;
+                };
+                // a mirrored anchor is measured from the other edge of the box, or a
+                // character's eyes drift off his face the moment he turns round
+                let x = if mirrored {
+                    box_width - anchor.0 - width as i32
+                } else {
+                    anchor.0
+                };
+                let dest = Rect::new(
+                    layout.rect.x() + x,
+                    layout.rect.y() + anchor.1,
+                    width,
+                    height,
+                );
+                sprites.draw_layer(canvas, dest, layer, character.state(), frame, mirrored)?;
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// The particles a character has thrown, on the **window** rather than into the panel.
+    ///
+    /// They are not clipped to the box and never were: on the Genesis a spark crosses the
+    /// stone of the centre column and goes on over the playfield. `origin` is the panel's own
+    /// top left, since the box is panel furniture - which is the one thing that differs from
+    /// [`Self::draw_debris`], whose pieces are anchored on the board.
+    pub(crate) fn draw_character_particles(
+        &self,
+        canvas: &mut WindowCanvas,
+        animations: &PlayerAnimations,
+        scale: &Scale,
+        origin: Point,
+    ) -> Result<(), String> {
+        let Some((set, layout)) = self.characters.as_ref() else {
+            return Ok(());
+        };
+        let character = animations.character();
+        let Some(index) = character.character() else {
+            return Ok(());
+        };
+        if character.particles().is_empty() {
+            return Ok(());
+        }
+        let mirrored = character.mirrored();
+        let box_width = layout.rect.width() as f64;
+        set.with(index, |sprites| {
+            for particle in character.particles() {
+                let Some((width, height)) = set.particle_size(index, particle.emitter) else {
+                    continue;
+                };
+                // box coordinates, so one flip about the box's middle turns the whole spray
+                let x = if mirrored {
+                    box_width - particle.x
+                } else {
+                    particle.x
+                };
+                let at = Rect::new(
+                    layout.rect.x() + x.round() as i32 - width as i32 / 2,
+                    layout.rect.y() + particle.y.round() as i32 - height as i32 / 2,
+                    width,
+                    height,
+                );
+                let dest = scale.scale_and_offset_rect(at, origin.x(), origin.y());
+                sprites.draw_particle(
+                    canvas,
+                    dest,
+                    particle.emitter,
+                    particle.frame,
+                    mirrored,
+                    particle.alpha(),
+                )?;
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     /// The strip of attacks waiting to land, drawn from this theme's own cell sprites.
     ///
     /// An icon whose attack is still crossing the window is not drawn at all, and one that
@@ -656,6 +769,7 @@ impl<'a> Theme<'a> {
             self.draw_queue(canvas, &queue, spawn_peek_offset)?;
         }
         self.draw_pending(canvas, game, animations)?;
+        self.draw_character(canvas, animations)?;
 
         self.font.render_all(canvas, game)
     }

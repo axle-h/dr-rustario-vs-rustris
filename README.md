@@ -16,7 +16,14 @@ that game drew for them - Mean Bean Machine's two `NEXT` boxes and the box it ke
 Robotnik's mugshot in, Kirby's two name plates and the arch at the foot of its centre column.
 Both panels stop level with the top of their own field, so the row a pair spawns in - which is
 played in, and so is drawn - sits above the board against the backdrop with nothing to either
-side, the way a piece does on the retro Rustris themes. They stand on a wash of their own game's own colour rather than on
+side, the way a piece does on the retro Rustris themes. On **genesis** a character stands in
+the box the game keeps Robotnik's mugshot in and reacts to how you are doing - one of the
+thirteen the game draws, dealt at the start of a match, and in a two player game each faces the
+other player's board. They pull a face when you chain and another when you are nearly buried,
+and they have their tics: Frankly's antennae throw sparks when he is winning, Humpty crackles an
+arc between his and wrings his hands when he is not, Arms' ring of lights breathes while nothing
+is happening and spins once it is, Coconuts' coin flares white and flushes red, and every one of
+them sweats when your stack gets near the top. They stand on a wash of their own game's own colour rather than on
 its tiled wall, and each casts a shadow on it, which is what leaves the board looking like a
 board. Its particle theme
 carries eleven sets

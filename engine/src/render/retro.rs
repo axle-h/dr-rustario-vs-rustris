@@ -8,6 +8,7 @@ use crate::animate::mascot::MascotAnimationTypes;
 use crate::animate::spawn::SpawnArc;
 use crate::animate::{AnimationMeta, PopDebris};
 use crate::game::CellId;
+use crate::render::character::{CharacterLayout, CharacterSet, CharacterSetData};
 use crate::render::font::{FontThemeOptions, PopupFont};
 use crate::render::geometry::BoardGeometry;
 use crate::render::helper::{TextureFactory, TextureQuery};
@@ -79,6 +80,8 @@ pub struct RetroThemeOptions {
     pub attack_ball: Option<AttackBallData>,
     /// how hard the board shakes when nuisance lands, if the theme wants it to at all
     pub nuisance_rumble: Option<(f64, Duration)>,
+    /// the cast drawn beside the board, and the box it goes in - see `render::character`
+    pub characters: Option<(CharacterSetData, CharacterLayout)>,
 }
 
 pub fn retro_theme<'a>(
@@ -204,6 +207,9 @@ pub fn retro_theme<'a>(
         background_size,
         background_color: options.background_color,
         mascot: options.mascot,
+        characters: options
+            .characters
+            .map(|(data, layout)| (CharacterSet::new(data, texture_creator), layout)),
         animation_meta,
         match_end,
         curtain_cell: options.curtain_cell,

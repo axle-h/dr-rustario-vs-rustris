@@ -230,6 +230,7 @@ fn draw(
     // then the match screen's own order, minus the particles: what the boards threw off,
     // the attacks crossing between them, and the captions over all of it
     themes.draw_debris(canvas)?;
+    themes.draw_character_particles(canvas)?;
     themes.draw_attack_balls(canvas)?;
     themes.draw_popups(canvas)
 }
