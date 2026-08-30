@@ -14,12 +14,13 @@ pub const GAME_ID: GameId = engine::game::ids::PUYO;
 
 /// Which set of puyos a cell is drawn from.
 ///
-/// The particle theme is cut from a rip carrying eleven usable sets of the same puyos (see
-/// `puyo-rusto/art/rip.py`), and [`PuyoSkin::deal`] hands a different one to each player at
-/// the start of every match, so a session is not two boards of the same puyos and no two
-/// matches look alike either. The theme keys every one of them, so which a board gets is a
-/// decision the *game* makes when it is built rather than one the theme makes when it is, and
-/// a theme with only one set of art may key all eleven at the same sprites.
+/// The particle theme is cut from a rip carrying seven usable sets of the same puyos (see
+/// `puyo-rusto/art/rip.py`, whose `SKINS` is which of the rip's sixteen those are), and
+/// [`PuyoSkin::deal`] hands a different one to each player at the start of every match, so a
+/// session is not two boards of the same puyos and no two matches look alike either. The
+/// theme keys every one of them, so which a board gets is a decision the *game* makes when it
+/// is built rather than one the theme makes when it is, and a theme with only one set of art
+/// may key all seven at the same sprites.
 ///
 /// It rides in the [`CellId`] for the same reason [`LinkMask`] does - the engine's sheet is
 /// keyed by cell id and nothing else, and a game may put whatever drawing information it
@@ -32,7 +33,7 @@ impl PuyoSkin {
     /// how many sets of puyos there are, which is how many a theme's sheet has to key. The
     /// sheet `puyo-rusto/art/rip.py` writes carries exactly this many, and a test in
     /// [`crate::theme::modern`] holds it to that
-    pub const COUNT: usize = 11;
+    pub const COUNT: usize = 7;
 
     /// the set a board falls back on when nobody dealt it one, which is every test's and the
     /// title screen's

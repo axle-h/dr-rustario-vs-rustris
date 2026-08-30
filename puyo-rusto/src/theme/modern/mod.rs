@@ -41,10 +41,12 @@ const SKIN_ROWS: i32 = EXTRAS_ROW + 1;
 /// how many skins the sheet carries, which is `SKINS` in `puyo-rusto/art/rip.py`.
 ///
 /// The rip is sixteen skins of the same puyos, fifteen of them whole, fourteen of those able
-/// to join a puyo below and eleven of those worth joining; the sheet is all eleven,
-/// [`BANDS_ACROSS`] bands at a time, and the theme keys **every** one of them. Which two a
-/// match shows is not the theme's to decide: [`PuyoSkin::deal`] hands each player one when the
-/// match starts, so the choice can change without rebuilding an atlas.
+/// to join a puyo below, eleven of those worth joining, and seven of *those* that belong on
+/// this theme - the script says which and why, and the ones it drops are two sets of retro
+/// art, the Sonic cast and a set that spells its colours out as letters. The sheet is those
+/// seven, [`BANDS_ACROSS`] bands at a time, and the theme keys **every** one of them. Which
+/// two a match shows is not the theme's to decide: [`PuyoSkin::deal`] hands each player one
+/// when the match starts, so the choice can change without rebuilding an atlas.
 pub const SKINS: usize = PuyoSkin::COUNT;
 
 /// how many skin bands the sheet lies side by side, which is `BANDS_ACROSS` in
@@ -53,7 +55,8 @@ pub const SKINS: usize = PuyoSkin::COUNT;
 /// The sheet is loaded whole, as one texture, and the bands in a single column stood it 6720
 /// pixels tall at the fourteen skins it carried then - past the [`MAX_ATLAS_WIDTH`] a driver
 /// will allocate in a dimension, and so a theme that could not be built at all on a handheld.
-/// Two across is 2560x2880: the same pixels, laid out so that both dimensions fit.
+/// Seven of them would fit stacked; the layout is kept because it is the same pixels either
+/// way, and 2560x1920 is one fewer thing for the script and this file to agree on.
 const BANDS_ACROSS: usize = 2;
 
 /// how wide one skin's band is, in cells: a link mask's worth
