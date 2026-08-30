@@ -327,13 +327,15 @@ pub struct PanelShadow {
     pub color: Color,
     /// how dark it is against the panel's own edge, fading to nothing at the spread
     pub alpha: u8,
-    /// Source pixels at the top of the background that the panel's art does not fill, and so
-    /// casts nothing.
+    /// Source pixels round the edge of the background that the panel's art does not fill,
+    /// and which therefore cast nothing: `(left, top, right, bottom)`.
     ///
-    /// `top_padding` is exactly that band on the themes that have one, and it is where a
-    /// piece spawns - so a shadow cast from the whole padded box puts a dark rectangle behind
-    /// the one row that has nothing else behind it, which is the opposite of the point.
-    pub skip_top: u32,
+    /// A theme's background is a *box* rather than its art: `top_padding` is the band a piece
+    /// spawns in, and a panel may be cut narrower than its box and padded back so the air
+    /// round it costs the board nothing. A shadow cast from the whole box puts a dark
+    /// rectangle behind the spawning row and hangs the rest of it out in the scene, away from
+    /// the edge that is meant to be casting it.
+    pub margin: (u32, u32, u32, u32),
 }
 
 impl PanelShadow {
@@ -355,12 +357,14 @@ impl PanelShadow {
         scale: &Scale,
     ) -> Result<(), String> {
         let px = |value: i32| scale.scale_coordinate(value);
-        let skipped = px(self.skip_top as i32);
+        let (left, top, right, bottom) = self.margin;
+        let (left, top) = (px(left as i32), px(top as i32));
+        let (right, bottom) = (px(right as i32), px(bottom as i32));
         let body = Rect::new(
-            panel.x() + px(self.offset.0),
-            panel.y() + px(self.offset.1) + skipped,
-            panel.width(),
-            panel.height().saturating_sub(skipped as u32),
+            panel.x() + px(self.offset.0) + left,
+            panel.y() + px(self.offset.1) + top,
+            panel.width().saturating_sub((left + right) as u32).max(1),
+            panel.height().saturating_sub((top + bottom) as u32).max(1),
         );
         let blend = canvas.blend_mode();
         canvas.set_blend_mode(BlendMode::Blend);

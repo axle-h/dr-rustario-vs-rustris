@@ -25,7 +25,11 @@ arc between his and wrings his hands when he is not, Arms' ring of lights breath
 is happening and spins once it is, Coconuts' coin flares white and flushes red, and every one of
 them sweats when your stack gets near the top. They stand on a wash of their own game's own colour rather than on
 its tiled wall, and each casts a shadow on it, which is what leaves the board looking like a
-board. Its particle theme
+board. Every edge of a panel is on the screen - it stands clear of the bottom of the window
+rather than running off it, and on **genesis** the outer course of rock is cut away so that
+two players get scene between their boards instead of a hairline. That costs the board
+nothing: the panel keeps the size it is measured at and the stone that went was doing no
+work. Its particle theme
 carries eleven sets
 of puyos and deals a different one to each player at the start of every match, so a two player
 game is never two boards of the same puyos and no two matches look alike; the title screen

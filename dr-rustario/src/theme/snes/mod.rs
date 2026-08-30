@@ -179,6 +179,7 @@ pub fn snes_theme<'a>(
         board_alpha: 0xff,
         board_snips: vec![Rect::new(0, 0, 79, 175)],
         top_padding: 0,
+        bottom_padding: 0,
         shadow: None,
         board_point: Point::new(0, 0),
         background_file: sprites::BACKGROUND,

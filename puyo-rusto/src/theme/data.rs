@@ -89,20 +89,23 @@ pub fn previews() -> PreviewData {
 /// vignette and nothing about either says it should fall differently. Down and to the right,
 /// which is a light over the panel's top left shoulder and is all the direction there is:
 /// [`PanelShadow`] grows only that way, so there is none along the top edge, where a spawning
-/// pair is the only thing standing on the scene. `skip_top` is the theme's `top_padding`: that band
-/// is transparent and is where a pair spawns, so it casts nothing.
+/// pair is the only thing standing on the scene. `margin` is the transparent air round the
+/// panel inside its own box - the theme's `top_padding` and `bottom_padding`, and whatever
+/// outer rock the rip cut off its sides - since none of that is art and none of it casts.
 ///
-/// It is **not** painted into the panel art, which is where it would naturally go: a margin
-/// round the art comes straight off the board, since every theme of a game is drawn at the
-/// largest cell all of them can hold and in a two player game the panels are sized by the
-/// width they have. [`PanelShadow`] draws it at composite time instead, for nothing.
-pub fn panel_shadow(skip_top: u32) -> PanelShadow {
+/// It is **not** painted into the panel art, which is where it would naturally go. A margin
+/// painted round the art either comes straight off the board - every theme of a game is drawn
+/// at the largest cell all of them can hold, and in a two player game the panels are sized by
+/// the width they have - or has to be cut out of the panel first to pay for itself, which is
+/// what `SIDE_TRIM` does and is a trade only the outermost rock could stand.
+/// [`PanelShadow`] draws it at composite time instead, for nothing.
+pub fn panel_shadow(margin: (u32, u32, u32, u32)) -> PanelShadow {
     PanelShadow {
         offset: (3, 3),
         spread: 5,
         color: Color::BLACK,
         alpha: 0xa0,
-        skip_top,
+        margin,
     }
 }
 

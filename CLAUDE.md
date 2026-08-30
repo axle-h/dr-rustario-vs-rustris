@@ -334,9 +334,24 @@ player game the panels are sized by the width they have, so eight pixels of marg
 a twentieth of the board. Drawn at composite time (in `ThemeContext::draw_players`, before the
 board, which is the one moment both the board and the panel are still to come) it costs the
 layout nothing and may fall outside the player's own area, which is what a shadow should do.
-Its `skip_top` is the theme's `top_padding`: that band is transparent and is where a pair
-spawns, so it casts nothing - a shadow cast from the whole padded box puts a dark rectangle
-behind the one row that is meant to have nothing behind it.
+Its `margin` is the transparent air round the panel inside its own box, on all four sides:
+`top_padding`, where a pair spawns, `bottom_padding` under it and whatever rock the rip cut off
+its flanks. None of that is art and none of it casts - a shadow thrown from the whole box puts
+a dark rectangle behind the one row meant to have nothing behind it and hangs the rest of
+itself out in the scene, away from the edge that is supposed to be casting it.
+
+**A panel that runs off the window has no bottom edge**, and the last course of both of these
+is the field's own floor - the one edge that says where the board ends, without which the board
+reads as a wall rather than as something standing on the scene. Both take `bottom_padding`:
+transparent rows under the *background* art alone, the board untouched, since this is air under
+the panel and not more panel. Unlike the trim below it cannot be had for nothing - the rows are
+bought out of the fit like any other source pixel - but eight of them are free with two
+players, where the panel is width bound and the height has room for eleven, and cost a single
+player two pixels of cell. The `snes` panel was cut a row too tall for this to be safe: the
+SNES screen's last row is one flat blue-grey run right across it, the console's own border,
+which never showed while the panel ran off the bottom of the window and is a stripe along the
+bottom of every match once it does not (`SNES_SCREEN_BOTTOM` in `rip_retro.py`,
+`SCREEN_BORDER_ROW` in the theme).
 
 Bringing the panels down to the field's top cost Kirby its `NEXT` sign, which the game nails
 *above* that edge - so `rip_retro.py` moves it down nine rows. What moves is the whole
@@ -346,13 +361,22 @@ lands exactly over the game's two name plates - which named one queue per player
 whichever way - so it covers them outright, and the paint-out and the woodwork that used to
 fill that hole have both gone from the script with them.
 
-Panel height is what sizes the board, since every theme of a game is drawn at the largest cell
-*all* of them can hold, so the tallest panel decides it for the rest. Both retro panels are
-208 source rows and the spawning cell over them makes 224, which is their console's own screen
-height - that took Puyo's cell from 66 pixels to 73, a board 949 pixels tall on a 1080p screen
-where it was 858. What holds it at 73 rather than the 76 the two panels would allow is the
-particle theme, which is built at whatever they can reach and is then the tallest of the three
-itself.
+Panel **height** is what sizes the board with one player and panel **width** is what sizes it
+with two, since every theme of a game is drawn at the largest cell *all* of them can hold. Both
+retro panels are 208 source rows and the spawning cell over them makes 224, which is their
+console's own screen height: that is what took Puyo's cell from 66 pixels to 76 with one
+player, of which `bottom_padding` then gives two back, a board 962 pixels tall on a 1080p
+screen where it was 858. With two players the halves are 952 pixels wide and it is the
+`genesis` panel's 208 pixel *width* that decides everything - a cell of 73, where `snes` at 152
+and the particle theme could both still hold 76. Which is why the outer rock is cut off that
+panel and padded straight back as transparency (`SIDE_TRIM`, matched by `GENESIS_PANEL_TRIM` in
+`rip_retro.py`): the png stays 208 wide, so the cell, the layout and every coordinate in the
+theme are exactly what they were, and what was stone doing nothing is scene between the two
+boards - sixteen pixels of it becomes sixty six, for no board at all. The left course is the
+well's own wall and is halved rather than taken; the right is the outside edge of the score
+column. Spending board on air instead is two constants (a bigger `bottom_padding` binds the
+height, which brings the cell down and narrows the panel with it) and was measured and turned
+down: see phase 3g of the plan for the five that were offered.
 
 **`genesis` pops the way Mean Bean Machine does.** The group first *flashes* where it stands,
 about three times over 300 ms, drawn exactly as it sits on the board and joined to its

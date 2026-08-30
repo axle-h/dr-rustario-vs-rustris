@@ -43,6 +43,14 @@ pub struct RetroThemeOptions {
     /// transparent rows added above the board and background art, for a visible buffer
     /// above the skyline
     pub top_padding: u32,
+    /// Transparent rows added *under* the background art alone, so the panel's own bottom
+    /// edge stands clear of the window instead of running off it.
+    ///
+    /// The board is untouched: this is air below the panel rather than more panel. It is
+    /// bought out of the fit like any other source pixel - the background is that much taller
+    /// and so scales to that much less - which is the whole cost of seeing where the board
+    /// ends.
+    pub bottom_padding: u32,
     /// what the panel casts on the scene behind it; `None` for a theme whose panel fills the
     /// window, or whose scene is busy enough that a shadow would only muddy it
     pub shadow: Option<PanelShadow>,
@@ -95,6 +103,7 @@ pub fn retro_theme<'a>(
         texture_creator,
         options.board_file,
         options.top_padding,
+        0,
     )?;
     if options.board_alpha < 0xff {
         // written verbatim into the transparent board target (no blend) so the scene
@@ -108,6 +117,7 @@ pub fn retro_theme<'a>(
         texture_creator,
         options.background_file,
         options.top_padding,
+        options.bottom_padding,
     )?;
     let background_size = background_texture.size();
 
@@ -228,24 +238,26 @@ pub fn retro_theme<'a>(
     })
 }
 
-/// load a PNG with `padding` transparent pixels added above it
+/// load a PNG with transparent pixels added above and below it
 fn padded_texture<'a>(
     canvas: &mut WindowCanvas,
     texture_creator: &'a TextureCreator<WindowContext>,
     file: &'static [u8],
-    padding: u32,
+    above: u32,
+    below: u32,
 ) -> Result<Texture<'a>, String> {
     let raw = texture_creator.load_texture_bytes_blended(file)?;
-    if padding == 0 {
+    if above == 0 && below == 0 {
         return Ok(raw);
     }
     let (width, height) = raw.size();
-    let mut texture = texture_creator.create_texture_target_blended(width, height + padding)?;
+    let mut texture =
+        texture_creator.create_texture_target_blended(width, height + above + below)?;
     canvas
         .with_texture_canvas(&mut texture, |c| {
             c.set_draw_color(Color::RGBA(0, 0, 0, 0));
             c.clear();
-            c.copy(&raw, None, Rect::new(0, padding as i32, width, height))
+            c.copy(&raw, None, Rect::new(0, above as i32, width, height))
                 .unwrap();
         })
         .map_err(|e| e.to_string())?;

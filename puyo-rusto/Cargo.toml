@@ -7,6 +7,12 @@ edition.workspace = true
 [lints]
 workspace = true
 
+[dev-dependencies]
+# only to decode a theme's own png in a test: the panel art is cut by `art/rip_retro.py` and
+# the theme has to agree with it about where the art stops - see `SIDE_TRIM` in
+# `theme::genesis`. Nothing in the crate proper reads a png; the engine loads them through SDL.
+image.workspace = true
+
 [dependencies]
 engine = { path = "../engine" }
 rand.workspace = true
