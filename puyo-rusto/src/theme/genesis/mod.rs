@@ -23,6 +23,7 @@ use engine::animate::PopDebris;
 use engine::config::Config;
 use engine::game::{CellId, MetricKind};
 use engine::render::animation::AnimationSpriteSheetData;
+use engine::render::character::CharacterLayout;
 use engine::render::font::{FontRenderOptions, FontThemeOptions, MetricSnips, ThemedNumeric};
 use engine::render::geometry::BoardGeometry;
 use engine::render::retro::{retro_theme, RetroThemeOptions};
@@ -34,6 +35,8 @@ use sdl2::rect::{Point, Rect};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
+
+mod mugshots;
 
 mod sprites {
     pub const SPRITES: &[u8] = include_bytes!("sprites.png");
@@ -157,7 +160,6 @@ const NEXT_PAIR: (i32, i32) = (8, 12);
 /// panel has no use for. It is where the tray used to be, under a comment saying the Genesis
 /// never drew one; it does, and the tray has gone to where it draws it, so this hole is free
 /// for the character that belongs in it.
-#[allow(dead_code)]
 const MUGSHOT: (i32, i32, u32, u32) = (120, 96, 80, 56);
 
 /// Where Mean Bean Machine puts the nuisance tray: on the wall **immediately above the
@@ -292,7 +294,7 @@ fn block(col: i32, row: i32) -> Point {
 /// A colour's sixteen link variants run along its own row, indexed by the mask's bits.
 ///
 /// The skin is ignored, which is the whole difference between a retro theme and the particle
-/// one: `PuyoSkin::deal` still hands each player one of eleven, and Mean Bean Machine drew
+/// one: `PuyoSkin::deal` still hands each player one of seven, and Mean Bean Machine drew
 /// one set of beans, so every slot is keyed to the same art and both players see the same
 /// beans - as they did on a Genesis.
 fn puyo(_: PuyoSkin, color: PuyoColor, links: LinkMask) -> Point {
@@ -495,6 +497,16 @@ pub fn genesis_theme<'a>(
             size: TRAY_ICON,
             max: TRAY_MAX,
         }),
+        // the cast, in the box Mean Bean Machine keeps its opponent's face in - which is
+        // free now that the tray has gone to the wall over the board, where the game
+        // draws it. A face here is the *player's own*, since a panel belongs to one
+        // player and there may be only one of them.
+        characters: Some((
+            mugshots::characters(),
+            CharacterLayout {
+                rect: Rect::new(MUGSHOT.0, MUGSHOT.1, MUGSHOT.2, MUGSHOT.3),
+            },
+        )),
         mascot: None,
         mascot_animations: None,
         spawn_arc: None,

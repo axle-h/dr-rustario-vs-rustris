@@ -12,6 +12,7 @@ Neither the sheet nor the clips are in the repository.  The sheet lives beside t
 
     python3 mugshots.py prep <character>       # frame diffs, fades and key analysis
     python3 mugshots.py strips <character>     # one png per row, plus diff overlays
+    python3 mugshots.py cut [out_dir]          # the theme art: one png per character
 
 Everything past that is a library, because reading a character is a conversation with the clip
 rather than a fixed pipeline.  The usual shape is:
@@ -58,6 +59,12 @@ KEY = (0, 108, 108)
 NAVY = (0, 0, 96)
 
 ROWS = ("idle", "winning", "losing", "defeat")
+
+# a frame, and the pitch it sits on, on the Mugshots sheet.  80x56 is exactly the MUGSHOT hole
+# in the genesis panel - measured: the recess in background.png is rows 80-135 x cols 120-199,
+# which +TOP_PADDING is the theme's own (120, 96, 80, 56).  These were drawn for that box.
+FRAME_W, FRAME_H = 80, 56
+PITCH_X, PITCH_Y = 81, 57
 
 # every frame is 80x56 on an 81x57 pitch, four rows of frames per character, each block starting
 # where its name label ends.  So a character is an origin and four frame counts.
@@ -141,7 +148,13 @@ def cut(name):
     (ox, oy), counts = CAST[name]
     a = sheet()
     return {
-        row: [a[oy + 57 * i : oy + 57 * i + 56, ox + 81 * c : ox + 81 * c + 80] for c in range(n)]
+        row: [
+            a[
+                oy + PITCH_Y * i : oy + PITCH_Y * i + FRAME_H,
+                ox + PITCH_X * c : ox + PITCH_X * c + FRAME_W,
+            ]
+            for c in range(n)
+        ]
         for i, (row, n) in enumerate(zip(ROWS, counts))
     }
 
@@ -589,14 +602,676 @@ def sweat_rate(clip, xslice):
     return counts.mean(), float((counts > 0).mean()), counts
 
 
+
+# ---------------------------------------------------------------------------------------------
+# Cutting the theme art
+# ---------------------------------------------------------------------------------------------
+
+# The frames of each row **in play order**, as sheet indices.
+#
+# Two things are baked in here rather than left to the engine.  The **fade is dropped**: the last
+# frame of a defeat row is an earlier pose at exactly half brightness, no capture has ever been
+# seen to reach it, and it is not drawn.  And a row is cut **action first, rest last**, because
+# `FrameAnimationType::LinearWithPause` holds the *last* frame of its strip and resumes at
+# `resume_from_frame: 0` - so the pose the character rests in has to come last.
+#
+# Which frame is the rest was **measured**, not assumed: every row with a capture was classified
+# and the frame with the longest total dwell is the rest.  It is the sheet's frame 0 in every row
+# of every character except Grounder's losing row, which is drawn action-first already.
+PLAY = {
+    #            idle                winning             losing           defeat
+    "frankly":  ([0, 1],            [0],                [0, 1],           [0]),
+    # his idle row is **three** poses and not four: sheet frames 1, 2 and 3 are eyes open,
+    # half and shut, and frame 0 is frame 1 over again with the rim lights caught at a
+    # different point of their cycle (193 px apart in rows 40-55, 0 px apart in the face).
+    # So the rest pose is frame **1** - resting on 0 put the light haloes on the red rim a
+    # cycle step out from every other frame of the sheet, and the rim jerked on every blink
+    # underneath the smooth pulse the layer was drawing.
+    "arms":     ([2, 3, 2, 1],      [0, 1, 2, 1],       [0, 1],           [0]),
+    "humpty":   ([1, 0],            [1, 2, 1, 0, 3, 0,
+                                 1, 2, 1, 0, 3, 0], [0, 1, 2, 1],     [0]),
+    "coconuts": ([1, 0, 1, 0],      [1, 0],             [0, 1, 2, 1],     [0]),
+    "davy":     ([1, 0, 1, 0],      [0, 1],             [0, 1],           [0]),
+    "skweel":   ([1, 2, 1, 0],      [0, 1, 2, 1],       [0, 1, 2, 3, 4, 5], [0]),
+    "dynamight":([0, 1],            [0, 1, 2, 3, 4],    [0, 1],           [0]),
+    "grounder": ([1, 2, 1, 0],      [1, 0, 1, 0],       [0, 1],           [0]),
+    "spike":    ([1, 2, 1, 0],      [1, 0, 1, 0],       [1, 0, 1, 0],     [0]),
+    "ffuzzy":   ([0, 1, 2, 1],      [0, 1, 2, 1],       [0, 1, 2, 1],     [0, 1, 2, 1]),
+    "dragon":   ([1, 2, 1, 0],      [1, 0],             [1, 2, 1, 2, 1, 2, 0], [0]),
+    "scratch":  ([1, 0],            [1, 0],             [1, 0],           [0]),
+    "robotnik": ([1, 2, 1, 0],      [0, 1],             [0, 1],           [0]),
+}
+
+# How each row plays: (type, seconds for one whole pass, seconds an action frame is held).
+#
+# Both numbers are measured off a capture and neither is guessed.  The **pass** is the period
+# the row repeats on; the **action dwell** is how long one frame of the moving part is held,
+# which across the whole cast runs 6 to 11 frames at 60 Hz - a blink step is about 0.10 s and a
+# held gesture about 0.35 s, and the two are not the same number.  Deriving one from the other
+# is what an earlier pass got wrong: a blink is about a *seventh* of its cycle, not a quarter.
+#
+# For a `lwp` row the pause is whatever is left of the pass once the action has run, and that
+# subtraction reproduces the rest dwells written up in the plan to within a frame or two - which
+# is the check that these two numbers are consistent.  A capture is variable rate, so everything
+# here is +/-20%; tune by eye.
+TIMING = {
+    "frankly":  (("linear",   0.70, None), ("static", None, None),
+                 ("linear",   0.37, None), ("static", None, None)),
+    "arms":     (("lwp",    1.19, 0.12), ("linear",   0.56, None),
+                 ("linear",   0.36, None), ("static", None, None)),
+    "humpty":   (("lwp",    1.35, 0.33), ("lwp",    3.14, 0.10),
+                 ("linear",   0.70, None), ("static", None, None)),
+    "coconuts": (("lwp",    1.68, 0.16), ("lwp",    1.36, 0.53),
+                 ("linear",   0.33, None), ("static", None, None)),
+    "davy":     (("lwp",    2.48, 0.17), ("linear",   0.28, None),
+                 ("linear",   0.31, None), ("static", None, None)),
+    "skweel":   (("lwp",    1.27, 0.10), ("linear",   0.63, None),
+                 ("linear", 0.66, None), ("static", None, None)),
+    "dynamight":(("linear",   0.69, None), ("linear", 0.45, None),
+                 ("linear",   0.25, None), ("static", None, None)),
+    "grounder": (("lwp",    2.33, 0.10), ("lwp",    1.56, 0.19),
+                 ("lwp",    1.62, 0.28), ("static", None, None)),
+    "spike":    (("lwp",    2.40, 0.12), ("lwp",    2.34, 0.21),
+                 ("lwp",    1.99, 0.16), ("static", None, None)),
+    "ffuzzy":   (("linear",   0.54, None), ("linear",   0.67, None),
+                 ("linear",   0.39, None), ("linear",   0.60, None)),
+    "dragon":   (("lwp",    1.93, 0.13), ("lwp",    1.54, 0.35),
+                 ("lwp",    1.60, 0.09), ("static", None, None)),
+    "scratch":  (("lwp",    1.29, 0.40), ("lwp",    1.11, 0.22),
+                 ("lwp",    1.10, 0.20), ("static", None, None)),
+    "robotnik": (("lwp",    1.65, 0.09), ("linear",   0.29, None),
+                 ("linear",   0.20, None), ("static", None, None)),
+}
+
+# The engine addresses a strip by counting whole frame widths from its start, so frames are laid
+# **edge to edge**; only the rows are spaced, and only so a person can read the sheet.
+ROW_PITCH = FRAME_H + 1
+
+# ---------------------------------------------------------------------------------------------
+# The layers: what is drawn *over* a portrait, in the box, on a clock of its own
+# ---------------------------------------------------------------------------------------------
+
+# Two things the reading found as separate kinds turned out to be one.  An **overlay** is a small
+# sprite at an anchor in box coordinates on its own clock (Humpty's arc, his wrung hands, Sir
+# Ffuzzy-Logik's eyes); a **palette cycle** is a small sprite at an anchor in box coordinates on
+# its own clock whose variants happen to be recolours (Arms' rim lights, Coconuts' coin, Ffuzzy's
+# eye yellow).  So there is one `LayerData` and the cutter bakes each ramp step as a frame, which
+# keeps palette cycling out of the renderer - a feature exactly three sprites wanted.
+#
+# A cycle is cut as **only the cycled pixels**, everything else transparent, and that is what
+# makes it safe to lay over a portrait that is animating underneath: Ffuzzy's fur dithers over
+# the whole 80x56 and his eyes still land on it correctly.  The mask is taken from the row's
+# first frame, which is exact - measured, the cycled pixels are identical across every pose of
+# every row for all three characters (Arms 212 px rows 44-55, Coconuts 82/109/128, Ffuzzy
+# 71/51/130), so which pose it comes off does not matter.
+
+# Arms' rim lights: one index, `(224,224,0)`, through eight shades, dark to bright.
+ARMS_RAMP = [
+    [(96, 64, 0)], [(128, 64, 0)], [(160, 96, 32)], [(192, 128, 64)],
+    [(224, 160, 96)], [(224, 192, 128)], [(224, 224, 160)], [(224, 224, 224)],
+]
+# Coconuts' coin: the rip labels these by row, and the capture uses every step of both in order.
+COCONUTS_WIN = [
+    [(64, 32, 0), (64, 32, 0)], [(128, 64, 0), (128, 64, 0)],
+    [(160, 96, 32), (160, 96, 32)], [(160, 96, 32), (192, 128, 64)],
+    [(192, 128, 64), (224, 160, 96)], [(224, 160, 96), (224, 192, 128)],
+    [(224, 192, 128), (224, 224, 160)], [(224, 224, 160), (224, 224, 224)],
+]
+COCONUTS_LOSE = [
+    [(224, 192, 128), (224, 224, 224)], [(160, 96, 64), (192, 128, 96)],
+    [(64, 32, 0), (64, 32, 0)], [(224, 0, 0), (224, 0, 0)],
+    [(128, 0, 0), (128, 0, 0)], [(32, 0, 0), (32, 0, 0)],
+]
+# Ffuzzy's eye yellow, whose base pair is step 4 of its own ramp - the eyes pulse *about* their
+# rest colour rather than away from it.
+FFUZZY_RAMP = [
+    [(96, 96, 0), (64, 32, 0)], [(128, 128, 0), (96, 64, 0)], [(160, 160, 0), (128, 96, 0)],
+    [(192, 192, 0), (160, 128, 0)], [(224, 224, 64), (192, 160, 32)],
+]
+
+# A ping-pong is written out rather than declared, for the same reason a portrait's is: the
+# engine's `YoYo` repeats each end (`0 1 2 2 1 0`) and every ping-pong measured off the game
+# holds each end once.
+def pong(n):
+    return list(range(n)) + list(range(n - 2, 0, -1))
+
+
+# One entry per layer, in draw order.  `play` is the frame order per row and `[]` means the layer
+# is not drawn on that row at all; `timing` is (kind, seconds a pass, seconds an action frame is
+# held) exactly as `TIMING` is.
+LAYERS = {
+    "arms": [
+        dict(
+            what="rim lights",
+            cycle=[(224, 224, 0)], ramp=ARMS_RAMP, bbox=(0, 44, 80, 12),
+            # they *breathe* while nothing is happening and *spin* once the match is going
+            # somewhere, five times faster and one way
+            play={"idle": pong(8)[::-1], "winning": [7, 6, 5, 4, 3, 2, 1, 0],
+                  "losing": [7, 6, 5, 4, 3, 2, 1, 0], "defeat": []},
+            timing={"idle": ("linear", 1.65, None), "winning": ("linear", 0.33, None),
+                    "losing": ("linear", 0.32, None), "defeat": None},
+        ),
+    ],
+    "coconuts": [
+        dict(
+            what="coin",
+            cycle=[(224, 128, 0), (224, 192, 96)], ramp=None, bbox=(44, 0, 17, 12),
+            # winning flares white and ping-pongs; losing flushes red and **snaps back**, which
+            # is the effect and not an artefact of it, so it must not be ping-ponged
+            ramps={"winning": COCONUTS_WIN, "losing": COCONUTS_LOSE},
+            play={"idle": [], "winning": pong(8), "losing": [0, 1, 2, 3, 4, 5], "defeat": []},
+            timing={"idle": None, "winning": ("linear", 0.601, None),
+                    "losing": ("linear", 0.400, None), "defeat": None},
+        ),
+    ],
+    "ffuzzy": [
+        dict(
+            what="eye yellow",
+            cycle=[(192, 192, 0), (160, 128, 0)], ramp=FFUZZY_RAMP, bbox=(25, 16, 25, 15),
+            # off on losing, where the blink below has the eyes instead: the two would fight
+            # over the same nine pixels and the blink is the one a viewer sees
+            play={"idle": pong(5), "winning": pong(5), "losing": [], "defeat": pong(5)},
+            timing={"idle": ("linear", 1.2, None), "winning": ("linear", 0.518, None),
+                    "losing": None, "defeat": ("linear", 1.2, None)},
+        ),
+        dict(
+            what="eyes",
+            loose=[(734, 614, 32, 24), (767, 614, 32, 24), (800, 614, 32, 24)],
+            anchors=[(24, 8)],
+            # wide, narrowed, shut - and only when he is losing, which is the one row his eyes
+            # ever close on.  Cut action first and rest last, so the pause holds them open.
+            play={"idle": [], "winning": [], "losing": [1, 2, 1, 0], "defeat": []},
+            timing={"idle": None, "winning": None,
+                    "losing": ("lwp", 1.2, 0.067), "defeat": None},
+        ),
+    ],
+    "humpty": [
+        dict(
+            what="arc",
+            loose=[(655, 14, 24, 8), (655, 23, 24, 8)], blanks=1,
+            # it does not travel: it appears at one of four slots on an ~8 px pitch across the
+            # gap between his antenna balls, flashes for a frame or two, and goes
+            anchors=[(17, 5), (25, 5), (33, 6), (41, 6)], wander=0.55,
+            play={"idle": [0, 1, 2], "winning": [], "losing": [], "defeat": []},
+            timing={"idle": ("lwp", 0.55, 0.033), "winning": None,
+                    "losing": None, "defeat": None},
+        ),
+        dict(
+            what="wrung hands",
+            loose=[(736, 128, 24, 16), (736, 145, 24, 16), (736, 162, 24, 16)],
+            anchors=[(18, 24), (18, 27), (50, 32), (56, 34), (57, 27), (63, 31)], wander=0.14,
+            play={"idle": [], "winning": [], "losing": [0, 1, 2], "defeat": []},
+            timing={"idle": None, "winning": None,
+                    "losing": ("linear", 0.42, None), "defeat": None},
+        ),
+    ],
+}
+
+# ---------------------------------------------------------------------------------------------
+# The emitters: what is thrown *off* a character, which leaves the box and is not clipped to it
+# ---------------------------------------------------------------------------------------------
+
+# On the Genesis these cross the stone of the centre column and go on over the playfield, so they
+# are drawn on the window rather than into the panel - the same seam `animate/debris.rs` uses.
+# `speed` is box pixels an axis per 60 Hz frame, which is the unit every capture was measured in.
+
+DIAG = 0.7071
+UP_L, UP_R, DOWN_L, DOWN_R = (-DIAG, -DIAG), (DIAG, -DIAG), (-DIAG, DIAG), (DIAG, DIAG)
+
+EMITTERS = {
+    "frankly": [
+        dict(
+            what="antenna sparks",
+            loose=[(408, 71, 8, 16), (417, 71, 8, 16), (426, 71, 8, 16), (435, 71, 8, 16)],
+            # each ball throws three, and each **omits the diagonal that would go into his
+            # body** - read off the capture by back-projecting the six tracks onto the balls
+            # the two antenna balls, found as the gold blobs of his winning frame at box
+            # (5.8, 14.8) and (77.0, 15.4) - and confirmed by back-projecting the six tracks,
+            # which meet them.  They live about 40 box pixels of travel, some 17 frames.
+            sources=[((6.0, 15.0), [UP_L, UP_R, DOWN_L]),
+                     ((77.0, 15.0), [UP_R, UP_L, DOWN_R])],
+            speed=1.8, life=0.28, fade_last=0.35, fps=14,
+            trigger={"winning": ("every", 0.70)},
+        ),
+    ],
+    "humpty": [
+        dict(
+            what="antenna bolts",
+            loose=[(817, 71, 8, 16), (826, 71, 8, 16), (835, 71, 8, 16)],
+            # his antenna tips **where they are drawn in**, which is the gold of winning
+            # frame 1 at box (28.5, 7.5) and (50.5, 7.5)
+            sources=[((28.5, 7.5), [UP_L]), ((50.5, 7.5), [UP_R])],
+            speed=2.2, life=0.10, fade_last=0.3, fps=30,
+            # not a clock of its own: they go **at the moment the antennae are drawn in**,
+            # which is play frames 0 and 6 of a gesture his winning row runs twice
+            trigger={"winning": ("frames", (0, 6))},
+        ),
+    ],
+}
+
+# ---------------------------------------------------------------------------------------------
+# The sweat, which belongs to nobody and is written into every character's png at the same place
+# ---------------------------------------------------------------------------------------------
+
+# It is not on any sheet and it is not anybody's art: six characters sweat identically, none of
+# their blocks carries a drop, and the same character sweats in one clip and not another.  So it
+# is authored here from what the captures measure, and cut once for the whole cast.
+#
+# Measured off `frankly-losing-and-game-over.mp4`: 518 drops registered on their own centres and
+# taken at the 80th percentile give a blob about 2x3 box pixels with a light core, on a body
+# whose blue is always the strongest channel; quantised back onto the Genesis's own 32-steps
+# that is the two colours below.  It leaves the upper corners of the head - first seen at box
+# (7, 18) on the left and (73, 16) on the right - and travels up and outward at 1.0-1.4 box
+# pixels an axis a frame, which is what the velocity of 482 frame-to-frame links comes to.
+SWEAT_BODY = (64, 128, 224)
+SWEAT_CORE = (160, 224, 224)
+SWEAT_BOX = 8
+# a round 4x5 drop, hanging: `#` body, `o` core
+SWEAT_ART = [
+    " ## ",
+    "#oo#",
+    "#oo#",
+    "#### ",
+    " ## ",
+]
+SWEAT_SOURCES = [((10.0, 17.0), [UP_L, (-0.45, -0.89)]),
+                 ((70.0, 17.0), [UP_R, (0.45, -0.89)])]
+# above this much of the board filled, and at this many a second when it is completely full.
+# Higher than `DANGER_ENTER`, because the sweat comes on *later* than the losing face does -
+# Grounder holds the losing face for a whole clip with a low stack and sweats nothing.
+#
+# It runs on the **losing row only** (Alex, 2026-08-30).  So it is gated twice over: the state
+# machine says whether a character is worried at all, and the dial says how much - which is why
+# a losing face with a low stack still throws nothing.  A character who is winning is not
+# sweating however full their board is, and a buried one has stopped.
+SWEAT_ABOVE = 0.55
+SWEAT_RATE = 10.0
+SWEAT_SPEED = 1.2
+SWEAT_LIFE = 0.60
+
+
+def sweat_frame():
+    """the shared drop, drawn rather than cut: no rip carries one."""
+    a = np.zeros((SWEAT_BOX, SWEAT_BOX, 4), np.uint8)
+    oy = (SWEAT_BOX - len(SWEAT_ART)) // 2
+    ox = (SWEAT_BOX - max(len(r) for r in SWEAT_ART)) // 2
+    for y, line in enumerate(SWEAT_ART):
+        for x, ch in enumerate(line):
+            if ch == "#":
+                a[oy + y, ox + x] = (*SWEAT_BODY, 255)
+            elif ch == "o":
+                a[oy + y, ox + x] = (*SWEAT_CORE, 255)
+    return a
+
+
+def loose_frame(rect):
+    """one loose sprite off the sheet, keyed on **both** backdrops.
+
+    A loose sprite is drawn on the navy the portraits stand on, like everything else - but
+    Humpty's wrung hands also carry blocks of the ripper's own teal *inside* their rect, which
+    are holes in the sprite rather than art.  So both key out, and checked by eye across all
+    fifteen: nothing of anybody's own goes with them.
+    """
+    x, y, w, h = rect
+    frame = sheet()[y : y + h, x : x + w].astype(int)
+    rgb = frame.astype(np.uint8)
+    hole = (np.abs(frame - np.array(KEY)).sum(-1) <= 6) | (
+        np.abs(frame - np.array(NAVY)).sum(-1) <= 6
+    )
+    return np.dstack([rgb, np.where(hole, 0, 255).astype(np.uint8)])
+
+
+def cycle_mask(name, row, cycled):
+    """which pixels of a row cycle, as the **union over every frame of that row**.
+
+    The union and not frame 0's, which is what an earlier pass took and what put a glitch in
+    Arms' idle lights: the ripper caught his idle frame 0 *mid-cycle*, so only 101 of his 212
+    rim lights are the cycled `(224,224,0)` there and the other 117 are four other shades.  A
+    mask off that frame covers half the ring, the layer repaints half the lights and the
+    portrait keeps the rest at whatever the ripper caught - which reads as a broken chase
+    rather than a pulse.  His winning and losing frame 0 both carry the full 212, which is why
+    those two rows were right all along.
+
+    Within a row and not across the sheet: Coconuts genuinely draws a different coin per row
+    (82, 109 and 128 px), so a union over all four would paint pixels a row never draws.
+    """
+    # over the frames the row **plays**, not every frame on the sheet: a sheet frame a row
+    # never draws can be at any cycle phase at all, and Arms' idle frame 0 is
+    frames = [cut(name)[row][i] for i in set(PLAY[name][ROWS.index(row)])]
+    union = None
+    for frame in frames:
+        mask = np.zeros(frame.shape[:2], bool)
+        for source in cycled:
+            mask |= np.abs(frame.astype(int) - np.array(source)).sum(-1) == 0
+        if union is not None and mask.sum() != union.sum():
+            # every played frame of a row must cycle the same pixels, or the layer covers
+            # some lights and leaves the rest wherever the ripper caught them.  This is the
+            # check that Arms' idle row needed and did not have.
+            raise SystemExit(
+                "%s's %s row disagrees on which pixels cycle (%d px against %d): the ripper "
+                "caught two of its frames at different points of the cycle, so one of them is "
+                "the wrong frame to be playing" % (name, row, mask.sum(), union.sum())
+            )
+        union = mask if union is None else (union | mask)
+    return union
+
+
+def cycle_frame(name, row, cycled, replacement, bbox):
+    """the cycled pixels of a row's own art, recoloured, and nothing else.
+
+    Everything but those pixels is transparent, which is what lets this be laid over a portrait
+    that is animating underneath it.
+    """
+    x, y, w, h = bbox
+    union = cycle_mask(name, row, cycled)[y : y + h, x : x + w]
+    out = np.zeros((h, w, 4), np.uint8)
+    # one flat colour over the whole mask: both colours of a pair move together, which was
+    # measured on Coconuts and again on Arms, so this is a pulse and never a chase
+    rest = cut(name)[row][PLAY[name][ROWS.index(row)][-1]].astype(int)
+    for source, target in zip(cycled, replacement):
+        mask = (np.abs(rest - np.array(source)).sum(-1) == 0)[y : y + h, x : x + w]
+        out[mask] = (*target, 255)
+    # ... and anything the ripper caught mid-cycle takes the last of the pair, so no light is
+    # left showing whatever shade the portrait happened to be drawn at
+    stray = union & (out[..., 3] == 0)
+    out[stray] = (*replacement[-1], 255)
+    return out
+
+
+
+def keyed(frame):
+    """the frame as RGBA, with the ripper's navy key punched out.
+
+    Keying by colour is right for all thirteen: the key appears *enclosed* inside several of
+    them - most in Dr. Robotnik, whose 48 pixels are the gaps between his moustache strands -
+    and every one of those is wall that should show through.  Checked by eye, keyed, character
+    by character; nothing of anybody's own art is this colour.
+    """
+    rgb = frame.astype(np.uint8)
+    alpha = np.where(np.abs(frame.astype(int) - np.array(NAVY)).sum(-1) <= 6, 0, 255)
+    return np.dstack([rgb, alpha.astype(np.uint8)])
+
+
+# what a character is called on screen, since the sheet is keyed on short names
+DISPLAY = {
+    "frankly": "Frankly", "arms": "Arms", "humpty": "Humpty", "coconuts": "Coconuts",
+    "davy": "Davy Sprocket", "skweel": "Skweel", "dynamight": "Dynamight",
+    "grounder": "Grounder", "spike": "Spike", "ffuzzy": "Sir Ffuzzy-Logik",
+    "dragon": "Dragon Breath", "scratch": "Scratch", "robotnik": "Dr. Robotnik",
+}
+
+SWEAT_ORIGIN = (0, 4 * ROW_PITCH)
+
+
+def anim_type(kind, n, seconds, dwell):
+    """one `FrameAnimationType`, from a frame count and the two measured numbers.
+
+    Nothing here is a `YoYo`, and that is deliberate.  The engine's yo-yo runs 0..n and then
+    back down, which **repeats each end** - `0 1 2 2 1 0` - where every ping-pong measured off
+    the game holds each end once, `0 1 2 1`.  So a ping-pong is cut unrolled and played as a
+    plain `Linear`, which is both the right shape and one fewer thing to reason about.
+    """
+    if kind == "static":
+        return "FrameAnimationType::Static"
+    if kind == "lwp":
+        # every frame but the last is the action; the last is the rest, held.
+        # `LinearWithPause` gives that last frame a whole frame of its own *and then* the
+        # pause, so the pass is n/fps + pause and not (n-1)/fps + pause - measured against the
+        # engine rather than read off it.
+        fps = max(1, round(1.0 / dwell))
+        pause = max(0.0, seconds - n / fps)
+        return (
+            "FrameAnimationType::LinearWithPause {"
+            " fps: %d, pause_for: Duration::from_millis(%d), resume_from_frame: 0 }"
+        ) % (fps, round(pause * 1000))
+    return "FrameAnimationType::Linear { fps: %d }" % max(1, round(n / seconds))
+
+
+def layer_frames(name, layer):
+    """every frame of one layer, per row, as RGBA - `None` where the row does not draw it."""
+    out = {}
+    for row in ROWS:
+        play = layer["play"][row]
+        if not play:
+            out[row] = []
+            continue
+        if "loose" in layer:
+            blank = np.zeros((layer["loose"][0][3], layer["loose"][0][2], 4), np.uint8)
+            pool = [loose_frame(r) for r in layer["loose"]] + [blank] * layer.get("blanks", 0)
+        else:
+            ramp = layer.get("ramps", {}).get(row) or layer["ramp"]
+            pool = [
+                cycle_frame(name, row, layer["cycle"], step, layer["bbox"]) for step in ramp
+            ]
+        out[row] = [pool[i] for i in play]
+    return out
+
+
+def cut_character(name, out_dir):
+    """write one png of a character: four portrait rows in play order, then the sweat, then
+    every layer and emitter this one has - all keyed, all frames edge to edge."""
+    frames = cut(name)
+    plays = PLAY[name]
+    layers = LAYERS.get(name, [])
+    emitters = EMITTERS.get(name, [])
+
+    blocks = []  # (origin, size, per-row strips) for the layers, and (origin, size, strip)
+    layer_art = [layer_frames(name, l) for l in layers]
+    y = SWEAT_ORIGIN[1] + SWEAT_BOX + 1
+    layer_origins = []
+    for art in layer_art:
+        size = next((f.shape[1::-1] for row in ROWS for f in art[row]), (1, 1))
+        layer_origins.append(((0, y), size))
+        y += 4 * (size[1] + 1)
+    emitter_origins = []
+    for emitter in emitters:
+        w, h = emitter["loose"][0][2], emitter["loose"][0][3]
+        emitter_origins.append(((0, y), (w, h)))
+        y += h + 1
+
+    width = max([len(p) * FRAME_W for p in plays]
+                + [len(art[row]) * size[0]
+                   for art, (_, size) in zip(layer_art, layer_origins) for row in ROWS]
+                + [len(e["loose"]) * size[0] for e, (_, size) in zip(emitters, emitter_origins)]
+                + [SWEAT_BOX])
+    out = np.zeros((y - 1, width, 4), np.uint8)
+
+    for r, (row, play) in enumerate(zip(ROWS, plays)):
+        for i, index in enumerate(play):
+            out[r * ROW_PITCH : r * ROW_PITCH + FRAME_H,
+                i * FRAME_W : (i + 1) * FRAME_W] = keyed(frames[row][index])
+    ox, oy = SWEAT_ORIGIN
+    out[oy : oy + SWEAT_BOX, ox : ox + SWEAT_BOX] = sweat_frame()
+    for art, ((lx, ly), (w, h)) in zip(layer_art, layer_origins):
+        for r, row in enumerate(ROWS):
+            for i, f in enumerate(art[row]):
+                out[ly + r * (h + 1) : ly + r * (h + 1) + h, lx + i * w : lx + (i + 1) * w] = f
+    for emitter, ((ex, ey), (w, h)) in zip(emitters, emitter_origins):
+        for i, rect in enumerate(emitter["loose"]):
+            out[ey : ey + h, ex + i * w : ex + (i + 1) * w] = loose_frame(rect)
+
+    path = os.path.join(out_dir, f"{name}.png")
+    Image.fromarray(out).save(path)
+    counts = [len(p) for p in plays]
+    extras = sum(len(art[row]) for art in layer_art for row in ROWS)
+    extras += sum(len(e["loose"]) for e in emitters) + 1
+    return path, out.shape, counts, extras, layer_origins, emitter_origins
+
+
+def _rust_rows(name):
+    parts = []
+    for r, row in enumerate(ROWS):
+        n = len(PLAY[name][r])
+        parts.append("            (%d, %s)," % (n, anim_type(*TIMING[name][r][:1], n, *TIMING[name][r][1:])))
+    return chr(10).join(parts)
+
+
+def _rust_layers(name, layer_origins):
+    layers = LAYERS.get(name, [])
+    if not layers:
+        return "            layers: &[],"
+    lines = ["            layers: &["]
+    for layer, ((lx, ly), (w, h)) in zip(layers, layer_origins):
+        lines.append("                // %s" % layer["what"])
+        lines.append("                LayerData {")
+        lines.append("                    origin: (%d, %d)," % (lx, ly))
+        lines.append("                    size: (%d, %d)," % (w, h))
+        lines.append("                    row_pitch: %d," % (h + 1))
+        lines.append("                    states: [")
+        for row in ROWS:
+            n = len(layer["play"][row])
+            timing = layer["timing"][row]
+            t = anim_type(*timing[:1], n, *timing[1:]) if timing else "FrameAnimationType::Static"
+            lines.append("                        (%d, %s)," % (n, t))
+        lines.append("                    ],")
+        anchors = layer.get("anchors", [(layer["bbox"][0], layer["bbox"][1])] if "bbox" in layer else [(0, 0)])
+        lines.append("                    anchors: &[%s]," % ", ".join("(%d, %d)" % a for a in anchors))
+        wander = layer.get("wander")
+        lines.append("                    wander: %s," % (
+            "Some(Duration::from_millis(%d))" % round(wander * 1000) if wander else "None"))
+        lines.append("                },")
+    lines.append("            ],")
+    return chr(10).join(lines)
+
+
+def _rust_sources(sources):
+    out = []
+    for at, dirs in sources:
+        out.append(
+            "                        EmitterSource { at: (%.1f, %.1f), directions: &[%s] },"
+            % (at[0], at[1], ", ".join("(%.4f, %.4f)" % d for d in dirs))
+        )
+    return chr(10).join(out)
+
+
+def _rust_emitters(name, emitter_origins):
+    emitters = EMITTERS.get(name, [])
+    if not emitters:
+        return "            emitters: &[],"
+    lines = ["            emitters: &["]
+    for emitter, ((ex, ey), (w, h)) in zip(emitters, emitter_origins):
+        trigger = emitter["trigger"]
+        triggers = []
+        for row in ROWS:
+            t = trigger.get(row)
+            if t is None:
+                triggers.append("None")
+            elif t[0] == "every":
+                triggers.append("Some(EmitterTrigger::Every(Duration::from_millis(%d)))"
+                                % round(t[1] * 1000))
+            else:
+                triggers.append("Some(EmitterTrigger::OnFrame(&[%s]))"
+                                % ", ".join(str(f) for f in t[1]))
+        lines.append("                // %s" % emitter["what"])
+        lines.append("                EmitterData {")
+        lines.append("                    origin: (%d, %d)," % (ex, ey))
+        lines.append("                    size: (%d, %d)," % (w, h))
+        lines.append("                    frames: %d," % len(emitter["loose"]))
+        lines.append("                    fps: %d," % emitter["fps"])
+        lines.append("                    triggers: [")
+        for t in triggers:
+            lines.append("                        %s," % t)
+        lines.append("                    ],")
+        lines.append("                    sources: &[")
+        lines.append(_rust_sources(emitter["sources"]))
+        lines.append("                    ],")
+        lines.append("                    speed: %.1f," % emitter["speed"])
+        lines.append("                    life: Duration::from_millis(%d)," % round(emitter["life"] * 1000))
+        lines.append("                    fade_last: %.2f," % emitter["fade_last"])
+        lines.append("                },")
+    lines.append("            ],")
+    return chr(10).join(lines)
+
+
+def rust_sweat():
+    """the cast-wide emitter, whose art every character's png carries at the same place"""
+    return chr(10).join([
+        "    sweat: Some(EmitterData {",
+        "        origin: (%d, %d)," % SWEAT_ORIGIN,
+        "        size: (%d, %d)," % (SWEAT_BOX, SWEAT_BOX),
+        "        frames: 1,",
+        "        fps: 0,",
+        "        triggers: [",
+        "            None,",
+        "            None,",
+        "            Some(SWEAT_TRIGGER),",
+        "            None,",
+        "        ],",
+        "        sources: &[",
+        _rust_sources(SWEAT_SOURCES),
+        "        ],",
+        "        speed: %.1f," % SWEAT_SPEED,
+        "        life: Duration::from_millis(%d)," % round(SWEAT_LIFE * 1000),
+        "        fade_last: 0.40,",
+        "    }),",
+    ])
+
+
+def rust_trigger():
+    return ("const SWEAT_TRIGGER: EmitterTrigger = EmitterTrigger::Danger { above: %.2f, "
+            "per_second: %.1f };") % (SWEAT_ABOVE, SWEAT_RATE)
+
+
+def rust_table(geometry):
+    """the cast table to paste into puyo-rusto/src/theme/genesis/mugshots.rs"""
+    lines = []
+    for name in CAST:
+        layer_origins, emitter_origins = geometry[name]
+        lines.append(chr(10).join([
+            "        // %s" % name,
+            "        CharacterData {",
+            '            name: "%s",' % DISPLAY[name],
+            "            file: sprites::%s," % name.upper(),
+            "            states: [",
+            _rust_rows(name),
+            "            ],",
+            _rust_layers(name, layer_origins),
+            _rust_emitters(name, emitter_origins),
+            "        },",
+        ]))
+    return chr(10).join(lines)
+
+
+def cut_all(out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    total = 0
+    extra = 0
+    geometry = {}
+    for name in CAST:
+        path, shape, counts, extras, layer_origins, emitter_origins = cut_character(name, out_dir)
+        geometry[name] = (layer_origins, emitter_origins)
+        total += sum(counts)
+        extra += extras
+        print("  %-10s %-46s %dx%d  rows %s  extras %d" % (
+            name, os.path.relpath(path), shape[1], shape[0], counts, extras))
+    print()
+    print("%d portrait frames over %d characters (127 on the sheet, less the 11 fades)"
+          % (total, len(CAST)))
+    print("%d layer, emitter and sweat frames beside them" % extra)
+    return geometry
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 3 or sys.argv[1] not in ("prep", "strips"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("prep", "strips", "cut"):
         print(__doc__)
         sys.exit(2)
-    command, who = sys.argv[1], sys.argv[2]
-    if who not in CAST:
+    command = sys.argv[1]
+    if command == "cut":
+        out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
+            HERE, "..", "src", "theme", "genesis", "mugshots")
+        geometry = cut_all(out)
+        print()
+        print("// paste over CAST in puyo-rusto/src/theme/genesis/mugshots.rs")
+        print(rust_trigger())
+        print(rust_table(geometry))
+        print()
+        print("// ... and over the sweat of CharacterSetData")
+        print(rust_sweat())
+        sys.exit(0)
+    if len(sys.argv) < 3 or sys.argv[2] not in CAST:
         print("characters:", ", ".join(sorted(CAST)))
         sys.exit(2)
+    who = sys.argv[2]
     if command == "prep":
         prep(who)
     else:

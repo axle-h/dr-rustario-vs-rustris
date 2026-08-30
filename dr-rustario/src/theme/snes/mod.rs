@@ -206,6 +206,8 @@ pub fn snes_theme<'a>(
             max: 2,
             scale: Some(0.82),
         },
+        // no cast on this theme; see `engine::render::character`
+        characters: None,
         mascot: Some(MascotLayout {
             hand_point: Point::new(103, 22),
             spawn_point: Point::new(99, 29),

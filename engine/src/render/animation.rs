@@ -249,6 +249,50 @@ impl<'a> AnimationSpriteSheet<'a> {
         result
     }
 
+    /// one frame, optionally mirrored - so that in a two player match a character beside one
+    /// board can face the other one.
+    ///
+    /// Nothing else in the compendium flips a sprite: every other `copy_ex` here passes
+    /// `false, false`.
+    pub fn draw_frame_scaled_flipped(
+        &self,
+        canvas: &mut WindowCanvas,
+        dest: Rect,
+        frame: usize,
+        flip_horizontal: bool,
+    ) -> Result<(), String> {
+        let snip = self.frames[frame];
+        canvas.copy_ex(
+            &self.texture.borrow(),
+            snip,
+            dest,
+            0.0,
+            None,
+            flip_horizontal,
+            false,
+        )
+    }
+
+    /// A flipped frame at an alpha, which is what a particle fading out of the air wants.
+    ///
+    /// The alpha is a mutation behind a `&self` draw, which is why the texture is in a
+    /// `RefCell` at all - the same trick the popup font's tint and the block atlas's fade use.
+    pub fn draw_frame_scaled_faded(
+        &self,
+        canvas: &mut WindowCanvas,
+        dest: Rect,
+        frame: usize,
+        flip_horizontal: bool,
+        alpha: u8,
+    ) -> Result<(), String> {
+        let snip = self.frames[frame];
+        let mut texture = self.texture.borrow_mut();
+        texture.set_alpha_mod(alpha);
+        let result = canvas.copy_ex(&texture, snip, dest, 0.0, None, flip_horizontal, false);
+        texture.set_alpha_mod(0xff);
+        result
+    }
+
     pub fn draw_frame_ex(
         &self,
         canvas: &mut WindowCanvas,

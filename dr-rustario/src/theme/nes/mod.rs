@@ -211,6 +211,8 @@ pub fn nes_theme<'a>(
             max: 2,
             scale: Some(0.75),
         },
+        // no cast on this theme; see `engine::render::character`
+        characters: None,
         mascot: Some(MascotLayout {
             hand_point: Point::new(102, 30),
             spawn_point: Point::new(97, 37),

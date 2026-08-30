@@ -223,6 +223,8 @@ pub fn snes_theme<'a>(
             size: TRAY_ICON,
             max: COLUMNS,
         }),
+        // no cast on this theme; see `engine::render::character`
+        characters: None,
         mascot: None,
         mascot_animations: None,
         spawn_arc: None,

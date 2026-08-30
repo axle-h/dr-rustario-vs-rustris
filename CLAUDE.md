@@ -245,8 +245,8 @@ pixels of open well under it and looked like it had stopped a row short; `genesi
 composites the two, which is the fix and is also what hands the panel its `NEXT` boxes. Those
 boxes are holes in the frame plane, so their rects are exact and `genesis/mod.rs` names them
 rather than guessing: a pair per `NEXT` box (the game's own and its opponent's - a panel here
-belongs to one player, so the queue runs through both) and the nuisance tray in the mugshot box,
-which is the one piece of furniture this game has no use for. Kirby's Avalanche wanted the same
+belongs to one player, so the queue runs through both) and the mugshot box, which holds the
+character. Kirby's Avalanche wanted the same
 treatment and a pixel besides - a blob's eyes sit three rows into its cell and in a full field
 they land on 99, 115 ... 195, so the field starts at 16 and not the 15 the layer render read.
 Its two name plates are painted out - they label one queue per player and this panel has both
@@ -371,7 +371,57 @@ since the tray is drawn in sprites and the frame plane carries none of it: the i
 source pixels, inset two from the well's left edge, four rows down. That band is
 `TOP_PADDING`, and a point in the padded background is a point on the Genesis screen, so
 placing it there is only the numbers. The mugshot box, where the tray used to be under a
-comment saying the Genesis never drew one, is free for phase 6's character.
+comment saying the Genesis never drew one, holds the character.
+
+**A character stands in the mugshot box and answers how that player's match is going.**
+`engine/animate/character.rs` is the state machine - four states (`Idle`, `Winning`, `Losing`,
+`Defeat`) with a minimum dwell, a linger past the last clear and two danger thresholds with a
+gap between them, so a stack sitting on one does not strobe - and `engine/render/character.rs`
+is the art. It is game-neutral and nothing in it knows what game is being played; `genesis` is
+the only theme with a cast so far. It is **built lazily**: thirteen faces and at most two are
+ever on screen, so `CharacterSet` keeps the `include_bytes!` and turns one into a texture only
+when it is *dealt*, out of a `RefCell<HashMap>` behind the `&self` draw - which is the only
+lazily built theme art here, and one png per character rather than one sheet for the cast is
+what makes it worth anything. Who a player gets is **dealt off the match seed**, the way
+`PuyoSkin::deal` is, and the two players of a two player game never get the same face; the one
+on the left is drawn **mirrored**, so each faces the other player's board. Nothing else in the
+compendium flips a sprite.
+
+Over the portrait go **layers**, and an overlay and a palette cycle turned out to be the same
+thing: a small sprite, at an anchor in box coordinates, on a clock of its own, whose variants
+merely happen to be recolours. So the cutter bakes each ramp step as a frame and palette
+cycling stays out of the renderer. A layer has **a strip per state, like the portrait**, and a
+state with zero frames is a layer that is not drawn there at all - which is Coconuts' coin on
+idle and Sir Ffuzzy-Logik's eyes off every row but his losing one; and a cycle is cut as
+**only the cycled pixels**, which is what lets it lie over a portrait that is animating
+underneath. A layer may also *flicker between anchors* rather than travel, which is what
+Humpty's arc and his wrung hands do, and it never flashes twice in the same slot.
+
+Off it go **emitters**, which leave the box and are **not clipped to it** - on the Genesis a
+spark crosses the stone of the centre column and goes on over the playfield. They are drawn on
+the window by `ThemeContext::draw_character_particles`, a near-copy of `draw_debris` anchored
+on the panel rather than on the board. Three triggers: `Every` (Frankly's sparks, a burst of
+six on a clock), `OnFrame` (Humpty's bolts, as his antennae are drawn in - a *slice* of frames,
+since his winning row runs the gesture twice) and `Danger` (the **sweat**). A source carries
+its own directions, because Frankly's two antenna balls each omit the diagonal that would go
+into his body. Speeds are in box pixels an axis per 60 Hz frame, which is the unit every
+capture was measured in.
+
+**The sweat is nobody's art.** Six characters throw identical drops and no sheet in any rip
+carries one, so it is authored in the cutter and written into *every* character's png at the
+same place. It is gated **twice over**: it runs on the **losing row only**, and there on a dial
+above 0.55 of the board filled - higher than `DANGER_ENTER`, because the drops come on *later*
+than the face does. Measured: Grounder holds the losing face for a whole capture with a low
+stack and sweats nothing at all. A drop already in the air finishes its flight rather than
+vanishing when the state changes.
+The **danger flash** - the whole sprite plane going white near the top - is measured, written
+up and deliberately not implemented.
+
+`puyo-rusto/art/mugshots.py` cuts all thirteen and **prints the Rust table to paste back**, so
+every strip's geometry is derived from the art rather than typed twice; `cargo run --example
+character_shot` draws the whole cast through all four states to a contact sheet. Every number
+in `theme/genesis/mugshots.rs` is measured off screen captures of the emulated game, written up
+per character in the plan.
 
 Its three symbols are the classic **1 / 6 / 30** (`NuisanceIcon`, decomposed biggest first),
 and the first two are measured off the game: the little eyeless blob for a single and the

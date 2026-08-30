@@ -246,6 +246,21 @@ pub struct ThemeContext<'a> {
     last_clear: Vec<Option<((f64, f64), CellId)>>,
 }
 
+/// Which face a player is dealt out of a cast of `cast`, off one seed.
+///
+/// The step is at least one and less than the cast, so consecutive players can never land on
+/// the same face - which is the property that matters, since a two player match must not put
+/// the same character on both panels. A theme with a cast of one deals it to everybody, which
+/// is what asking a one-character theme for a deal means.
+fn deal_index(seed: u64, player: u32, cast: usize) -> usize {
+    if cast <= 1 {
+        return 0;
+    }
+    let first = (seed % cast as u64) as usize;
+    let step = 1 + ((seed / cast as u64) % (cast as u64 - 1)) as usize;
+    (first + player as usize * step) % cast
+}
+
 impl<'a> ThemeContext<'a> {
     /// one [`PlayerThemes`] per player, indexing into `all_themes`
     pub fn new(
@@ -506,15 +521,121 @@ impl<'a> ThemeContext<'a> {
         }
     }
 
+    /// Deal a player their character, on every theme in the group.
+    ///
+    /// Each theme picks out of its **own** cast with its own size, off one seed, so a theme
+    /// whose cast is a different length needs no coordination - and a playlist swapping a board
+    /// onto this game mid-match hands the player back the face they already had. The two
+    /// players of a two player match are never dealt the same one.
+    ///
+    /// `mirrored` is what makes a character face the other player's board: the cast is drawn
+    /// facing left or head on, so the player on the *left* of the window is the one flipped.
+    pub fn deal_characters(&mut self, seed: u64, players: u32) {
+        for theme in self.themes.iter_mut() {
+            for player in 0..players {
+                let Some((set, _)) = theme.theme.characters.as_ref() else {
+                    continue;
+                };
+                let cast = set.len();
+                if cast == 0 {
+                    continue;
+                }
+                let index = deal_index(seed, player, cast);
+                let Some(meta) = set.meta(index) else {
+                    continue;
+                };
+                // built here rather than on the first draw, so the first frame of a match is
+                // not the one that pays for the texture
+                let _ = set.ensure_built(index);
+                let mirrored = players > 1 && player < players / 2;
+                theme
+                    .animations_mut(player)
+                    .character_mut()
+                    .deal(meta, index, mirrored);
+            }
+        }
+    }
+
+    /// Deal one player one named character, rather than letting the seed choose.
+    ///
+    /// For tests and for `character_shot`, which walks the whole cast: a seed cannot be asked
+    /// for a particular face.
+    pub fn deal_character(&mut self, player: u32, character: usize, mirrored: bool) {
+        for theme in self.themes.iter_mut() {
+            let Some((set, _)) = theme.theme.characters.as_ref() else {
+                continue;
+            };
+            let Some(meta) = set.meta(character) else {
+                continue;
+            };
+            let _ = set.ensure_built(character);
+            theme
+                .animations_mut(player)
+                .character_mut()
+                .deal(meta, character, mirrored);
+        }
+    }
+
+    /// Where a rect of the theme's own source pixels lands in the window for a player.
+    ///
+    /// The panel is drawn into a texture and composited, so a caller that wants to look at one
+    /// piece of furniture - `character_shot` cropping the mugshot box - has to be told where
+    /// that texture ended up.
+    pub fn player_source_rect(&self, player: u32, rect: Rect) -> Rect {
+        let themed = &self.current(player).player_themes[player as usize];
+        self.current(player).scale.scale_and_offset_rect(
+            rect,
+            themed.bg_snip.x(),
+            themed.bg_snip.y(),
+        )
+    }
+
+    /// how many faces the theme a player is on has, so a caller can walk the cast
+    pub fn character_count(&self, player: u32) -> usize {
+        self.current(player)
+            .theme
+            .characters
+            .as_ref()
+            .map(|(set, _)| set.len())
+            .unwrap_or(0)
+    }
+
+    /// what the theme calls the character a player was dealt
+    pub fn character_name(&self, player: u32) -> Option<&'static str> {
+        let (set, _) = self.current(player).theme.characters.as_ref()?;
+        set.name(self.player_animations(player).character().character()?)
+    }
+
+    /// A clear that chained. One pop is not a reaction: it is most clears, several a minute,
+    /// and it sends nothing either - so only a clear the game itself called a combo counts.
+    pub fn animate_character_chain(&mut self, player: u32) {
+        for theme in self.themes.iter_mut() {
+            theme.animations_mut(player).character_mut().chained();
+        }
+    }
+
+    /// The two numbers with no event between them, read every frame: how high this player's
+    /// stack is and whether anything is waiting in their tray.
+    pub fn character_danger(&mut self, player: u32, danger: f64, pending: bool) {
+        for theme in self.themes.iter_mut() {
+            theme
+                .animations_mut(player)
+                .character_mut()
+                .danger(danger, pending);
+        }
+    }
+
     pub fn animate_game_over(&mut self, player: u32) {
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).game_over_mut().game_over();
+            theme.animations_mut(player).character_mut().game_over();
         }
     }
 
     pub fn animate_victory(&mut self, player: u32) {
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).victory_mut().victory();
+            theme.animations_mut(player).character_mut().victory();
         }
     }
 
@@ -862,6 +983,31 @@ impl<'a> ThemeContext<'a> {
         Ok(())
     }
 
+    /// Everything a character has thrown, on the window and clipped to its own player.
+    ///
+    /// Anchored on the **panel** rather than the board, since the box a character stands in is
+    /// panel furniture - which is the only thing this does not share with `draw_debris`. It is
+    /// drawn after it, so a spark crosses a droplet rather than the other way about.
+    pub fn draw_character_particles(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
+        for player in 0..self.players() {
+            let current = self.current(player);
+            let themed = &current.player_themes[player as usize];
+            if themed.animations.character().particles().is_empty() {
+                continue;
+            }
+            canvas.set_clip_rect(current.scale.player_clip(player));
+            let result = current.theme.draw_character_particles(
+                canvas,
+                &themed.animations,
+                &current.scale,
+                Point::new(themed.bg_snip.x(), themed.bg_snip.y()),
+            );
+            canvas.set_clip_rect(None);
+            result?;
+        }
+        Ok(())
+    }
+
     /// Every attack in the air, on the window and **unclipped** - it is the one thing here
     /// that crosses between two players, so it belongs to neither one's area.
     ///
@@ -1012,5 +1158,53 @@ impl<'a> ThemeContext<'a> {
     /// true if any player is on a theme with a particle scene
     pub fn render_scene_particles(&self) -> bool {
         (0..self.players()).any(|player| self.player_renders_scene_particles(player))
+    }
+}
+
+#[cfg(test)]
+mod character_deal_tests {
+    use super::deal_index;
+
+    /// Two players must never be handed the same face; a panel showing the same character as
+    /// the one opposite it reads as a bug even though nothing is broken.
+    #[test]
+    fn two_players_are_never_dealt_the_same_character() {
+        for cast in 2..=13usize {
+            for seed in 0..2000u64 {
+                let a = deal_index(seed, 0, cast);
+                let b = deal_index(seed, 1, cast);
+                assert_ne!(
+                    a, b,
+                    "seed {seed} deals {a} to both players of a cast of {cast}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_deal_is_the_same_every_time_it_is_asked() {
+        for seed in 0..200u64 {
+            assert_eq!(deal_index(seed, 0, 13), deal_index(seed, 0, 13));
+            assert_eq!(deal_index(seed, 1, 13), deal_index(seed, 1, 13));
+        }
+    }
+
+    #[test]
+    fn every_face_of_the_cast_is_reachable() {
+        let mut seen = vec![false; 13];
+        for seed in 0..500u64 {
+            seen[deal_index(seed, 0, 13)] = true;
+        }
+        assert!(
+            seen.iter().all(|s| *s),
+            "some faces are never dealt: {seen:?}"
+        );
+    }
+
+    /// a theme that has only one character hands it to everybody rather than dividing by zero
+    #[test]
+    fn a_cast_of_one_deals_it_to_everybody() {
+        assert_eq!(deal_index(7, 0, 1), 0);
+        assert_eq!(deal_index(7, 1, 1), 0);
     }
 }

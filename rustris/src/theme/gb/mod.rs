@@ -146,6 +146,8 @@ pub fn game_boy_theme<'a>(
             ],
             max_scale: 1.0,
         },
+        // no cast on this theme; see `engine::render::character`
+        characters: None,
         mascot: None,
         mascot_animations: None,
         spawn_arc: None,

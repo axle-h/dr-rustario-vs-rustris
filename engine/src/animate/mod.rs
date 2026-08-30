@@ -5,6 +5,7 @@
 pub mod attack_ball;
 pub mod bounce;
 pub mod cell_idle;
+pub mod character;
 pub mod debris;
 pub mod destroy;
 pub mod event;
@@ -24,6 +25,7 @@ pub mod victory;
 
 use crate::animate::bounce::BounceAnimation;
 use crate::animate::cell_idle::CellIdleAnimation;
+use crate::animate::character::CharacterAnimation;
 use crate::animate::debris::{BurstSpec, DebrisAnimation, DebrisArt, Spread};
 use crate::animate::destroy::{DestroyAnimation, DestroyStyle, PopPhase};
 use crate::animate::event::{AnimationEvent, AnimationType};
@@ -121,6 +123,7 @@ pub struct PlayerAnimations {
     player: u32,
     mascot_idle: Option<FrameAnimation>,
     cell_idle: CellIdleAnimation,
+    character: CharacterAnimation,
     bounce: BounceAnimation,
     debris: DebrisAnimation,
     pop_debris: Option<PopDebris>,
@@ -147,6 +150,7 @@ impl PlayerAnimations {
             player,
             mascot_idle: meta.mascot.map(|m| m.idle()),
             cell_idle: CellIdleAnimation::new(meta.cell_idle_type, &meta.cell_idle),
+            character: CharacterAnimation::new(),
             bounce: BounceAnimation::new(),
             debris: DebrisAnimation::new(),
             pop_debris: meta.pop_debris,
@@ -195,6 +199,7 @@ impl PlayerAnimations {
             mascot.update(delta);
         }
         self.cell_idle.update(delta);
+        self.character.update(delta);
         self.bounce.update(delta);
         self.debris.update(delta);
         self.destroy.update(delta);
@@ -297,6 +302,14 @@ impl PlayerAnimations {
 
     pub fn cell_idle(&self) -> &CellIdleAnimation {
         &self.cell_idle
+    }
+
+    pub fn character(&self) -> &CharacterAnimation {
+        &self.character
+    }
+
+    pub fn character_mut(&mut self) -> &mut CharacterAnimation {
+        &mut self.character
     }
 
     pub fn bounce(&self) -> &BounceAnimation {
