@@ -28,7 +28,8 @@
 //! output: nothing here is used by the game.
 
 use crate::game::ai::evaluator::{self, Scorer, COMPARATIVE};
-use crate::game::ai::features::{BottleAnalysis, BottleFeatures, Grid};
+use crate::game::ai::features::{BottleAnalysis, BottleFeatures, Grid, TOP_ROW_RATE};
+use crate::game::ai::imitation;
 use crate::game::ai::models;
 use crate::game::ai::models::DR_NEURAL_GENOME_SIZE;
 use crate::game::ai::n64::{N64Ai, Params, Situation};
@@ -45,14 +46,6 @@ use std::time::Duration;
 const STEP: Duration = Duration::from_millis(16);
 /// pills without a virus destroyed before a game is called off as going nowhere
 const STALL_PILLS: u32 = 200;
-
-/// how much a block in the top three rows counts against you, by row from the top and column.
-/// The N64's `BadLineRate`, in the bottle's own coordinates.
-const TOP_ROW_RATE: [[f64; 8]; 3] = [
-    [6., 7., 8., 9., 9., 8., 7., 6.],
-    [2., 2., 4., 7., 7., 4., 2., 2.],
-    [1., 1., 2., 4., 4., 2., 1., 1.],
-];
 
 /// what the N64 charges for leaving a block high up, by column. Its `bad_point`.
 const DEAD_POINT: [f64; 8] = [90., 270., 360., 900., 900., 360., 270., 90.];
@@ -217,16 +210,7 @@ fn collect(seeds: u128, level: u32, decision_cap: usize, ablate: bool) -> Corpus
                 }
             }
 
-            for translation in placements[chosen].inputs().translations() {
-                use crate::game::ai::input_sequence::Translation::*;
-                match translation {
-                    Left => game.left(),
-                    Right => game.right(),
-                    RotateClockwise => game.rotate(true),
-                    RotateAnticlockwise => game.rotate(false),
-                    HardDrop => game.hard_drop(),
-                }
-            }
+            imitation::press(&mut game, &placements[chosen]);
             corpus.pills += 1;
             stalled += 1;
 
@@ -280,11 +264,7 @@ fn decision(
 
     // what a scorer of the kind being trained today actually sees when it looks at this pill:
     // one number per placement, and how far apart those numbers are
-    let seen = [
-        Scorer::Network(models::survival_trained()),
-        Scorer::Linear,
-    ]
-    .map(|scorer| {
+    let seen = [Scorer::Network(models::survival_trained()), Scorer::Linear].map(|scorer| {
         let features: Vec<BottleFeatures> =
             scored_placements.iter().map(|p| p.features()).collect();
         let scores = scorer.rank(&features);
@@ -360,24 +340,30 @@ const NOW: usize = BOTTLE_FEATURE_INPUTS;
 #[rustfmt::skip]
 const NOW_NAMES: [&str; BOTTLE_FEATURE_INPUTS] = [
     "delta.viruses", "delta.virus_work", "delta.buried_viruses", "delta.buried_blocks",
-    "delta.max_height", "delta.holes",
+    "delta.max_height", "delta.entrance_height", "delta.holes",
     "delta.virus_3_row", "delta.virus_3_col", "delta.virus_2_row", "delta.virus_2_col",
     "delta.block_3_row", "delta.block_3_col",
     "place.patterns_cleared", "place.touching", "place.reach", "place.open_3", "place.open_2",
     "place.run_viruses", "place.stranded", "place.stranded_on_virus", "place.covers_virus",
     "place.buries_virus", "place.one_away", "place.one_away_virus", "place.chains",
-    "context.viruses", "context.virus_work", "context.max_height", "context.holes",
+    "context.viruses", "context.virus_work", "context.max_height", "context.entrance_height",
+    "context.holes", "context.held",
 ];
 
-/// Everything the N64 charges for by *column* - where in the bottle the weight ended up. The
-/// probe measured this group as worth nothing on top of the rest, so it is not in the model;
-/// it is kept here as the control that says so, and to catch it if that stops being true.
-const EXTRA: [&str; 7] = [
+/// What is measured here and left out of the model, which is the control on the feature set:
+/// if a clone fed these as well plays better, the model is missing something.
+///
+/// It used to hold the entrance height too, on the grounds that the group as a whole added
+/// nothing. That was measured again and was no longer true - a clone fed the group played 508
+/// viruses against 271 without it - and of the seven, the entrance height was far the strongest
+/// on its own. It is a feature now, and with it fed this group is worth *less* than nothing:
+/// the same comparison run again gives 1810 viruses against 2082 without them. That is what
+/// these six are here to keep saying.
+const EXTRA: [&str; 6] = [
     "place_top_weight",
     "place_dead_weight",
     "place_height",
     "top_weight",
-    "entrance_height",
     "bumpiness",
     "imbalance",
 ];
@@ -423,7 +409,7 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
         let (x, y) = (x as usize, y as usize);
         height = height.max((BOTTLE_HEIGHT as usize - y) as f64);
         if y < TOP_ROW_RATE.len() {
-            top_weight += TOP_ROW_RATE[y][x];
+            top_weight += TOP_ROW_RATE[y][x] as f64;
             dead_weight += DEAD_POINT[x] / (y as f64 * 2.0 + 1.0);
         }
     }
@@ -437,7 +423,7 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
                 .iter()
                 .enumerate()
                 .filter(|(x, _)| grid.colour(*x as u32, y as u32).is_some())
-                .map(|(_, rate)| rate)
+                .map(|(_, rate)| *rate as f64)
                 .sum::<f64>()
         })
         .sum();
@@ -453,7 +439,6 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
         dead_weight,
         height,
         stack_weight,
-        heights[3].max(heights[4]) as f64,
         bumpiness,
         imbalance,
     ]
@@ -767,16 +752,7 @@ fn play(
             let Some(chosen) = choose(game.bottle(), &placements) else {
                 break;
             };
-            for translation in placements[chosen].inputs().translations() {
-                use crate::game::ai::input_sequence::Translation::*;
-                match translation {
-                    Left => game.left(),
-                    Right => game.right(),
-                    RotateClockwise => game.rotate(true),
-                    RotateAnticlockwise => game.rotate(false),
-                    HardDrop => game.hard_drop(),
-                }
-            }
+            imitation::press(&mut game, &placements[chosen]);
             played.pills += 1;
             stalled += 1;
 
@@ -1262,6 +1238,51 @@ pub fn probe_main(args: &[String]) -> Result<(), String> {
             100.0 * (score - best_so_far)
         );
         best_so_far = score;
+    }
+
+    // ---- what each input is worth on top of everything else
+    println!("\n== what each input costs to remove ==");
+    println!("the fitted scorer's agreement with every input but this one. A feature that costs");
+    println!("nothing to remove is not earning the thirty two weights the first layer spends on");
+    println!("it, however well it does on its own - what matters is what it adds to the rest.");
+    let fed: Vec<usize> = distinct.iter().copied().filter(|c| *c < NOW).collect();
+    let whole = {
+        let weights = gram.fit(&fed);
+        evaluate(&corpus, &gram, &fed, &weights, None).agreement
+    };
+    println!("  everything: {:.1}%", 100.0 * whole);
+    let mut without: Vec<(f64, usize)> = fed
+        .iter()
+        .map(|dropped| {
+            let rest: Vec<usize> = fed.iter().copied().filter(|c| c != dropped).collect();
+            let weights = gram.fit(&rest);
+            let fit = evaluate(&corpus, &gram, &rest, &weights, None);
+            (whole - fit.agreement, *dropped)
+        })
+        .collect();
+    without.sort_by(|a, b| a.0.total_cmp(&b.0));
+    println!("{:<34} {:>10}", "input", "costs");
+    for (cost, column) in &without {
+        println!("{:<34} {:>+9.1}%", corpus.names[*column], 100.0 * cost);
+    }
+
+    // ---- inputs that nearly say the same thing
+    println!("\n== inputs that nearly say the same thing ==");
+    println!("the most correlated pairs of what the model is fed, over the placements of a pill.");
+    println!("a pair near 1 is two inputs the scorer cannot tell apart, at twice the weights.");
+    let mut pairs: Vec<(f64, usize, usize)> = vec![];
+    for i in fed.iter().copied() {
+        for j in fed.iter().copied().take_while(|j| *j < i) {
+            let correlation = gram.xx[i][j] / (gram.xx[i][i] * gram.xx[j][j]).sqrt().max(1e-12);
+            pairs.push((correlation.abs(), i, j));
+        }
+    }
+    pairs.sort_by(|a, b| b.0.total_cmp(&a.0));
+    for (correlation, i, j) in pairs.iter().take(8) {
+        println!(
+            "{:<32} {:<32} {:.3}",
+            corpus.names[*i], corpus.names[*j], correlation
+        );
     }
 
     // ---- how much the situation matters

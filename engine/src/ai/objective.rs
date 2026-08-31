@@ -11,9 +11,10 @@ pub enum Objective {
     Survival,
     /// maximise the bonus counter within a fixed piece budget, then higher score wins
     Score,
-    /// get as far through the game as you can: play it from the first board to the last and see
-    /// how much of it you clear before you are buried. Nothing here rewards speed, so a model
-    /// trained on it is free to take as long as it needs over a board.
+    /// Get as far through the game as you can: play it from the first board to the last and
+    /// see how much of it you clear. The ordering itself has no speed term, and does not need
+    /// one - the clock is the phase's own piece budget, which *stops* a game rather than
+    /// discounting it, so dawdling costs a candidate the boards it never reached.
     Progress,
 }
 
@@ -108,11 +109,16 @@ impl Phase {
         match self.objective {
             // survived all the way to whichever cap the phase set
             Objective::Survival => !best.game_over() && self.end_game.reached(*best),
-            // A progress run is several whole games at once and the result in front of us is
-            // their average, which cannot say what any one of them did. So the fitness is left
-            // to say whether the best member is out of the run, through the flag it averaged
-            // them into; the phase's caps only stop the individual games.
-            Objective::Progress => !best.game_over(),
+            // A progress run is several whole games at once, scored on how much of the game
+            // they got through inside a fixed budget of pieces, and the result in front of us
+            // is their average. There is no finish line short of the whole game: a budget can
+            // always be spent better, so "not buried" is a floor a decent model clears in its
+            // first generation and says nothing. What is left is the real thing - every board
+            // of the game cleared on every seed, inside the budget - which nothing has ever
+            // done and which the run is nonetheless allowed to end on. Otherwise a progress
+            // phase runs for its `max_generations`. `end_game.pieces` is deliberately not read
+            // here, since reaching the budget is what every candidate does.
+            Objective::Progress => !best.game_over() && best.cleared() >= self.end_game.cleared,
             Objective::Score => false,
         }
     }
@@ -159,21 +165,25 @@ mod tests {
             Objective::Progress.cmp(&further, &stalled),
             Ordering::Greater
         );
-        // taking longer over it costs nothing: there is no speed term
+        // the ordering has no speed term of its own: what makes a progress run a race is the
+        // phase's piece budget, which ends the game rather than being scored against
         let slow = result(0, 60, true, 2).with_pieces(9000, 2);
         assert_eq!(Objective::Progress.cmp(&slow, &further), Ordering::Equal);
     }
 
     #[test]
-    fn a_progress_phase_is_complete_when_the_fitness_says_the_best_is_still_in() {
+    fn a_progress_phase_is_complete_only_when_the_whole_game_has_been_cleared() {
         let mut phase = Phase::survival(u32::MAX);
         phase.objective = Objective::Progress;
         phase.end_game = EndGame::of_cleared(924);
 
-        // the fitness averaged several games and says this candidate finished the run
+        // every board of the game, on every seed, without being buried on any of them
         assert!(phase.is_complete(&result(0, 1166, false, 24)));
-        // ... and this one did not, however far its average got
+        // buried somewhere, however far its average got
         assert!(!phase.is_complete(&result(0, 1800, true, 30)));
+        // still standing at the end of its budget, which nearly everything is: that is the
+        // floor a budgeted run starts from rather than the line it ends on
+        assert!(!phase.is_complete(&result(0, 700, false, 17)));
     }
 
     #[test]

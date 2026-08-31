@@ -9,6 +9,16 @@ pub enum Translation {
     RotateClockwise,
     RotateAnticlockwise,
     HardDrop,
+    /// Not a key at all: **stop pressing and let the pill fall until it comes to rest**, which
+    /// is the first half of a tuck. What follows it is a move made in the lock delay, and it is
+    /// a waypoint rather than a row so that nothing has to be timed - the pill cannot fall past
+    /// where it comes to rest, and if garbage arrives while it falls and it rests somewhere
+    /// else, the plan carries on from wherever it actually is rather than waiting for a row
+    /// that is never coming.
+    Rest,
+    /// swap the pill in play for the one being held. Everything after it in the sequence
+    /// belongs to the pill the swap brings in.
+    Hold,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -74,6 +84,8 @@ impl InputSequence {
                 Translation::RotateClockwise => 2,
                 Translation::RotateAnticlockwise => 3,
                 Translation::HardDrop => 4,
+                Translation::Rest => 5,
+                Translation::Hold => 6,
             })
             .collect()
     }

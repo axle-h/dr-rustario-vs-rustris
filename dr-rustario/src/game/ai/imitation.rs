@@ -21,7 +21,7 @@ use crate::game::ai::evaluator::{self, Scorer};
 use crate::game::ai::features::BottleAnalysis;
 use crate::game::ai::input_sequence::Translation;
 use crate::game::ai::models::{DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
-use crate::game::ai::n64::N64Ai;
+use crate::game::ai::n64::{N64Ai, SKILLS, SKILL_ORDER};
 use crate::game::ai::placement::{Placement, PlacementSearch};
 use crate::game::bottle::Bottle;
 use crate::game::random::{GameRandom, RandomMode};
@@ -141,8 +141,18 @@ impl Lesson {
 }
 
 /// Play the deterministic ai and write down what it thought of every pill it was dealt.
+///
+/// The teacher is the **strongest** of the N64's six rows of weights, which is
+/// `n64::DEFAULT_SKILL` and so [`SKILL_ORDER`]'s last entry. The rows are personalities
+/// rather than a ladder and the order between them is measured, so which row this is moves when
+/// that measurement is run again, and it is sensitive to how a row is scored: ranked on bottles
+/// less four per burial it is row 1, and ranked the way the fitness ranks a model - viruses
+/// inside a pill budget - it is row 4, which clears 18% more of them while burying itself twice
+/// as often. Teaching from anything but the strongest would put a ceiling under the student
+/// that nothing later in training could lift, since the run only ever mutates about where the
+/// teaching left it.
 pub fn lessons(pills: usize) -> Vec<Lesson> {
-    let ai = N64Ai::new();
+    let ai = N64Ai::with_skill(SKILL_ORDER[SKILLS - 1]);
     let mut lessons: Vec<Lesson> = vec![];
 
     for (game, level) in LESSON_LEVELS.iter().cycle().enumerate() {
@@ -220,8 +230,20 @@ pub fn teach(lessons: &[Lesson], epochs: usize, seed: u64) -> DrNeuralNetwork {
             }
         }
     }
+
+    // Every lesson is a placement of the pill in play, so the input that says "this is the
+    // pill you are holding instead" is zero on all of them - and a weight the corpus gives no
+    // gradient for keeps whatever the initial draw left there. Left alone, a taught network
+    // comes out with a strong opinion about swapping that it learned from nothing at all,
+    // which is the whole of why hold used to be a disaster here. Silenced, it is indifferent
+    // to a swap, and the genetic algorithm is free to decide what one is worth.
+    network.silence_input(HELD_INPUT);
     network
 }
+
+/// which input says the candidate is a placement of the held pill, in
+/// [`evaluator::raw_inputs`]'s order: the last of them
+const HELD_INPUT: usize = BOTTLE_FEATURE_INPUTS - 1;
 
 /// How well `network` reproduces the lessons it was held back from.
 pub fn measure(lessons: &[Lesson], network: &DrNeuralNetwork) -> Report {
@@ -315,8 +337,12 @@ pub fn linear_choice(placements: &[Placement]) -> Option<usize> {
     (0..placements.len()).max_by(|a, b| scores[*a].total_cmp(&scores[*b]))
 }
 
-/// press the keys that reach `placement`, all in one frame
-fn press(game: &mut Game, placement: &Placement) {
+/// Press the keys that reach `placement`, all in one frame.
+///
+/// A [`Translation::Rest`] is the one that is not a key: in play the agent waits for gravity to
+/// bring the pill down and then walks it sideways in the lock delay, and here the fall is asked
+/// for outright, which leaves the bottle in exactly the state the search predicted.
+pub(crate) fn press(game: &mut Game, placement: &Placement) {
     for translation in placement.inputs().translations() {
         match translation {
             Translation::Left => game.left(),
@@ -324,6 +350,8 @@ fn press(game: &mut Game, placement: &Placement) {
             Translation::RotateClockwise => game.rotate(true),
             Translation::RotateAnticlockwise => game.rotate(false),
             Translation::HardDrop => game.hard_drop(),
+            Translation::Rest => game.rest(),
+            Translation::Hold => game.hold(),
         }
     }
 }

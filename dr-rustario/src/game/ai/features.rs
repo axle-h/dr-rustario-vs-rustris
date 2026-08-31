@@ -28,6 +28,21 @@ const MATCH_LENGTH: usize = 4;
 /// what a virus no line can reach any more counts as, in blocks of work
 const UNREACHABLE_VIRUS: i32 = 2 * MATCH_LENGTH as i32;
 
+/// The columns a pill spawns over. A bottle is lost when nothing can be dealt into these, which
+/// is why how high they stand is not the same question as how high the bottle stands.
+const ENTRANCE: [usize; 2] = [3, 4];
+
+/// What a block in the top three rows counts against you, by row from the top and then column.
+/// The N64's own `BadLineRate`, in the bottle's coordinates: it is steeply weighted towards the
+/// middle, because that is where a pill has to come in. Nothing in the model reads it - the
+/// probe measured a weighted count of what the stack has put up there as worth nothing once the
+/// entrance height is being fed - and it is here for the probe's control group.
+pub const TOP_ROW_RATE: [[i32; BOTTLE_WIDTH as usize]; 3] = [
+    [6, 7, 8, 9, 9, 8, 7, 6],
+    [2, 2, 4, 7, 7, 4, 2, 2],
+    [1, 1, 2, 4, 4, 2, 1, 1],
+];
+
 /// What one settled bottle looks like. Two of these - the bottle before the pill and the
 /// bottle after it - make the half of the features that is about the stack rather than about
 /// the placement.
@@ -38,6 +53,7 @@ pub struct BottleStats {
     buried_viruses: i32,
     buried_blocks: i32,
     max_height: i32,
+    entrance_height: i32,
     holes: i32,
     virus_3_row: i32,
     virus_3_col: i32,
@@ -65,6 +81,13 @@ impl BottleStats {
     }
     pub fn max_height(&self) -> i32 {
         self.max_height
+    }
+    /// How high the two columns a pill spawns over stand. This is not the tallest column and it
+    /// is not the average one: it is the only height that can actually end a game, and the
+    /// probe found it the strongest single thing the model was not being shown - ahead of nine
+    /// of the inputs it was.
+    pub fn entrance_height(&self) -> i32 {
+        self.entrance_height
     }
     pub fn holes(&self) -> i32 {
         self.holes
@@ -104,6 +127,7 @@ impl Sub<BottleStats> for BottleStats {
             buried_viruses: self.buried_viruses - rhs.buried_viruses,
             buried_blocks: self.buried_blocks - rhs.buried_blocks,
             max_height: self.max_height - rhs.max_height,
+            entrance_height: self.entrance_height - rhs.entrance_height,
             holes: self.holes - rhs.holes,
             virus_3_row: self.virus_3_row - rhs.virus_3_row,
             virus_3_col: self.virus_3_col - rhs.virus_3_col,
@@ -192,12 +216,14 @@ impl PlacementStats {
     }
 }
 
-/// the stats of the settled bottle, how they moved, and what the placement itself did
+/// the stats of the settled bottle, how they moved, what the placement itself did, and whether
+/// it is a placement of the pill in play at all
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct BottleFeatures {
     global: BottleStats,
     delta: BottleStats,
     placement: PlacementStats,
+    held: bool,
 }
 
 impl BottleFeatures {
@@ -206,7 +232,21 @@ impl BottleFeatures {
             global,
             delta: global - before,
             placement,
+            held: false,
         }
+    }
+
+    /// Mark this as a placement of the *held* pill rather than the one in play, which is the
+    /// one thing about a candidate that nothing else here can see: the bottle it leaves behind
+    /// and what it did to get there read exactly the same either way.
+    pub fn of_the_held_pill(mut self) -> Self {
+        self.held = true;
+        self
+    }
+
+    /// whether this is a placement of the held pill, which reaching for costs the pill in play
+    pub fn held(&self) -> bool {
+        self.held
     }
 
     pub fn global(&self) -> BottleStats {
@@ -279,6 +319,18 @@ impl Grid {
 
     /// Whether a pill could still put a half in this cell: it is empty, and so is everything
     /// above it. A gap under an overhang is not room, however empty it is.
+    ///
+    /// **The placement search can now tuck and this rule was not widened to match**, which
+    /// looks wrong and is measured. A cell under an overhang with a clear column beside it is
+    /// reachable in the sense that the search can get a half into it, so the obvious change is
+    /// to count a neighbouring column that is clear down to this row as a way in. Doing that
+    /// costs the model a fifth of everything: the hand written baseline over five whole games
+    /// went from 1431 viruses and 24 bottles to 1110 and 18, a clone fitted to the features
+    /// from 2082 and 33 to 1703 and 27. Being able to reach a cell and being able to *rely* on
+    /// reaching it are not the same thing - a tuck needs the column beside it filled to exactly
+    /// the row below, which is not something the pill in play can arrange - and a model told
+    /// that the cells under an overhang are still live stops minding whether it makes overhangs.
+    /// What it costs to bury a run is worth more than what tucking one out is worth.
     pub fn reachable(&self, x: u32, y: u32) -> bool {
         self.colour(x, y).is_none() && (0..y).all(|above| self.colour(x, above).is_none())
     }
@@ -323,6 +375,7 @@ impl Grid {
             buried_viruses,
             buried_blocks,
             max_height: self.heights.iter().copied().max().unwrap_or(0),
+            entrance_height: ENTRANCE.iter().map(|x| self.heights[*x]).max().unwrap_or(0),
             holes,
             virus_3_row: near[0],
             virus_3_col: near[1],

@@ -1,7 +1,7 @@
 //! The Dr. Rustario end of training: it plays the headless game for the genetic algorithm and
 //! provides the `ga dr` subcommand's entry points.
 //!
-//! `ga dr auto` runs three stages, in order, each one starting from what the last left behind:
+//! `ga dr auto` runs two stages, in order, the second starting from what the first left behind:
 //!
 //! 1. **Imitation** ([`crate::game::ai::imitation`]). A network is taught by gradient descent
 //!    to rank placements the way the deterministic ai ranks them. This exists because a genetic
@@ -9,27 +9,36 @@
 //!    almost all of them do. Networks are taught until one of them plays [`TAUGHT_ENOUGH`]
 //!    viruses, since where a network starts moves how well it plays far more than it moves how
 //!    well it agrees with its teacher.
-//! 2. **Survival**. Candidates play the game itself, starting on the first bottle, clearing it,
-//!    moving on to the next, and are scored on the viruses they took out before they were
-//!    buried. There is no pill budget and nothing rewards speed - a model may take as long as
-//!    it likes over a bottle - so this stage trains purely for staying alive. It ends the first
-//!    time a candidate finishes the run: one of its seeds out of the last bottle and every
-//!    other one of them at least as far as [`PROVEN_LEVEL`]. That is the whole of the test, and
-//!    it is inside the fitness rather than bolted on after it, so what training selects for and
-//!    what ends training are the same thing.
-//! 3. **Efficiency**. The same game with a pill budget, scored on bottles finished rather than
-//!    viruses destroyed. A model that has stopped dying has nothing left to gain from stage
-//!    two, and this is what asks it to stop dawdling: taking the clear in front of it rather
-//!    than tidying, and finishing a bottle in three hundred pills rather than nine hundred.
-//!    Survival is not thrown away by it, since a model that buries itself finishes no more
-//!    bottles - but it is checked afterwards all the same.
+//! 2. **The run**. Candidates play the game itself, starting on the first bottle, clearing it,
+//!    moving on to the next, and are scored on the viruses they took out of a fixed budget of
+//!    pills ([`crate::game::ai::run::PILL_BUDGET`]). That one number is both halves of what a
+//!    good player is: being buried stops the count, and dawdling spends the budget on fewer
+//!    bottles.
+//!
+//! It used to be three, the third asking a model that had stopped dying to stop dawdling, and
+//! it is two because that third stage could not do its job. It scored on *bottles finished*,
+//! which [`GameResult`] averages over the seeds and rounds to a whole number, so two hundred
+//! and fifty candidates were ranked on a fitness with about five distinct values and selection
+//! fell through to the tiebreak - the game's own score, which is exponential in the viruses a
+//! single combo takes. A hundred and fifty generations of chasing combos cost it the survival
+//! the stage before had bought, and `ga dr auto` threw the whole stage away. The clock belongs
+//! in the one fitness that is doing the selecting, which is where it is now.
+//!
+//! Two things stop a run ending on luck. The finish line - every seed played to the end of its
+//! budget without a burial - is asked again on seeds nothing has trained against
+//! ([`NeuralFitness::confirm`]), because the best of two hundred and fifty candidates clears
+//! any bar on the seeds it happened to be dealt. And what a finished run *embeds* is not simply
+//! its best member either: the top of the final population is played off against each other
+//! over one fixed block of unseen seeds, since the ordering inside a generation is the ordering
+//! on that generation's four seeds and nothing more.
 //!
 //! Each stage can also be run on its own; see the `ga dr` arms in the launcher.
 
+use crate::game::ai::agent::Hold;
 use crate::game::ai::headless_game::{HeadlessGameFixture, HeadlessGameOptions, VIRUSES_TO_CLEAR};
 use crate::game::ai::imitation;
 use crate::game::ai::models::{self, DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
-use crate::game::ai::run::{run_finished, PROVEN_LEVEL, TOP_TRAINING_LEVEL};
+use crate::game::ai::run::{survived_the_budget, PILL_BUDGET, PROVEN_LEVEL, TOP_TRAINING_LEVEL};
 use crate::game::random::RandomMode;
 use engine::ai::{
     EndGame, Fitness, GameResult, GeneticAlgorithm, Genome, GenomeMutation, HyperParameters,
@@ -59,18 +68,40 @@ const POPULATION: usize = 250;
 /// [`crate::game::ai::headless_game`] are for: only candidates worth the rest of them play it.
 const SEEDS_PER_GAME: usize = 4;
 
-/// The pills the efficiency stage gives a candidate to finish as many bottles as it can in.
-/// Enough for a good model to get well up the levels, so that dawdling over the early ones
-/// costs it something: at the hundred and sixty odd pills a bottle a good model takes, this
-/// reaches somewhere around bottle twenty of the thirty one stage two asks for. It was half
-/// this while the run stopped at bottle twenty, and it is the whole of what stage three costs -
-/// that stage is a fixed [`EFFICIENCY_GENERATIONS`] generations, so doubling the budget doubles
-/// the time it takes.
-const PILL_BUDGET: u32 = 3000;
+/// Which input says a candidate is a placement of the held pill, in
+/// [`crate::game::ai::evaluator::raw_inputs`]'s order: the last of them.
+const HELD_INPUT: usize = engine::ai::BOTTLE_FEATURE_INPUTS - 1;
 
-/// The efficiency stage has no finish line to reach - there is always a faster model - so it is
-/// bounded by generations instead.
-const EFFICIENCY_GENERATIONS: usize = 150;
+/// What fraction of a generation is carried into the next one unchanged.
+///
+/// The engine's default is 0.005, which at a population of two hundred and fifty is **one**
+/// elite - and every generation is played on a fresh block of seeds, elites included, so that
+/// one genome has to win again on games it has never seen or it is gone. That is far too thin
+/// to do what elitism is for. Seeded from a model that already clears eighteen bottles, most
+/// mutations are harmful, and a run of it showed exactly what a population with nothing holding
+/// its top up looks like: over twenty five generations the best member stood still while the
+/// median fell thirty one percent and the ninety fifth percentile fell fifteen.
+///
+/// Ten of two hundred and fifty is still only four percent, so there is no shortage of churn;
+/// it is enough that a good genome surviving one unlucky seed block is the normal case rather
+/// than a coin toss.
+const ELITE_RATE: f64 = 0.04;
+
+/// How often a run stops to print the best genome it has, as the weights [`models`] embeds.
+///
+/// A run is not capped: its finish line is the whole game cleared inside the budget, which
+/// nothing has come near, so in practice it goes until it is stopped. That is deliberate -
+/// there is always a better model and a cap only decides in advance how much better - and it is
+/// affordable only because a run stopped halfway has something to show for itself. Every
+/// checkpoint prints a paste-ready model and how it plays on the seeds nothing trains against,
+/// so the log carries the answer rather than the `generation-record` csv being the only copy.
+const CHECKPOINT_GENERATIONS: usize = 25;
+
+/// How many of the final population are played off against each other for the right to be
+/// embedded. The generation's own ordering is the ordering on that generation's four seeds, so
+/// its winner is the luckiest of two hundred and fifty as much as it is the best of them; over
+/// one fixed block of unseen seeds these few can be compared on the same games.
+const PLAYOFF: usize = 8;
 
 /// a trial teaches from fewer pills than a real run, since it is checking the shape of the
 /// thing rather than producing a model
@@ -113,14 +144,45 @@ impl Fitness<DR_NEURAL_GENOME_SIZE> for NeuralFitness {
     fn set_end_game(&mut self, end_game: EndGame) {
         self.fixture.set_end_game(end_game);
     }
+
+    /// Every [`CHECKPOINT_GENERATIONS`] generations, say how the best genome so far plays on the
+    /// seeds nothing trains against and print it as the weights to embed. A run has no
+    /// generation cap, so this is how one that is stopped halfway is worth having run at all.
+    fn checkpoint(&self, generation: usize, genome: &Genome<DR_NEURAL_GENOME_SIZE>) {
+        if generation == 0 || !generation.is_multiple_of(CHECKPOINT_GENERATIONS) {
+            return;
+        }
+        let what = format!("generation {}", generation);
+        println!();
+        report_play(&what, *genome);
+        print_weights(&what, without_a_hold_opinion(*genome));
+    }
+
+    /// The second opinion on a candidate that has just tripped the finish line, and the whole of
+    /// why a run no longer ends on a lucky generation. It is asked the same question - every
+    /// seed played to the end of its budget without a burial - over the block of seeds nothing
+    /// trains against. It costs one candidate's run, and only when a generation claims to be
+    /// finished.
+    fn confirm(&self, genome: &Genome<DR_NEURAL_GENOME_SIZE>) -> bool {
+        let fixture = unseen_fixture(self.fixture.seeds_per_game());
+        survived_the_budget(&fixture.play_run((*genome).into(), Seed::from(UNSEEN_SEED_BLOCK)))
+    }
 }
 
 fn neural_fitness() -> NeuralFitness {
+    neural_fitness_with(Hold::Off)
+}
+
+/// the same, with the held pill on offer, which is the only way a run can put a price on a swap
+fn neural_fitness_with(hold: Hold) -> NeuralFitness {
     NeuralFitness {
         fixture: HeadlessGameFixture::new(
             RandomMode::Bag,
             rand::random(),
-            HeadlessGameOptions::default(),
+            HeadlessGameOptions {
+                hold,
+                ..HeadlessGameOptions::default()
+            },
             EndGame::NONE,
         ),
     }
@@ -135,7 +197,12 @@ fn neural_mutation() -> GenomeMutation<DR_NEURAL_GENOME_SIZE> {
     )
 }
 
-/// Stage two: play the game from the first bottle and get as far as you can.
+/// The run: play the game from the first bottle and take as many viruses as you can out of
+/// [`PILL_BUDGET`] pills.
+///
+/// The end game is both caps at once. The pills are the clock, and are what the fitness is
+/// really measured against; the viruses stop a game that has cleared every bottle training asks
+/// for, which nothing has ever done but which would otherwise run forever.
 ///
 /// How hard the population is shaken depends on where it started. From random weights there is
 /// nothing to preserve and the search has to be wide. From a taught model there is a great deal
@@ -143,70 +210,119 @@ fn neural_mutation() -> GenomeMutation<DR_NEURAL_GENOME_SIZE> {
 /// generation away: at the wide rates the median member of a taught population scores a
 /// twentieth of what the model it was mutated from does.
 fn clear_phase(seeded: bool) -> Phase {
+    clear_phase_shaken(seeded, 1.0)
+}
+
+/// The same phase with the population shaken `shake` times as hard, which is the one dial worth
+/// turning when a run stops climbing.
+///
+/// How wide the search should be depends on how good the seed already is, and the seed got
+/// better: with tucks and the entrance height, imitation alone now produces a model that clears
+/// what a whole training run used to. The rates here were set against a weaker one, and a
+/// population whose median falls while its best member stands still is one where mutation is
+/// destroying more than it finds - which is the same failure the wide rates showed on a taught
+/// seed, one step further along.
+fn clear_phase_shaken(seeded: bool, shake: f64) -> Phase {
     let (rates, step) = if seeded {
-        (0.03..=0.08, 0.05)
+        (0.03 * shake..=0.08 * shake, 0.05 * shake)
     } else {
-        (0.1..=0.20, 0.1)
+        (0.1 * shake..=0.20 * shake, 0.1 * shake)
     };
     Phase {
         objective: Objective::Progress,
-        // stops a single game once its last bottle has come out; whether the *run* is over is
-        // the fitness's own answer, since only it sees the seeds apart
-        end_game: EndGame::of_cleared(VIRUSES_TO_CLEAR),
+        end_game: budgeted_end_game(),
         seeds_per_game: SEEDS_PER_GAME,
         mutation_rate: RateLimits::new(rates.clone()),
         crossover_rate: RateLimits::new(rates),
         mutation_step: step,
-        // no cap: a run ends when a candidate clears the game and proves it, not on a count
+        // uncapped: the finish line is the whole game, and short of that a run is stopped
+        // rather than finished. [`CHECKPOINT_GENERATIONS`] is what makes that practical.
         max_generations: usize::MAX,
     }
 }
 
-/// Stage three: the same game, but with a pill budget and scored on bottles finished rather
-/// than viruses destroyed, which is what asks a model that has stopped dying to stop dawdling.
-/// It is nudged rather than shaken - the rates are a fifth of stage two's - since it is being
-/// sharpened, not searched for.
-fn efficiency_phase() -> Phase {
-    Phase {
-        objective: Objective::Score,
-        end_game: EndGame::of_pieces(PILL_BUDGET),
-        seeds_per_game: SEEDS_PER_GAME,
-        mutation_rate: RateLimits::new(0.01..=0.05),
-        crossover_rate: RateLimits::new(0.01..=0.05),
-        mutation_step: 0.02,
-        max_generations: EFFICIENCY_GENERATIONS,
+/// the clock and the ceiling: [`PILL_BUDGET`] pills to destroy every virus training asks for
+fn budgeted_end_game() -> EndGame {
+    EndGame {
+        pieces: PILL_BUDGET,
+        ..EndGame::of_cleared(VIRUSES_TO_CLEAR)
     }
 }
 
+/// Run a phase and hand back what it is worth embedding: not simply the best member of the last
+/// generation, but the winner of a playoff between the top of it over one fixed block of unseen
+/// seeds. Within a generation the ordering is the ordering on that generation's four seeds, and
+/// the top few of two hundred and fifty are separated by less than that ordering's own noise.
 fn run(phase: Phase, population_seed: Option<DrNeuralGenome>) -> DrNeuralGenome {
-    GeneticAlgorithm::new(
+    let mut algorithm = GeneticAlgorithm::new(
         neural_fitness(),
         neural_mutation(),
-        HyperParameters::new(POPULATION, 0.005, 0.5),
+        HyperParameters::new(POPULATION, ELITE_RATE, 0.5),
         vec![phase],
         population_seed,
-    )
-    .run()
-    .max()
-    .genome()
+    );
+    let stats = algorithm.run();
+    let finalists: Vec<DrNeuralGenome> = algorithm
+        .population()
+        .iter()
+        .take(PLAYOFF)
+        .map(|organism| organism.genome())
+        .collect();
+    playoff(&finalists).unwrap_or_else(|| stats.max().genome())
+}
+
+/// Play the finalists over the same unseen seeds and hand back whichever destroyed the most
+/// viruses, saying what each of them managed.
+fn playoff(finalists: &[DrNeuralGenome]) -> Option<DrNeuralGenome> {
+    if finalists.is_empty() {
+        return None;
+    }
+    println!(
+        "\nplayoff: the top {} of the final population over {} unseen seeds",
+        finalists.len(),
+        UNSEEN_SEEDS
+    );
+    let played: Vec<(u32, u32, usize, DrNeuralGenome)> = finalists
+        .par_iter()
+        .enumerate()
+        .map(|(seat, genome)| {
+            let results = unseen_results(*genome);
+            let viruses: u32 = results.iter().map(GameResult::cleared).sum();
+            let bottles: u32 = results.iter().map(GameResult::bonus).sum();
+            (viruses, bottles, seat, *genome)
+        })
+        .collect();
+
+    let mut ranked = played;
+    ranked.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+    for (viruses, bottles, seat, _) in &ranked {
+        println!(
+            "  seat {}: {} viruses, {} bottles over {} games",
+            seat + 1,
+            viruses,
+            bottles,
+            UNSEEN_SEEDS
+        );
+    }
+    ranked.first().map(|(_, _, _, genome)| *genome)
 }
 
 /// Play `genome` on seeds it has never trained against, report every game, and say whether they
-/// add up to a finished run - the same line the fitness draws, so a model is reported against
-/// what it was trained to do.
+/// add up to a candidate that is still standing - the same line the fitness draws, so a model
+/// is reported against exactly what it was trained to do.
 fn report_unseen(genome: DrNeuralGenome) -> bool {
     let results = unseen_results(genome);
     for (seed, result) in results.iter().enumerate() {
         println!(
-            "  seed {}: {} bottles, {} viruses, {} pills {}",
+            "  seed {}: {} bottles, {} viruses, {} pills, {}",
             seed + 1,
             result.bonus(),
             result.cleared(),
             result.pieces(),
-            if result.bonus() > TOP_TRAINING_LEVEL {
-                "✅"
+            if result.game_over() {
+                "buried"
             } else {
-                "❌"
+                "still standing"
             }
         );
     }
@@ -215,18 +331,19 @@ fn report_unseen(genome: DrNeuralGenome) -> bool {
         .filter(|result| result.bonus() > PROVEN_LEVEL)
         .count();
     println!(
-        "  {} of {} seeds reached bottle {}",
-        proven, UNSEEN_SEEDS, PROVEN_LEVEL
+        "  {} of {} seeds reached bottle {} inside {} pills",
+        proven, UNSEEN_SEEDS, PROVEN_LEVEL, PILL_BUDGET
     );
-    run_finished(&results, TOP_TRAINING_LEVEL)
+    survived_the_budget(&results)
 }
 
-/// Stage two, run to its finish. There is nothing bolted on the end of it: the phase's own test
-/// is the finish line, and the finish line asks for a candidate that finished the run rather
-/// than one that cleared the seeds in front of it, so a genome cannot pass it without
-/// generalising and there is nothing left for a second opinion to overturn.
+/// The run, played out. Only its own finish line ends it - the whole game cleared inside the
+/// budget, on every seed, confirmed on seeds it has never played - so in practice a run is
+/// *stopped* rather than finished, and what it leaves behind is the last checkpoint in its log.
+/// If one ever does finish, what comes back is the winner of the playoff in [`run`] rather than
+/// whichever member happened to top the last generation.
 fn survive(population_seed: Option<DrNeuralGenome>) -> DrNeuralGenome {
-    run(clear_phase(population_seed.is_some()), population_seed)
+    without_a_hold_opinion(run(clear_phase(population_seed.is_some()), population_seed))
 }
 
 /// `ga dr pretrain [pills] [threshold]`: stage one on its own. Teaches networks from the
@@ -301,6 +418,20 @@ fn pretrain(pills: usize, threshold: u32) -> DrNeuralGenome {
     genome
 }
 
+/// Take away whatever opinion about swapping a run left behind.
+///
+/// Training plays with [`crate::game::ai::agent::Hold::Off`], so the input that says "this is
+/// the pill you are holding" is zero on every candidate of every game: its weights do nothing,
+/// and mutation walks them about freely for the whole run. That is harmless while hold is off
+/// and is exactly the trap it was off for - a model that has never been asked about a swap
+/// would come out with a loud random answer ready for the first agent that asks. Silenced, it
+/// comes out indifferent, which is the only honest thing a run that never tested one can say.
+fn without_a_hold_opinion(genome: DrNeuralGenome) -> DrNeuralGenome {
+    let mut network: DrNeuralNetwork = genome.into();
+    network.silence_input(HELD_INPUT);
+    network.into()
+}
+
 /// Print a genome as the weights [`models`] embeds. A finished run is only useful if its result
 /// can be got into the binary, and a genome's own `Display` is the raw coefficients the
 /// algorithm works in rather than the numbers the network is built from - so this prints the
@@ -330,15 +461,23 @@ fn report_play(what: &str, genome: DrNeuralGenome) {
     );
 }
 
+/// The fixture the unseen block is played on: the same budget and the same caps training
+/// itself runs under, so a report and a fitness are measuring the same thing.
+fn unseen_fixture(seeds_per_game: usize) -> HeadlessGameFixture {
+    let mut fixture = HeadlessGameFixture::new(
+        RandomMode::Bag,
+        Seed::from(UNSEEN_SEED_BLOCK),
+        HeadlessGameOptions::default(),
+        budgeted_end_game(),
+    );
+    fixture.set_seeds_per_game(seeds_per_game);
+    fixture
+}
+
 /// play `genome` on seeds it has never trained against, one whole game each
 fn unseen_results(genome: DrNeuralGenome) -> Vec<GameResult> {
     let block = Seed::from(UNSEEN_SEED_BLOCK);
-    let fixture = HeadlessGameFixture::new(
-        RandomMode::Bag,
-        block,
-        HeadlessGameOptions::default(),
-        EndGame::of_cleared(VIRUSES_TO_CLEAR),
-    );
+    let fixture = unseen_fixture(UNSEEN_SEEDS as usize);
     let network: DrNeuralNetwork = genome.into();
     (0..UNSEEN_SEEDS)
         .into_par_iter()
@@ -346,94 +485,87 @@ fn unseen_results(genome: DrNeuralGenome) -> Vec<GameResult> {
         .collect()
 }
 
-/// Every stage in order, which is what a training run is.
+/// Both stages in order, which is what a training run is.
 pub fn ga_main_auto() -> Result<(), String> {
     println!("== stage 1: imitation ==");
     let taught = pretrain(imitation::LESSON_PILLS, TAUGHT_ENOUGH);
 
-    println!("\n== stage 2: survival ==");
-    let survivor = survive(Some(taught));
-    report_play("stage 2 model", survivor);
+    println!("\n== stage 2: the run, {} pill budget ==", PILL_BUDGET);
+    let trained = survive(Some(taught));
+    report_play("trained model", trained);
 
-    println!("\n== stage 3: efficiency, {} pill budget ==", PILL_BUDGET);
-    let sharpened = run(efficiency_phase(), Some(survivor));
-    report_play("stage 3 model", sharpened);
-
-    // stage three is bounded by generations rather than by a finish line, so unlike stage two
-    // it can end with a model that has stopped finishing the run. That is the one thing it is
-    // not allowed to trade away, so it is asked the same question here.
-    println!("\nstage 3 model on {} unseen seeds", UNSEEN_SEEDS);
-    if report_unseen(sharpened) {
-        print_weights("stage 3 model", sharpened);
-    } else {
-        println!("the stage 3 model no longer finishes the run, embedding the stage 2 model");
-        print_weights("stage 2 model", survivor);
-        print_weights("stage 3 model, which does not finish the run", sharpened);
-    }
+    println!("\nthe model to embed, on {} unseen seeds", UNSEEN_SEEDS);
+    report_unseen(trained);
+    print_weights("trained model", trained);
     Ok(())
 }
 
-/// the same three stages, seeded from the built in model rather than taught from scratch
+/// the same run, seeded from the built in model rather than taught from scratch
 pub fn ga_main_tune() -> Result<(), String> {
     let seed: DrNeuralGenome = models::survival_trained().into();
     report_play("embedded model", seed);
-    let survivor = survive(Some(seed));
-    report_play("stage 2 model", survivor);
-    let sharpened = run(efficiency_phase(), Some(survivor));
-    report_play("stage 3 model", sharpened);
-    print_weights("stage 3 model", sharpened);
+    let trained = survive(Some(seed));
+    report_play("trained model", trained);
+    report_unseen(trained);
+    print_weights("trained model", trained);
     Ok(())
 }
 
-/// `ga dr survive`: stage two on its own, from scratch, which is what training used to be
+/// `ga dr survive`: the run on its own, from random weights, with no imitation before it
 pub fn ga_main_survive() -> Result<(), String> {
-    let survivor = survive(None);
-    report_play("stage 2 model", survivor);
-    print_weights("stage 2 model", survivor);
+    let trained = survive(None);
+    report_play("trained model", trained);
+    print_weights("trained model", trained);
     Ok(())
 }
 
-/// `ga dr trial [population] [generations] [stage]`: a short, bounded run of one stage. This
-/// trains nothing and verifies nothing; it is how a change to the features, the fitness or the
-/// teaching is checked for having left the algorithm something it can climb, which is visible
-/// within a handful of generations or not at all.
+/// `ga dr trial [population] [generations] [seed]`: a short, bounded run. This trains nothing
+/// and verifies nothing; it is how a change to the features, the fitness or the teaching is
+/// checked for having left the algorithm something it can climb, which is visible within a
+/// handful of generations or not at all.
 ///
-/// `stage` is `scratch` (the default: stage two from random weights), `taught` (stage two from
-/// a quick imitation seed) or `efficiency` (stage three from one).
+/// `seed` is `scratch` (the default: from random weights), `taught` (from a quick imitation
+/// seed), `tune` (from the embedded model, which is the seed strength a real run has by the
+/// time it is climbing) or `hold` (a taught seed with the held pill on offer, which is how the
+/// question in [`crate::game::ai::agent::Hold`] gets an answer). A fourth argument multiplies
+/// the mutation and crossover rates, so how hard to shake a population is something two runs
+/// can be compared on rather than argued about.
 pub fn ga_main_trial(args: &[String]) -> Result<(), String> {
     let population: usize = args.first().and_then(|s| s.parse().ok()).unwrap_or(200);
     let generations: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(10);
-    let stage = args.get(2).map(String::as_str).unwrap_or("scratch");
+    let from = args.get(2).map(String::as_str).unwrap_or("scratch");
 
-    let seed = match stage {
+    let seed = match from {
         "scratch" => None,
-        "taught" | "efficiency" => Some(pretrain(TRIAL_LESSON_PILLS, TAUGHT_ENOUGH)),
-        other => return Err(format!("unknown trial stage '{}'", other)),
+        "taught" | "hold" => Some(pretrain(TRIAL_LESSON_PILLS, TAUGHT_ENOUGH)),
+        // the embedded model, which is the only seed with a *real* run's strength behind it -
+        // a trial taught from `TRIAL_LESSON_PILLS` is a weaker one, and how hard to shake a
+        // population is exactly a question about how good its seed is
+        "tune" => Some(models::survival_trained().into()),
+        other => return Err(format!("unknown trial seed '{}'", other)),
     };
-    let mut phase = match stage {
-        "efficiency" => efficiency_phase(),
-        _ => clear_phase(seed.is_some()),
-    };
+    let hold = if from == "hold" { Hold::On } else { Hold::Off };
+    let shake: f64 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(1.0);
+    let mut phase = clear_phase_shaken(seed.is_some(), shake);
     phase.max_generations = generations;
 
     println!(
-        "\npopulation {}, {} generations, {} phase, seeded from {}",
+        "\npopulation {}, {} generations, {} pill budget, hold {:?}, shaken x{}, seeded from {}",
         population,
         generations,
-        match stage {
-            "efficiency" => "efficiency",
-            _ => "survival",
-        },
-        if seed.is_some() {
-            "imitation"
-        } else {
-            "random weights"
+        PILL_BUDGET,
+        hold,
+        shake,
+        match from {
+            "tune" => "the embedded model",
+            "scratch" => "random weights",
+            _ => "imitation",
         }
     );
     let stats = GeneticAlgorithm::new(
-        neural_fitness(),
+        neural_fitness_with(hold),
         neural_mutation(),
-        HyperParameters::new(population, 0.005, 0.5),
+        HyperParameters::new(population, ELITE_RATE, 0.5),
         vec![phase],
         seed,
     )
@@ -453,8 +585,8 @@ pub fn ga_main_trial(args: &[String]) -> Result<(), String> {
 /// play the built in model on a few seeds and report how far it gets
 pub fn ga_diagnose() -> Result<(), String> {
     println!(
-        "embedded model, bottles 0 to {}, {} viruses in all",
-        TOP_TRAINING_LEVEL, VIRUSES_TO_CLEAR
+        "embedded model, bottles 0 to {} in {} pills, {} viruses in all",
+        TOP_TRAINING_LEVEL, PILL_BUDGET, VIRUSES_TO_CLEAR
     );
     report_unseen(models::survival_trained().into());
     Ok(())

@@ -4,7 +4,6 @@ use crate::game::geometry::BottlePoint;
 use crate::game::pill::{Garbage, Pill, PillShape, VirusColor, Vitamin, Vitamins};
 use crate::game::random::BottleSeed;
 use rand::seq::SliceRandom;
-#[cfg(test)]
 use rand::SeedableRng;
 use rand_chacha::ChaChaRng;
 use std::collections::HashSet;
@@ -106,7 +105,10 @@ pub struct Bottle {
 }
 
 impl Bottle {
-    #[cfg(test)]
+    /// An empty bottle, for something that means to fill it in itself: the tests, and the
+    /// pictures [`crate::game::ai::explain`] draws each of the network's inputs with. A bottle
+    /// a *game* deals comes from [`Bottle::from_seed`] with its viruses already in it.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             blocks: [Block::Empty; TOTAL_BLOCKS as usize],
