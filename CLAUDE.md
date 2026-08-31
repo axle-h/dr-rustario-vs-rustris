@@ -14,7 +14,7 @@ Each game's AI supplies the game-specific half - board features, placement searc
 on top of `engine::ai`, which owns the network shapes, the genome, the genetic algorithm and its
 `Fitness` seam. Both games use the same architecture - as many neurons wide as it has features,
 two hidden layers deep - sized to their own feature count (Rustris `FeatureNetwork`: 20 features,
-1281 weights; Dr. Rustario `BottleFeatureNetwork`: 29 features, 2640), declared by the
+1281 weights; Dr. Rustario `BottleFeatureNetwork`: 32 features, 3168), declared by the
 `feature_network!` macro in `engine/src/ai/neural.rs` because the genome conversions belong to
 neither game. Models are embedded as raw weight arrays in each game's
 `ai/models.rs`; Dr. Rustario's is `survival_trained()`, which is trained but not yet a good
@@ -27,33 +27,108 @@ pill has left, `params.rs` holds the weights and `mod.rs` picks the skill row an
 column that select them.
 `DrAiAgent` chooses between the two through `DrAiKind`; `ga dr play <seed> <level> <cap>
 <every> <brain>` runs either headless, where a brain is `n64`, `n64:0`..`n64:5`, `neural` or
-`linear`. The six skill rows are the one dial the original has, and `params.rs`'s `SKILL_ORDER`
-ranks them worst to best (measured, not assumed - the rows are personalities, not a ladder):
-that is what Dr. Rustario's four ai difficulties and its 2-player demo pick from, so a harder
-setting is a better player as well as a faster one. A test in `rules.rs` pins the network to
+`linear`, either of the last two with a `+hold` on it. The six skill rows are the one dial the original has, and `params.rs`'s `SKILL_ORDER`
+ranks them worst to best, measured in the fitness's own currency - viruses destroyed inside
+`PILL_BUDGET` pills, over twenty seeds at each of virus levels 0, 5, 10, 15 and 20, which is six
+hundred whole games. That is what the four difficulties and the 2-player demo pick from, and
+`DEFAULT_SKILL` - the last and strongest of them - is also the teacher `imitation.rs` gathers
+its corpus from, so re-measuring it moves what the neural model learns from. It used to be
+ranked on bottles less four per burial, which puts a *different* row on top: that rule charges
+four bottles for a burial, and the strongest row buries itself twice as often as the runner up
+while clearing 18% more than it. A test in `rules.rs` pins the network to
 that demo, since nothing else would catch a difficulty quietly being handed one.
 
-Training the neural model is three stages, run in order by `ga dr auto` (see the readme's
+Training the neural model is two stages, run in order by `ga dr auto` (see the readme's
 *Training Dr. Rustario*): `ai/imitation.rs` teaches a network by gradient descent to rank
 placements the way the n64 ai ranks them, since a genetic algorithm cannot select between
 members that all score zero and from random weights nearly all of them do; then `ai/genetic.rs`
-runs a survival phase (viruses destroyed before being buried) and an efficiency phase (bottles
-finished on a pill budget) off that seed. The survival phase's finish line lives in the fitness
-rather than after it (`ai/run.rs`'s `run_finished`, carried out through the aggregate
-`GameResult`'s game over flag, which for a run of several seeds means *out of the run* rather
-than *buried*): a candidate plays four seeds and is finished when one of them came out of
-`TOP_TRAINING_LEVEL` and every other one reached `PROVEN_LEVEL`. Both numbers are measured
-rather than picked. Stopping at bottle 20, as it used to, capped the fitness where a taught
-model already stood, so 518 generations of a 641 generation run scored the exact maximum and
-selection at the top was a random walk; and asking every seed to clear everything is a lottery a
-whole night lost 516 times out of 516. The two probe seeds of the four are a cost dial:
-a candidate averaging under `ABANDON_BELOW` viruses over them is not played out, and is scored
-over all four regardless, so being cut can only cost it. `ga dr trial` is a short bounded run
-that trains nothing, for checking a change has left something to climb, and `ga dr probe` (`ai/probe.rs`) is
-the diagnostic the features were chosen with: it records what the n64 ai made of every placement
-it was offered and measures how much of that opinion the features can express, cloning it onto
-them and sending the clone out to play. The scored agent has no hold - what it learns from has
-none, and a model taught to use one plays two orders of magnitude worse.
+runs one phase off that seed, scored on **viruses destroyed inside a budget of
+`run.rs`'s `PILL_BUDGET` pills**. That one number is both halves of what a good player is:
+being buried stops the count, and dawdling spends the budget on fewer bottles. It was two
+phases - survival with no clock at all, then an efficiency phase - and both were wrong. Without
+a clock a model that takes nine hundred pills over a bottle scores what one taking three
+hundred does, and the model that came out played every bottle from the third up about 40%
+slower than the deterministic ai it learned from (105 pills a bottle against 147, measured over
+six seeds). The efficiency phase that was meant to fix that scored on *bottles finished*, which
+`GameResult`'s `Div` averages over the seeds and **rounds to a whole number** - so 250
+candidates were ranked on a fitness with about five distinct values and selection fell through
+to the tiebreak, the game's own score, which is exponential in the viruses one combo takes. 150
+generations of chasing combos cost it the survival the phase before had bought and `ga dr auto`
+threw the whole stage away. The budget has to *bind* or there is no clock: 2500 is where both
+players live, with four bottles of headroom above either.
+
+Two things stop a run ending on luck, and both are new. The finish line - every seed played to
+the end of its budget without a burial (`run.rs`'s `survived_the_budget`, carried through the
+aggregate `GameResult`'s game over flag) - is asked **again on unseen seeds** through
+`engine::ai::Fitness::confirm`, since the best of 250 candidates clears any bar on the seeds it
+happened to be dealt; that is how a run once ended on a model that then reached bottle 19 on
+every seed it had not seen. And what a finished run embeds is the winner of a **playoff**
+between the top `PLAYOFF` of the final population over one fixed block of unseen seeds, since
+the ordering inside a generation is the ordering on that generation's four seeds and nothing
+more. A run has **no generation cap** - there is always a better model - so what makes stopping
+one worth anything is `CHECKPOINT_GENERATIONS`: every twenty five generations it prints the best
+genome as the weights to embed and how it plays on the unseen block, so the log carries the
+answer rather than the `generation-record` csv being the only copy. The two probe seeds of the
+four are a cost dial: a candidate averaging under
+`ABANDON_BELOW` viruses over them is not played out, and is scored over all four regardless, so
+being cut can only cost it. `ga dr trial` is a short bounded run that trains nothing, for
+checking a change has left something to climb, and `ga dr probe` (`ai/probe.rs`) is the
+diagnostic the features were chosen with: it records what the n64 ai made of every placement it
+was offered and measures how much of that opinion the features can express, cloning it onto
+them and sending the clone out to play.
+
+**The placement search tucks.** `ai/placement.rs` walks moves and rotations *and*
+`Translation::Rest` - let the pill come to rest and carry on moving from there - which is how a
+half gets under an overhang into a pit no straight drop can reach. What makes it executable is
+extended placement lock down: a rested pill may be moved for another lock delay and every move
+restarts it, so "fall, then slide" needs no timing, only somewhere to slide to. Resting is the
+only way down the search takes, rather than a row at a time, because a pill cannot fall past
+where it comes to rest - an agent waiting for that (`DrAiAgent`'s `resting`) has nothing to get
+wrong, and it works at a 400 ms key delay as well as at full speed. This is the single biggest
+change to how well anything here plays: the n64 ai went from 179 to **223 bottles over ten
+seeds** and from 0.29 to 0.38 viruses a pill, so every difficulty got better with it.
+`Reach::Drop` turns it off, for measuring. What was *not* changed with it is
+`features.rs`'s `Grid::reachable`, which still says a cell under an overhang is not room -
+widening it to count a clear neighbouring column cost a fifth of everything (the hand written
+baseline 1431 viruses to 1110, a fitted clone 2082 to 1703), because a model told those cells
+are still live stops minding whether it makes overhangs, and burying a run costs more than
+tucking one out is worth.
+
+**`entrance_height` is the feature that was missing**: how high the two columns a pill spawns
+over stand, which is the only height that can end a game. The probe rated it ahead of nine
+inputs that were already in the model, and with it fed, the six things still left out are worth
+*less* than nothing (1810 viruses against 2082). The `EXTRA` group in `ai/probe.rs` is the
+control that keeps saying so.
+
+**`ga dr explain` is the companion to the probe and asks the other question.** The probe asks
+what a *feature set* could express about the deterministic ai; this asks what the *trained
+model* does with each input, which since the model beat that ai is the question that matters.
+Three numbers per input: the first layer's weight column (zero is proof of nothing at all,
+anything else is weak), the within-pill spread (no spread cannot rank, whatever the weights),
+and **mind changes** - the model replayed with that input `silence_input`ed and how often it
+then plays differently, which is the one that counts. It found that the five `context.*` inputs
+have *exactly zero* spread and yet change the model's mind on a fifth of pills: a constant
+cannot separate candidates but it does move the network's operating point, so the block gates
+after all and a linear fit cannot see it. `ai/explain/scenarios.rs` holds one hand drawn minimal
+bottle per input and *searches* the placements in it, since hand picking those got twenty one of
+thirty two wrong; `cargo run --example feature_shots -- <out> nes` draws five NES shots per
+input and writes the `manifest.json` that `art/build_doc.py` builds the page from. The values
+come from that manifest and never from the report - they had two producers once, and a change
+to which end is drawn first put every label on the wrong picture.
+
+**Hold is off, and now it is off for a measured reason rather than a remembered one.**
+`DrAiAgent::with_hold` pools the placements of the pill in play with those of the pill a swap
+would bring in, into one call, since a scorer that ranks by what separates its candidates can
+compare them no other way; each of the second set carries a `held` input. What used to make
+hold a disaster was that input's *weights*: gradient descent only moves a weight the corpus
+gives it a gradient for, and no lesson has a swap in it, so a taught network came out of stage
+one with a loud opinion about swapping drawn at random. `imitation` now silences it
+(`NeuralNetwork::silence_input`), and `genetic.rs` silences it again before embedding, since a
+run played with hold off leaves mutation walking those weights about for nothing. Indifference
+is still not neutrality, though: measured, the embedded model with hold on played 2996 viruses
+over six seeds against 4595 with it off, worse on every one. What is left to try is a run with
+`Hold::On` in the fitness - `ga dr trial <pop> <gens> hold` - which is the only thing that can
+put a price on a swap, and which doubles what the search costs.
 
 Both games and the vs. mode offer the same ai modes - four difficulties and a 1- and 2-player
 demo - off the title screen's `players` list. Each game names its own models per mode in its

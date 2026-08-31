@@ -1,8 +1,8 @@
 //! Playing Dr. Rustario headless, as fast as the machine will go, to score a genome.
 
-use crate::game::ai::agent::DrAiAgent;
+use crate::game::ai::agent::{DrAiAgent, Hold};
 use crate::game::ai::models::DrNeuralNetwork;
-use crate::game::ai::run::{going_nowhere, run_finished, PROBE_SEEDS, TOP_TRAINING_LEVEL};
+use crate::game::ai::run::{going_nowhere, survived_the_budget, PROBE_SEEDS, TOP_TRAINING_LEVEL};
 use crate::game::random::{viruses_at_level, GameRandom, RandomMode};
 use crate::game::{Game, GameSpeed};
 use engine::ai::{EndGame, GameResult, Seed};
@@ -59,11 +59,14 @@ impl HeadlessGame {
     fn update(&mut self) -> Option<GameResult> {
         self.duration += self.options.step;
 
+        // A game called off for going nowhere is *out*, not a survivor. The finish line asks
+        // whether every seed was played to the end of its budget without being buried, and a
+        // candidate that spent two hundred pills without touching a virus did neither.
+        if self.pills_since_clear >= self.options.stall_pills {
+            self.game_over = true;
+        }
         let result = self.result();
-        if self.game_over
-            || self.pills_since_clear >= self.options.stall_pills
-            || self.end_game.is_end_game(result, self.duration)
-        {
+        if self.game_over || self.end_game.is_end_game(result, self.duration) {
             return Some(result);
         }
 
@@ -135,10 +138,21 @@ pub struct HeadlessGameOptions {
     /// The last bottle a training game plays. A candidate that clears this one has cleared the
     /// game as far as training cares; [crate::game::rules::MAX_VIRUS_LEVEL] goes further.
     pub top_level: u32,
-    /// Pills a game may go without destroying a virus before it is called off. There is no pill
-    /// budget - a model is free to take as long as it likes over a bottle - but a model that
-    /// keeps itself alive without ever clearing anything would otherwise play forever.
+    /// Pills a game may go without destroying a virus before it is called off, as a burial.
+    /// The budget in [`crate::game::ai::run::PILL_BUDGET`] already stops a game that goes
+    /// nowhere; this stops it *early*, since a candidate that has not touched a virus in two
+    /// hundred pills is not going to spend the rest of its budget any better and a generation
+    /// is paid for in pills.
     pub stall_pills: u32,
+    /// Whether the agent may weigh the pill it is holding against the one in play. Off, which
+    /// is measured: with the held input silenced - the only honest place to start a model that
+    /// has never been asked - the embedded model played 2996 viruses over six seeds with it on
+    /// against 4595 with it off, worse on every one of them. Indifference is not neutrality. It
+    /// swaps whenever the other pill's best placement happens to score higher, which throws the
+    /// pill in play away for a rounding error. Turning it on here is what would let the genetic
+    /// algorithm put a price on a swap, which is the one thing that could make it worth having;
+    /// it also doubles what the search costs, so it is a decision and not a default.
+    pub hold: Hold,
 }
 
 impl Default for HeadlessGameOptions {
@@ -149,6 +163,7 @@ impl Default for HeadlessGameOptions {
             speed: GameSpeed::Medium,
             top_level: TOP_TRAINING_LEVEL,
             stall_pills: STALL_PILLS,
+            hold: Hold::Off,
         }
     }
 }
@@ -219,27 +234,32 @@ impl HeadlessGameFixture {
     /// average it is handed hides the seeds and this is the only thing that can tell them
     /// apart. Both are [`crate::game::ai::run`]'s rules.
     ///
-    /// The first is whether the run is over: [`run_finished`] is the finish line, and the
-    /// aggregate's game over flag is how it is reported, since for a run of several seeds being
-    /// out means not having got where the run asked rather than having been buried on one board
-    /// of it.
+    /// The first is whether the candidate is still standing: [`survived_the_budget`] asks it of
+    /// every seed rather than of their average, and the aggregate's game over flag is how the
+    /// answer is carried, since being out of a *run* of several seeds means having been buried
+    /// on any one of them.
     ///
     /// The second is that a candidate going nowhere is not played out. The first
     /// [`PROBE_SEEDS`] say whether the rest are worth playing, and a candidate that is cut is
     /// still averaged over every seed it was *given* rather than the ones it played - so being
     /// cut can only ever cost it, and can never lift it above a candidate that was played out.
     pub fn play(&self, network: DrNeuralNetwork) -> GameResult {
+        let results = self.play_run(network, self.seed);
+        let total: GameResult = results.iter().copied().sum();
+        (total / self.seeds_per_game).with_game_over(!survived_the_budget(&results))
+    }
+
+    /// The seeds of one run, played from `block`, cut short if the probe seeds say the rest are
+    /// not worth the machine time.
+    pub fn play_run(&self, network: DrNeuralNetwork, block: Seed) -> Vec<GameResult> {
         let mut results: Vec<GameResult> = Vec::with_capacity(self.seeds_per_game);
         for i in 0..self.seeds_per_game as u128 {
-            results.push(self.play_seed(network, self.seed + Seed::from(i)));
+            results.push(self.play_seed(network, block + Seed::from(i)));
             if results.len() == PROBE_SEEDS && going_nowhere(&results, self.seeds_per_game) {
                 break;
             }
         }
-
-        let total: GameResult = results.iter().copied().sum();
-        let finished = run_finished(&results, self.game_options.top_level);
-        (total / self.seeds_per_game).with_game_over(!finished)
+        results
     }
 
     /// one game, played from the first bottle up until it is buried or runs out of bottles
@@ -249,7 +269,7 @@ impl HeadlessGameFixture {
 
         HeadlessGame::new(
             game,
-            DrAiAgent::new(network),
+            DrAiAgent::new(network).with_hold(self.game_options.hold),
             self.game_options,
             self.end_game,
         )

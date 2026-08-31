@@ -63,6 +63,13 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
         result
     }
 
+    /// zero one column of the tensor, whatever else is in it
+    pub fn zero_column(&mut self, column: usize) {
+        for row in self.data.iter_mut() {
+            row[column] = 0.0;
+        }
+    }
+
     pub fn dot<const R2: usize, const C2: usize>(&self, other: &Tensor<R2, C2>) -> Tensor<R, C2> {
         debug_assert_eq!(
             C, R2,
@@ -288,6 +295,12 @@ impl<const IN: usize, const SIZE: usize> Display for Layer<IN, SIZE> {
 }
 
 impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
+    /// zero every weight this layer gives to one of its inputs, so nothing it carries reaches
+    /// the layer after it
+    pub fn silence_input(&mut self, input: usize) {
+        self.weights.zero_column(input);
+    }
+
     pub fn new(
         weights: Tensor<SIZE, IN>,
         bias: Tensor<SIZE>,
@@ -486,6 +499,19 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
     const OUTPUT_LAYER_SIZE: usize = Layer::<WIDTH, OUT>::TOTAL_SIZE;
     pub const TOTAL_SIZE: usize =
         Self::INPUT_LAYER_SIZE + HIDDEN * Self::HIDDEN_LAYER_SIZE + Self::OUTPUT_LAYER_SIZE;
+
+    /// Zero every weight the first layer gives to one input, so the network scores as though
+    /// that input were not there.
+    ///
+    /// This is for an input the teaching had nothing to say about. Gradient descent only ever
+    /// moves a weight the corpus gives it a gradient for, so an input that is zero on every
+    /// lesson comes out of teaching carrying whatever the initial draw left there - an
+    /// arbitrary opinion, learned from nothing, held with the same confidence as everything the
+    /// network was actually taught. Zeroing it says the honest thing instead, and leaves the
+    /// genetic algorithm free to move it either way once it has a fitness that can judge it.
+    pub fn silence_input(&mut self, input: usize) {
+        self.input.silence_input(input);
+    }
 
     pub fn flatten(&self) -> Vec<f64> {
         let mut result = Vec::with_capacity(Self::TOTAL_SIZE);
@@ -687,7 +713,7 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
 pub const FEATURE_INPUTS: usize = 20;
 
 /// how many extracted bottle features Dr. Rustario feeds its network
-pub const BOTTLE_FEATURE_INPUTS: usize = 29;
+pub const BOTTLE_FEATURE_INPUTS: usize = 32;
 
 /// Declares a network shape a game can train and play: the alias, the genome size that goes
 /// with it, and the conversions between the two. The shapes live here rather than in the games
@@ -833,6 +859,33 @@ mod tests {
         assert_relative_eq!(
             trained.forward(&input).value(),
             embedded.forward(&input).value()
+        );
+    }
+
+    #[test]
+    fn a_silenced_input_stops_reaching_the_output() {
+        let mut network = FeatureNetwork::new(
+            &(0..NEURAL_GENOME_SIZE)
+                .map(|i| ((i % 7) as f64 - 3.0) / 4.0)
+                .collect::<Vec<f64>>(),
+        );
+        let mut row = [0.5; FEATURE_INPUTS];
+        let before = network.forward(&Tensor::vector(row)).value();
+
+        // moving the input moves the answer, until it is silenced
+        row[FEATURE_INPUTS - 1] = -0.5;
+        assert_ne!(before, network.forward(&Tensor::vector(row)).value());
+
+        network.silence_input(FEATURE_INPUTS - 1);
+        let silenced = network.forward(&Tensor::vector(row)).value();
+        row[FEATURE_INPUTS - 1] = 1000.0;
+        assert_eq!(silenced, network.forward(&Tensor::vector(row)).value());
+        // and nothing else about the network moved with it
+        let mut untouched = [0.5; FEATURE_INPUTS];
+        untouched[0] = -0.5;
+        assert_ne!(
+            silenced,
+            network.forward(&Tensor::vector(untouched)).value()
         );
     }
 

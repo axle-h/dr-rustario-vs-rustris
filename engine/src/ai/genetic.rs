@@ -19,6 +19,23 @@ pub trait Fitness<const GENOME: usize>: Send + Sync {
     /// play `genome` over the current block of seeds and return the averaged result
     fn evaluate(&self, genome: &Genome<GENOME>) -> GameResult;
 
+    /// Called with the best member of every generation, so a run with no generation cap on it
+    /// can still be stopped at any point and have something to show for itself. The default does
+    /// nothing, which is what a run that ends on its own wants.
+    fn checkpoint(&self, _generation: usize, _genome: &Genome<GENOME>) {}
+
+    /// Whether a candidate that has just tripped the phase's finish line really has finished.
+    ///
+    /// A phase is ended by its best member, and the best of a whole population is an extreme of
+    /// as many noisy samples as there are candidates: whatever the finish line asks, somebody
+    /// clears it on the seeds they happened to be dealt. So a fitness may ask the question
+    /// again, on seeds nothing has trained against, and refuse to let the phase end on a lucky
+    /// generation. The default trusts the finish line, which is what a game with no second
+    /// opinion to offer wants.
+    fn confirm(&self, _genome: &Genome<GENOME>) -> bool {
+        true
+    }
+
     /// advance to the next block of unused seeds, so elites cannot overfit one seed
     fn next_seed(&mut self);
 
@@ -173,7 +190,13 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
                 .add(&stats)
                 .expect("Failed to write to generation record");
 
-            let complete = self.phase().is_complete(&stats.max().result());
+            self.fitness
+                .checkpoint(self.generations.len(), &stats.max().genome());
+
+            // the finish line, and then the second opinion on it: a phase ended by its best
+            // member is a phase ended by the luckiest of `population_size` noisy samples
+            let complete = self.phase().is_complete(&stats.max().result())
+                && self.confirm_finish(&stats.max().genome());
             let phase_over = complete || self.phase_generations >= self.phase().max_generations;
             if !phase_over {
                 self.next_generation();
@@ -186,6 +209,16 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
 
             self.next_phase(stats.max().genome());
         }
+    }
+
+    /// ask the fitness for a second opinion on the candidate that just tripped the finish line,
+    /// and say so when it is not given one
+    fn confirm_finish(&self, best: &Genome<N>) -> bool {
+        if self.fitness.confirm(best) {
+            return true;
+        }
+        println!("  the best member did not hold up on unseen seeds, carrying on");
+        false
     }
 
     /// switch to the next phase, re-seeding the population from `best`

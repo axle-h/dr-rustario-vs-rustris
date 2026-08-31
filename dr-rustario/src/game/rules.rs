@@ -81,15 +81,21 @@ impl AiDifficulty {
         }
     }
 
-    /// The row of weights this difficulty thinks with, out of the six ranked worst to best in
-    /// [`crate::game::ai::SKILL_ORDER`]: the two weakest for easy and normal, then the runner
-    /// up, then the best of them.
+    /// What this difficulty thinks with. The three below the top are rows of the N64 ai's own
+    /// weights, out of the six ranked worst to best in [`crate::game::ai::SKILL_ORDER`], so a
+    /// harder setting is a better player and not merely a faster one.
+    ///
+    /// `impossible` is the **trained network**, which now beats the best of those rows: over
+    /// twenty seeds at the training budget, 20,016 viruses and 422 bottles against 18,093 and
+    /// 405, winning seventeen of the twenty. It sits above the ladder rather than on it - the
+    /// network has one model and no rows to pick between, so what it offers is a ceiling and
+    /// not a dial.
     pub fn brain(&self) -> DrAiKind {
         match self {
             AiDifficulty::Easy => DrAiKind::n64_nth_weakest(0),
             AiDifficulty::Normal => DrAiKind::n64_nth_weakest(1),
-            AiDifficulty::Hard => DrAiKind::n64_nth_weakest(3),
-            AiDifficulty::Impossible => DrAiKind::n64_nth_weakest(5),
+            AiDifficulty::Hard => DrAiKind::n64_nth_weakest(5),
+            AiDifficulty::Impossible => DrAiKind::default(),
         }
     }
 }
@@ -244,7 +250,7 @@ impl Default for GameConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::ai::{DrAiKind, SKILL_ORDER};
+    use crate::game::ai::{DrAiKind, SKILLS, SKILL_ORDER};
 
     fn skill(brain: DrAiKind) -> u8 {
         match brain {
@@ -259,20 +265,15 @@ mod tests {
     }
 
     #[test]
-    fn every_difficulty_plays_a_different_row_of_the_weights() {
-        let rows: Vec<u8> = AiDifficulty::ALL.iter().map(|d| skill(d.brain())).collect();
-        assert_eq!(
-            rows,
-            vec![
-                SKILL_ORDER[0],
-                SKILL_ORDER[1],
-                SKILL_ORDER[3],
-                SKILL_ORDER[5]
-            ]
-        );
+    fn the_difficulties_below_the_top_climb_the_measured_ranking() {
+        let rows: Vec<u8> = [AiDifficulty::Easy, AiDifficulty::Normal, AiDifficulty::Hard]
+            .iter()
+            .map(|d| skill(d.brain()))
+            .collect();
+        assert_eq!(rows, vec![SKILL_ORDER[0], SKILL_ORDER[1], SKILL_ORDER[5]]);
 
-        // and they climb the measured ranking, so a harder setting is a better player and not
-        // merely a faster one
+        // each is a different row and they climb it, so a harder setting is a better player and
+        // not merely a faster one
         let ranks: Vec<usize> = rows
             .iter()
             .map(|row| SKILL_ORDER.iter().position(|r| r == row).unwrap())
@@ -282,6 +283,23 @@ mod tests {
             "{:?}",
             ranks
         );
+    }
+
+    /// The network beat the best row it learned from, so it is what `impossible` fields - and
+    /// it sits above the ladder rather than on it, since one model is a ceiling and not a dial.
+    #[test]
+    fn the_hardest_difficulty_plays_the_network_and_the_rest_play_rows() {
+        assert!(
+            matches!(AiDifficulty::Impossible.brain(), DrAiKind::Neural(_)),
+            "{:?}",
+            AiDifficulty::Impossible.brain()
+        );
+        for difficulty in [AiDifficulty::Easy, AiDifficulty::Normal, AiDifficulty::Hard] {
+            skill(difficulty.brain());
+        }
+        // and the hardest row is still fielded, by the difficulty below it, so the ladder does
+        // not skip the best thing the port has
+        assert_eq!(skill(AiDifficulty::Hard.brain()), SKILL_ORDER[SKILLS - 1]);
     }
 
     #[test]
@@ -296,30 +314,32 @@ mod tests {
         );
         // both at full speed: the demo is a contest of models, not of key rates
         assert!(players.iter().all(|(_, delay, _)| delay.is_zero()));
-        // the trained network plays player 1, and this is the only place it plays at all
+        // the trained network plays player 1
         assert!(
             matches!(players[0].2, DrAiKind::Neural(_)),
             "{:?}",
             players[0].2
         );
-        // and it is the best of the rows defending player 2, as the hardest difficulty plays
-        assert_eq!(skill(players[1].2), skill(AiDifficulty::Impossible.brain()));
+        // and the best of the N64's rows defends player 2, which is the model against the ai
+        // it learned from and beat
+        assert_eq!(skill(players[1].2), SKILL_ORDER[SKILLS - 1]);
     }
 
-    /// The network is not good enough to field as a difficulty yet, so nothing but the 2-player
-    /// demo may hand one out - and [`DrAiKind::default`] is what the 1-player demo takes.
+    /// [`DrAiKind::default`] is the network now, and the 1-player demo is what takes it - which
+    /// is the whole point of changing it, since the demo is what anyone judging how the model
+    /// *looks* is watching.
     #[test]
-    fn nothing_but_the_two_player_demo_plays_the_network() {
-        skill(DrAiKind::default());
-        for difficulty in AiDifficulty::ALL {
-            skill(difficulty.brain());
-        }
-        for mode in [AiMode::Off, AiMode::Demo] {
-            let mut config = GameConfig::default();
-            config.set_ai(mode);
-            for (_, _, brain) in config.ai_players() {
-                skill(brain);
-            }
-        }
+    fn the_one_player_demo_plays_the_network_at_full_speed() {
+        let mut config = GameConfig::default();
+        config.set_ai(AiMode::Demo);
+        let players = config.ai_players();
+        assert_eq!(players.len(), 1);
+        assert_eq!(players[0].0, 0);
+        assert!(players[0].1.is_zero());
+        assert!(
+            matches!(players[0].2, DrAiKind::Neural(_)),
+            "{:?}",
+            players[0].2
+        );
     }
 }

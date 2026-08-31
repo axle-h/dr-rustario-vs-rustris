@@ -118,7 +118,8 @@ in-game counters are capped. `ga dr ...` trains and inspects Dr. Rustario instea
 [Training Dr. Rustario](#training-dr-rustario) for the whole of it - and
 `ga dr play <seed> [virus level] [pill cap] [report every n pills] [brain]` plays it headless,
 where the brain is `n64` (the default), `n64:0` to `n64:5` to pick one of the N64 ai's own rows
-of weights, `neural` for the trained network or `linear` for the hand written baseline.
+of weights, `neural` for the trained network or `linear` for the hand written baseline - either
+of the last two with `+hold` on it to let the agent reach for the pill it is holding.
 `ga puyo ...` plays and ranks Puyo Rusto, which trains nothing: `ga puyo play <seed>
 [difficulty] [pair cap] [report every n pairs] [brain]` plays one of its six skill rows
 headless, and `ga puyo rank [seeds] [pair cap] [difficulty]` plays every row over the same
@@ -405,7 +406,7 @@ The **ai** option on a Dr. Rustario main menu offers the same choices:
   (see `AiDifficulty` in `dr-rustario/src/game/rules.rs`). Every difficulty plays Dr. Mario 64's own
   scorer, but on a different one of its six rows of weights - the one dial the original ai has - so a
   harder setting is a better player and not merely a faster one: `easy` and `normal` play the two rows
-  that hardly get past the first few bottles, `hard` the runner up and `impossible` the best of them.
+  that hardly get past the first few bottles, `hard` the third strongest and `impossible` the best of them.
 * `1-player ai demo` - the first player's bottle is played by the AI at full speed; their controls are
   disabled. It plays the same scorer, on the row `DrAiKind::default()` hands out.
 * `2-player ai demo` - the AI plays both bottles at full speed: the trained neural network as player 1
@@ -431,15 +432,21 @@ whether there is room left to move, whether the end is in sight, whether a colum
 is building in the middle - which is what makes it play differently with a bottle full of
 viruses than with two left in the corner. The six skill rows are personalities rather than a
 ladder - the original picks one per character, not per skill setting - so which of them is the
-better player was measured rather than assumed: each row played twenty seeds at virus levels 5,
-10, 15 and 20, ranked on bottles cleared less four per burial. That ranking (`SKILL_ORDER` in
-`dr-rustario/src/game/ai/n64/params.rs`) is what the four difficulties pick from, and what the
-2-player demo takes the best of them from.
+better player is measured rather than assumed, and it is measured the same way the ai's own
+training measures one: viruses destroyed inside a budget of 2500 pills, over twenty seeds at
+each of virus levels 0, 5, 10, 15 and 20 - six hundred whole games. That ranking (`SKILL_ORDER`
+in `dr-rustario/src/game/ai/n64/params.rs`) is what the four difficulties pick from, what the
+2-player demo takes the best of, and which row the neural model is taught by.
+
+It used to be ranked on bottles cleared less four per burial, and the two rules disagree: the
+old one charges four bottles for a burial, and the strongest row buries itself more than twice
+as often as the runner up while clearing eighteen percent more than it. Which of those is the
+better player is exactly what the pill budget was brought in to settle.
 
 Left out of the port: the sixteen characters and the moods that nudge their weights about, the
 deliberate mistakes, and the frame level key pacing, which the engine's own key pacer already
 does. The candidates come from Dr. Rustario's placement search rather than the original's, so
-this game's wall kicks are honoured; only the scoring is the N64's.
+this game's wall kicks are honoured and so are its tucks; only the scoring is the N64's.
 
 #### The neural model
 
@@ -449,20 +456,22 @@ a set of features can reproduce - as a linear fit, and then by cloning the ai on
 gradient descent and sending the clone out to play whole games. The features are what came out
 of that.
 
-Twenty nine inputs, feeding two hidden layers of twenty nine, the same architecture the Rustris
-model trained well at. Twenty five of them are *comparative* and are centred on the mean over
+Thirty two inputs, feeding two hidden layers of thirty two, the same architecture the Rustris
+model trained well at. Twenty six of them are *comparative* and are centred on the mean over
 the placements of the pill in play, since a scorer only ever has to separate those from each
 other: how the bottle moved (viruses, the work still needed to clear every virus, blocks buried
-under other colours counted apart for viruses and everything else, the tallest column, the holes
-under the stack, and runs one and two short of a match counted separately along a row and down a
-column), and what the placement itself did (what it cleared, the run each half landed in and how
-long that run could still become, halves left one and two short with room to finish, halves left
-where no line can ever join them, what it did to a virus underneath it, and how many ways the
-next pill could clear something in the bottle it leaves behind). The last four are *context* and
-are deliberately not centred - the viruses, work, height and holes of the bottle before the pill
-- because the N64 ai runs what amounts to two opposite policies, one while it is digging a full
+under other colours counted apart for viruses and everything else, the tallest column, how high
+the two columns a pill comes in through stand, the holes under the stack, and runs one and two
+short of a match counted separately along a row and down a column), and what the placement
+itself did (what it cleared, the run each half landed in and how long that run could still
+become, halves left one and two short with room to finish, halves left where no line can ever
+join them, what it did to a virus underneath it, and how many ways the next pill could clear
+something in the bottle it leaves behind). Five more are *context* and are deliberately not
+centred - the viruses, work, height, entrance height and holes of the bottle before the pill -
+because the N64 ai runs what amounts to two opposite policies, one while it is digging a full
 bottle out and another once the end is in sight, and a network with no idea which it is in can
-only learn the average of the two.
+only learn the average of the two. The last says whether this is a placement of the pill in
+play at all, which only matters with **hold** on; see below.
 
 Three of those carry most of the weight. The **work** count asks, for every virus, how many
 matching blocks a line of four through it still needs, and counts a virus nothing can reach any
@@ -470,35 +479,93 @@ more as worse than any reachable one; it is what points the agent at the viruses
 tidy heap in the corner. **Room** always means room a pill can actually get a half into, so a run
 of three with its only gap under an overhang is junk rather than a threat. And a **stranded**
 half - one in a run that can never reach four - is the single thing the N64 ai weighs most
-heavily: taking it out of the original changes its mind on 44% of pills. Tucking sideways under
-an overhang is not searched, since the agent has no single step soft drop to execute it with.
+heavily: taking it out of the original changes its mind on 44% of pills.
 
-The agent does not reach for the pill in hold, and that is deliberate. It learns to rank
-placements from the deterministic ai, which has no hold and scores a *placement* against the
-bottle rather than one pill against another - so asking it which of two pills to play gives an
-answer that sounds reasonable and is not. Taught with hold on offer a model plays 25 viruses
-over five games and buries itself in every one; taught without it, the same model plays 3143 and
-finishes 80 bottles. Hold is worth having back, but only behind something that can judge it.
+The **entrance height** - how high the two columns a pill spawns over stand - is the newest of
+them and was the biggest thing missing. It is not the tallest column and it is not the average
+one; it is the only height that can actually end a game, and the probe rated it ahead of nine
+inputs that were already being fed. With it there, the six other things the probe measures and
+leaves out are worth *less* than nothing: a clone fed them as well played 1810 viruses against
+2082 without them.
 
-The weights currently embedded are a **survival trained** model, in `models::survival_trained()`:
-4635 viruses, 101 bottles and 18615 pills over five games, buried in three of them. It is not
-good enough to field as a difficulty yet - watching it play is what settled that - so the four
-difficulties and the 1-player demo all play the deterministic ai above, and the network's one
-outing is as player 1 of the 2-player demo, against the best row of weights the N64 ai has. To
-watch it on a seed of your own, run
-`ga dr play <seed> <level> <pill cap> <report every> neural`.
+#### Tucking
+
+Both the model and the deterministic ai now **tuck**: a pill can be let fall to where it comes
+to rest and then walked sideways, under an overhang, into a pit that no straight drop can reach.
+Every placement used to be a straight fall from where the pill spawns, on the grounds that the
+agent has no single step soft drop to execute a tuck with - which is true and beside the point.
+What makes one executable here is extended placement lock down: a pill that has landed can be
+moved for another lock delay, and every move restarts that delay, so "fall, then slide" needs no
+timing at all, only somewhere to slide to. The search takes no other way down, because a pill
+cannot fall past where it comes to rest - so an agent waiting for that has nothing to get wrong,
+and it works at a limited key rate as well as at full speed.
+
+It is the single largest change to how well anything here plays. Over ten seeds the deterministic
+ai went from 179 bottles to **223**, and from 0.29 viruses a pill to 0.38 - better on eight of
+the ten, and far steadier: its worst seed used to be a first-bottle burial. Every difficulty
+plays that ai, so every difficulty got better with it.
+
+One thing was deliberately *not* changed to match. The features still say that a cell under an
+overhang is not room, even though the search can now get a half into one. Widening that - a
+neighbouring column clear down to the same row counts as a way in - costs a fifth of everything:
+the hand written baseline went from 1431 viruses and 24 bottles over five games to 1110 and 18,
+and a clone fitted to the features from 2082 and 33 to 1703 and 27. Being able to reach a cell
+and being able to *rely* on reaching it are not the same thing, and a model told those cells are
+still live stops minding whether it makes overhangs at all. Burying a run costs more than
+tucking one out is worth.
+
+#### Hold
+
+The agent still does not reach for the pill in hold by default, and it is now off for a measured
+reason rather than a remembered one.
+
+The machinery is there: the placements of the pill in play and of the pill a swap would bring in
+are pooled into one call - the only way a scorer that ranks by what separates its candidates can
+compare them at all - and every placement of the second pill carries an input saying so. What
+used to make hold a disaster was that input's *weights*. Gradient descent only moves a weight
+the corpus gives it a gradient for, and no lesson in the corpus contains a swap, so a taught
+network came out of stage one holding a loud opinion about swapping that it had drawn at random
+and learned nothing from. That opinion is now silenced outright, which leaves a taught model
+*indifferent* to a swap rather than superstitious about one.
+
+Indifference is not neutrality, though, and the measurement says so: with hold on, the embedded
+model played 2996 viruses over six seeds against 4595 with it off - worse on every one. An
+indifferent agent swaps whenever the other pill's best placement happens to score a shade
+higher, which throws the pill in play away for a rounding error.
+
+The deterministic ai has a hold too, and it is a better fit for one: it reads the situation off
+the bottle and picks its weight table once per pill, and the bottle is the same whichever pill
+is played, so both pills' placements can be pooled into a single call and scored on one table -
+its numbers are absolute where the network's are centred on the candidates in front of it. It
+still does not pay. Over twelve seeds the strongest row played 10,133 viruses and 235 bottles
+with a hold against 10,730 and 241 without, buying a drop from three burials to one at the cost
+of the pace. Neither scorer prices what giving up the pill in play *costs*, which is the whole
+of it, and until one does a hold is a way of trading the pill you have for a rounding error.
+
+What is left to try is a training run with hold on in the fitness, which is the only thing that
+can put a price on a swap; `ga dr trial <population> <generations> hold` is the short version of
+that, and a `+hold` on any brain in `ga dr play` watches it played.
+
+#### What is embedded
+
+The weights in `models::survival_trained()` are what a whole `ga dr auto` run left behind. The
+model is not good enough to field as a difficulty yet - watching it play is what settles that -
+so the four difficulties and the 1-player demo all play the deterministic ai above, and the
+network's one outing is as player 1 of the 2-player demo, against the best row of weights the
+N64 ai has. To watch it on a seed of your own, run
+`ga dr play <seed> <level> <pill cap> <report every> neural`, and to see how far it gets on
+seeds it has never played, `ga dr diagnose`.
 
 #### Training Dr. Rustario
 
-`ga dr auto` runs the whole thing: three stages, in order, each starting from what the last left
+`ga dr auto` runs the whole thing: two stages, the second starting from what the first left
 behind. It takes hours, prints as it goes, and ends by printing the weights to paste into the
 binary.
 
 | stage | what it optimises | how it ends |
 |--|--|--|
 | **1. imitation** | ranking placements the way the deterministic ai ranks them | when the lessons have been learned; no game is played |
-| **2. survival** | viruses destroyed before being buried, from the first bottle up | when a candidate finishes the run: one of its four seeds out of bottle 30, and every other one of them at least as far as bottle 20 |
-| **3. efficiency** | bottles finished within a budget of 3000 pills | after 150 generations - there is always a faster model, so this one is bounded by count |
+| **2. the run** | viruses destroyed inside a budget of 2500 pills, from the first bottle up | when a candidate clears every bottle the run asks for, inside the budget, on every one of its four seeds - which nothing has come near, so in practice you stop it |
 
 **Stage one** exists because a genetic algorithm can only select between members it can tell
 apart, and from random weights it cannot: 20 of 24 random genomes clear no virus at all, so the
@@ -512,63 +579,74 @@ corpus agreed with it on 53% to 56% of pills and played anywhere between 291 and
 Only the initial weights are drawn again - the corpus is deterministic, and re-gathering it
 would only cost time. About half of all clones clear the bar, so it rarely takes more than two
 or three; if 25 of them cannot, it says so and goes on with the best. A taught model clears
-around 2500 viruses over five whole games where a random one clears none, and stage two's first
-generation opens at 800 viruses instead of 2.
+around 3500 viruses over five whole games where a random one clears none.
 
-**Stage two** is the one that used to be all of training. It plays the game and counts viruses,
-with no pill budget and no reward for speed, so it trains purely for staying alive. Seeded from
-a taught model it mutates gently (3-8% of genes, by 0.05) rather than widely (10-20%, by 0.1):
-there is a great deal to preserve, and at the wide rates the median member of a taught
-population scores a twentieth of the model it came from.
+**Stage two** plays the game and counts the viruses a candidate destroys before its budget of
+pills runs out. Seeded from a taught model it mutates gently (3-8% of genes, by 0.05) rather
+than widely (10-20%, by 0.1): there is a great deal to preserve, and at the wide rates the
+median member of a taught population scores a twentieth of the model it came from.
 
-What ends it is the **finish line**, and the finish line is inside the fitness rather than
-bolted on after it, so what training selects for and what stops training are the same thing. A
-candidate plays four seeds, and it has finished the run when one of them came out of the last
-bottle and every other one of them got at least as far as bottle 20. Both halves of that are
-there for a reason. Asking every seed to clear the whole game is a lottery rather than a test -
-a model good enough to top its generation cleared a fresh seed about one time in five, so five
-of five is a one in three thousand event, and a whole night of training lost it 516 times out of
-516. And asking only for an average would take a model that is lucky once over one that is
-reliable four times.
+**The budget is the whole point of that one number.** It used to be two stages: a survival stage
+with no clock at all, and then an efficiency stage to make the result stop dawdling. Neither
+worked. Without a clock a model that takes nine hundred pills over a bottle scores exactly what
+one taking three hundred does, and the model that came out of it played every bottle from the
+third upwards about 40% slower than the deterministic ai it had learned from - 147 pills a
+bottle against 105, measured over six seeds. The efficiency stage that was meant to fix that
+scored on *bottles finished*, which is averaged over the four seeds and rounded to a whole
+number: two hundred and fifty candidates ranked on a fitness with about five distinct values,
+so selection fell through to the tiebreak - the game's own score, which is exponential in the
+viruses a single combo takes. A hundred and fifty generations of chasing combos cost it the
+survival the stage before had bought, and the run correctly threw the whole stage away.
 
-The last bottle is 30 rather than 20 because stopping at 20 put a ceiling on the measure that
-the best member reached in its *first* generation and then sat on: over a 641 generation run the
-best member scored the exact maximum in 518 of them. Above a ceiling the fitness cannot tell its
-candidates apart, so selection at the top was a random walk for nine hours - the best genome
-differed from the previous generation's in 619 of 640 - and the median crept up 80 viruses while
-the leader learned nothing at all. The bottles past 20 are not more of the same, either: level
-19 and up confine their viruses to the top three rows, and level 24 up carries the game's
-maximum of 99. There is a long way to climb up there. The deterministic ai the whole thing
-learns from dies around bottle 19 or 20 itself, and got as far as 25 once in six seeds.
+Viruses destroyed inside a fixed budget of pills is both things at once. Being buried stops the
+count, so it still selects for staying alive; spending the budget on fewer bottles costs it, so
+dawdling is no longer free. And it is a number in the hundreds that is never rounded, so a
+generation can be told apart. The budget has to *bind* or there is no clock: 2500 is where both
+players live - over six seeds the deterministic ai reaches bottle 17 to 21 in it and the old
+model reached 17 on five of six - with four bottles of clear headroom above either of them.
 
-**Stage three** asks a model that has stopped dying to stop dawdling. Same game, but the clock
-is a pill budget and the score is bottles finished, so taking the clear in front of it beats
-tidying, and finishing a bottle in three hundred pills beats nine hundred. The budget is three
-thousand, which at the pills a bottle a good model takes reaches somewhere around bottle twenty
-of the thirty one stage two asks for; it was half that while the run stopped at bottle twenty. Survival is not
-thrown away by it - a model that buries itself finishes no more bottles - but it is checked
-afterwards all the same, and if the sweep is lost the run says so and prints the stage two model
-as the one to embed.
+**Nothing ends on a lucky generation any more.** A phase is ended by its best member, and the
+best of two hundred and fifty candidates is an extreme of two hundred and fifty noisy samples:
+whatever the finish line asks, somebody clears it on the four seeds they happened to be dealt.
+So when a candidate trips the line it is asked the same question again over the block of seeds
+nothing trains against, and the run carries on if it cannot answer. That check is what the old
+run did not have, and it is why it once stopped on a model that then reached bottle 19 on every
+unseen seed.
+
+The same goes for what gets embedded. The ordering inside a generation is the ordering on that
+generation's four seeds and nothing more, and the top few of two hundred and fifty are separated
+by less than that ordering's own noise - so a run that finishes ends with a **playoff**: the top
+eight of the final population play the same block of unseen seeds, and the winner is the model
+that is printed.
+
+**A run is not capped**, because there is always a better model and a cap only decides in
+advance how much better. What makes that affordable is that a run stopped halfway has something
+to show for itself: every twenty five generations it prints the best genome it has, as the
+weights to paste in, together with how that genome plays on the seeds nothing trains against.
+So the log always carries a usable answer, and stopping the run is how it ends.
 
 Every stage can also be run on its own:
 
 ```shell
-ga dr auto                                  # all three, which is a training run
+ga dr auto                                  # both stages, which is a training run
 ga dr pretrain [pills] [threshold]          # stage one alone, printing the weights it learned
 ga dr survive                               # stage two alone, from random weights
-ga dr tune                                  # stages two and three, from the embedded model
-ga dr trial [population] [generations] [stage]   # a short bounded run that trains nothing
+ga dr tune                                  # stage two, from the embedded model
+ga dr trial [population] [generations] [seed]    # a short bounded run that trains nothing
 ga dr diagnose                              # play the embedded model on five unseen seeds
 ga dr probe [seeds] [level] [pills]         # what the deterministic ai is paying for, and how
                                             # much of it the features can express
+ga dr explain [pills] [seeds] [level]       # what the trained model does with each of its
+                                            # inputs: weight, spread, and how often silencing
+                                            # one changes the placement it plays
 ```
 
 `ga dr trial` is the one to reach for after changing the features, the fitness or the teaching:
 a small population over a handful of generations, reporting every one, which is enough to see
-whether the algorithm has been left anything it can climb. Its `stage` is `scratch` (the
-default: stage two from random weights), `taught` (stage two from a quick imitation seed) or
-`efficiency` (stage three from one). It runs to its generation count and stops; nothing about
-it finishes a run.
+whether the algorithm has been left anything it can climb. Its `seed` is `scratch` (the
+default: from random weights), `taught` (from a quick imitation seed, which is what a real run
+does) or `hold` (the same, with the held pill on offer - see *Hold*, below). It runs to its
+generation count and stops; nothing about it finishes a run.
 
 **Getting the result into the binary.** Every stage that finishes prints its weights as the body
 of `survival_trained`, ready to paste over the one in
@@ -600,8 +678,10 @@ around a minute on a desktop.
 [dr-rustario/src/game/ai/genetic.rs](dr-rustario/src/game/ai/genetic.rs) and
 [imitation.rs](dr-rustario/src/game/ai/imitation.rs): `LESSON_PILLS` (how many pills stage one
 learns from), `TAUGHT_ENOUGH` and `PRETRAIN_ATTEMPTS` (how well a taught network has to play
-before stage two starts from it, and how many tries it gets), `PILL_BUDGET` and
-`EFFICIENCY_GENERATIONS` (stage three), and, in [run.rs](dr-rustario/src/game/ai/run.rs),
+before stage two starts from it, and how many tries it gets), `CHECKPOINT_GENERATIONS` and
+`PLAYOFF` (how often a run prints a model to embed, and how many of the final population are
+played off for the right to be the one it ends on), and, in
+[run.rs](dr-rustario/src/game/ai/run.rs), `PILL_BUDGET` (the clock),
 `TOP_TRAINING_LEVEL` and `PROVEN_LEVEL` (the two halves of the finish line) with `PROBE_SEEDS`
 and `ABANDON_BELOW` (when a candidate is cut short).
 

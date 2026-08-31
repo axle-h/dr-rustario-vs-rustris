@@ -11,14 +11,30 @@ pub const SKILLS: usize = 6;
 const SITUATIONS: usize = 8;
 const FIELDS: usize = 28;
 
-/// The six rows worst to best, which is what a difficulty picks from. The rows are
-/// personalities rather than a ladder - the original picks one per character, not per skill
-/// setting - so the order was measured rather than assumed: each row played twenty seeds at
-/// virus levels 5, 10, 15 and 20 with a 1200 pill cap
-/// (`ga dr play <seed> <level> 1200 100000 n64:<row>`), ranked on bottles cleared less four per
-/// burial. Row 4 leads at every level and is the only row that never buried itself at level 10;
-/// rows 5 and 3 are the two that hardly get past the first few bottles.
-pub const SKILL_ORDER: [u8; SKILLS] = [5, 3, 2, 0, 1, 4];
+/// The six rows worst to best, which is what a difficulty picks from, and which the strongest
+/// of - `DEFAULT_SKILL` - is the teacher [`crate::game::ai::imitation`] gathers its corpus
+/// from, the defender in the 2-player demo, and what `impossible` plays.
+///
+/// The rows are personalities rather than a ladder - the original picks one per character, not
+/// per skill setting - so the order is measured. **It is measured in the same currency the
+/// training fitness uses**: viruses destroyed inside a budget of
+/// [`crate::game::ai::run::PILL_BUDGET`] pills, over twenty seeds at each of virus levels 0, 5,
+/// 10, 15 and 20 (`ga dr play <seed> <level> 2500 100000 n64:<row>`), which is six hundred
+/// whole games. That was not always so - it used to be bottles cleared less four per burial at
+/// a 1200 pill cap - and the two disagree at the top, because the old rule charges four bottles
+/// for a burial and row 4 buries itself more than twice as often as row 1 while clearing far
+/// more than it. Which of those is the better player is exactly the question the pill budget
+/// was introduced to answer, so it answers this one too.
+///
+/// | row | viruses | bottles | burials |
+/// |--|--|--|--|
+/// | 4 | 68834 | 1138 | 43 |
+/// | 1 | 58404 |  990 | 18 |
+/// | 2 | 56284 |  959 | 18 |
+/// | 0 | 50750 |  920 | 46 |
+/// | 5 | 36544 |  701 | 48 |
+/// | 3 | 33829 |  656 | 33 |
+pub const SKILL_ORDER: [u8; SKILLS] = [3, 5, 0, 2, 1, 4];
 
 /// The row an ai plays when nothing picks one: the best of them.
 pub const DEFAULT_SKILL: u8 = SKILL_ORDER[SKILLS - 1];
@@ -176,5 +192,21 @@ impl Params {
             rensa_mp: row[18],
             wall: row[21] != 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_order_ranks_every_row_once_and_the_default_is_the_best_of_them() {
+        let mut rows = SKILL_ORDER;
+        rows.sort();
+        assert_eq!(rows, [0, 1, 2, 3, 4, 5], "a row is missing or ranked twice");
+        // worst to best, so the last is the strongest - which is the row every one-row decision
+        // in the crate takes: the ai a difficulty tops out at, the demo's defender, and the
+        // teacher `imitation::lessons` gathers its corpus from
+        assert_eq!(DEFAULT_SKILL, SKILL_ORDER[SKILLS - 1]);
     }
 }

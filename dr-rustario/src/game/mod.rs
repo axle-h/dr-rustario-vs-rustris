@@ -358,6 +358,23 @@ impl Game {
         !HoldState::is_locked(&self.hold)
     }
 
+    /// The pill pressing hold would put in play: whatever is being held, or the next one out of
+    /// the queue when nothing is yet. `None` while hold is locked, which it is until the pill in
+    /// play has landed. This is what an agent weighing the held pill against the one in front of
+    /// it has to search, and it is the game's answer rather than the agent's guess because only
+    /// the game knows which of the two cases it is in.
+    pub(crate) fn holdable(&self) -> Option<PillShape> {
+        // hold unlocks when the pill in play locks, so this is also "there is a pill to swap"
+        // as far as anything asking is concerned; `hold` itself no-ops on an empty bottle
+        if !self.can_hold() {
+            return None;
+        }
+        Some(match self.hold {
+            Some(held) => held.piece,
+            None => self.random.peek()[0],
+        })
+    }
+
     pub fn viruses(&self) -> Vec<ColoredBlock> {
         self.bottle.viruses()
     }
@@ -381,6 +398,20 @@ impl Game {
         self.soft_drop = soft_drop;
         if soft_drop {
             self.events.push(GameEvent::SoftDrop);
+        }
+    }
+
+    /// Let the pill fall to where it comes to rest without locking it, which is the first half
+    /// of a tuck ([`crate::game::ai::input_sequence::Translation::Rest`]). Nothing in play calls
+    /// this - there it is gravity, and the agent only waits for it - but a harness that presses
+    /// a whole plan in one frame has to ask for the fall it would otherwise have waited out.
+    pub(crate) fn rest(&mut self) {
+        if let Some((dropped_rows, _)) = self.bottle.hard_drop() {
+            if dropped_rows > 0 {
+                self.events.push(GameEvent::Fall);
+            }
+            // resting starts the lock delay, which is what makes the moves after it a tuck
+            self.state = GameState::NEW_LOCK;
         }
     }
 

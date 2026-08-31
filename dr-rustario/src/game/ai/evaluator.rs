@@ -21,7 +21,7 @@ use engine::ai::{Tensor, BOTTLE_FEATURE_INPUTS};
 
 /// How many of the inputs are comparative, and so centred on the pill's own candidates. The
 /// rest are the context block at the end.
-pub const COMPARATIVE: usize = 25;
+pub const COMPARATIVE: usize = 26;
 
 /// Roughly how far each input moves between the placements of one pill, which is what it is
 /// divided by. The layers are sigmoid activated, so inputs have to arrive at about the same
@@ -34,6 +34,7 @@ const SPREAD: [f64; BOTTLE_FEATURE_INPUTS] = [
     8.0,   // buried viruses
     12.0,  // buried blocks
     4.0,   // max height
+    3.0,   // how high the spawn columns stand
     6.0,   // holes
     2.0, 2.0, 2.0, 2.0, 2.0, 2.0, // runs one and two short, by axis
     // what the placement did
@@ -54,7 +55,9 @@ const SPREAD: [f64; BOTTLE_FEATURE_INPUTS] = [
     100.0, // viruses left
     200.0, // work left
     16.0,  // how high it stands
+    16.0,  // how high the spawn columns stand
     32.0,  // holes in it
+    1.0,   // whether this is the held pill rather than the one in play
 ];
 
 /// Every measurement, in the network's own order and in its own units, before any centring.
@@ -72,6 +75,7 @@ pub fn raw_inputs(features: &BottleFeatures) -> [f64; BOTTLE_FEATURE_INPUTS] {
         delta.buried_viruses() as f64,
         delta.buried_blocks() as f64,
         delta.max_height() as f64,
+        delta.entrance_height() as f64,
         delta.holes() as f64,
         delta.virus_3_row() as f64,
         delta.virus_3_col() as f64,
@@ -95,7 +99,9 @@ pub fn raw_inputs(features: &BottleFeatures) -> [f64; BOTTLE_FEATURE_INPUTS] {
         before.viruses() as f64,
         before.virus_work() as f64,
         before.max_height() as f64,
+        before.entrance_height() as f64,
         before.holes() as f64,
+        features.held() as u8 as f64,
     ]
 }
 
@@ -159,6 +165,7 @@ fn linear(features: &BottleFeatures) -> f64 {
         - 25.0 * delta.buried_viruses() as f64
         - 5.0 * delta.buried_blocks() as f64
         - 8.0 * delta.max_height() as f64
+        - 20.0 * delta.entrance_height() as f64
         - 15.0 * delta.holes() as f64
         + 30.0 * delta.virus_3_row() as f64
         + 20.0 * delta.virus_3_col() as f64
@@ -214,6 +221,22 @@ mod tests {
                 value
             );
         }
+    }
+
+    #[test]
+    fn the_held_flag_is_the_last_input_and_is_never_centred_away() {
+        let bottle = Bottle::new();
+        let in_play = features(&bottle);
+        let swapped = features(&bottle).of_the_held_pill();
+
+        assert_eq!(raw_inputs(&in_play)[BOTTLE_FEATURE_INPUTS - 1], 0.0);
+        assert_eq!(raw_inputs(&swapped)[BOTTLE_FEATURE_INPUTS - 1], 1.0);
+
+        // pooled into one call it still says which is which, since it is context and not
+        // centred: the whole point of it is that it survives the comparison
+        let rows = inputs(&[in_play, swapped]);
+        assert_eq!(rows[0][BOTTLE_FEATURE_INPUTS - 1], 0.0);
+        assert_eq!(rows[1][BOTTLE_FEATURE_INPUTS - 1], 1.0);
     }
 
     #[test]
