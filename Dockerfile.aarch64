@@ -50,7 +50,7 @@ ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
 WORKDIR /app
 COPY . .
 RUN cargo build --release -p dr-rustario-vs-rustris --target aarch64-unknown-linux-gnu \
-      --no-default-features --features pkgconfig,portmaster \
+      --features portmaster \
   && aarch64-linux-gnu-readelf -d target/aarch64-unknown-linux-gnu/release/dr-rustario-vs-rustris | grep NEEDED
 
 CMD ["true"]

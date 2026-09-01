@@ -11,14 +11,17 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 
 SDL2 is the only native dependency, and there are two ways of finding it, configured with cargo features:
 
-* `pkgconfig` (the default) - dynamically link SDL2 from the system, through `pkg-config`. This
-  is the Linux and macOS route.
+* `pkgconfig` - dynamically link SDL2 from the system, through `pkg-config`. This is the
+  Linux and macOS route.
 * `vcpkg` - build SDL2 from source with [vcpkg](https://vcpkg.io) and link it statically, so
   the binary carries it and needs no SDL2 beside it. This is the Windows route.
 
-Whichever it is, pass `--no-default-features` with it: the two are alternatives rather than
-additions, and with both on SDL2's build script probes both - which on Windows means a
-`pkg-config` probe that panics the build before vcpkg is ever reached.
+**Each platform's own route is what a plain `cargo build --release` does**, so neither
+normally wants naming: `pkgconfig` is the default feature and is simply absent on the targets
+that have no pkg-config, where vcpkg is wired in instead. The one build that wants a flag is a
+self-contained macOS (or Linux) binary, which is `vcpkg` - and it wants `--no-default-features`
+with it, since the two are alternatives rather than additions and SDL2's build script probes
+both when it is given both.
 
 All resources are embedded into the binary.
 
@@ -31,7 +34,7 @@ path - vcpkg compiles SDL2 itself, so the first run takes a while. In a develope
 rustup default stable-x86_64-pc-windows-msvc
 cargo install cargo-vcpkg
 cargo vcpkg build --manifest-path launcher/Cargo.toml
-cargo build --release --no-default-features --features vcpkg
+cargo build --release
 ```
 
 The result statically linked to SDL2 at `target\release\dr-rustario-vs-rustris.exe`.
@@ -45,16 +48,14 @@ sudo dnf install SDL2-devel
 # Ubuntu/Debian
 sudo apt install libsdl2-dev pkg-config
 
-cargo build --release --no-default-features --features pkgconfig
+cargo build --release
 ```
-
-`pkgconfig` is the default feature, so a plain `cargo build --release` does the same thing.
 
 ### macOS
 
 ```shell
 brew install sdl2 pkg-config
-cargo build --release --no-default-features --features pkgconfig
+cargo build --release
 ```
 
 The linker will fail to link SDL2 haptics. You will need to add the following to `~/.cargo/config.toml`:
@@ -65,7 +66,8 @@ rustflags = ["-C", "link-args=-weak_framework CoreHaptics"]
 ```
 
 vcpkg works here too, if a self-contained binary is wanted - the same three commands as
-Windows, and vcpkg's one macOS triplet is a static one:
+Windows, and vcpkg's one macOS triplet is a static one. This is the one build that names a
+feature, since it has to turn the platform's own default off:
 
 ```shell
 cargo install cargo-vcpkg

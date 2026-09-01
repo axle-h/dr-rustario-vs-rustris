@@ -256,6 +256,7 @@ dependencies = [
  "rand_chacha",
  "rayon",
  "sdl2",
+ "sdl2-sys",
  "serde",
  "strum",
  "strum_macros",

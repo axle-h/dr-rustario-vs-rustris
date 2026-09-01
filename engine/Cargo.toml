@@ -8,8 +8,15 @@ edition.workspace = true
 workspace = true
 
 [features]
+# How SDL2 is found and linked, and each platform's own route wants no flag: `pkgconfig`
+# reaches the linking only through the dependency below, which no Windows or emscripten build
+# has, so those never probe pkg-config however they are invoked - Windows takes vcpkg from its
+# own target section instead and emscripten links nothing. `vcpkg` is the explicit override,
+# for a macOS (or Linux) binary that carries SDL2 rather than finding it. Neither is a default
+# *here*: the launcher's `default` is the one that decides, since every crate depending on
+# engine would otherwise pull `pkgconfig` in whatever the build was asked for.
 vcpkg = ["sdl2/static-link", "sdl2/use-vcpkg"]
-pkgconfig = ["sdl2/use-pkgconfig"]
+pkgconfig = ["dep:sdl2-sys"]
 portmaster = []
 browser = []
 
@@ -28,6 +35,20 @@ strum_macros.workspace = true
 itertools = "0.15"
 num-bigint = "0.5"
 num-traits = "0.2"
+
+# sdl2-sys is the crate that does the linking and `sdl2/use-pkgconfig` is only a forward to
+# it, so asking it directly says the same thing - features unify across the graph, and this is
+# the same sdl2-sys the sdl2 above is built on. It is a *dependency* rather than a plain
+# `sdl2/use-pkgconfig` feature edge because cargo drops a feature edge to a dependency the
+# target does not have, which is the only way to have a feature that is simply absent on
+# Windows; and it is sdl2-sys rather than sdl2 renamed because one crate may not depend on the
+# same package twice. Both routes on at once is what there is to avoid: sdl2-sys then probes
+# both, and the pkg-config probe panics the Windows build before vcpkg is ever reached.
+[target.'cfg(all(not(windows), not(target_os = "emscripten")))'.dependencies]
+sdl2-sys = { workspace = true, features = ["use-pkgconfig"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+sdl2 = { workspace = true, features = ["static-link", "use-vcpkg"] }
 
 [target.'cfg(not(target_os = "emscripten"))'.dependencies]
 # training only (the ga subcommand); the browser build compiles neither
