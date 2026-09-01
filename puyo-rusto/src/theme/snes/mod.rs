@@ -17,7 +17,7 @@ use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
 use crate::theme::data::{audio, cells, hud, panel_shadow, previews, Sounds};
-use crate::theme::{sound, GAME_MUSIC};
+use crate::theme::sound;
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -50,6 +50,46 @@ mod sprites {
     pub const ANIMATIONS: &[u8] = include_bytes!("animations.png");
     pub const FONT: &[u8] = include_bytes!("font.png");
 }
+
+/// Kirby's Avalanche's own music, cut by `puyo-rusto/art/retro_audio.py snes`.
+///
+/// The music and nothing else: the source is a set of SPC dumps, which carry no sound effects
+/// at all, so this theme goes on playing the game's own out of [`crate::theme::sound`] the way
+/// it played everything before there was a rip to cut.
+///
+/// Every track is a *pair*, the mixer having no loop marker. What the first half of each pair
+/// holds is **not** a lead-in the way Mean Bean Machine's is - these tunes loop from their
+/// first bar, and the `Stage Intro` tracks in that dump are the pre-stage screen's own looping
+/// music and lead into nothing. It is the fraction of a second in which the SNES's echo buffer
+/// fills, which is the only part of the render that does not repeat, and it is cut off here so
+/// that the loop carries the echo the way the hardware does. `retro_audio.py`'s docstring is
+/// the long version.
+mod music {
+    pub const STAGE_1: (&[u8], &[u8]) = (
+        include_bytes!("stage-1-intro.ogg"),
+        include_bytes!("stage-1-repeat.ogg"),
+    );
+    pub const STAGE_2: (&[u8], &[u8]) = (
+        include_bytes!("stage-2-intro.ogg"),
+        include_bytes!("stage-2-repeat.ogg"),
+    );
+    pub const STAGE_3: (&[u8], &[u8]) = (
+        include_bytes!("stage-3-intro.ogg"),
+        include_bytes!("stage-3-repeat.ogg"),
+    );
+
+    /// the dump splits the win music over two SPCs, because the game changes song halfway
+    /// through the flourish; the theme gets the pair of them joined
+    pub const VICTORY: &[u8] = include_bytes!("victory.ogg");
+    pub const GAME_OVER: &[u8] = include_bytes!("game-over.ogg");
+}
+
+/// the tracks a match on this theme may be dealt, in the order the dump numbers them
+///
+/// Kirby's Avalanche wrote **three** stage tunes where Mean Bean Machine wrote four, which is
+/// why nothing says how many a theme must have. Nothing picks between them either - the engine
+/// deals one when a match opens on this theme - so the order is only the dump's own.
+pub const GAME_MUSIC: [(&[u8], &[u8]); 3] = [music::STAGE_1, music::STAGE_2, music::STAGE_3];
 
 mod kirby;
 
@@ -349,8 +389,8 @@ pub fn snes_theme<'a>(
                 receive_nuisance: sound::GARBAGE,
                 speed_up: sound::SPEED_UP,
                 paused: sound::PAUSE,
-                victory: sound::VICTORY,
-                game_over: sound::GAME_OVER,
+                victory: music::VICTORY,
+                game_over: music::GAME_OVER,
             },
         )?,
         // right aligned where the game printed its own, just after the `SC` its border keeps
@@ -549,5 +589,19 @@ mod tests {
     fn the_font_is_ten_digits_wide() {
         let (width, _) = png_size(sprites::FONT);
         assert_eq!(width % 10, 0);
+    }
+
+    /// The dump this theme's music is cut from is 44.1 kHz already, so `retro_audio.py`
+    /// resamples nothing and a rate the decoder refuses would only be caught when a match
+    /// opened on this theme. The theme builder decodes them all, but no test builds a theme.
+    #[test]
+    fn every_sound_this_theme_owns_decodes() {
+        let mut sounds = vec![music::VICTORY, music::GAME_OVER];
+        for (intro, repeat) in GAME_MUSIC {
+            sounds.extend([intro, repeat]);
+        }
+        for bytes in sounds {
+            engine::audio::Sound::load(bytes, 100).expect("a snes sound did not decode");
+        }
     }
 }

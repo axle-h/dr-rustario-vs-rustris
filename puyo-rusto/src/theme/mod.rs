@@ -24,9 +24,11 @@ pub const RACE_REFERENCE_BLOCK_SIZE: u32 = modern::SRC_BLOCK_SIZE;
 ///
 /// All of it sits here rather than in the particle theme's own directory because it belongs to
 /// the *game* and not to that theme - a Mean Bean Machine bean settling and a Puyo Puyo Tetris
-/// puyo settling are the same event - so the three retro themes play these until phase 3d cuts
-/// each of them a rip of its own. `include_bytes!` of one path embeds one copy however many
-/// modules name it, so a theme borrowing the set costs nothing but the wrong period sound.
+/// puyo settling are the same event - so a retro theme plays these until a rip of its own turns
+/// up. `genesis` has one. `snes` has its own *music* and still borrows every effect here,
+/// because the dump it was cut from is a set of SPCs and an SPC carries no effects at all.
+/// `include_bytes!` of one path embeds one copy however many modules name it, so a theme
+/// borrowing the set costs nothing but the wrong period sound.
 ///
 /// Every track is a *pair*: the mixer has no loop marker, so one is split at the point it
 /// loops back to and the second half is what repeats.
@@ -73,17 +75,15 @@ pub(crate) mod sound {
     );
 }
 
-/// How many tracks a theme offers a match, which is the same number for every one of them.
+/// The tracks a match on the particle theme may be dealt.
 ///
 /// Nothing lets a player pick between them - the theme is dealt one at the start of a match
-/// and plays it to the end - so this is not a menu row's length any more. It is still one
-/// number rather than each theme's own, because a theme with a *shorter* soundtrack would be
-/// heard less often than the others rather than differently, and because a retro theme cutting
-/// its own has four to find: the games these are drawn from all wrote four.
-pub const GAME_MUSIC_TRACKS: usize = 4;
-
-/// the tracks a match on the particle theme may be dealt
-pub const GAME_MUSIC: [(&[u8], &[u8]); GAME_MUSIC_TRACKS] = [
+/// and plays it to the end - so this is not a menu row's length. **How many there are is each
+/// theme's own business**: Puyo Puyo Tetris wrote these four, Mean Bean Machine wrote four
+/// stage tunes and Kirby's Avalanche three. A deal is made out of one theme's table and never
+/// across them, so a theme with fewer simply comes round to a tune it has played before
+/// sooner, which is how those games sound.
+pub const GAME_MUSIC: [(&[u8], &[u8]); 4] = [
     sound::KOROBEINIKI,
     sound::DECISIVE,
     sound::MAGICAL,
@@ -207,12 +207,16 @@ mod tests {
         }
     }
 
-    /// every theme is dealt out of a table of [`GAME_MUSIC_TRACKS`], which the arrays' own
-    /// types say - so what is left to check is that none of them is empty, which an
-    /// `include_bytes!` of a file the rip never wrote would be
+    /// A theme is dealt out of its own table and every table has something in it, which the
+    /// arrays' own types say - so what is left to check is that no *track* is empty, which an
+    /// `include_bytes!` of a file the cutting script never wrote would be.
     #[test]
     fn every_track_a_theme_deals_has_something_in_it() {
-        for (intro, repeat) in GAME_MUSIC.into_iter().chain(genesis::GAME_MUSIC) {
+        let tracks = GAME_MUSIC
+            .into_iter()
+            .chain(genesis::GAME_MUSIC)
+            .chain(snes::GAME_MUSIC);
+        for (intro, repeat) in tracks {
             assert!(!intro.is_empty() && !repeat.is_empty());
         }
     }

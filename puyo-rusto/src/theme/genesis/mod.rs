@@ -15,7 +15,6 @@ use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
 use crate::theme::data::{audio, cells, panel_shadow, previews, Sounds, CLEAR_CLASSES};
-use crate::theme::GAME_MUSIC_TRACKS;
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -106,10 +105,10 @@ mod sound {
 
 /// the tracks a match on this theme may be dealt, in the game's own order
 ///
-/// Mean Bean Machine has exactly [`GAME_MUSIC_TRACKS`] stage tunes and deals them by stage,
-/// four stages at a time, so the order is the game's own and the count is not a coincidence:
-/// the games these themes are cut from all wrote four.
-pub const GAME_MUSIC: [(&[u8], &[u8]); GAME_MUSIC_TRACKS] = [
+/// Mean Bean Machine deals its four stage tunes by stage, four stages at a time, so the order
+/// is the game's own. Nothing here picks between them - the engine deals one when a match
+/// opens on this theme.
+pub const GAME_MUSIC: [(&[u8], &[u8]); 4] = [
     sound::STAGES_1_4,
     sound::STAGES_5_8,
     sound::STAGES_9_12,
