@@ -866,7 +866,68 @@ SNES_GRID_COLUMNS = 8
 # Avalanche has no tray either, so the three symbols are the boulder at three weights: the
 # most dissolved for a single, the next for six, and the whole rock for thirty.
 SNES_BOULDER = (8, 152)
+SNES_BOULDER_FRAMES = 4
 
+# ... and which of those four the boulder *pops* through: the three after the whole rock, so
+# the strip is the rock coming apart. Frame 0 is the rock the board already draws, and a pop
+# that opened on it would hold what the blink has just finished showing.
+SNES_BOULDER_POP = (1, 2, 3)
+
+# The last of them - the rock down to a scatter of dots - is also what it throws off as it
+# goes. The sheet has no droplet for a boulder any more than Mean Bean Machine's has one for
+# its refugee bean, and this is the art it does have.
+SNES_BOULDER_DEBRIS = 3
+
+# The **third row** under each "Placed Blob" grid, which the grid reader steps over: three
+# loose frames, on the colour's own row, that are the whole of this game's cell animation.
+#
+# The sheet does not label them - the block is called "Placed Blob" and that is all - so they
+# were read off the art. In order: a blob with its eyes wide open, which is the face it pulls
+# on its way out; a **flat** one; and a **tall** one. The flat and the tall are drawn nowhere
+# else and used for nothing else, which is the same tell that found Mean Bean Machine's pair
+# on the row below its beans - a landing squash and the spring back through it.
+#
+# They are deliberately *not* the four frames of "Controlling Blob + Shadow", which also
+# carry a squash and a stretch: those are the blob in the air under the player's hand, drawn
+# with the white flash rim it wears while it is still in play.
+SNES_LOOSE_ROW = SNES_BLOCK * 2
+SNES_SURPRISED = 0
+SNES_SQUASH = SNES_BLOCK
+SNES_STRETCH = SNES_BLOCK * 2
+
+# "Dissolving Blob / Angel Trail / Win SFX": the little block of three the sheet gives every
+# colour, and the rest of the pop. A ball, a smaller ball and a four pixel spark, each cut to
+# its own size and centred in a whole cell - they are drawn smaller than a cell on the
+# hardware too, so they go back on the cell they came out of rather than being scaled up.
+#
+# Only the first of the three is named as pop art. The other two are the trail behind the
+# angel a losing blob turns into and the sparkle of a win, and they are used here because a
+# blob that is a ball and then nothing is a pop two frames long - the same borrow, and for
+# the same reason, that the genesis refugee bean's pop makes of the art it does have.
+SNES_DISSOLVE = {
+    "Blue": (8, 192),
+    "Red": (192, 232),
+    "Yellow": (216, 232),
+    "Green": (8, 432),
+    "Purple": (32, 432),
+}
+# `(dx, dy, w, h)` off the strip's own corner, measured off the sheet - every colour lays
+# them out identically, which is what `snes_animations` asserts before it cuts anything.
+SNES_BALL = (0, 0, 8, 8)
+SNES_TRAIL = (9, 2, 6, 5)
+SNES_SPARK = (18, 3, 4, 3)
+
+# the frames of one pop, which is what `DestroyStyle::Pop` counts, and the widest strip on
+# the sheet - so it is also the sheet's own width
+SNES_POP_FRAMES = 3
+# the squash and the stretch, and nothing else: a landing that outstays itself reads as a
+# blob drawn wrong rather than as a bounce
+SNES_BOUNCE_FRAMES = 2
+SNES_DEBRIS_FRAMES = 1
+
+# the animation sheet's own grid. The frames of a strip have to be edge to edge - the engine
+# addresses one by counting frame widths from its start - so only the rows are spaced out.
+SNES_ANIM_ROW_GAP = 4
 
 
 # --- and the rest of it, which no rip carries -------------------------------------------
@@ -1141,6 +1202,117 @@ def snes_art(out):
     write_png(os.path.join(out, "scene.png"), vignette(SNES_FOREST))
 
 
+def snes_cell(blobs, box, transparent):
+    """one sprite of the blobs sheet, keyed and centred in a whole [`SNES_BLOCK`] cell.
+
+    The balls and the spark a popping blob shrinks through are drawn smaller than a cell and
+    cut as such, so they are put back on the cell they came out of rather than scaled up to
+    fill it.
+    """
+    _, _, w, h = box
+    tile = keyed_box(blobs, box, transparent)
+    if (w, h) == (SNES_BLOCK, SNES_BLOCK):
+        return tile
+    cell = Image.new("RGBA", (SNES_BLOCK, SNES_BLOCK), (0, 0, 0, 0))
+    cell.paste(tile, ((SNES_BLOCK - w) // 2, (SNES_BLOCK - h) // 2))
+    return cell
+
+
+def snes_dissolve_boxes(strip):
+    """the three sprites of one colour's dissolve block, as boxes on the sheet"""
+    x, y = strip
+    return [
+        (x + dx, y + dy, w, h) for dx, dy, w, h in (SNES_BALL, SNES_TRAIL, SNES_SPARK)
+    ]
+
+
+def snes_assert_dissolve_blocks(blobs, transparent):
+    """every colour's dissolve block has to be laid out identically, and it is not labelled.
+
+    The five blocks are scattered down the sheet with a colour's own art around them, so each
+    is measured by hand and a number typed a row out cuts a sliver of the sprite beside it -
+    which draws a smaller ball rather than failing. What holds them together is the layout
+    itself: at the offsets above, and only at those offsets, each block is exactly three
+    islands of art with the sheet's own backdrops all round them.
+    """
+    pixels = rgb(blobs)
+    drawn = np.ones(pixels.shape[:2], bool)
+    for color in transparent:
+        drawn &= ~matches(pixels, color)
+    for color, strip in SNES_DISSOLVE.items():
+        for box in snes_dissolve_boxes(strip):
+            x, y, w, h = box
+            inside = drawn[y : y + h, x : x + w]
+            # the art fills the box to all four edges - these are round sprites, so the box is
+            # their bounding box and not a rectangle they fill
+            if not (
+                inside.any(1).all() and inside.any(0).all()
+            ):
+                raise SystemExit(
+                    f"{color}'s sprite at {box} does not reach the edges of the box it is "
+                    "cut with: the offsets in SNES_BALL / SNES_TRAIL / SNES_SPARK are wrong"
+                )
+            # ... and nothing is drawn in the ring around it, so the cut is the whole sprite
+            ring = drawn[y - 1 : y + h + 1, x - 1 : x + w + 1].copy()
+            ring[1 : 1 + h, 1 : 1 + w] = False
+            if ring.any():
+                raise SystemExit(
+                    f"{color}'s sprite at {box} runs past the box it is cut with"
+                )
+
+
+def snes_animations(blobs, transparent):
+    """the pop of each colour, the boulder's, every landing squash and every burst.
+
+    The rows are laid out in the order `theme/snes/mod.rs` counts them - the pops, the
+    boulder's pop, the squashes, then the debris - and that file is the only other place the
+    order is written down, so a row moved here and not there draws another strip's art
+    rather than failing.
+
+    One strip per row, every frame a whole cell, laid out for
+    `AnimationSpriteSheetData::non_exclusive_linear` - which counts frame widths from a
+    strip's own start, so the frames of one strip are edge to edge and only the rows are
+    spaced apart. The boulder has no squash of its own on the sheet and gets no bounce row:
+    its three dissolving frames are the rock coming apart, not a rock landing.
+    """
+    snes_assert_dissolve_blocks(blobs, transparent)
+    cut = lambda box: snes_cell(blobs, box, transparent)
+    loose = lambda color, dx: (
+        SNES_GRIDS[color][0] + dx,
+        SNES_GRIDS[color][1] + SNES_LOOSE_ROW,
+        SNES_BLOCK,
+        SNES_BLOCK,
+    )
+    boulder = lambda frame: (
+        SNES_BOULDER[0] + SNES_BLOCK * frame,
+        SNES_BOULDER[1],
+        SNES_BLOCK,
+        SNES_BLOCK,
+    )
+    strips = []
+    # the pop: the blob's eyes go wide, it curls into a ball, and the ball shrinks away
+    for color in COLORS:
+        ball, trail, _ = snes_dissolve_boxes(SNES_DISSOLVE[color])
+        strips.append([cut(loose(color, SNES_SURPRISED)), cut(ball), cut(trail)])
+    strips.append([cut(boulder(frame)) for frame in SNES_BOULDER_POP])
+    # the landing squash, one row per colour and none for the boulder
+    for color in COLORS:
+        strips.append([cut(loose(color, SNES_SQUASH)), cut(loose(color, SNES_STRETCH))])
+    # one spark per colour, centred, and the boulder's own scatter of dots
+    for color in COLORS:
+        strips.append([cut(snes_dissolve_boxes(SNES_DISSOLVE[color])[2])])
+    strips.append([cut(boulder(SNES_BOULDER_DEBRIS))])
+
+    pitch = SNES_BLOCK + SNES_ANIM_ROW_GAP
+    out = Image.new(
+        "RGBA", (SNES_BLOCK * SNES_POP_FRAMES, pitch * len(strips)), (0, 0, 0, 0)
+    )
+    for row, strip in enumerate(strips):
+        for frame, cell in enumerate(strip):
+            out.paste(cell, (SNES_BLOCK * frame, pitch * row))
+    return out
+
+
 def snes_index(mask):
     """the sheet's column for one of this game's link masks"""
     return sum(bit for bit, link in SNES_INDEX_BITS if mask & link)
@@ -1167,6 +1339,9 @@ def snes():
             blobs, (bx + SNES_BLOCK * frame, by), SNES_BLOCK, transparent
         )
     write_sheet(os.path.join(out, "sprites.png"), SNES_BLOCK, tiles)
+    write_png(
+        os.path.join(out, "animations.png"), snes_animations(blobs, transparent)
+    )
     snes_art(out)
 
 
