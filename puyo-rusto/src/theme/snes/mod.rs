@@ -14,20 +14,23 @@
 //! number are painted out, since this game prints neither in that place.
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
-use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
+use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
 use crate::theme::data::{audio, cells, hud, panel_shadow, previews, Sounds};
 use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
+use engine::animate::PopDebris;
 use engine::config::Config;
+use engine::game::CellId;
+use engine::render::animation::AnimationSpriteSheetData;
 use engine::render::character::CharacterLayout;
 use engine::render::font::{FontRenderOptions, FontThemeOptions, MetricSnips};
 use engine::render::geometry::BoardGeometry;
 use engine::render::retro::{retro_theme, RetroThemeOptions};
 use engine::render::scene::SceneType;
-use engine::render::sprite_sheet::{BlockSpriteSheetData, GhostStyle};
+use engine::render::sprite_sheet::{BlockSpriteSheetData, CellAnimationData, GhostStyle};
 use engine::render::{PeekLayout, PendingLayout, Theme};
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
@@ -41,6 +44,10 @@ mod sprites {
     pub const BOARD: &[u8] = include_bytes!("board.png");
     /// the wash the panels stand on, cut by `rip_retro.py`'s `vignette`
     pub const SCENE: &[u8] = include_bytes!("scene.png");
+    /// every strip that plays over a cell: a pop per colour and the boulder's, a landing
+    /// squash per colour, and what each of them bursts into - one strip per row, cut by
+    /// `rip_retro.py`'s `snes_animations`
+    pub const ANIMATIONS: &[u8] = include_bytes!("animations.png");
     pub const FONT: &[u8] = include_bytes!("font.png");
 }
 
@@ -128,10 +135,81 @@ const SCORE_AT: (i32, i32) = (104, 207);
 /// ... and where it prints its stage number, in the recess: one cell, right aligned in it
 const LEVEL_AT: (i32, i32) = (STAGE_BOX.0 + STAGE_BOX.2 as i32, STAGE_BOX.1);
 
-/// How long a group holds before it goes. It **adds** to
-/// [`crate::game::rules::POP_DELAY`] rather than fitting inside it: the match screen skips
-/// `game.update` outright while an animation blocks the tick.
-const POP_HOLD: Duration = Duration::from_millis(200);
+/// How long a blob takes to go, over the [`POP_FRAMES`] of its strip.
+///
+/// It **adds** to [`crate::game::rules::POP_DELAY`] rather than fitting inside it: the match
+/// screen skips `game.update` outright while an animation blocks the tick, so a chain step
+/// costs the strip *and* the delay.
+///
+/// This and the two constants under it are **not measured off Kirby's Avalanche**, unlike
+/// every geometric number in this file. They are the genesis theme's own beats, shortened:
+/// the two games are the same Compile engine with different art, so the shape of a pop is the
+/// same, but genesis is deliberately the slower of the two (see `POP_HOLD` there, and the
+/// note in `docs/puyo-puyo-plan.md`) and this theme was 290 ms a chain step before it had a
+/// strip at all. The three of them plus `POP_DELAY` come to about 550 ms, against genesis's
+/// 820. If a capture of the real thing ever settles it, these are the three numbers to set.
+const POP_HOLD: Duration = Duration::from_millis(260);
+
+/// How long the blob **holds** its surprised face before it curls into a ball.
+///
+/// The pop is not evenly paced in either game: the face is the beat that reads and the balls
+/// go by in a moment. Split evenly, three frames over [`POP_HOLD`] would give the face under
+/// a tenth of a second and read as a flicker on the way to the ball.
+const POP_FACE_HOLD: Duration = Duration::from_millis(140);
+
+/// The tell before the strip: the group flashes where it stands, drawn exactly as it sits on
+/// the board - joined to its neighbours and all - and only then pulls a face and goes.
+///
+/// It is what makes a chain readable: a step announces which group is going before it goes,
+/// so the eye is already in the right place when the next one starts. It starts **lit** - the
+/// group is shown and then taken away, not the other way round. Two flashes rather than
+/// genesis's three, at genesis's own measured rate of one about every hundred milliseconds:
+/// the same tell, on the faster of the two games.
+const POP_BLINK: Duration = Duration::from_millis(200);
+const POP_BLINKS: u32 = 2;
+
+/// The frames of one pop: the blob's eyes go wide, it curls into a ball, and the ball shrinks
+/// until there is nothing of it left. What it bursts into is not on the strip at all - see
+/// [`POP_DEBRIS`], which throws sparks that leave the cell.
+///
+/// It is the widest strip on the sheet, so it is also the sheet's own width; every other
+/// strip is asserted against it below.
+const POP_FRAMES: usize = 3;
+
+/// The squash a blob plays where it lands: it hits and flattens, springs back past its own
+/// height, and the strip runs out into the still sprite it was going to draw anyway.
+///
+/// Two frames, and short. It is decoration - it holds nothing and the board carries on
+/// underneath it - so a blob that outstays its landing reads as a puyo drawn wrong rather
+/// than as a bounce. Neither frame carries a neck, which is Kirby's Avalanche's own art: a
+/// blob is briefly unlinked from its neighbours where it lands, and joins them as it settles.
+const BOUNCE_FRAMES: usize = 2;
+
+/// One spark, which is the whole of the burst's art: it is thrown several times over and each
+/// piece finds its own way out of the cell.
+const DEBRIS_FRAMES: usize = 1;
+
+/// What a blob throws off as it bursts, and when.
+///
+/// It is thrown on the strip's *last* frame - the blob is a shrinking ball right up to the
+/// moment there is nothing left of it - and it **outlives the clear**: the board settles and
+/// the next chain step starts blinking while the sparks are still in the air, which is what a
+/// sprite stuck inside its own cell could never do.
+const POP_DEBRIS: PopDebris = PopDebris {
+    at_frame: POP_FRAMES - 1,
+    pieces: 4,
+    // far enough to leave the cell and cross a couple, and no further: they are drawn on the
+    // window rather than into the board texture, so one thrown much harder than this ends up
+    // out on the flower border
+    speed: (2.0, 5.0),
+    gravity: 16.0,
+    life: Duration::from_millis(380),
+    // `size` measures the **cell**, and this game's spark is four pixels across a sixteen
+    // pixel one where Mean Bean Machine's droplet is eight - so the cell is drawn wider than
+    // a block to bring the spark itself out at about a third of one, which is the size the
+    // genesis droplet leaves its cell at.
+    size: 1.5,
+};
 
 /// What the panels stand on: the canopy's own colour, flat.
 ///
@@ -150,6 +228,80 @@ fn block(col: i32, row: i32) -> Point {
 /// skin is ignored: Kirby's Avalanche drew one set of blobs, so both players see the same.
 fn puyo(_: PuyoSkin, color: PuyoColor, links: LinkMask) -> Point {
     block(links.bits() as i32, color as i32)
+}
+
+/// A strip on the animation sheet: `frames` cells edge to edge, `row` rows down.
+///
+/// The rows are spaced by [`ANIM_ROW_GAP`] and the frames are not, which is the engine's
+/// arrangement rather than a choice: it addresses a frame by counting frame widths from the
+/// strip's own start, so a strip has to be contiguous and only the rows can be given air.
+const ANIM_ROW_GAP: u32 = 4;
+
+/// Where each strip sits on the sheet, in rows. `rip_retro.py` lays them out in this order
+/// and nothing else names it, so a row moved there and not here draws another strip's art
+/// rather than failing - which is what [`ANIM_ROWS`] and the test below are for.
+const POP_ROW: u32 = 0;
+const NUISANCE_POP_ROW: u32 = PuyoColor::N as u32;
+const BOUNCE_ROW: u32 = NUISANCE_POP_ROW + 1;
+const DEBRIS_ROW: u32 = BOUNCE_ROW + PuyoColor::N as u32;
+const NUISANCE_DEBRIS_ROW: u32 = DEBRIS_ROW + PuyoColor::N as u32;
+
+/// how many rows the sheet has altogether
+const ANIM_ROWS: u32 = NUISANCE_DEBRIS_ROW + 1;
+
+fn strip(row: u32, frames: u32) -> AnimationSpriteSheetData {
+    debug_assert!(row < ANIM_ROWS, "the sheet has no row {row}");
+    AnimationSpriteSheetData::non_exclusive_linear(
+        sprites::ANIMATIONS,
+        Point::new(0, ((SRC_BLOCK_SIZE + ANIM_ROW_GAP) * row) as i32),
+        frames,
+        SRC_BLOCK_SIZE,
+        SRC_BLOCK_SIZE,
+    )
+}
+
+/// What plays over a cell: every blob of a colour pops and lands through that colour's own
+/// strips, and the boulder pops through its dissolving frames.
+///
+/// A blob is keyed by colour, link mask *and* skin, and the retro themes draw one set of art
+/// for every skin, so a colour's strip is claimed by all sixteen masks of it in each of the
+/// [`PuyoSkin::COUNT`] slots.
+///
+/// The boulder gets **no bounce and no idle**, where the genesis refugee bean has both. The
+/// sheet carries neither: its four frames are one rock coming apart, and a rock that came
+/// apart where it landed would read as a clear rather than as a landing. Nothing in this file
+/// invents art the rip does not have.
+fn animations() -> Vec<(Vec<CellId>, CellAnimationData)> {
+    let mut out = vec![];
+    for (row, color) in PuyoColor::ALL.into_iter().enumerate() {
+        let ids = PuyoSkin::all()
+            .flat_map(|skin| {
+                (0..LinkMask::COUNT as u8)
+                    .map(move |bits| PuyoCell::puyo(color, LinkMask::from_bits(bits)).id(skin))
+            })
+            .collect();
+        out.push((
+            ids,
+            CellAnimationData {
+                pop: Some(strip(POP_ROW + row as u32, POP_FRAMES as u32)),
+                bounce: Some(strip(BOUNCE_ROW + row as u32, BOUNCE_FRAMES as u32)),
+                debris: Some(strip(DEBRIS_ROW + row as u32, DEBRIS_FRAMES as u32)),
+                ..Default::default()
+            },
+        ));
+    }
+    let nuisance = PuyoSkin::all()
+        .map(|skin| PuyoCell::Nuisance.id(skin))
+        .collect();
+    out.push((
+        nuisance,
+        CellAnimationData {
+            pop: Some(strip(NUISANCE_POP_ROW, POP_FRAMES as u32)),
+            debris: Some(strip(NUISANCE_DEBRIS_ROW, DEBRIS_FRAMES as u32)),
+            ..Default::default()
+        },
+    ));
+    out
 }
 
 pub fn snes_theme<'a>(
@@ -177,7 +329,7 @@ pub fn snes_theme<'a>(
                     ]
                 },
             ),
-            animations: vec![],
+            animations: animations(),
             ghost_alpha: 0x60,
             previews: previews(),
             mascot: None,
@@ -267,8 +419,15 @@ pub fn snes_theme<'a>(
         mascot: None,
         mascot_animations: None,
         spawn_arc: None,
+        // nothing on this theme idles: the boulder has no blink where the genesis refugee bean
+        // has one, so no cell declares an idle strip and this is never asked for
         cell_idle_type: FrameAnimationType::Static,
-        destroy_style: Some(DestroyStyle::Vanish { hold: POP_HOLD }),
+        destroy_style: Some(
+            DestroyStyle::pop(POP_FRAMES)
+                .for_duration(POP_HOLD)
+                .blinking_for(POP_BLINK, POP_BLINKS)
+                .holding_first(POP_FACE_HOLD),
+        ),
         game_over_style: Some(GameOverStyle::Curtain {
             from_top: false,
             rows: VISIBLE_ROWS,
@@ -276,8 +435,12 @@ pub fn snes_theme<'a>(
         curtain_cell: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
-        pop_debris: None,
+        pop_debris: Some(POP_DEBRIS),
         nuisance_rumble: None,
+        // Kirby's Avalanche draws no ball crossing the screen and the rip carries none, where
+        // Mean Bean Machine draws one per player per weight - so an attack sent from this
+        // theme falls back to the popped blob's own cell with a white core over it, which is
+        // `Theme::draw_attack_ball`'s answer for a theme with nothing cut
         attack_ball: None,
     };
     retro_theme(canvas, texture_creator, options)
@@ -355,6 +518,31 @@ mod tests {
         // the whole tray stands on the plank: a rock is drawn bigger than the pitch it is
         // laid on, so the last one reaches past the last slot and can hang off the end
         assert!(TRAY_STEP * (TRAY_MAX - 1) + TRAY_ICON <= ARCH_MOUTH.2);
+    }
+
+    /// Every strip on the animation sheet is addressed by counting frames from its own
+    /// start, so a sheet a row short or a frame narrow draws another strip's art rather than
+    /// failing. One pop per colour, the boulder's, then the squashes and the bursts.
+    #[test]
+    fn every_strip_is_where_the_theme_counts_it() {
+        let (width, height) = png_size(sprites::ANIMATIONS);
+        assert_eq!(width, SRC_BLOCK_SIZE * POP_FRAMES as u32);
+        assert_eq!(height, (SRC_BLOCK_SIZE + ANIM_ROW_GAP) * ANIM_ROWS);
+        assert!(
+            BOUNCE_FRAMES <= POP_FRAMES
+                && DEBRIS_FRAMES <= POP_FRAMES
+                && POP_DEBRIS.at_frame < POP_FRAMES,
+            "every other strip shares the sheet's width with the pop, which is its widest"
+        );
+        // ... and every cell the board can draw claims one of them
+        let strips = animations();
+        assert_eq!(strips.len(), PuyoColor::N + 1);
+        let keyed: usize = strips.iter().map(|(ids, _)| ids.len()).sum();
+        assert_eq!(
+            keyed,
+            PuyoSkin::COUNT * (PuyoColor::N * LinkMask::COUNT + 1),
+            "every blob and every boulder, in every skin slot"
+        );
     }
 
     #[test]
