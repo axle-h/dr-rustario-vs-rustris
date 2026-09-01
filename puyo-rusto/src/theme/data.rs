@@ -110,8 +110,8 @@ pub fn panel_shadow(margin: (u32, u32, u32, u32)) -> PanelShadow {
 }
 
 pub struct Sounds {
-    /// the tracks a match on this theme may be dealt, as `(intro, repeat)` pairs -
-    /// [`crate::theme::GAME_MUSIC_TRACKS`] of them, whichever theme is asking
+    /// the tracks a match on this theme may be dealt, as `(intro, repeat)` pairs - as many
+    /// as this theme's own game wrote, which is not the same number for all of them
     pub music: &'static [(&'static [u8], &'static [u8])],
     pub move_pair: &'static [u8],
     pub rotate: &'static [u8],
@@ -127,6 +127,22 @@ pub struct Sounds {
     pub victory: &'static [u8],
     pub game_over: &'static [u8],
 }
+
+/// How loud this game's effects play against the volume the config asks for, as a percentage.
+///
+/// **Measured, against the balance the other two games already strike.** Take the mean peak of
+/// a theme's effects over the RMS of its music: every theme of Rustris and Dr. Rustario lands
+/// between +6 and +13 dB, and Rustris's Game Boy theme - the one that sounds right - is at +9.
+/// Puyo Rusto's retro themes were at +15. Two things put them there and this is the second: the
+/// console dumps were levelled to themselves rather than to this game's own music, which
+/// `retro_audio.py` now fixes as far as their headroom allows; and the Puyo Puyo Tetris rip the
+/// effects come off is peakier than the same rip's music, by about the three decibels taken
+/// here. That leaves all three themes inside the band the other two games occupy.
+///
+/// It is a number here rather than a gain in the files because `art/sfx.py`'s rip is not on
+/// this machine and cannot be re-cut, and because the set is shared: the particle theme and
+/// the SNES theme play the same effect files.
+const EFFECTS_TRIM: i32 = 71;
 
 pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> {
     let mut sfx = vec![
@@ -147,7 +163,7 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
             .enumerate()
             .map(|(class, sound)| (SfxKey::Clear(class as u16), *sound)),
     );
-    let mut audio = AudioTheme::new(config, &sfx)?;
+    let mut audio = AudioTheme::new(config, &sfx)?.with_effects_at(EFFECTS_TRIM);
     for (intro, repeat) in sounds.music {
         audio = audio.with_game_music_track(Some(intro), repeat)?;
     }

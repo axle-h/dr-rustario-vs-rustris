@@ -107,6 +107,21 @@ impl AudioTheme {
         Ok(self)
     }
 
+    /// Plays every one of this theme's effects at `percent` of the volume the config asks for.
+    ///
+    /// Where a game's effects and its music come off rips that were not mastered against each
+    /// other, this is the one place that can say so. The alternative is a gain baked into every
+    /// effect, and that cannot be done at all when the rip the effects were cut from is gone
+    /// and its script cannot be re-run - which is the case in `puyo-rusto`, whose `EFFECTS_TRIM`
+    /// is the only caller.
+    pub fn with_effects_at(mut self, percent: i32) -> Self {
+        for sound in self.sfx.values_mut() {
+            let volume = sound.volume();
+            sound.set_volume(volume * percent / 100);
+        }
+        self
+    }
+
     /// how many tracks a match may be played on
     pub fn game_music_count(&self) -> usize {
         self.game_music.len()

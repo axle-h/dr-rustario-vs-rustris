@@ -2,12 +2,14 @@
 """Cuts a retro theme's music and sound effects out of that game's own rips.
 
     python3 puyo-rusto/art/retro_audio.py genesis    # needs ffmpeg with libvorbis
+    python3 puyo-rusto/art/retro_audio.py snes
 
 One subcommand per theme, the shape `rip_retro.py` already has - `genesis` is Dr. Robotnik's
-Mean Bean Machine; `snes` joins it when its rips are found. The sources sit under
+Mean Bean Machine and `snes` is Kirby's Avalanche. The sources sit under
 `puyo-rusto/art/retro/<theme>-music` and `<theme>-sfx` and are **not in the repository**, on
 the same footing as everything else in `art/`: they are downloads under their own names and
-re-running this means finding them again.
+re-running this means finding them again. A dump that ships both a lossless render and
+somebody's transcode of it is taken at the lossless one - see `source`.
 
 What the engine will take, and so what comes out of here:
 
@@ -34,9 +36,46 @@ and never reaches back before it.
 
 **Mean Bean Machine writes each stage's lead-in as a track of its own**, which is exactly the
 pair the mixer wants: `Stages 1-4 Intro` is the one-shot and `Stages 1-4` is what repeats. It
-has four stage tunes, which is `theme::GAME_MUSIC_TRACKS` - nothing picks between them, a match
-is dealt one, and every theme's table is the same length so that none of them is heard less
-often than the others.
+has four stage tunes; nothing picks between them, a match is dealt one.
+
+## Kirby's Avalanche, which names no loop at all
+
+The SNES dump is a set of SPCs rendered to wav, and an SPC carries a *play length* and a fade
+in its ID666 tag but no loop point - not even the whole seconds Mean Bean Machine's rip writes
+down. So there is nothing to seed `loop_length` with and `loop_period` sweeps every lag
+instead. That works here because of how these particular renders are laid out: each is its
+tune played through **exactly twice and cut off dead**, with the tag's fade never applied, so
+one lag scores near 1 and nothing else comes close.
+
+Its stage tunes then loop from their first bar rather than opening on a lead-in the way Mean
+Bean Machine's do - the `Stage Intro` tracks in that dump are the pre-stage screen's own
+looping music and lead into nothing. What `loop_start` finds at the head of each one is not a
+musical intro but the quarter second or so in which the SNES's echo buffer fills: the render
+is bit-identical between the two passes from that point on and audibly thinner before it. Cut
+there, and the pair the mixer gets is the cold start the game itself opens on and a loop with
+the echo already under it.
+
+There are three of them where Mean Bean Machine has four, which is why nothing here says how
+many tracks a theme must have.
+
+## Levels, which are the whole game's and not one theme's
+
+A console dump is quieter than the modern rip everything else here comes off - Kirby's
+Avalanche by four decibels, Mean Bean Machine by three - and it is also *peakier*, having no
+compression on it. So `music_gain` lifts each cut as far as `reference_music_level` or as far
+as the headroom allows, whichever comes first, and for both of these it is the headroom: they
+end up peaking at `MUSIC_CEILING` and still a couple of decibels under the particle theme.
+
+One gain over the whole set, never a normalise per track: the levels within a dump are the
+game's own mix and are meant to be uneven, which is `sfx.py`'s rule.
+
+What is left of the gap is not a gain's to close, and it is not closed here. Take the mean peak
+of a theme's effects over the RMS of its music and every theme of Rustris and Dr. Rustario
+lands between +6 and +13 dB, with Rustris's Game Boy theme at +9; this game's retro themes were
+at +15 before the lift above. The rest comes off the effects, in
+`src/theme/data.rs`'s `EFFECTS_TRIM` - a number there rather than a gain in the files because
+`sfx.py`'s rip is not on this machine and because the particle and SNES themes play the *same*
+effect files, so there is no per-theme cut to bake it into.
 
 ## The sound effects, and the one place this differs from `sfx.py`
 
@@ -80,7 +119,7 @@ FADE_OUT = 0.008
 #
 # The game's four stage tunes in stage order, each with the lead-in the game writes as a track
 # of its own. Nothing picks between them - a match is dealt one - so the order is only the
-# order they were written in, but the *count* has to be `theme::GAME_MUSIC_TRACKS`.
+# order they were written in.
 GENESIS_MUSIC = {
     "stages-1-4": (("04", 9, 8), ("05", 31, 31)),
     "stages-5-8": (("06", 8, 4), ("07", 27, 26)),
@@ -130,6 +169,32 @@ GENESIS_SFX = {
 }
 
 
+# Kirby's Avalanche's three stage tunes, in the order the dump numbers them. A track is
+# `(rip number, loop)` - and unlike the Genesis table that second number is **not read off
+# anything**: an SPC names no loop point, so it is what `loop_period` found when this table was
+# written, kept as the assertion rather than as the input. A re-render laid out differently
+# fails here rather than shipping a broken loop, which is the whole of what it is for.
+SNES_MUSIC = {
+    "stage-1": ("104", 41.665),
+    "stage-2": ("106", 48.306),
+    "stage-3": ("108", 23.594),
+}
+
+# ... and the cues it plays once, each `(rip number, ...)` joined end to end. The dump splits
+# the win music over two SPCs because the game changes song halfway through it, and the pair is
+# one flourish: part 1 then part 2, with the render's padding trimmed from between them. There
+# is a `Stage Clear` in the dump too and nothing here to play it: only single player has an
+# interstitial, and the Genesis theme leaves that music unset as well.
+SNES_JINGLES = {
+    "victory": ("115a", "115b"),
+    "game-over": ("113",),
+}
+
+# what a lossless render of a dump is called, best first: a folder that carries both the wavs
+# and somebody's OGG transcode of them should be cut from the wavs
+LOSSLESS = (".flac", ".wav")
+
+
 def decode(path, channels=2):
     """the whole file as interleaved i16 at the mixer's rate, as floats"""
     pcm = subprocess.run(
@@ -177,21 +242,66 @@ def loop_length(mono, hint):
     return coarse - span + int(np.argmax(correlation))
 
 
-def loop_start(mono, length, block=0.25, gap=8):
-    """Where that repeat begins: everything before it is the intro.
+def loop_period(mono, ref=(1.0, 8.0), shortest=8.0):
+    """That same lag with nothing to seed the search - an SPC dump names no loop point.
 
-    Per quarter second, how well the render matches itself a loop later. The two passes are the
-    same performance but not the same samples - the rip's own noise floor puts them at 0.9 to
-    0.98 rather than at 1 - so the run is taken at 0.9, and a dip of up to `gap` blocks inside
-    it is closed over rather than ending it, since one quiet bar that scores badly is not the
-    end of a loop.
+    Eight seconds of the first pass correlated against *every* lag rather than the window a
+    hint points at, and normalised by the energy under each window, so a loud bar somewhere
+    else in the tune cannot outscore the true one. A render that is the tune played twice and
+    cut off dead has exactly one lag that scores anywhere near 1.
+
+    The answer is only as sharp as `loop_length`'s is, which is to the sample: the peak halves
+    a hundred samples either side of it. What this cannot do is tell a loop from twice a loop,
+    which is what the caller's assertion is for.
     """
+    start, width = int(ref[0] * RATE), int(ref[1] * RATE)
+    reference = mono[start:start + width].astype(np.float64)
+    rest = mono[start:].astype(np.float64)
+    span = len(rest) - width
+    first = int(shortest * RATE)
+    if span <= first:
+        raise SystemExit(f"too short to carry two passes of a {shortest}s loop")
+    size = 1 << int(np.ceil(np.log2(len(rest) + width)))
+    correlation = np.fft.irfft(
+        np.fft.rfft(rest, size) * np.conj(np.fft.rfft(reference, size)), size
+    )[:span]
+    # the energy under the window at each lag, as a running sum rather than a convolution:
+    # the window is eight seconds long and there are a couple of million lags
+    energy = np.concatenate([[0.0], np.cumsum(rest * rest)])
+    score = correlation / (
+        np.sqrt((energy[width:width + span] - energy[:span]) * (reference * reference).sum())
+        + 1e-12
+    )
+    return first + int(np.argmax(score[first:]))
+
+
+def loop_matches(mono, length, block=0.25):
+    """per quarter second of the render, how well it matches itself a loop later"""
     size = int(block * RATE)
     count = (len(mono) - length) // size
     first = mono[:count * size].reshape(count, size)
     second = mono[length:length + count * size].reshape(count, size)
     scale = np.sqrt((first * first).sum(axis=1) * (second * second).sum(axis=1)) + 1e-12
-    matches = (first * second).sum(axis=1) / scale > 0.9
+    return (first * second).sum(axis=1) / scale
+
+
+def loop_start(mono, length, block=0.25, gap=8, threshold=0.9):
+    """Where that repeat begins: everything before it is the intro.
+
+    The longest run of [`loop_matches`] over `threshold`, with a dip of up to `gap` blocks
+    inside it closed over rather than ending it, since one quiet bar that scores badly is not
+    the end of a loop.
+
+    The default is the Genesis rip's number: the two passes there are the same performance but
+    not the same samples - the rip's own noise floor puts them at 0.9 to 0.98 rather than at 1
+    - so 0.9 is just under how well that render matches itself anywhere. **That is what the
+    threshold means, and it is not a constant of the job**: an emulator's own render is
+    bit-identical between passes wherever the SNES's noise channel is quiet and can sit at 0.85
+    where it is not, so a rip that scores differently has to say so - see `measured_split`.
+    """
+    size = int(block * RATE)
+    matches = loop_matches(mono, length, block) > threshold
+    count = len(matches)
 
     closed, index = matches.copy(), 0
     while index < count:
@@ -243,9 +353,41 @@ def split(directory, track):
     return frames[:start], frames[start:start + length]
 
 
+def measured_split(directory, prefix, loop):
+    """`(intro, repeat)` of a rip that carries no loop table - the SNES dump
+
+    The same two searches [`split`] makes, with the period *found* rather than refined, and
+    with the rip's own number checked against the answer rather than fed to it.
+
+    [`loop_start`] is then asked for the run that is good *for this render*: three fifths of
+    however well it matches itself once it is repeating, rather than the Genesis rip's flat
+    0.9. Two of these three tunes are bit-identical between passes and the third never scores
+    better than about 0.85 anywhere - vibrato that the SPC does not restart with the sequence -
+    so at 0.9 that third one reads as four seconds of intro it does not have, and four seconds
+    of tune would be heard once and never again.
+    """
+    frames = decode(source(directory, prefix))
+    mono = frames.mean(axis=1)
+    length = loop_period(mono)
+    if abs(length - loop * RATE) > 0.1 * RATE:
+        raise SystemExit(
+            f"{prefix}: the render repeats every {length / RATE:.3f}s where this table says "
+            f"{loop}s - is this a different render, or half a loop?"
+        )
+    steady = float(np.median(loop_matches(mono, length)))
+    start = loop_start(mono, length, threshold=0.6 * steady)
+    return frames[:start], frames[start:start + length]
+
+
 def source(directory, prefix):
-    """the one file in `directory` whose name begins with the rip's number"""
+    """the one file in `directory` whose name begins with the rip's number
+
+    ... preferring a lossless render where the folder holds one, since a dump downloaded whole
+    may carry both the wavs and an OGG transcode of them under the same names.
+    """
     matches = [f for f in sorted(os.listdir(directory)) if f.startswith(prefix + " ")]
+    lossless = [f for f in matches if os.path.splitext(f)[1].lower() in LOSSLESS]
+    matches = lossless or matches
     if len(matches) != 1:
         raise SystemExit(f"{prefix}: {len(matches)} matches in {directory}")
     return os.path.join(directory, matches[0])
@@ -266,6 +408,62 @@ def trim(frames):
     return cut
 
 
+def rms(frames):
+    return float(np.sqrt((frames.astype(np.float64) ** 2).mean()))
+
+
+def reference_music_level():
+    """what this game's own music sits at, as RMS
+
+    Read off `src/theme/music/` rather than written down, the way [`reference_peaks`] reads the
+    effects, and for the same reason: those tracks and every theme's effects are cut from one
+    Puyo Puyo Tetris rip, so that is the level the effects were balanced against and the level
+    a console dump has to be put back to. A theme can be switched with a keypress in the middle
+    of a match as well, so a set left where its own dump left it is heard as the music going
+    quiet rather than as the theme changing.
+    """
+    folder = os.path.join(THEMES, "music")
+    loops = [name for name in sorted(os.listdir(folder)) if name.endswith("-repeat.ogg")]
+    return float(np.mean([rms(decode(os.path.join(folder, name))) for name in loops]))
+
+
+# The loudest a cut's own music is allowed to peak. Vorbis hands back a sample or two above the
+# one it was given, and the mixer sums music and effects before anything clips, so the top of
+# the scale is not this script's to spend.
+MUSIC_CEILING = 0.95
+
+
+def music_gain(loops, everything):
+    """One gain for a whole cut's music: up to [`reference_music_level`], or as far as the
+    headroom allows, whichever comes first.
+
+    One gain over the set and never a normalise per track - the levels within a dump are the
+    game's own mix and are meant to be uneven, which is `sfx.py`'s rule. `loops` is what the
+    level is read off, since a repeat is what a match is actually played on; the peak is taken
+    over `everything`, intros and jingles included, because they are written at this gain too.
+
+    It is usually the ceiling that binds. A console dump has some three decibels more crest
+    than the modern master it is being matched to - the rip is compressed and an emulator's
+    render is not - so the last part of that gap cannot be had with a gain, and closing it is
+    `data.rs`'s `EFFECTS_TRIM`, not a limiter here.
+    """
+    wanted = reference_music_level() / float(np.mean([rms(frames) for frames in loops]))
+    room = MUSIC_CEILING / max(peak(frames) for frames in everything)
+    return (wanted, "the level") if wanted <= room else (room, "the headroom")
+
+
+def write_music(out, cuts, loops):
+    """every track of one cut, at the one gain [`music_gain`] allows the set"""
+    gain, bound = music_gain(loops, cuts.values())
+    print(f"the whole set at {20 * np.log10(gain):+.1f} dB, held by {bound}, peaking at "
+          f"{max(peak(frames) for frames in cuts.values()) * gain:.2f}")
+    for name, frames in cuts.items():
+        target = os.path.join(out, name + ".ogg")
+        encode(frames * gain, target)
+        print(f"{os.path.relpath(target, THEMES):32} {len(frames) / RATE:6.2f}s "
+              f"{os.path.getsize(target) // 1024:5} KiB")
+
+
 def reference_peaks():
     """what the particle theme's own effect for each slot peaks at
 
@@ -281,7 +479,7 @@ def reference_peaks():
     }
 
 
-def genesis():
+def genesis(only):
     """Dr. Robotnik's Mean Bean Machine"""
     music = os.path.join(SOURCES, "genesis-music")
     effects = os.path.join(SOURCES, "genesis-sfx")
@@ -290,25 +488,23 @@ def genesis():
         if not os.path.isdir(folder):
             raise SystemExit(f"no rip at {folder}")
 
-    def write(name, frames):
-        target = os.path.join(out, name + ".ogg")
-        encode(frames, target)
-        print(f"{os.path.relpath(target, THEMES):32} {len(frames) / RATE:6.2f}s "
-              f"{os.path.getsize(target) // 1024:5} KiB")
+    if only != "sfx":
+        cuts = {}
+        for slug, (lead, loop) in GENESIS_MUSIC.items():
+            # the lead-in is a rip like any other, two passes and a fade, so one pass of it is
+            # the whole of what the game plays before the stage tune takes over - and whatever
+            # the stage tune has of its own before its loop goes on the end of it
+            head, body = split(music, lead)
+            intro, repeat = split(music, loop)
+            cuts[f"{slug}-intro"] = np.concatenate([head, body, intro])
+            cuts[f"{slug}-repeat"] = repeat
+        for slug, track in GENESIS_JINGLES.items():
+            intro, repeat = split(music, track)
+            cuts[slug] = intro if repeat is None else np.concatenate([intro, repeat])
+        write_music(out, cuts, [f for n, f in cuts.items() if n.endswith("-repeat")])
 
-    for slug, (lead, loop) in GENESIS_MUSIC.items():
-        # the lead-in is a rip like any other, two passes and a fade, so one pass of it is the
-        # whole of what the game plays before the stage tune takes over - and whatever the
-        # stage tune has of its own before its loop goes on the end of it
-        head, body = split(music, lead)
-        intro, repeat = split(music, loop)
-        write(f"{slug}-intro", np.concatenate([head, body, intro]))
-        write(f"{slug}-repeat", repeat)
-
-    for slug, track in GENESIS_JINGLES.items():
-        intro, repeat = split(music, track)
-        write(slug, intro if repeat is None else np.concatenate([intro, repeat]))
-
+    if only == "music":
+        return
     levels = reference_peaks()
     for slug, sound in GENESIS_SFX.items():
         if slug not in levels:
@@ -321,10 +517,37 @@ def genesis():
               f"{os.path.getsize(target) // 1024:5} KiB  {sound}.wav at {20 * np.log10(gain):+.1f} dB")
 
 
+def snes(only):
+    """Kirby's Avalanche
+
+    Music only: the SNES dump is a set of SPCs and carries no sound effects at all, so this
+    theme keeps playing the game's own until a rip of them turns up. `--only sfx` has nothing
+    to do here and says so.
+    """
+    music = os.path.join(SOURCES, "snes-music")
+    out = os.path.join(THEMES, "snes")
+    if not os.path.isdir(music):
+        raise SystemExit(f"no rip at {music}")
+    if only == "sfx":
+        raise SystemExit("the SNES dump is SPCs and carries no effects; there is nothing to cut")
+
+    cuts, loops = {}, []
+    for slug, (prefix, loop) in SNES_MUSIC.items():
+        intro, repeat = measured_split(music, prefix, loop)
+        cuts[f"{slug}-intro"], cuts[f"{slug}-repeat"] = intro, repeat
+        loops.append(repeat)
+    for slug, parts in SNES_JINGLES.items():
+        cuts[slug] = np.concatenate([trim(decode(source(music, prefix))) for prefix in parts])
+    write_music(out, cuts, loops)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("theme", choices=["genesis"], help="which theme's rips to cut")
-    {"genesis": genesis}[parser.parse_args().theme]()
+    parser.add_argument("theme", choices=["genesis", "snes"], help="which theme's rips to cut")
+    parser.add_argument("--only", choices=["music", "sfx"],
+                        help="cut half of it, leaving the other half's files as they are")
+    arguments = parser.parse_args()
+    {"genesis": genesis, "snes": snes}[arguments.theme](arguments.only)
 
 
 if __name__ == "__main__":

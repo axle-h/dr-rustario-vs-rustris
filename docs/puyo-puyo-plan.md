@@ -13,7 +13,7 @@ detail and this for the *why*.
 | 0 | engine and launcher past two games | `done` |
 | 1 | rules, headless | `done` |
 | 2 | playable on the particle theme | `done` |
-| 3 | retro themes (`genesis`, `snes`) | `done`, **except 3d: `snes` has no audio of its own** |
+| 3 | retro themes (`genesis`, `snes`) | `done`, **except 3d: `snes` has no *effects* of its own** |
 | 4 | the ai | step 1 (`beam.rs`) `done`; step 2 (a neural model) `todo` |
 | 5 | **vs. integration and attack pricing** | **`todo` — the one phase with real work left** |
 | 6 | the characters | `done` — the `genesis` cast and the `snes` Kirby |
@@ -199,7 +199,7 @@ as. What is worth carrying forward:
 * **`MetricKind::Chain` stays in the engine** even though no HUD draws it: Puzzle Fighter and
   Bombliss both want the same counter.
 
-## Phase 3 — retro themes — `done`, bar the `snes` audio
+## Phase 3 — retro themes — `done`, bar the `snes` effects
 
 `genesis` (Dr. Robotnik's Mean Bean Machine) and `snes` (Kirby's Avalanche) — the two western
 reskins of one Compile original, so both boards are exactly this game's board and the rips carry
@@ -249,17 +249,50 @@ What a future theme here owes, and the traps:
   `the_panel_art_stops_where_the_trim_says_it_does` reads the columns off the png and is the only
   thing that can hold art and constant together.
 
-### Outstanding: phase 3d, the `snes` audio
+### Phase 3d, the `snes` audio — music `done` 2026-09-01, effects outstanding
 
-`genesis` has its own music and effects (`retro_audio.py genesis`, 4.4 MiB, a test decoding all
-twenty three). **`snes` still plays the particle theme's sounds and `theme::GAME_MUSIC`** — which
-is a deliberate placeholder, not an oversight. To finish it: `retro_audio.py` grows a `snes`
-subcommand, the theme writes its own `mod sound` and its own music table the way `genesis/mod.rs`
-does, and it needs **four tracks** (`theme::GAME_MUSIC_TRACKS` — every theme's table is the same
-length, or a theme's tracks would be heard less often than another's). Effects must be **OGG
-Vorbis at exactly 44,100 Hz**; the decoder rejects anything else and a third of any rip is 48 kHz.
-Trim padding off both ends. Whether the rip is laid out the way Mean Bean Machine's is is the
-first thing to find out, and `split`'s assertion is what will say.
+`retro_audio.py snes` cuts Kirby's Avalanche's music out of the Zophar SPC set (2.4 MiB into
+`src/theme/snes/`, a test decoding all eight files): three stage tunes, which the engine deals
+between when a match opens, plus the game's own win flourish and game over. Three, where
+`genesis` has four — **`GAME_MUSIC_TRACKS` is gone**, since the count is each theme's own and a
+deal is never made across two tables.
+
+Two things about that dump were not what `genesis`'s rip led us to expect, and both are written
+up at length in `retro_audio.py`'s docstring:
+
+* **an SPC names no loop point at all** — not even the whole seconds Mean Bean Machine's rip
+  writes down — so `loop_period` sweeps every lag instead of refining a hint. It works because
+  each render is the tune played through exactly twice and cut off dead, the ID666 fade never
+  applied.
+* **the `Stage Intro` tracks are not lead-ins.** They are the pre-stage screen's own looping
+  music; the stage tunes loop from their first bar. What `loop_start` finds at the head of one
+  is the fraction of a second in which the SNES's echo buffer fills, and cutting there is what
+  puts the echo under the loop.
+
+### The levels, fixed at the same time
+
+Both console dumps were levelled to themselves, which left the retro themes' music ~4 dB under
+the particle theme's — heard as the music going quiet rather than as the theme changing.
+`music_gain` now lifts each cut towards `src/theme/music/`'s own level, and for both it is the
+**headroom** that binds rather than the level: a dump has ~3 dB more crest than the rip it is
+matched to, so they peak at `MUSIC_CEILING` (0.95) and stay a couple of dB under.
+
+The rest came off the effects. The metric: mean effect peak over music RMS, measured across
+every theme of all three games. The house range is +6 to +13 dB and `rustris/gb` — Alex's
+reference for a balance that reads right — is +9. Puyo Rusto was +11.0 (particle) and +15
+(retro). After the music lift and `data.rs`'s `EFFECTS_TRIM` (71%, −3 dB) it is +7.9 / +10.8 /
++10.6. The trim lives in Rust, not in the files, because `sfx.py`'s rip is not on this machine
+and because the particle and SNES themes share one effect set.
+
+**Still slightly off: `genesis`'s own effects are RMS-hot** (+0.7 dB where `gb` is −2.0).
+`retro_audio.py` levels each one to the *peak* of the particle theme's sound for the same slot,
+and Mean Bean Machine's effects are much denser at the same peak — `lock` has three times the
+RMS. Levelling on RMS with the peak as a cap would fix it, and is a `--only sfx` re-run away.
+
+**Still outstanding: the effects.** `snes` plays the particle theme's, because an SPC set
+carries none. Anything cut for it must be **OGG Vorbis at exactly 44,100 Hz** (the decoder
+rejects anything else), trimmed at both ends and levelled against `src/theme/sfx/` the way
+`GENESIS_SFX` is.
 
 **Also open: seven of `genesis`'s effects are inferred, not heard.** The rip names only the sounds
 whoever made it recognised and numbers the rest `sfx_N`; RetroArch would not stay up long enough
@@ -473,10 +506,22 @@ carries on underneath them, so they stay out of `blocks_tick()` and change no ga
   lit** (starting dark reads as a cell deleted rather than a warning), then a held surprised face,
   then the balls. The face is the long beat, not an even third, which is what `holding_first` on
   `DestroyStyle` is for.
+* **`snes` plays the same strips, off its own sheet** (2026-09-01). Kirby's Avalanche is the same
+  Compile engine, and the Blobs & Boulders rip carries every frame Mean Bean Machine's does: the
+  **third row under each "Placed Blob" grid** — unlabelled, and read off the art — is the surprised
+  face, the landing squash and the stretch, and the "Dissolving Blob / Angel Trail / Win SFX" block
+  beside each colour is the ball, the smaller ball and the spark. `rip_retro.py`'s
+  `snes_animations` cuts them; `snes/animations.png` is the sheet. Two things it does **not** have,
+  and no theme invents art: the boulder gets **no bounce and no idle** (its four frames are one
+  rock coming apart, not a rock landing or blinking, where the genesis refugee bean has both), and
+  there is **no attack ball** — that game draws none, so `draw_attack_ball` falls back to the
+  popped blob with a white core. Its three pop constants are the only numbers in that file that
+  were *not* measured off the game: they are genesis's beats shortened, since `snes` is the faster
+  of the two.
 * **An animation under `POP_DELAY` does not cost nothing.** `match_screen` skips `game.update`
   outright while an animation blocks the tick, so a strip and the delay **add**. `POP_DELAY` is
   90 ms and each theme carries its own beat: `genesis` is ~770 ms a chain step (the measured
-  figure, Alex's choice of "genesis plays slower"), `snes` and the particle theme 290 ms.
+  figure, Alex's choice of "genesis plays slower"), `snes` ~550 ms and the particle theme 290 ms.
 * **Nothing shakes.** Cross-correlated over 294 frames including a two-row drop: zero displacement,
   every frame. What reads as a rumble is every refugee bean bouncing at once. The rumble is opt-in
   and the particle theme is the only taker; `impact.rs`'s module doc records the measurement so
