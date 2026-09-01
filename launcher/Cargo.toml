@@ -24,6 +24,11 @@ name = "dr-rustario-vs-rustris"
 path = "src/main.rs"
 
 [features]
+# `pkgconfig` is the default and is a no-op on the platforms that have no pkg-config, so a
+# plain `cargo build` links SDL2 the way the platform does: pkg-config on Linux and macOS,
+# vcpkg on Windows, and neither under emscripten. `vcpkg` is the override, for a macOS or
+# Linux binary that carries SDL2 - pass it with `--no-default-features`, since sdl2-sys probes
+# both routes when it is given both. See engine/Cargo.toml.
 default = ["pkgconfig"]
 vcpkg = ["engine/vcpkg"]
 pkgconfig = ["engine/pkgconfig"]

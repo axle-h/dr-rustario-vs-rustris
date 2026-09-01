@@ -189,7 +189,7 @@ Budget for orientation: today ≈ 400 particles drawn twice = 800 copies. A full
   fine and is already done for block masks. Only reading the **backbuffer** is undefined under
   WebGL — never do that. The emscripten stack is set to 8 MB (`-sSTACK_SIZE=8MB`); avoid large
   stack arrays anyway, prefer heap.
-- Build to check your work: `cargo build --release --no-default-features --features pkgconfig`
+- Build to check your work: `cargo build --release`
   on Linux. Browser: `./build-browser.sh` then `./serve-browser.sh`.
 
 ### 4.3 Everything can change mid-match

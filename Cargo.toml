@@ -12,6 +12,10 @@ rand = "0.10.2"
 rand_chacha = "0.10.0"
 serde = { version = "1.0.229", default-features = false, features = ["derive"] }
 sdl2 = { version = "0.38.0", default-features = false }
+# sdl2's own linking half, depended on directly so that `use-pkgconfig` can be turned on by a
+# dependency only some targets have rather than by a feature edge every target sees; see
+# engine/Cargo.toml. sdl2 0.38 wants exactly this version of it.
+sdl2-sys = { version = "0.38.0", default-features = false }
 ab_glyph = "0.2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 confy = { version = "2.0.0", default-features = false, features = ["yaml_conf"] }
