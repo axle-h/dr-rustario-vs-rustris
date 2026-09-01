@@ -72,6 +72,7 @@ pub const CAST: &[CharacterData] = &[
             (2, FrameAnimationType::Linear { fps: 5 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[
             // antenna sparks
@@ -119,6 +120,7 @@ pub const CAST: &[CharacterData] = &[
             (2, FrameAnimationType::Linear { fps: 6 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[
             // rim lights
             LayerData {
@@ -161,6 +163,7 @@ pub const CAST: &[CharacterData] = &[
             (4, FrameAnimationType::Linear { fps: 6 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[
             // arc
             LayerData {
@@ -246,6 +249,7 @@ pub const CAST: &[CharacterData] = &[
             (4, FrameAnimationType::Linear { fps: 12 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[
             // coin
             LayerData {
@@ -281,6 +285,7 @@ pub const CAST: &[CharacterData] = &[
             (2, FrameAnimationType::Linear { fps: 6 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },
@@ -301,6 +306,7 @@ pub const CAST: &[CharacterData] = &[
             (6, FrameAnimationType::Linear { fps: 9 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },
@@ -314,6 +320,7 @@ pub const CAST: &[CharacterData] = &[
             (2, FrameAnimationType::Linear { fps: 8 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },
@@ -348,6 +355,7 @@ pub const CAST: &[CharacterData] = &[
             ),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },
@@ -382,6 +390,7 @@ pub const CAST: &[CharacterData] = &[
             ),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },
@@ -395,6 +404,7 @@ pub const CAST: &[CharacterData] = &[
             (4, FrameAnimationType::Linear { fps: 10 }),
             (4, FrameAnimationType::Linear { fps: 7 }),
         ],
+        routines: None,
         layers: &[
             // eye yellow
             LayerData {
@@ -465,6 +475,7 @@ pub const CAST: &[CharacterData] = &[
             ),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },
@@ -499,6 +510,7 @@ pub const CAST: &[CharacterData] = &[
             ),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },
@@ -519,6 +531,7 @@ pub const CAST: &[CharacterData] = &[
             (2, FrameAnimationType::Linear { fps: 10 }),
             (1, FrameAnimationType::Static),
         ],
+        routines: None,
         layers: &[],
         emitters: &[],
     },

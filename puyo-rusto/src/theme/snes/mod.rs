@@ -22,6 +22,7 @@ use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
 use engine::config::Config;
+use engine::render::character::CharacterLayout;
 use engine::render::font::{FontRenderOptions, FontThemeOptions, MetricSnips};
 use engine::render::geometry::BoardGeometry;
 use engine::render::retro::{retro_theme, RetroThemeOptions};
@@ -42,6 +43,8 @@ mod sprites {
     pub const SCENE: &[u8] = include_bytes!("scene.png");
     pub const FONT: &[u8] = include_bytes!("font.png");
 }
+
+mod kirby;
 
 /// the SNES's own blob, and `rip_retro.py`'s grid
 pub const SRC_BLOCK_SIZE: u32 = 16;
@@ -251,8 +254,16 @@ pub fn snes_theme<'a>(
             size: TRAY_ICON,
             max: TRAY_MAX,
         }),
-        // no cast on this theme; see `engine::render::character`
-        characters: None,
+        // Kirby himself, in the arch at the foot of the centre column where the game stands
+        // him. Not a mugshot: this is the *player's own* character and he walks about the
+        // arch, changes shape and leaves it altogether, so he is declared as routines rather
+        // than as one strip a state - see `kirby.rs` and `engine::render::character`.
+        characters: Some((
+            kirby::cast(),
+            CharacterLayout {
+                rect: Rect::new(kirby::BOX.0, kirby::BOX.1, kirby::BOX.2, kirby::BOX.3),
+            },
+        )),
         mascot: None,
         mascot_animations: None,
         spawn_arc: None,
