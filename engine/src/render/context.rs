@@ -572,6 +572,29 @@ impl<'a> ThemeContext<'a> {
         }
     }
 
+    /// Put one player's character into a state and start one named routine of it.
+    ///
+    /// The sibling of `deal_character`, and for the same reason: `kirby_shot` walks the
+    /// fifteen and a deal cannot be asked for a particular one.
+    pub fn play_character_routine(&mut self, player: u32, routine: usize, home: Option<i32>) {
+        for theme in self.themes.iter_mut() {
+            theme
+                .animations_mut(player)
+                .character_mut()
+                .play(routine, home);
+        }
+    }
+
+    /// How many routines the character a player was dealt has.
+    pub fn character_routines(&self, player: u32) -> usize {
+        self.player_animations(player).character().routines()
+    }
+
+    /// Whether that character's routine has run out and it is standing between them.
+    pub fn character_resting(&self, player: u32) -> bool {
+        self.player_animations(player).character().resting()
+    }
+
     /// Where a rect of the theme's own source pixels lands in the window for a player.
     ///
     /// The panel is drawn into a texture and composited, so a caller that wants to look at one
@@ -976,6 +999,9 @@ impl<'a> ThemeContext<'a> {
             canvas.set_clip_rect(None);
             result?;
         }
+        // ... and a character who is a sprite rather than furniture, over the panel he stands
+        // on. Here rather than at every call site, which is what a forgotten seam looks like.
+        self.draw_placed_characters(canvas)?;
         Ok(())
     }
 
@@ -984,6 +1010,32 @@ impl<'a> ThemeContext<'a> {
     /// Anchored on the **panel** rather than the board, since the box a character stands in is
     /// panel furniture - which is the only thing this does not share with `draw_debris`. It is
     /// drawn after it, so a spark crosses a droplet rather than the other way about.
+    /// Every character that is played as *routines*, on the window rather than into the panel.
+    ///
+    /// A mugshot is furniture and is drawn into the panel with the tray and the queue, because
+    /// it never leaves its box. Kirby is a **sprite**, and the game draws him over the stone
+    /// above the arch rather than hiding him behind it - measured: he climbs the wall and goes
+    /// on over the course above it in plain sight. So the routine path is drawn here, on the
+    /// window, clipped only to the player's own half the way [`Self::draw_character_particles`]
+    /// is. Called at the end of [`Self::draw_players`] so that no caller can forget it.
+    fn draw_placed_characters(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
+        for player in 0..self.players() {
+            let current = self.current(player);
+            let themed = &current.player_themes[player as usize];
+            let Some((_, layout)) = current.theme.characters.as_ref() else {
+                continue;
+            };
+            let at = self.player_source_rect(player, layout.rect);
+            canvas.set_clip_rect(current.scale.player_clip(player));
+            let result = current
+                .theme
+                .draw_character_unclipped(canvas, &themed.animations, at);
+            canvas.set_clip_rect(None);
+            result?;
+        }
+        Ok(())
+    }
+
     pub fn draw_character_particles(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
         for player in 0..self.players() {
             let current = self.current(player);

@@ -18,6 +18,7 @@ pub mod sound;
 pub mod sprite_sheet;
 pub mod timer;
 
+use crate::animate::character::CharacterFrame;
 use crate::animate::game_over::{CurtainPhase, GameOverStyle};
 use crate::animate::nuisance::NuisanceFall;
 use crate::animate::{AnimationMeta, PlayerAnimations};
@@ -524,7 +525,13 @@ impl<'a> Theme<'a> {
     ///
     /// Furniture: it is drawn into the panel texture with the tray and the queue, because it
     /// never leaves its box. Nothing is drawn until a character has been dealt, so a theme
-    /// with no cast - which is every theme but `genesis` today - pays one `Option` check.
+    /// with no cast pays one `Option` check.
+    ///
+    /// Two art models meet here. A mugshot fills the box, so its frame is drawn at
+    /// `layout.rect` outright. A **routine** names a pose and a place, so the pose is drawn at
+    /// its own size at that place - and a routine frame may name no pose at all, which is a
+    /// character who has left the box and draws nothing. Either way the panel texture clips
+    /// it, which is what stands in for the arch's own edge.
     fn draw_character(
         &self,
         canvas: &mut WindowCanvas,
@@ -539,14 +546,18 @@ impl<'a> Theme<'a> {
         };
         let mirrored = character.mirrored();
         let box_width = layout.rect.width() as i32;
+        let drawing = character.drawing();
         set.with(index, |sprites| {
-            sprites.draw(
-                canvas,
-                layout.rect,
-                character.state(),
-                character.frame(),
-                mirrored,
-            )?;
+            match drawing {
+                CharacterFrame::Hidden => {}
+                CharacterFrame::Whole(frame) => {
+                    sprites.draw(canvas, layout.rect, character.state(), frame, mirrored)?;
+                }
+                // drawn on the window instead, by `ThemeContext::draw_placed_characters`:
+                // the game draws Kirby over the stone above the arch rather than behind it,
+                // so a pose is a sprite over the panel and not furniture inside it
+                CharacterFrame::Placed(..) => {}
+            }
             // ... and everything drawn over it, in the order the theme declared them
             for (layer, frame, anchor) in character.layers() {
                 let Some((width, height)) = set.layer_size(index, layer) else {
@@ -568,6 +579,51 @@ impl<'a> Theme<'a> {
                 sprites.draw_layer(canvas, dest, layer, character.state(), frame, mirrored)?;
             }
             Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// The character's current pose on the **window**, at a rect the caller worked out - so
+    /// nothing clips it.
+    ///
+    /// For `kirby_shot` and nothing else. A routine carries Kirby out through the top of the
+    /// arch and the panel texture hides him there, which is right in a match and useless in a
+    /// capture meant to show what every frame of a routine does. `at` is where the box lands
+    /// in the window, and the pose is drawn inside it at the window's scale.
+    pub(crate) fn draw_character_unclipped(
+        &self,
+        canvas: &mut WindowCanvas,
+        animations: &PlayerAnimations,
+        at: Rect,
+    ) -> Result<(), String> {
+        let Some((set, layout)) = self.characters.as_ref() else {
+            return Ok(());
+        };
+        let character = animations.character();
+        let Some(index) = character.character() else {
+            return Ok(());
+        };
+        let CharacterFrame::Placed(pose, place) = character.drawing() else {
+            return Ok(());
+        };
+        let Some((width, height)) = set.pose_size(index, pose) else {
+            return Ok(());
+        };
+        let mirrored = character.mirrored();
+        let scale = at.width() as f64 / layout.rect.width() as f64;
+        let x = if mirrored {
+            layout.rect.width() as i32 - place.0 - width as i32
+        } else {
+            place.0
+        };
+        let dest = Rect::new(
+            at.x() + (x as f64 * scale).round() as i32,
+            at.y() + (place.1 as f64 * scale).round() as i32,
+            (width as f64 * scale).round() as u32,
+            (height as f64 * scale).round() as u32,
+        );
+        set.with(index, |sprites| {
+            sprites.draw_pose(canvas, dest, pose, mirrored)
         })?;
         Ok(())
     }

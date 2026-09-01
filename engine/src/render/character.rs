@@ -12,7 +12,8 @@
 //! the animation sheet's own alpha all use already.
 
 use crate::animate::character::{
-    CharacterMeta, CharacterState, EmitterMeta, EmitterSource, EmitterTrigger, LayerMeta,
+    CharacterMeta, CharacterState, EmitterMeta, EmitterSource, EmitterTrigger, LayerMeta, Routine,
+    RoutineChoice, RoutineMeta, RoutineWay,
 };
 use crate::animate::frames::FrameAnimationType;
 use crate::render::animation::AnimationSpriteSheet;
@@ -33,12 +34,60 @@ use std::time::Duration;
 pub struct CharacterData {
     pub name: &'static str,
     pub file: &'static [u8],
-    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order
+    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order.
+    /// Ignored while `routines` is set.
     pub states: [(usize, FrameAnimationType); 4],
+    /// poses addressed by rect and played as routines, rather than one strip a state:
+    /// `None` on a mugshot cast, which is every character here but Kirby
+    pub routines: Option<RoutineArt>,
     /// what is drawn over the portrait, from strips further down the same png
     pub layers: &'static [LayerData],
     /// what is thrown off it, likewise
     pub emitters: &'static [EmitterData],
+}
+
+/// The art behind [`RoutineMeta`]: where each pose is in the character's png.
+///
+/// Rects rather than a frame size and a count, because these frames are **not one size** - the
+/// pose Kirby lands flat in is half the height of the one he stands in and a third the width of
+/// the one he bobs up tall in. Nothing can be addressed by counting frame widths from a strip's
+/// start here, so the cutter prints the table and the sheet is a readable grid rather than a
+/// strip; see `puyo-rusto/art/kirby.py`.
+#[derive(Clone, Copy, Debug)]
+pub struct RoutineArt {
+    /// every pose in the png, as its own rect
+    pub poses: &'static [(i32, i32, u32, u32)],
+    /// everything the character may be dealt, and how much each moves
+    pub choices: &'static [RoutineChoice],
+    /// played between routines rather than as one of them: the blink
+    pub filler: Option<RoutineWay>,
+    /// what a buried character does, held
+    pub defeat: Routine,
+    /// whether a routine may be walked into when he is not standing in its window
+    pub approach: bool,
+    /// how long the last frame is held before another routine is dealt
+    pub rest: Duration,
+    /// where a routine's opening frame goes in the box
+    pub home: (i32, i32),
+    /// how far either way `home.0` may be walked
+    pub wander: (i32, i32),
+    /// how much a dealing varies a routine's pace, as a fraction either way
+    pub speed_spread: f64,
+}
+
+impl RoutineArt {
+    fn meta(&self) -> RoutineMeta {
+        RoutineMeta {
+            choices: self.choices,
+            filler: self.filler,
+            defeat: self.defeat,
+            approach: self.approach,
+            rest: self.rest,
+            home: self.home,
+            wander: self.wander,
+            speed_spread: self.speed_spread,
+        }
+    }
 }
 
 /// A layer's art: where its strips are in the character's png, and how big one frame is.
@@ -97,6 +146,11 @@ impl EmitterData {
 }
 
 impl CharacterData {
+    /// The meta a `CharacterSet` would hand out, without a set - for a theme's own tests.
+    pub fn meta_for_test(&self) -> CharacterMeta {
+        self.meta(None)
+    }
+
     /// The layers and emitters this character has, with the cast-wide one appended.
     ///
     /// The sweat is **last** in both lists so that a character's own emitters keep the indices
@@ -104,6 +158,7 @@ impl CharacterData {
     fn meta(&self, shared: Option<&EmitterData>) -> CharacterMeta {
         CharacterMeta {
             states: self.states,
+            routines: self.routines.map(|r| r.meta()),
             layers: self.layers.iter().map(|l| l.meta()).collect(),
             emitters: self
                 .emitters
@@ -160,6 +215,19 @@ impl<'a> CharacterSprites<'a> {
         let index = self.base[state.index()] + frame;
         self.sheet
             .draw_frame_scaled_flipped(canvas, dest, index, mirrored)
+    }
+
+    /// One pose, at whatever rect the caller worked out from its own size and its place in
+    /// the box - which is the routine path, and the one draw here that does not fill the box.
+    pub fn draw_pose(
+        &self,
+        canvas: &mut WindowCanvas,
+        dest: Rect,
+        pose: usize,
+        mirrored: bool,
+    ) -> Result<(), String> {
+        self.sheet
+            .draw_frame_scaled_flipped(canvas, dest, pose, mirrored)
     }
 
     pub fn draw_layer(
@@ -237,6 +305,12 @@ impl<'a> CharacterSet<'a> {
             .map(|e| e.size)
     }
 
+    /// One pose's own size, so a caller can draw it at that rather than filling the box.
+    pub fn pose_size(&self, character: usize, pose: usize) -> Option<(u32, u32)> {
+        let routines = self.data.characters.get(character)?.routines?;
+        routines.poses.get(pose).map(|(_, _, w, h)| (*w, *h))
+    }
+
     /// One frame of a layer, likewise.
     pub fn layer_size(&self, character: usize, layer: usize) -> Option<(u32, u32)> {
         self.data
@@ -262,12 +336,20 @@ impl<'a> CharacterSet<'a> {
         let (width, height) = self.data.frame_size;
         let mut frames = vec![];
         let mut base = [0usize; 4];
-        for state in CharacterState::ALL {
-            base[state.index()] = frames.len();
-            let count = data.states[state.index()].0;
-            let y = (state.index() as u32 * self.data.row_pitch) as i32;
-            for frame in 0..count {
-                frames.push(Rect::new((frame as u32 * width) as i32, y, width, height));
+        if let Some(routines) = data.routines {
+            // a routine names a pose outright, so every state indexes the one table and the
+            // four bases are all zero
+            for (x, y, w, h) in routines.poses {
+                frames.push(Rect::new(*x, *y, *w, *h));
+            }
+        } else {
+            for state in CharacterState::ALL {
+                base[state.index()] = frames.len();
+                let count = data.states[state.index()].0;
+                let y = (state.index() as u32 * self.data.row_pitch) as i32;
+                for frame in 0..count {
+                    frames.push(Rect::new((frame as u32 * width) as i32, y, width, height));
+                }
             }
         }
         let mut layers = vec![];

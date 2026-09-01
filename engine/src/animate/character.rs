@@ -167,12 +167,33 @@ impl CharacterParticle {
     }
 }
 
+/// One 60 Hz tick, which is the unit a [`RoutineFrame`]'s hold is measured in - the same unit
+/// an emitter's speed is in, and for the same reason: it is what the captures were read at.
+const TICK: Duration = Duration::from_nanos(16_666_667);
+
 /// How many particles one character may have in the air.
 ///
 /// A burst is six and they live a fifth of a second, so this is never approached by a
 /// character's own emitters; it is the sweat, which fires on a dial that a buried board holds
 /// wide open, that needs a ceiling at all.
 const MAX_PARTICLES: usize = 64;
+
+/// Where a routine has to start from for the whole of it to stay in the box.
+///
+/// A routine carries its travel - the spin that goes twenty pixels left is the same table as
+/// the one that goes twenty right, played backwards - so a character standing against the left
+/// post and dealt the left-hand spin would walk out of the arch. Fitting it at the deal is
+/// invisible: he simply starts a little further in. Clamping every *frame* instead would stall
+/// him against the wall in the middle of a spin, which is not what the game does.
+/// Whether a routine may be played from here.
+///
+/// The whole of it: a routine is started from exactly where the last one left the character,
+/// and if its own window does not contain that, it is not dealt. **Nothing is shifted.**
+/// Shifting a routine to make it fit is what put a jump between the end of one and the start
+/// of the next, which is the one thing a run of animations must not do.
+fn fits(home: i32, way: &RoutineWay) -> bool {
+    home >= way.origins.0 && home <= way.origins.1
+}
 
 /// A well spread deterministic sequence, the golden ratio walk the nuisance stagger uses.
 ///
@@ -183,6 +204,109 @@ fn hashed(n: u64) -> f64 {
     (n as f64 * 0.618_033_988_749_894_9).fract()
 }
 
+/// One frame of a [`Routine`]: which pose, how long it is held, and where it goes in the box.
+///
+/// A pose of `None` draws nothing at all, which is a character who has **left the box** - Kirby
+/// inflates and floats clean out of the arch for a second and a half in one routine, and for
+/// two thirds of one in four others. A strip cannot say that and does not have to: a mugshot
+/// never leaves its box.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RoutineFrame {
+    pub pose: Option<usize>,
+    /// held for this many 60 Hz ticks. A capture is 30 fps against the game's 60, so these are
+    /// measured to two ticks and no better - which is why every one of Kirby's is even.
+    pub ticks: u32,
+    /// the pose's top left, **relative to the frame the routine opens on** rather than to the
+    /// box: the order routines are dealt in is not the order a capture happened to play them,
+    /// so a routine that walks nineteen pixels right has to start where the last one finished.
+    pub at: (i32, i32),
+}
+
+/// A run a character plays through once and then rests on.
+pub type Routine = &'static [RoutineFrame];
+
+/// One way round a routine may be played.
+///
+/// A move with a direction has two of these and the direction is chosen from where the
+/// character is standing, which is the whole point: a Kirby against the right post walks *left*
+/// rather than sliding left and walking back.
+#[derive(Clone, Copy, Debug)]
+pub struct RoutineWay {
+    pub frames: Routine,
+    /// the inclusive range of origins this way may be started from with its **whole drawn
+    /// path** staying inside the box, computed by the cutter from its own poses' widths
+    pub origins: (i32, i32),
+    /// when the character may be translated into position, as (tick it starts, ticks it takes).
+    ///
+    /// The cutter puts it on the routine's **first airborne stretch** wherever there is one, so
+    /// a routine that opens by hopping is walked into *in the air*. Sliding along the floor to
+    /// get somewhere is the one thing that reads as a glitch, and `ricochet` opens by lying
+    /// down for two thirds of a second - exactly where a translation from tick zero would land.
+    pub glide: (u32, u32),
+}
+
+/// One routine a character may be dealt: a **kind**, and how much of a thing it is.
+#[derive(Clone, Copy, Debug)]
+pub struct RoutineChoice {
+    /// 0 for a kind that never leaves the floor, 1 for the one that goes furthest up.
+    ///
+    /// **Vertical reach**, because that is what reads as effort. It decides the order a bag
+    /// comes out in and never whether something may come out at all.
+    pub intensity: f64,
+    /// the ways round it may be played, in no particular order
+    pub ways: &'static [RoutineWay],
+}
+
+/// A character whose rows are **routines** rather than one strip apiece.
+///
+/// The two art models sit side by side because they are answers to different games. Mean Bean
+/// Machine draws a face in a fixed box at a constant rate, which is a strip; Kirby's Avalanche
+/// stands a whole little character in the arch who walks about it, changes size from frame to
+/// frame - 14x14 standing, 14x7 in the pancake he lands in, 6x14 when he squashes thin against
+/// a wall - holds one pose for half a second and the next for two ticks, and climbs the centre
+/// column right up past `STAGE`. None of that is a strip at an fps.
+///
+/// **And it is not chosen by state.** A mugshot has four rows and pulls one face when you chain
+/// and another when you are nearly buried. This has one pool, and which of it gets dealt is
+/// decided by how much is *happening* - a high stack and a big chain are both intense, and the
+/// character does bigger things either way. Only being buried is a state, because that one is
+/// terminal.
+#[derive(Clone, Copy, Debug)]
+pub struct RoutineMeta {
+    /// everything the character may be dealt, and how much each moves
+    pub choices: &'static [RoutineChoice],
+    /// played *between* routines rather than as one of them, half the time: the blink, which is
+    /// a tic rather than a thing he does, and reads as a loop if it is dealt like one
+    pub filler: Option<RoutineWay>,
+    /// what a buried character does, held - the one routine a state still picks
+    pub defeat: Routine,
+    /// how long the last frame is held before another routine is dealt
+    pub rest: Duration,
+    /// where a routine's opening frame goes in the box, which every routine shares because
+    /// every one of them opens on the character standing
+    pub home: (i32, i32),
+    /// how far either way `home.0` may be walked, since routines carry a net displacement and
+    /// the character would otherwise walk out of the box over a match
+    pub wander: (i32, i32),
+    /// how much a routine's pace is varied when it is dealt, as a fraction either way - so the
+    /// same spin is not the same spin twice. Zero plays every routine at its measured pace.
+    pub speed_spread: f64,
+    /// whether a routine may be walked into at all. With this off, a character not standing in
+    /// a way's window plays it from where he is and the arch clips whatever hangs out.
+    pub approach: bool,
+}
+
+/// What a character is drawing this tick.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CharacterFrame {
+    /// a frame of a strip, filling the box - the mugshot path
+    Whole(usize),
+    /// a pose at its own size, at a place in the box - the routine path
+    Placed(usize, (i32, i32)),
+    /// nothing: a routine frame with no pose, which is a character out of the box
+    Hidden,
+}
+
 /// Everything a theme declares about one character: how each of its four rows plays.
 ///
 /// Frame counts are the strip's own, in play order - a row is cut action first and rest last so
@@ -190,8 +314,12 @@ fn hashed(n: u64) -> f64 {
 /// the character rests in.
 #[derive(Clone, Debug)]
 pub struct CharacterMeta {
-    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order
+    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order.
+    /// Ignored while `routines` is set, which plays its own frames.
     pub states: [(usize, FrameAnimationType); 4],
+    /// routines instead of strips: `None` on a mugshot cast, which is every character here
+    /// but Kirby
+    pub routines: Option<RoutineMeta>,
     /// what is drawn over the portrait, in the box
     pub layers: Vec<LayerMeta>,
     /// what is thrown off it, which leaves the box
@@ -203,6 +331,7 @@ impl CharacterMeta {
     pub fn plain(states: [(usize, FrameAnimationType); 4]) -> Self {
         Self {
             states,
+            routines: None,
             layers: vec![],
             emitters: vec![],
         }
@@ -211,6 +340,62 @@ impl CharacterMeta {
     fn animation(&self, state: CharacterState) -> FrameAnimation {
         let (frames, animation_type) = self.states[state.index()];
         FrameAnimation::new(animation_type, frames)
+    }
+}
+
+/// Where a routine has got to.
+///
+/// `rested` is `None` while the routine is playing and `Some` once it has run out, which is
+/// what makes the character stand for a moment before another is dealt rather than snapping
+/// straight into it - measured at two seconds, and the whole of what a state's playlist looks
+/// like when nothing on the board interrupts it.
+#[derive(Clone, Copy, Debug)]
+struct RoutineRun {
+    /// an index into `RoutineMeta::choices`, or `usize::MAX` for the filler and the defeat
+    /// routine, which are not dealt from the pool
+    routine: usize,
+    frames: Routine,
+    frame: usize,
+    elapsed: Duration,
+    rested: Option<Duration>,
+    /// where this routine's frame 0 *ends up*, which is what its places are relative to once
+    /// the character has walked into it. Explicit rather than read off `home`, because the filler replaces the run
+    /// and used to take the routine's displacement with it - a walk that carried him twenty
+    /// pixels put him back where he started the moment he blinked.
+    origin: i32,
+    /// what the routine carries him by, kept here so a filler cannot lose it
+    net: i32,
+    /// where the character was standing when this was dealt, and the stretch of the routine
+    /// he is translated to `origin` over. Equal for one he was already in position for.
+    from: i32,
+    glide: (Duration, Duration),
+    /// how long this run has been going, for the glide
+    age: Duration,
+    /// what this dealing plays at, around 1.0 - see `RoutineMeta::speed_spread`
+    speed: f64,
+    /// the filler goes back to resting when it ends rather than dealing another
+    filler: bool,
+    /// whether the rest this run settles into has already had its coin tossed
+    blinked: bool,
+}
+
+impl RoutineRun {
+    /// Where this run's frame 0 sits *now* - which is the origin once the character has walked
+    /// into it, and a point on the way there before that.
+    fn place(&self) -> i32 {
+        let (at, span) = self.glide;
+        if self.age <= at || span.is_zero() {
+            return if self.age <= at {
+                self.from
+            } else {
+                self.origin
+            };
+        }
+        if self.age >= at + span {
+            return self.origin;
+        }
+        let through = (self.age - at).as_secs_f64() / span.as_secs_f64();
+        self.from + ((self.origin - self.from) as f64 * through).round() as i32
     }
 }
 
@@ -238,6 +423,16 @@ pub struct CharacterAnimation {
     linger: Duration,
     /// a won match holds `winning` for the rest of the match rather than lingering
     latched: bool,
+    /// where the dealt routine has got to; `None` on a character with strips
+    run: Option<RoutineRun>,
+    /// how far along the box the character has walked, since a routine carries a net
+    /// displacement and the next one starts wherever this one finished
+    home: i32,
+    /// what has not been dealt yet this cycle, so a game shows most of what there is rather
+    /// than the same three things - the seven bag's idea, and for the same reason
+    bag: Vec<usize>,
+    /// how much a chain has just excited the character, which decays away
+    excitement: f64,
     /// one per [`LayerMeta`], in the same order
     layers: Vec<LayerRun>,
     /// one per [`EmitterMeta`]: what it has banked towards its next firing
@@ -250,6 +445,9 @@ pub struct CharacterAnimation {
     danger: f64,
     /// what the deterministic spread has got to
     tick: u64,
+    /// how many routines have been dealt, which is the only way to tell one dealing of a
+    /// routine from the next dealing of the same one
+    deals: u64,
 }
 
 impl Default for CharacterAnimation {
@@ -266,6 +464,10 @@ impl CharacterAnimation {
             mirrored: false,
             state: CharacterState::Idle,
             frames: None,
+            run: None,
+            home: 0,
+            bag: vec![],
+            excitement: 0.0,
             held: Duration::ZERO,
             linger: Duration::ZERO,
             latched: false,
@@ -276,6 +478,7 @@ impl CharacterAnimation {
             particles: vec![],
             danger: 0.0,
             tick: 0,
+            deals: 0,
         }
     }
 
@@ -283,6 +486,10 @@ impl CharacterAnimation {
     /// what a theme with no cast wants.
     pub fn deal(&mut self, meta: CharacterMeta, character: usize, mirrored: bool) {
         self.frames = Some(meta.animation(CharacterState::Idle));
+        self.home = meta.routines.map(|r| r.home.0).unwrap_or(0);
+        self.run = None;
+        self.bag.clear();
+        self.excitement = 0.0;
         self.layers = meta.layers.iter().map(|_| LayerRun::default()).collect();
         self.fired = vec![Duration::ZERO; meta.emitters.len()];
         self.budget = vec![0.0; meta.emitters.len()];
@@ -297,6 +504,7 @@ impl CharacterAnimation {
         self.particles.clear();
         self.danger = 0.0;
         self.start_layers();
+        self.start_routine(None);
     }
 
     pub fn character(&self) -> Option<usize> {
@@ -312,7 +520,44 @@ impl CharacterAnimation {
     }
 
     pub fn frame(&self) -> usize {
-        self.frames.map(|f| f.frame()).unwrap_or(0)
+        match self.drawing() {
+            CharacterFrame::Whole(frame) | CharacterFrame::Placed(frame, _) => frame,
+            CharacterFrame::Hidden => 0,
+        }
+    }
+
+    /// What is drawn this tick: a strip's frame filling the box, a pose at a place in it, or
+    /// nothing at all.
+    pub fn drawing(&self) -> CharacterFrame {
+        let Some(meta) = self.meta.as_ref() else {
+            return CharacterFrame::Whole(0);
+        };
+        let Some(routines) = meta.routines else {
+            return CharacterFrame::Whole(self.frames.map(|f| f.frame()).unwrap_or(0));
+        };
+        let Some(frame) = self.routine_frame(&routines) else {
+            return CharacterFrame::Hidden;
+        };
+        match frame.pose {
+            // the **run's** own place and not `home`: they are the same once a routine is
+            // under way and they are not while he is walking into it, nor for the filler,
+            // which stands where the routine before it finished rather than where it started.
+            Some(pose) => CharacterFrame::Placed(
+                pose,
+                (
+                    self.run.map(|r| r.place()).unwrap_or(self.home) + frame.at.0,
+                    routines.home.1 + frame.at.1,
+                ),
+            ),
+            None => CharacterFrame::Hidden,
+        }
+    }
+
+    fn routine_frame(&self, _routines: &RoutineMeta) -> Option<RoutineFrame> {
+        let run = self.run.as_ref()?;
+        run.frames
+            .get(run.frame.min(run.frames.len().saturating_sub(1)))
+            .copied()
     }
 
     /// Every layer that is drawn in this state, in the [`LayerMeta`] order, as
@@ -343,11 +588,253 @@ impl CharacterAnimation {
         }
         self.held += delta;
         self.linger = self.linger.saturating_sub(delta);
+        self.update_routine(delta);
         self.update_layers(delta);
         // the particles already in the air move first, so one born this tick starts where it
         // was thrown rather than a tick down its flight
         self.update_particles(delta);
         self.update_emitters(delta);
+    }
+
+    /// One tick of the dealt routine, which is nothing at all on a character with strips.
+    ///
+    /// A frame is held for its own count of ticks rather than a shared fps, so this walks the
+    /// remainder forward: a routine whose first frame is held ten ticks and whose next is held
+    /// two is one line of a table here and would be ten frames of a strip.
+    fn update_routine(&mut self, delta: Duration) {
+        let Some(routines) = self.meta.as_ref().and_then(|m| m.routines) else {
+            return;
+        };
+        // a chain's excitement fades over about three seconds, which is a routine and a rest
+        self.excitement = (self.excitement - delta.as_secs_f64() / 3.0).max(0.0);
+        let Some(mut run) = self.run else {
+            self.start_routine(None);
+            return;
+        };
+        if let Some(rested) = run.rested.as_mut() {
+            *rested += delta;
+            // half way through the rest, half the time, he blinks - which is a tic between
+            // routines and not one of them
+            if !run.blinked && *rested >= routines.rest / 2 {
+                run.blinked = true;
+                self.tick = self.tick.wrapping_add(1);
+                let at = run.origin + run.net;
+                if let (Some(filler), true) = (
+                    routines.filler.filter(|f| fits(at, f)),
+                    hashed(self.tick) < 0.5,
+                ) {
+                    // the blink stands where the routine left him, not where it started
+                    self.run = Some(RoutineRun {
+                        routine: usize::MAX,
+                        frames: filler.frames,
+                        frame: 0,
+                        elapsed: Duration::ZERO,
+                        rested: None,
+                        origin: at,
+                        net: 0,
+                        from: at,
+                        glide: (Duration::ZERO, Duration::ZERO),
+                        age: Duration::ZERO,
+                        speed: 1.0,
+                        filler: true,
+                        blinked: true,
+                    });
+                    return;
+                }
+            }
+            if *rested >= routines.rest {
+                self.home = (run.origin + run.net).clamp(routines.wander.0, routines.wander.1);
+                self.start_routine(None);
+                return;
+            }
+            self.run = Some(run);
+            return;
+        }
+        run.elapsed += delta;
+        run.age += delta;
+        while let Some(frame) = run.frames.get(run.frame) {
+            let hold = Duration::from_nanos(
+                (frame.ticks as f64 * TICK.as_nanos() as f64 * run.speed) as u64,
+            );
+            if run.elapsed < hold {
+                break;
+            }
+            run.elapsed -= hold;
+            if run.frame + 1 < run.frames.len() {
+                run.frame += 1;
+            } else if run.filler {
+                // the blink is over: back to standing for the rest of the rest
+                run.filler = false;
+                run.frame = 0;
+                run.rested = Some(routines.rest / 2);
+                break;
+            } else {
+                run.rested = Some(Duration::ZERO);
+                break;
+            }
+        }
+        self.run = Some(run);
+    }
+
+    /// How much is happening to this player, 0 to 1.
+    ///
+    /// A high stack and a big chain are both intense, and there is no face here that says which
+    /// - the character just does bigger things when more is going on.
+    fn intensity(&self) -> f64 {
+        self.danger.max(self.excitement).clamp(0.0, 1.0)
+    }
+
+    /// Deal a routine, and start it from its first frame.
+    ///
+    /// `prefer` is a pick a caller has already made - `kirby_shot` walking them all. With
+    /// `None` it is dealt out of a **bag**: a shuffled run of every routine there is, drawn
+    /// from without replacement, so a game shows most of what the character has rather than
+    /// the same three things. Two things filter what may come out of it - how intense the match
+    /// is, against the routine's own [`RoutineChoice::intensity`], and whether the routine
+    /// **fits from where he is standing**, which is what stops a spin that travels right being
+    /// dealt to a character against the right post.
+    fn start_routine(&mut self, prefer: Option<usize>) {
+        let Some(routines) = self.meta.as_ref().and_then(|m| m.routines) else {
+            self.run = None;
+            return;
+        };
+        if self.state == CharacterState::Defeat {
+            let way = RoutineWay {
+                frames: routines.defeat,
+                origins: (i32::MIN, i32::MAX),
+                glide: (0, 0),
+            };
+            self.run = Some(self.begin(usize::MAX, way, routines, false));
+            return;
+        }
+        let choices = routines.choices;
+        if choices.is_empty() {
+            self.run = None;
+            return;
+        }
+        if let Some(index) = prefer {
+            // `usize::MAX` is the filler, which is not in the pool and still has to be looked
+            // at next to the recording
+            let (index, way) = match routines.filler {
+                Some(filler) if index == usize::MAX => (usize::MAX, filler),
+                _ => {
+                    let at = index.min(choices.len() - 1);
+                    (at, self.choose_way(choices[at].ways, routines))
+                }
+            };
+            let run = self.begin(index, way, routines, false);
+            self.run = Some(run);
+            return;
+        }
+        let want = self.intensity();
+        if self.bag.is_empty() {
+            self.refill(choices.len());
+        }
+        // A **bag**, drained strictly: every routine plays once before any plays twice, which
+        // is the seven bag's bargain and is why nothing here is rare. What the intensity does
+        // is decide the *order* within a cycle - the entry closest to how much is happening
+        // comes out next - rather than shutting anything out, because a band that shuts things
+        // out is what made the quiet ones repeat and the big ones never turn up.
+        let mut at = 0usize;
+        let mut best = f64::MAX;
+        for (index, choice) in self.bag.iter().enumerate() {
+            let off = (choices[*choice].intensity - want).abs();
+            if off < best {
+                best = off;
+                at = index;
+            }
+        }
+        let pick = self.bag.remove(at);
+        let way = self.choose_way(choices[pick].ways, routines);
+        let run = self.begin(pick, way, routines, true);
+        self.run = Some(run);
+    }
+
+    /// A fresh bag: every routine once, in an order the deterministic walk decides.
+    fn refill(&mut self, len: usize) {
+        self.bag = (0..len).collect();
+        for i in (1..self.bag.len()).rev() {
+            self.tick = self.tick.wrapping_add(1);
+            let j = (hashed(self.tick) * (i + 1) as f64) as usize;
+            self.bag.swap(i, j.min(i));
+        }
+    }
+
+    /// Which way round to play a kind, from where the character is standing.
+    ///
+    /// **This is what makes a run of routines read as a character rather than a shuffle.** A
+    /// way whose window already holds him is played from exactly where he is; among those, the
+    /// one that leaves him nearest the middle wins, so he turns round at the walls instead of
+    /// sliding back to do the same thing again. Only when neither way holds him is one walked
+    /// into, and then it is the nearer.
+    fn choose_way(&self, ways: &'static [RoutineWay], routines: RoutineMeta) -> RoutineWay {
+        let middle = (routines.wander.0 + routines.wander.1) / 2;
+        let here: Vec<&RoutineWay> = ways.iter().filter(|w| fits(self.home, w)).collect();
+        if !here.is_empty() {
+            return **here
+                .iter()
+                .min_by_key(|w| {
+                    let net = w.frames.last().map(|f| f.at.0).unwrap_or(0);
+                    (self.home + net - middle).abs()
+                })
+                .unwrap();
+        }
+        *ways
+            .iter()
+            .min_by_key(|w| (self.home.clamp(w.origins.0, w.origins.1) - self.home).abs())
+            .unwrap_or(&ways[0])
+    }
+
+    fn begin(
+        &mut self,
+        index: usize,
+        way: RoutineWay,
+        routines: RoutineMeta,
+        vary: bool,
+    ) -> RoutineRun {
+        // He is never *moved* into position: the origin is the nearest point of the way's own
+        // window, and he is translated there over the stretch the cutter marked - the first
+        // time the routine takes him off the ground, wherever it does. A jump between routines
+        // is the one thing a run of them must not have, and a slide along the floor is the
+        // next thing.
+        let frames = way.frames;
+        let origin = if routines.approach {
+            self.home.clamp(way.origins.0, way.origins.1)
+        } else {
+            self.home
+        };
+        let tick = |ticks: u32| Duration::from_nanos(ticks as u64 * TICK.as_nanos() as u64);
+        let glide = if origin == self.home {
+            (Duration::ZERO, Duration::ZERO)
+        } else {
+            (tick(way.glide.0), tick(way.glide.1.max(1)))
+        };
+        // no two dealings of one routine run at quite the same pace. A routine a caller asked
+        // for by name runs at its measured one, since that is what `kirby_shot` puts next to
+        // the recording.
+        let speed = if vary {
+            self.tick = self.tick.wrapping_add(1);
+            let spread = routines.speed_spread.clamp(0.0, 0.9);
+            1.0 + (hashed(self.tick) * 2.0 - 1.0) * spread
+        } else {
+            1.0
+        };
+        self.deals += 1;
+        RoutineRun {
+            routine: index,
+            frames,
+            frame: 0,
+            elapsed: Duration::ZERO,
+            rested: None,
+            origin,
+            net: frames.last().map(|f| f.at.0).unwrap_or(0),
+            from: self.home,
+            glide,
+            age: Duration::ZERO,
+            speed,
+            filler: false,
+            blinked: false,
+        }
     }
 
     fn update_layers(&mut self, delta: Duration) {
@@ -504,11 +991,64 @@ impl CharacterAnimation {
         }
     }
 
+    /// Put the character in a state and start one named routine of it, from its first frame.
+    ///
+    /// For tests and for `kirby_shot`, which walks the fifteen: a deal cannot be asked for a
+    /// particular routine, and every one of them has to be looked at.
+    ///
+    /// `home` stands the character somewhere other than the middle of the box, which is what
+    /// puts a capture of a routine next to the recording it was measured off - the recording
+    /// caught it wherever the routine before it had left him.
+    pub fn play(&mut self, routine: usize, home: Option<i32>) {
+        self.latched = false;
+        self.state = CharacterState::Idle;
+        self.held = Duration::ZERO;
+        self.linger = Duration::ZERO;
+        if let Some(meta) = self.meta.as_ref() {
+            self.frames = Some(meta.animation(CharacterState::Idle));
+            self.home = home.unwrap_or_else(|| meta.routines.map(|r| r.home.0).unwrap_or(0));
+        }
+        self.particles.clear();
+        self.start_layers();
+        self.start_routine(Some(routine));
+    }
+
+    /// Which routine is playing, as an index into `RoutineMeta::choices`; `None` for the
+    /// filler, the defeat routine, or a character with strips.
+    pub fn routine(&self) -> Option<usize> {
+        self.run
+            .as_ref()
+            .map(|r| r.routine)
+            .filter(|i| *i != usize::MAX)
+    }
+
+    /// How many routines have been dealt, so a test can tell one dealing from the next.
+    pub fn deals(&self) -> u64 {
+        self.deals
+    }
+
+    /// How many routines there are, so a caller can walk them.
+    pub fn routines(&self) -> usize {
+        self.meta
+            .as_ref()
+            .and_then(|m| m.routines)
+            .map(|r| r.choices.len())
+            .unwrap_or(0)
+    }
+
+    /// Whether the routine that is playing has run out and the character is standing.
+    pub fn resting(&self) -> bool {
+        self.run.map(|r| r.rested.is_some()).unwrap_or(true)
+    }
+
     /// A clear that chained. One pop is not a reaction worth pulling a face for - it is most
     /// clears, several a minute, and it sends no attack either - so this is only called for a
     /// clear the game itself called a combo.
     pub fn chained(&mut self) {
         self.linger = LINGER;
+        // ... and on the routine path it is the *intensity* that answers, not a face: a chain
+        // excites the character and the next routine dealt is a bigger one
+        self.excitement = (self.excitement + 0.6).min(1.0);
         self.enter(CharacterState::Winning);
     }
 
@@ -593,6 +1133,12 @@ impl CharacterAnimation {
         self.held = Duration::ZERO;
         // a layer's clock belongs to the row, so it is cut off with it and starts again
         self.start_layers();
+        // A routine is **not** restarted by a state change, because it is not chosen by state:
+        // a chain raises the intensity and the next dealing answers it, rather than cutting
+        // whatever is playing in half. Being buried is the exception, and is terminal.
+        if state == CharacterState::Defeat {
+            self.start_routine(None);
+        }
     }
 }
 
@@ -792,6 +1338,7 @@ mod tests {
                 (2, FrameAnimationType::Static),
                 (1, FrameAnimationType::Static),
             ],
+            routines: None,
             // drawn on idle and losing, absent on the other two
             layers: vec![LayerMeta {
                 states: [
@@ -1020,5 +1567,492 @@ mod tests {
         // ... and it stays there for the pause
         animation.update(Duration::from_millis(900));
         assert_eq!(animation.frame(), 3, "the rest frame was not held");
+    }
+
+    // ------------------------------------------------------------------ routines
+
+    /// three frames and a rest, the shape every one of Kirby's has: a stand, a pose that
+    /// travels, and a frame that draws nothing because he has left the box
+    const WALK: &[RoutineFrame] = &[
+        RoutineFrame {
+            pose: Some(0),
+            ticks: 10,
+            at: (0, 0),
+        },
+        RoutineFrame {
+            pose: Some(1),
+            ticks: 4,
+            at: (6, 0),
+        },
+        RoutineFrame {
+            pose: None,
+            ticks: 6,
+            at: (12, 0),
+        },
+        RoutineFrame {
+            pose: Some(0),
+            ticks: 2,
+            at: (12, 0),
+        },
+    ];
+    const STAND: &[RoutineFrame] = &[RoutineFrame {
+        pose: Some(2),
+        ticks: 4,
+        at: (0, 0),
+    }];
+
+    fn routine_meta() -> CharacterMeta {
+        let mut meta = CharacterMeta::plain([(1, FrameAnimationType::Static); 4]);
+        meta.routines = Some(RoutineMeta {
+            choices: &[
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: WALK,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: STAND,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+            ],
+            filler: None,
+            defeat: STAND,
+            rest: Duration::from_millis(500),
+            home: (10, 20),
+            wander: (0, 30),
+            speed_spread: 0.0,
+            approach: true,
+        });
+        meta
+    }
+
+    fn ticks(c: &mut CharacterAnimation, n: u32) {
+        for _ in 0..n {
+            c.update(Duration::from_nanos(16_666_667));
+        }
+    }
+
+    /// A frame is held for its own count of ticks rather than a shared rate, which is the
+    /// whole reason a routine is not a strip.
+    #[test]
+    fn a_routine_holds_each_frame_for_its_own_time() {
+        let mut c = CharacterAnimation::new();
+        c.deal(routine_meta(), 0, false);
+        c.play(0, None);
+        assert_eq!(c.drawing(), CharacterFrame::Placed(0, (10, 20)));
+        ticks(&mut c, 9);
+        assert_eq!(
+            c.drawing(),
+            CharacterFrame::Placed(0, (10, 20)),
+            "cut short"
+        );
+        ticks(&mut c, 2);
+        assert_eq!(c.drawing(), CharacterFrame::Placed(1, (16, 20)));
+    }
+
+    /// A frame with no pose draws nothing at all - a character out of the box - and the
+    /// routine goes on running underneath it.
+    #[test]
+    fn a_frame_with_no_pose_draws_nothing() {
+        let mut c = CharacterAnimation::new();
+        c.deal(routine_meta(), 0, false);
+        c.play(0, None);
+        ticks(&mut c, 15);
+        assert_eq!(c.drawing(), CharacterFrame::Hidden);
+        ticks(&mut c, 6);
+        assert_eq!(c.drawing(), CharacterFrame::Placed(0, (22, 20)));
+    }
+
+    /// The last frame is held for the rest, and then another routine is dealt from wherever
+    /// this one left him - which is what keeps a walk from teleporting back.
+    #[test]
+    fn a_finished_routine_rests_and_then_deals_another_from_where_it_left_him() {
+        let mut c = CharacterAnimation::new();
+        c.deal(routine_meta(), 0, false);
+        c.play(0, None);
+        ticks(&mut c, 22);
+        assert!(c.resting(), "the routine has not run out");
+        assert_eq!(c.drawing(), CharacterFrame::Placed(0, (22, 20)));
+        ticks(&mut c, 40);
+        // the walk carried him twelve pixels, and whatever is dealt starts from there
+        match c.drawing() {
+            CharacterFrame::Placed(_, (x, _)) => assert_eq!(x, 22),
+            other => panic!("nothing dealt: {other:?}"),
+        }
+    }
+
+    /// A state change does **not** cut a routine off, because a routine is not chosen by
+    /// state: a chain raises the intensity and the next dealing answers it.
+    #[test]
+    fn a_state_change_does_not_interrupt_a_routine() {
+        let mut c = CharacterAnimation::new();
+        c.deal(routine_meta(), 0, false);
+        c.play(0, None);
+        ticks(&mut c, 12);
+        let before = (c.routine(), c.deals());
+        settle(&mut c);
+        c.chained();
+        assert_eq!(c.state(), CharacterState::Winning);
+        assert_eq!(
+            (c.routine(), c.deals()),
+            before,
+            "the chain dealt a new routine instead of leaving this one alone"
+        );
+    }
+
+    /// **A routine starts exactly where the last one left him.** It is never shifted into
+    /// place, which is what put a jump between the end of one routine and the start of the
+    /// next; if it needs him somewhere else he is translated there *inside* the routine, on
+    /// the stretch the way declares.
+    #[test]
+    fn a_routine_starts_where_the_last_one_left_him() {
+        const RIGHT: &[RoutineFrame] = &[
+            RoutineFrame {
+                pose: Some(0),
+                ticks: 2,
+                at: (0, 0),
+            },
+            RoutineFrame {
+                pose: Some(0),
+                ticks: 2,
+                at: (20, 0),
+            },
+        ];
+        const STILL: &[RoutineFrame] = &[RoutineFrame {
+            pose: Some(1),
+            ticks: 2,
+            at: (0, 0),
+        }];
+        let mut meta = CharacterMeta::plain([(1, FrameAnimationType::Static); 4]);
+        meta.routines = Some(RoutineMeta {
+            choices: &[
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: RIGHT,
+                        origins: (0, 10),
+                        glide: (0, 2),
+                    }],
+                },
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: STILL,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+            ],
+            filler: None,
+            defeat: STILL,
+            rest: Duration::from_millis(10),
+            home: (10, 0),
+            wander: (0, 30),
+            speed_spread: 0.0,
+            approach: true,
+        });
+        let mut c = CharacterAnimation::new();
+        c.deal(meta, 0, false);
+        // the drawn place at the moment a routine is dealt is the drawn place the tick before
+        let mut before = None;
+        let mut seen = 0u64;
+        for _ in 0..900 {
+            let now = match c.drawing() {
+                CharacterFrame::Placed(_, at) => Some(at.0),
+                _ => None,
+            };
+            if c.deals() != seen {
+                seen = c.deals();
+                if let (Some(a), Some(b)) = (before, now) {
+                    assert_eq!(a, b, "he was moved as a routine was dealt");
+                }
+            }
+            before = now;
+            ticks(&mut c, 1);
+        }
+    }
+
+    /// A routine he is not in position for is **walked into**, not jumped into and not
+    /// refused: nothing is rare. The translation rides the stretch the way declares - which the
+    /// cutter puts on the routine's first hop - so it is never a slide along the floor.
+    #[test]
+    fn a_routine_out_of_reach_is_walked_into_on_its_own_hop() {
+        const NARROW: &[RoutineFrame] = &[
+            // forty ticks on the ground, then a hop: the translation belongs to the hop
+            RoutineFrame {
+                pose: Some(0),
+                ticks: 40,
+                at: (0, 0),
+            },
+            RoutineFrame {
+                pose: Some(0),
+                ticks: 20,
+                at: (0, -20),
+            },
+            RoutineFrame {
+                pose: Some(0),
+                ticks: 4,
+                at: (0, 0),
+            },
+        ];
+        let mut meta = CharacterMeta::plain([(1, FrameAnimationType::Static); 4]);
+        meta.routines = Some(RoutineMeta {
+            choices: &[RoutineChoice {
+                intensity: 0.0,
+                // three pixels of window in a thirty pixel box, which is `ricochet`'s shape
+                ways: &[RoutineWay {
+                    frames: NARROW,
+                    origins: (8, 10),
+                    glide: (40, 20),
+                }],
+            }],
+            filler: None,
+            defeat: NARROW,
+            rest: Duration::from_millis(50),
+            home: (30, 0),
+            wander: (0, 30),
+            speed_spread: 0.0,
+            approach: true,
+        });
+        let mut c = CharacterAnimation::new();
+        c.deal(meta, 0, false);
+        let mut seen = vec![];
+        for _ in 0..64 {
+            if let CharacterFrame::Placed(_, at) = c.drawing() {
+                seen.push(at.0);
+            }
+            ticks(&mut c, 1);
+        }
+        assert_eq!(seen[0], 30, "he did not start where he was standing");
+        // nothing moves while he is on the ground
+        assert!(
+            seen[..40].iter().all(|x| *x == 30),
+            "he slid along the floor: {:?}",
+            &seen[..40]
+        );
+        assert_eq!(*seen.last().unwrap(), 10, "he never walked into the window");
+    }
+
+    /// The intensity decides the **order** a cycle comes out in, not whether a routine may
+    /// come out at all - a band that shut things out is what made the quiet ones repeat.
+    #[test]
+    fn intensity_orders_the_bag_and_a_chain_raises_it() {
+        const STILL: &[RoutineFrame] = &[RoutineFrame {
+            pose: Some(0),
+            ticks: 4,
+            at: (0, 0),
+        }];
+        const BIG: &[RoutineFrame] = &[RoutineFrame {
+            pose: Some(1),
+            ticks: 4,
+            at: (0, 0),
+        }];
+        let mut meta = CharacterMeta::plain([(1, FrameAnimationType::Static); 4]);
+        meta.routines = Some(RoutineMeta {
+            choices: &[
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: STILL,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+                RoutineChoice {
+                    intensity: 1.0,
+                    ways: &[RoutineWay {
+                        frames: BIG,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+            ],
+            filler: None,
+            defeat: STILL,
+            rest: Duration::from_millis(50),
+            home: (10, 20),
+            wander: (0, 30),
+            speed_spread: 0.0,
+            approach: true,
+        });
+        let mut c = CharacterAnimation::new();
+        c.deal(meta.clone(), 0, false);
+        // a quiet board opens on the still one ...
+        c.danger(0.0, false);
+        assert!(
+            matches!(c.drawing(), CharacterFrame::Placed(0, _)),
+            "opened too big"
+        );
+        // ... and both are played over a cycle, because nothing is shut out
+        let mut both = [false; 2];
+        for _ in 0..400 {
+            if let CharacterFrame::Placed(pose, _) = c.drawing() {
+                both[pose] = true;
+            }
+            ticks(&mut c, 1);
+        }
+        assert!(
+            both[0] && both[1],
+            "the bag did not deal everything: {both:?}"
+        );
+        // a chain raises the intensity, so the big one comes out of the next fresh bag first
+        let mut c = CharacterAnimation::new();
+        c.deal(meta, 0, false);
+        c.danger(0.0, false);
+        ticks(&mut c, 40); // drain the still one
+        c.chained();
+        let mut saw_big = false;
+        for _ in 0..40 {
+            if matches!(c.drawing(), CharacterFrame::Placed(1, _)) {
+                saw_big = true;
+            }
+            ticks(&mut c, 1);
+        }
+        assert!(saw_big, "a chain changed nothing");
+    }
+
+    /// The filler is played *between* routines and is never one of them.
+    #[test]
+    fn the_filler_goes_between_routines() {
+        const STILL: &[RoutineFrame] = &[RoutineFrame {
+            pose: Some(0),
+            ticks: 4,
+            at: (0, 0),
+        }];
+        const BLINK: &[RoutineFrame] = &[RoutineFrame {
+            pose: Some(9),
+            ticks: 4,
+            at: (0, 0),
+        }];
+        let mut meta = CharacterMeta::plain([(1, FrameAnimationType::Static); 4]);
+        meta.routines = Some(RoutineMeta {
+            choices: &[RoutineChoice {
+                intensity: 0.0,
+                ways: &[RoutineWay {
+                    frames: STILL,
+                    origins: (0, 30),
+                    glide: (0, 2),
+                }],
+            }],
+            filler: Some(RoutineWay {
+                frames: BLINK,
+                origins: (0, 30),
+                glide: (0, 0),
+            }),
+            defeat: STILL,
+            rest: Duration::from_millis(400),
+            home: (10, 20),
+            wander: (0, 30),
+            speed_spread: 0.0,
+            approach: true,
+        });
+        let mut c = CharacterAnimation::new();
+        c.deal(meta, 0, false);
+        let mut blinks = 0;
+        let mut was = false;
+        for _ in 0..3000 {
+            let now = matches!(c.drawing(), CharacterFrame::Placed(9, _));
+            if now && !was {
+                blinks += 1;
+            }
+            was = now;
+            ticks(&mut c, 1);
+        }
+        // it is a coin toss on each rest, so this is "sometimes" and not "always"
+        assert!(blinks > 3, "the filler never played: {blinks}");
+    }
+
+    /// A bag deals everything before it deals anything twice, so a game shows most of what
+    /// there is rather than the same three things.
+    #[test]
+    fn the_bag_deals_everything_before_repeating() {
+        const A: &[RoutineFrame] = &[RoutineFrame {
+            pose: Some(0),
+            ticks: 2,
+            at: (0, 0),
+        }];
+        let mut meta = CharacterMeta::plain([(1, FrameAnimationType::Static); 4]);
+        meta.routines = Some(RoutineMeta {
+            choices: &[
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: A,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: A,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: A,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+                RoutineChoice {
+                    intensity: 0.0,
+                    ways: &[RoutineWay {
+                        frames: A,
+                        origins: (0, 30),
+                        glide: (0, 2),
+                    }],
+                },
+            ],
+            filler: None,
+            defeat: A,
+            rest: Duration::from_millis(20),
+            home: (10, 20),
+            wander: (0, 30),
+            speed_spread: 0.0,
+            approach: true,
+        });
+        let mut c = CharacterAnimation::new();
+        c.deal(meta, 0, false);
+        let mut dealt = vec![];
+        let mut seen = 0;
+        for _ in 0..4000 {
+            if c.deals() != seen {
+                seen = c.deals();
+                if let Some(index) = c.routine() {
+                    dealt.push(index);
+                }
+            }
+            ticks(&mut c, 1);
+        }
+        assert!(dealt.len() >= 16, "only {} dealings", dealt.len());
+        for cycle in dealt.chunks(4) {
+            if cycle.len() < 4 {
+                continue;
+            }
+            let mut seen = cycle.to_vec();
+            seen.sort_unstable();
+            seen.dedup();
+            assert_eq!(seen.len(), 4, "a bag repeated inside a cycle: {dealt:?}");
+        }
+    }
+
+    /// A character with strips is untouched by any of it    /// A character with strips is untouched by any of it: the mugshot path draws a frame
+    /// filling its box and never a placed pose.
+    #[test]
+    fn a_character_with_strips_still_draws_whole_frames() {
+        let c = dealt();
+        assert!(matches!(c.drawing(), CharacterFrame::Whole(_)));
+        assert_eq!(c.routines(), 0);
     }
 }

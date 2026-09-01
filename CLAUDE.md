@@ -548,6 +548,13 @@ character_shot` draws the whole cast through all four states to a contact sheet.
 in `theme/genesis/mugshots.rs` is measured off screen captures of the emulated game, written up
 per character in the plan.
 
+**`snes` stands Kirby in the arch and he is the other art model**, because none of the above
+fits him: he is a sprite rather than furniture, his frames are not one size, and he does not
+play one strip a state. `engine::animate::character`'s `RoutineMeta` is that model and
+`puyo-rusto/src/theme/snes/kirby.rs` is his; `puyo-rusto/art/kirby.py` reads both off a capture
+of the emulated game and cuts the sheet, and `cargo run --example kirby_shot` plays every
+routine through the theme. All four are written up where they are.
+
 Its three symbols are the classic **1 / 6 / 30** (`NuisanceIcon`, decomposed biggest first),
 and the first two are measured off the game: the little eyeless blob for a single and the
 black bean with the white outline for a row of six. The rock of thirty is a **placeholder** -
