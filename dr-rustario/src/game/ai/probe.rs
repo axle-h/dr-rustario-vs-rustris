@@ -339,27 +339,29 @@ const NOW: usize = BOTTLE_FEATURE_INPUTS;
 
 #[rustfmt::skip]
 const NOW_NAMES: [&str; BOTTLE_FEATURE_INPUTS] = [
-    "delta.viruses", "delta.virus_work", "delta.buried_viruses", "delta.buried_blocks",
-    "delta.max_height", "delta.entrance_height", "delta.holes",
-    "delta.virus_3_row", "delta.virus_3_col", "delta.virus_2_row", "delta.virus_2_col",
-    "delta.block_3_row", "delta.block_3_col",
-    "place.patterns_cleared", "place.touching", "place.reach", "place.open_3", "place.open_2",
-    "place.run_viruses", "place.stranded", "place.stranded_on_virus", "place.covers_virus",
-    "place.buries_virus", "place.one_away", "place.one_away_virus", "place.chains",
-    "context.viruses", "context.virus_work", "context.max_height", "context.entrance_height",
-    "context.holes", "context.held",
+    "delta.virus_work", "delta.virus_work_row", "delta.virus_work_col",
+    "delta.viruses_buried", "delta.block_work", "delta.blocks_buried",
+    "place.halves_work", "place.halves_touching", "place.halves_run_viruses",
+    "place.halves_one_short", "place.halves_two_short",
+    "delta.viruses_at_work_1_row", "delta.viruses_at_work_1_col",
+    "delta.blocks_at_work_1_row", "delta.blocks_at_work_1_col",
+    "delta.landing_height",
+    "context.blocks_at_work_1", "context.viruses_at_work_1", "context.held",
 ];
 
 /// What is measured here and left out of the model, which is the control on the feature set:
 /// if a clone fed these as well plays better, the model is missing something.
 ///
-/// It used to hold the entrance height too, on the grounds that the group as a whole added
-/// nothing. That was measured again and was no longer true - a clone fed the group played 508
-/// viruses against 271 without it - and of the seven, the entrance height was far the strongest
-/// on its own. It is a feature now, and with it fed this group is worth *less* than nothing:
-/// the same comparison run again gives 1810 viruses against 2082 without them. That is what
-/// these six are here to keep saying.
-const EXTRA: [&str; 6] = [
+/// The first two are here because `ga dr screen`'s selection left them out, and they are the
+/// two most often assumed to belong: how high the spawn columns stand, which is the only height
+/// that can end a game, and how many cells the stack has shut in above it. Against the thirty
+/// two input model that preceded this one, silencing their equivalents cost 558 and 332
+/// viruses - so if the smaller set is missing anything, they are the first place to look.
+///
+/// The other six are the original control group.
+const EXTRA: [&str; 8] = [
+    "entrance_height",
+    "holes",
     "place_top_weight",
     "place_dead_weight",
     "place_height",
@@ -415,6 +417,10 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
     }
 
     let heights = grid.heights();
+
+    // the two the selection left out; the grid already counts both in its one pass
+    let settled = grid.stats();
+
     let stack_weight: f64 = TOP_ROW_RATE
         .iter()
         .enumerate()
@@ -435,6 +441,8 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
         (heights[..4].iter().sum::<i32>() - heights[4..].iter().sum::<i32>()).abs() as f64;
 
     [
+        settled.entrance_height() as f64,
+        settled.holes() as f64,
         top_weight,
         dead_weight,
         height,

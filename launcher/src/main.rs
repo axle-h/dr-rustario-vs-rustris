@@ -22,6 +22,7 @@ fn main() -> Result<(), String> {
                 return match args.get(2).map(String::as_str) {
                     None | Some("auto") => genetic::ga_main_auto(),
                     Some("pretrain") => genetic::ga_main_pretrain(&args[3..]),
+                    Some("screen") => genetic::ga_main_screen(&args[3..]),
                     Some("survive") => genetic::ga_main_survive(),
                     Some("tune") => genetic::ga_main_tune(),
                     Some("diagnose") => genetic::ga_diagnose(),
@@ -30,7 +31,7 @@ fn main() -> Result<(), String> {
                     Some("probe") => probe::probe_main(&args[3..]),
                     Some("explain") => explain::explain_main(&args[3..]),
                     Some(other) => Err(format!(
-                        "unknown ga dr mode '{}', expected: auto, pretrain, survive, tune, \
+                        "unknown ga dr mode '{}', expected: auto, pretrain, screen, survive, tune, \
                          trial, diagnose, play, probe or explain",
                         other
                     )),

@@ -46,8 +46,14 @@ const LESSON_LEVELS: [u32; 5] = [0, 5, 10, 15, 20];
 /// how many pills are taught from by default
 pub const LESSON_PILLS: usize = 10_000;
 
-/// passes over the corpus
-pub const EPOCHS: usize = 10;
+/// How many passes over the corpus a clone gets.
+///
+/// Measured with `ga dr screen`, which teaches fifty of them and reports the median: ten passes
+/// put the median at 3617 viruses and twenty at 3814, and forty and eighty are no better than
+/// twenty on either this feature set or the thirty two input one it replaced. The learning rate
+/// decays as `1 / (1 + 0.6 * epoch)`, so by then the steps are small enough that more passes
+/// buy nothing.
+pub const EPOCHS: usize = 20;
 
 /// every tenth pill is held back, so what the report says was measured on lessons never taught
 const HELD_OUT: usize = 10;
@@ -204,6 +210,26 @@ pub fn lessons(pills: usize) -> Vec<Lesson> {
 
 /// Teach a network from scratch to rank placements the way the deterministic ai ranks them.
 pub fn teach(lessons: &[Lesson], epochs: usize, seed: u64) -> DrNeuralNetwork {
+    teach_without(lessons, epochs, seed, &[])
+}
+
+/// The same, with `silenced` inputs held at zero **throughout** rather than only at the end.
+///
+/// This is how a feature is taken away without rebuilding the network around a smaller
+/// `BOTTLE_FEATURE_INPUTS`: the first layer's weight column for the input is zeroed after every
+/// step, so the forward pass never sees it and whatever gradient the step put there is thrown
+/// away before the next one. What the network can learn is then exactly what the remaining
+/// inputs carry.
+///
+/// It is not the same as silencing a *taught* network, which is what [`super::explain`] does -
+/// there the rest of the weights were fitted with the input present and are being asked to
+/// carry on without it. Here nothing was ever fitted to it.
+pub fn teach_without(
+    lessons: &[Lesson],
+    epochs: usize,
+    seed: u64,
+    silenced: &[usize],
+) -> DrNeuralNetwork {
     let mut rng = ChaChaRng::seed_from_u64(seed);
     let weights: Vec<f64> = (0..DR_NEURAL_GENOME_SIZE)
         .map(|_| rng.random::<f64>() * 2.0 - 1.0)
@@ -227,6 +253,9 @@ pub fn teach(lessons: &[Lesson], epochs: usize, seed: u64) -> DrNeuralNetwork {
                     &Tensor::vector([f64::from(*target)]),
                     rate,
                 );
+                for input in silenced {
+                    network.silence_input(*input);
+                }
             }
         }
     }

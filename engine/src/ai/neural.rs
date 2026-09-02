@@ -712,8 +712,26 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
 /// how many extracted board features Rustris feeds its network
 pub const FEATURE_INPUTS: usize = 20;
 
-/// how many extracted bottle features Dr. Rustario feeds its network
-pub const BOTTLE_FEATURE_INPUTS: usize = 32;
+/// How many extracted bottle features Dr. Rustario feeds its network: six readings of the
+/// bottle before the pill, the same six as the change the placement made, what it cleared, and
+/// the held flag. See [`crate::ai`]'s consumer for what each of them is.
+pub const BOTTLE_FEATURE_INPUTS: usize = 19;
+
+/// How wide Dr. Rustario's hidden layers are.
+///
+/// It is named separately from the input count for two reasons. The first is that the two are
+/// the control on each other: a feature set that cannot learn its teacher at its own width and
+/// *can* at a wider one has run out of neurons rather than out of features, and no new input
+/// will fix it. That control has been run and both answers have turned up - fourteen inputs
+/// learned no better at thirty two wide than at fourteen, so those features were the limit;
+/// nine inputs went from a median of 1152 to 2264 between nine wide and twenty six, so those
+/// neurons were. Twenty one is where the sweep flattens.
+///
+/// The second is that `Genome` is keyed on nothing but its length, so two `feature_network!`
+/// calls whose shapes happen to total the same number of weights would both declare `From`
+/// between `Genome<N>` and their own network and the second would not compile. Rustris is
+/// [`NEURAL_GENOME_SIZE`] = 1281; this one is 1366.
+pub const BOTTLE_FEATURE_WIDTH: usize = 21;
 
 /// Declares a network shape a game can train and play: the alias, the genome size that goes
 /// with it, and the conversions between the two. The shapes live here rather than in the games
@@ -762,7 +780,7 @@ feature_network!(
     BOTTLE_NEURAL_GENOME_SIZE,
     BOTTLE_FEATURE_INPUTS,
     2,
-    BOTTLE_FEATURE_INPUTS
+    BOTTLE_FEATURE_WIDTH
 );
 
 impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>

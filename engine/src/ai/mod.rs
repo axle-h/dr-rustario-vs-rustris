@@ -30,8 +30,8 @@ pub use game_result::GameResult;
 pub use genome::Genome;
 pub use neural::{
     ActivationFunction, BottleFeatureNetwork, BottleNeuralGenome, FeatureNetwork, NeuralGenome,
-    NeuralNetwork, Tensor, BOTTLE_FEATURE_INPUTS, BOTTLE_NEURAL_GENOME_SIZE, FEATURE_INPUTS,
-    NEURAL_GENOME_SIZE,
+    NeuralNetwork, Tensor, BOTTLE_FEATURE_INPUTS, BOTTLE_FEATURE_WIDTH, BOTTLE_NEURAL_GENOME_SIZE,
+    FEATURE_INPUTS, NEURAL_GENOME_SIZE,
 };
 pub use pacer::KeyPacer;
 pub use seed::Seed;
