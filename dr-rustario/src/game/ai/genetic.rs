@@ -111,7 +111,15 @@ const TRIAL_LESSON_PILLS: usize = 3000;
 /// over [`UNSEEN_SEEDS`] whole games from the first bottle. Where a network starts moves this
 /// about far more than it moves how well the network agrees with the ai, so stage one keeps
 /// teaching until one of them clears the bar rather than taking whatever the first few give.
-const TAUGHT_ENOUGH: u32 = 1500;
+///
+/// **It has to be set against what the features can actually do or it does not bind.** At 1500,
+/// which is what it was while the model read thirty two inputs, every one of fifty clones of
+/// the current nineteen clears it - so stage one would stop on attempt 1 and hand the genetic
+/// algorithm a single random draw out of a distribution running from about 2400 to 4455. That
+/// is the exact failure the bar exists to prevent. `ga dr screen` puts the median at 3814, so
+/// 4000 asks for a good draw and usually gets one inside [`PRETRAIN_ATTEMPTS`]; if it does not,
+/// the best of them is taken anyway. Re-measure this whenever the feature set changes.
+const TAUGHT_ENOUGH: u32 = 4000;
 
 /// how many networks stage one will teach before it settles for the best of a bad lot
 const PRETRAIN_ATTEMPTS: u64 = 25;
