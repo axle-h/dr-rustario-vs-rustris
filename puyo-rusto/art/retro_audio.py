@@ -34,9 +34,15 @@ from the true start onwards, so any later point loops just as seamlessly, while 
 drags a bar of the intro into the loop. `loop_start` therefore reports the run it is sure of
 and never reaches back before it.
 
-**Mean Bean Machine writes each stage's lead-in as a track of its own**, which is exactly the
-pair the mixer wants: `Stages 1-4 Intro` is the one-shot and `Stages 1-4` is what repeats. It
-has four stage tunes; nothing picks between them, a match is dealt one.
+**Mean Bean Machine's four stage tunes each loop from their first bar**, so none of them is
+cut into a pair - the theme is handed four tracks that simply repeat, and the mixer is told
+there is no one-shot. Nothing picks between them, a match is dealt one.
+
+The rip does carry a `Stages 1-4 Intro` beside each of them and it is tempting to read that as
+the lead-in half of the pair. It is not: that is the music of the *stage announcement screen*,
+which the game plays before a match rather than at the top of one, and using it puts nine
+seconds of interstitial in front of every match. What the search finds at the head of a stage
+tune itself is 0.25s - one `loop_start` block, which is the block size and not an intro.
 
 ## Kirby's Avalanche, which names no loop at all
 
@@ -77,7 +83,7 @@ at +15 before the lift above. The rest comes off the effects, in
 `sfx.py`'s rip is not on this machine and because the particle and SNES themes play the *same*
 effect files, so there is no per-theme cut to bake it into.
 
-## The sound effects, and the one place this differs from `sfx.py`
+## The sound effects, and the two places this differs from `sfx.py`
 
 `sfx.py` says in as many words that it does not normalise, because the levels are the
 original's mix and are meant to be uneven. This rip has no mix left to keep: **every one of its
@@ -89,6 +95,11 @@ with its levels intact, and matching it is what makes the two themes sit at one 
 
 The silence the rip pads both ends with is trimmed off first, with a short fade over the tail,
 exactly as `sfx.py` does it.
+
+The second difference is that one effect is not cut from the rip at all: `hard-drop`, the only
+slot in the theme standing in for an action Mean Bean Machine does not have, is *built* - out of
+the game's own noise, because the rip has no whoosh anywhere in it to take. See [`whoosh`]. It
+is levelled by the same rule as everything else and needs no exception to it.
 """
 
 import argparse
@@ -117,14 +128,16 @@ FADE_OUT = 0.008
 # whole seconds and are used as whole seconds: the loop is what `loop_length` starts its search
 # from and the intro is what the answer is checked against, never what is cut.
 #
-# The game's four stage tunes in stage order, each with the lead-in the game writes as a track
-# of its own. Nothing picks between them - a match is dealt one - so the order is only the
-# order they were written in.
+# The game's four stage tunes in stage order. Nothing picks between them - a match is dealt one
+# - so the order is only the order they were written in. Every one of them loops from its first
+# bar, which is what the pass and the loop being the same second says and what the search then
+# confirms; the rip's four `... Intro` tracks are the stage announcement screen's music and are
+# not these tunes' lead-ins, so nothing here reaches for them.
 GENESIS_MUSIC = {
-    "stages-1-4": (("04", 9, 8), ("05", 31, 31)),
-    "stages-5-8": (("06", 8, 4), ("07", 27, 26)),
-    "stages-9-12": (("08", 9, 8), ("09", 31, 31)),
-    "stage-13": (("10", 9, 9), ("11", 47, 47)),
+    "stages-1-4": ("05", 31, 31),
+    "stages-5-8": ("07", 27, 26),
+    "stages-9-12": ("09", 31, 31),
+    "stage-13": ("11", 47, 47),
 }
 
 # ... and the two it plays once. `Victory!` is the game's own three second flourish and has no
@@ -138,26 +151,29 @@ GENESIS_JINGLES = {
 
 # Which of the rip's wavs each of the theme's effects is.
 #
-# The rip names the ones whoever made it recognised and numbers the rest `sfx_N`, so the named
-# ones are taken at their word: `move`, the seven `chain` steps (a rising ladder - the peak of
-# chain 1 is 1456 Hz, chain 2 2018, and so on up - which is the sound Puyo is known for), and
-# `level_start`. `bad puyo` is this game's nuisance bean: the plural is the shower of them
-# arriving, and the three singulars are the sizes of a send, the way Puyo Puyo Tetris's rip
-# grades its own `oj_okuri` in four.
+# The rip names the ones whoever made it recognised and numbers the rest `sfx_N`, and a name is
+# taken at its word only where the sound bears it out. Most do: the seven `chain` steps are a
+# rising ladder - the peak of chain 1 is 1456 Hz, chain 2 2018, and so on up - which is the
+# sound Puyo is known for, and `level_start` is the fanfare it says it is. `bad puyo` is this
+# game's nuisance bean: the plural is the shower of them arriving, and the three singulars are
+# the sizes of a send, the way Puyo Puyo Tetris's rip grades its own `oj_okuri` in four. **The
+# one that is simply wrong is `move`**, and it was believed for a while - see the entry.
 #
 # `clear_class` in `puyo-rusto/src/render.rs` grades a chain step 0..3 - chain 1, 2, 3, then
 # everything from 4 up - so it is the first four steps that are wanted.
 GENESIS_SFX = {
-    "move": "move",
-    "rotate": "puyo_sine",
+    # `move` is the rip's name and not the game's job: it is a 30ms burst of bright noise,
+    # nothing like the blip a bean pair slides sideways on. What that blip actually is is
+    # `puyo_sine` - sixteen milliseconds of 742 Hz and nothing else, which is what a move has
+    # to be when it fires on every frame of a held direction. `short_noise` is the knock the
+    # pair turns on. Neither is named for what it does, so both are matched by ear against
+    # the emulated game rather than taken off the filename.
+    "move": "puyo_sine",
+    "rotate": "short_noise",
     # a pair coming to rest, and the beans left standing dropping into the gap a group left
     "lock": "puyo_blob",
     "settle": "puyo_blob_2",
-    # Mean Bean Machine has no hard drop, so there is no sound of one to take. This is the
-    # closest thing the game owns: the short noise burst, which reads as the whoosh of the
-    # fall, with `lock` landing on top of it the way it does after any other drop - which is
-    # exactly what the particle theme does with Tetris's `hdrop`.
-    "hard-drop": "short_noise",
+    # no `hard-drop`: it is the one slot nothing in this rip can fill - see [`whoosh`]
     "pop-1": "chain_1",
     "pop-2": "chain_2",
     "pop-3": "chain_3",
@@ -189,6 +205,35 @@ SNES_JINGLES = {
     "victory": ("115a", "115b"),
     "game-over": ("113",),
 }
+
+# The hard drop, which is the one sound in this theme that is **made** rather than cut.
+#
+# Mean Bean Machine has no hard drop, and unlike every other borrowed slot it has nothing close
+# to one either. Score all sixty of the rip's files for how much of each is noise rather than
+# tone and for how far its brightness falls over its length: the best whoosh in the game is
+# `sfx_12`, a bright hiss that collapses into a 200 Hz tone, which sat in this slot for a while
+# and is not a whoosh. Everything noisier than it sweeps the wrong way - `sfx_20` is the
+# noisiest thing the game owns and its brightness *climbs*, because it is an impact and not a
+# fall. There is no whoosh in there to find; the game never needed one.
+#
+# So the material is borrowed and only the gesture is built. `sfx_20`'s body, past the impact
+# that opens it, is a third of a second of the Genesis's noise channel and nothing else, and a
+# whoosh is that noise under a cutoff sliding downward with an envelope that swells and drops.
+# What comes out is the console's own timbre making a shape the console never made - which is
+# what this slot is, a sound for an action the game does not have.
+#
+# The numbers were set against the particle theme's own `hard-drop`, the only other answer to
+# this question in the repository: 0.32s long, and falling. This is 0.30s.
+
+# where the noise comes from: a sound in the rip, and the seconds of it that are pure noise
+HARD_DROP_NOISE = ("sfx_20", 0.07, 0.45)
+# `(seconds, from Hz, to Hz, how late the fall happens)`. The cutoff slides geometrically from
+# the second number to the third along `t ** late`, so above 1 it holds bright and drops at the
+# end rather than gliding evenly, which is what reads as a fall rather than as a fade.
+HARD_DROP_SWEEP = (0.30, 8000, 400, 1.8)
+# `(where the swell peaks, how sharply it falls away after)`, as fractions of the length
+HARD_DROP_ENVELOPE = (0.45, 1.4)
+
 
 # what a lossless render of a dump is called, best first: a folder that carries both the wavs
 # and somebody's OGG transcode of them should be cut from the wavs
@@ -393,6 +438,51 @@ def source(directory, prefix):
     return os.path.join(directory, matches[0])
 
 
+def whoosh(directory):
+    """The hard drop: the game's own noise under a falling cutoff. See [`HARD_DROP_NOISE`].
+
+    A short-time Fourier transform with a Butterworth lowpass applied per frame and the corner
+    moved between frames - a filter sweep written the plain way round, since the sound is a
+    third of a second long and there is nothing to be gained from running a real filter over
+    it. The noise is tiled up to whatever length is asked for; it is noise, so nothing shows.
+    """
+    source, head, tail = HARD_DROP_NOISE
+    seconds, top, bottom, late = HARD_DROP_SWEEP
+    noise = trim(decode(os.path.join(directory, source + ".wav"), 1))
+    noise = noise[int(head * RATE):int(tail * RATE)]
+
+    # A whole window of noise is analysed either side of the sound and then cut away. Without
+    # it the first and last frames are the only ones covering their samples, the overlap-add
+    # weight there is a fraction of what it is in the middle, and dividing by it puts a spike
+    # six times the height of anything else at each end - which then sets the level for the
+    # whole sound, since everything here is scaled by its peak.
+    length, window, hop, order = int(seconds * RATE), 512, 128, 3
+    span = length + 2 * window
+    tiled = np.resize(noise, span + window)
+    shaped, weight = np.zeros(span + window), np.zeros(span + window)
+    taper = np.hanning(window)
+    freqs = np.fft.rfftfreq(window, 1 / RATE)
+    for at in range(0, span, hop):
+        # the sweep is positioned against the sound itself, so it ignores the padding
+        place = min(max((at - window) / length, 0.0), 1.0)
+        corner = top * (bottom / top) ** (place ** late)
+        spectrum = np.fft.rfft(tiled[at:at + window] * taper)
+        shaped[at:at + window] += np.fft.irfft(
+            spectrum / np.sqrt(1 + (freqs / corner) ** (2 * order)), window
+        )
+        weight[at:at + window] += taper * taper
+    shaped = (shaped / np.maximum(weight, 1e-6))[window:window + length]
+
+    # swell in, then fall away. A drop that opens at full height reads as a hit, and the whole
+    # point of the sweep is that the landing is `lock`'s job rather than this sound's.
+    peak_at, decay = HARD_DROP_ENVELOPE
+    time = np.linspace(0, 1, length)
+    swell = np.where(
+        time < peak_at, (time / peak_at) ** 0.6, ((1 - time) / (1 - peak_at)) ** decay
+    )
+    return (shaped * swell).astype(np.float32)[:, None]
+
+
 def trim(frames):
     """cut the rip's padding off both ends and fade what is left of the tail"""
     level = np.abs(frames).max(axis=1)
@@ -479,6 +569,17 @@ def reference_peaks():
     }
 
 
+def write_effect(out, slug, levels, frames, provenance):
+    """one effect, put back to the peak the particle theme's own sound for that slot has"""
+    if slug not in levels:
+        raise SystemExit(f"{slug}: the particle theme has no sound to level it against")
+    gain = levels[slug] / peak(frames)
+    target = os.path.join(out, slug + ".ogg")
+    encode(frames * gain, target)
+    print(f"{os.path.relpath(target, THEMES):34} {len(frames) / RATE:6.2f}s "
+          f"{os.path.getsize(target) // 1024:5} KiB  {provenance} at {20 * np.log10(gain):+.1f} dB")
+
+
 def genesis(only):
     """Dr. Robotnik's Mean Bean Machine"""
     music = os.path.join(SOURCES, "genesis-music")
@@ -490,13 +591,12 @@ def genesis(only):
 
     if only != "sfx":
         cuts = {}
-        for slug, (lead, loop) in GENESIS_MUSIC.items():
-            # the lead-in is a rip like any other, two passes and a fade, so one pass of it is
-            # the whole of what the game plays before the stage tune takes over - and whatever
-            # the stage tune has of its own before its loop goes on the end of it
-            head, body = split(music, lead)
-            intro, repeat = split(music, loop)
-            cuts[f"{slug}-intro"] = np.concatenate([head, body, intro])
+        for slug, track in GENESIS_MUSIC.items():
+            # only the loop is written: what `split` hands back as the intro of one of these is
+            # a single `loop_start` block, the resolution of the search rather than any music,
+            # and the theme says `None` for the one-shot rather than carry a quarter second of
+            # the first bar and play it twice
+            _, repeat = split(music, track)
             cuts[f"{slug}-repeat"] = repeat
         for slug, track in GENESIS_JINGLES.items():
             intro, repeat = split(music, track)
@@ -507,14 +607,9 @@ def genesis(only):
         return
     levels = reference_peaks()
     for slug, sound in GENESIS_SFX.items():
-        if slug not in levels:
-            raise SystemExit(f"{slug}: the particle theme has no sound to level it against")
-        frames = trim(decode(os.path.join(effects, sound + ".wav")))
-        gain = levels[slug] / peak(frames)
-        target = os.path.join(out, slug + ".ogg")
-        encode(frames * gain, target)
-        print(f"{os.path.relpath(target, THEMES):34} {len(frames) / RATE:6.2f}s "
-              f"{os.path.getsize(target) // 1024:5} KiB  {sound}.wav at {20 * np.log10(gain):+.1f} dB")
+        cut = trim(decode(os.path.join(effects, sound + ".wav")))
+        write_effect(out, slug, levels, cut, f"{sound}.wav")
+    write_effect(out, "hard-drop", levels, whoosh(effects), f"built from {HARD_DROP_NOISE[0]}.wav")
 
 
 def snes(only):

@@ -14,7 +14,7 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, panel_shadow, previews, Sounds, CLEAR_CLASSES};
+use crate::theme::data::{audio, cells, panel_shadow, previews, MusicTrack, Sounds, CLEAR_CLASSES};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -58,11 +58,12 @@ mod sprites {
 /// Mean Bean Machine's own soundtrack and sound effects, cut by
 /// `puyo-rusto/art/retro_audio.py genesis`.
 ///
-/// The game writes each stage's lead-in as a track of its own, which is exactly the pair the
-/// mixer takes: the intro plays once and the stage tune loops behind it forever. The rip
-/// peak-normalised every one of its effects to the same level, so the script puts each of them
-/// back to the peak the particle theme's sound for the same slot has - see its doc comment,
-/// which is the one place this game levels a rip rather than taking it as it came.
+/// The four stage tunes each loop from their first bar and are handed over with no one-shot
+/// in front of them - the tracks the game writes beside them belong to the stage announcement
+/// screen, not to the match. The rip peak-normalised every one of its effects to the same
+/// level, so the script puts each of them back to the peak the particle theme's sound for the
+/// same slot has - see its doc comment, which is where this game levels a rip rather than
+/// taking it as it came, and where the one effect it also filters is argued for.
 mod sound {
     pub const MOVE: &[u8] = include_bytes!("move.ogg");
     pub const ROTATE: &[u8] = include_bytes!("rotate.ogg");
@@ -85,22 +86,14 @@ mod sound {
     /// the continue screen it puts you on
     pub const GAME_OVER: &[u8] = include_bytes!("game-over.ogg");
 
-    pub const STAGES_1_4: (&[u8], &[u8]) = (
-        include_bytes!("stages-1-4-intro.ogg"),
-        include_bytes!("stages-1-4-repeat.ogg"),
-    );
-    pub const STAGES_5_8: (&[u8], &[u8]) = (
-        include_bytes!("stages-5-8-intro.ogg"),
-        include_bytes!("stages-5-8-repeat.ogg"),
-    );
-    pub const STAGES_9_12: (&[u8], &[u8]) = (
-        include_bytes!("stages-9-12-intro.ogg"),
-        include_bytes!("stages-9-12-repeat.ogg"),
-    );
-    pub const STAGE_13: (&[u8], &[u8]) = (
-        include_bytes!("stage-13-intro.ogg"),
-        include_bytes!("stage-13-repeat.ogg"),
-    );
+    /// Each of the four is the whole tune and loops from its first bar, which is why none of
+    /// them is a pair. The rip carries a `Stages 1-4 Intro` beside each one and it is not the
+    /// head of the tune: it is the stage announcement screen's own music, nine seconds of it,
+    /// which the game plays *before* a match. See `art/retro_audio.py`.
+    pub const STAGES_1_4: &[u8] = include_bytes!("stages-1-4-repeat.ogg");
+    pub const STAGES_5_8: &[u8] = include_bytes!("stages-5-8-repeat.ogg");
+    pub const STAGES_9_12: &[u8] = include_bytes!("stages-9-12-repeat.ogg");
+    pub const STAGE_13: &[u8] = include_bytes!("stage-13-repeat.ogg");
 }
 
 /// the tracks a match on this theme may be dealt, in the game's own order
@@ -108,11 +101,11 @@ mod sound {
 /// Mean Bean Machine deals its four stage tunes by stage, four stages at a time, so the order
 /// is the game's own. Nothing here picks between them - the engine deals one when a match
 /// opens on this theme.
-pub const GAME_MUSIC: [(&[u8], &[u8]); 4] = [
-    sound::STAGES_1_4,
-    sound::STAGES_5_8,
-    sound::STAGES_9_12,
-    sound::STAGE_13,
+pub const GAME_MUSIC: [MusicTrack; 4] = [
+    (None, sound::STAGES_1_4),
+    (None, sound::STAGES_5_8),
+    (None, sound::STAGES_9_12),
+    (None, sound::STAGE_13),
 ];
 
 /// the Genesis's own bean, and `rip_retro.py`'s grid
@@ -761,7 +754,8 @@ mod tests {
         ];
         sounds.extend(sound::POP);
         for (intro, repeat) in GAME_MUSIC {
-            sounds.extend([intro, repeat]);
+            sounds.extend(intro);
+            sounds.push(repeat);
         }
         for bytes in sounds {
             engine::audio::Sound::load(bytes, 100).expect("a genesis sound did not decode");

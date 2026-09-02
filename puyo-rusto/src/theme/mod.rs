@@ -6,6 +6,7 @@ pub mod modern;
 pub mod snes;
 
 use crate::game::cell::{PuyoColor, PuyoPiece, PuyoSkin};
+use crate::theme::data::MusicTrack;
 use engine::config::Config;
 use engine::game::PieceId;
 use engine::menu::sound::{MenuMusic, MenuSounds};
@@ -83,11 +84,11 @@ pub(crate) mod sound {
 /// stage tunes and Kirby's Avalanche three. A deal is made out of one theme's table and never
 /// across them, so a theme with fewer simply comes round to a tune it has played before
 /// sooner, which is how those games sound.
-pub const GAME_MUSIC: [(&[u8], &[u8]); 4] = [
-    sound::KOROBEINIKI,
-    sound::DECISIVE,
-    sound::MAGICAL,
-    sound::TETRO_MIX,
+pub const GAME_MUSIC: [MusicTrack; 4] = [
+    (Some(sound::KOROBEINIKI.0), sound::KOROBEINIKI.1),
+    (Some(sound::DECISIVE.0), sound::DECISIVE.1),
+    (Some(sound::MAGICAL.0), sound::MAGICAL.1),
+    (Some(sound::TETRO_MIX.0), sound::TETRO_MIX.1),
 ];
 
 /// Puyo Rusto's own menu sounds: the one menu track over both menu screens, as Rustris does
@@ -209,7 +210,8 @@ mod tests {
 
     /// A theme is dealt out of its own table and every table has something in it, which the
     /// arrays' own types say - so what is left to check is that no *track* is empty, which an
-    /// `include_bytes!` of a file the cutting script never wrote would be.
+    /// `include_bytes!` of a file the cutting script never wrote would be. A track with no
+    /// lead-in is fine and is what the Genesis theme's four are; a lead-in of no bytes is not.
     #[test]
     fn every_track_a_theme_deals_has_something_in_it() {
         let tracks = GAME_MUSIC
@@ -217,7 +219,8 @@ mod tests {
             .chain(genesis::GAME_MUSIC)
             .chain(snes::GAME_MUSIC);
         for (intro, repeat) in tracks {
-            assert!(!intro.is_empty() && !repeat.is_empty());
+            assert!(intro.is_none_or(|intro| !intro.is_empty()));
+            assert!(!repeat.is_empty());
         }
     }
 }
