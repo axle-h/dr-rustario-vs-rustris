@@ -346,6 +346,131 @@ fn survive(population_seed: Option<DrNeuralGenome>) -> DrNeuralGenome {
     without_a_hold_opinion(run(clear_phase(population_seed.is_some()), population_seed))
 }
 
+/// `ga dr screen [pills] [clones] [silenced] [epochs]`: can a feature set learn the deterministic ai at
+/// all, answered as fast as it can be answered.
+///
+/// It is [`ga_main_pretrain`] with three differences, and each of them is something stage one
+/// gets wrong as a *measurement*.
+///
+/// It teaches every clone rather than stopping at the first that clears the bar, and reports
+/// the **median** as well as the best. Best-of-N is an extreme of N noisy draws and it lies
+/// about which feature set is better: two sets measured here scored 1431 and 765 on their best
+/// while their medians were 181 and 273, so the two statistics disagreed about the ordering.
+/// Only the median separated the set that went on to work from the ones that did not.
+///
+/// It runs the clones in **parallel**. They share one corpus and nothing else, so a screen
+/// costs about what a handful of clones used to.
+///
+/// And it takes a list of inputs to **silence throughout training**
+/// ([`imitation::teach_without`]), which is how a feature is taken away without rebuilding the
+/// network around a smaller `BOTTLE_FEATURE_INPUTS`. That is what makes searching for the
+/// smallest set that still works affordable: one binary, one corpus, one ablation per run.
+/// Indices are [`evaluator::raw_inputs`]'s order, which is what `ga dr explain` lists.
+pub fn ga_main_screen(args: &[String]) -> Result<(), String> {
+    let pills: usize = args
+        .first()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(imitation::LESSON_PILLS);
+    let clones: u64 = args
+        .get(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(PRETRAIN_ATTEMPTS);
+    let epochs: usize = args
+        .get(3)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(imitation::EPOCHS);
+    let silenced: Vec<usize> = match args.get(2) {
+        None => vec![],
+        Some(list) => list
+            .split(',')
+            .filter(|piece| !piece.trim().is_empty())
+            .map(|piece| {
+                piece
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| format!("'{}' is not an input index", piece.trim()))
+                    .and_then(|input| match input < engine::ai::BOTTLE_FEATURE_INPUTS {
+                        true => Ok(input),
+                        false => Err(format!(
+                            "input {} does not exist; there are {}",
+                            input,
+                            engine::ai::BOTTLE_FEATURE_INPUTS
+                        )),
+                    })
+            })
+            .collect::<Result<Vec<usize>, String>>()?,
+    };
+
+    println!(
+        "screening {} of {} inputs, {} clones over {} pills, {} epochs",
+        engine::ai::BOTTLE_FEATURE_INPUTS - silenced.len(),
+        engine::ai::BOTTLE_FEATURE_INPUTS,
+        clones,
+        pills,
+        epochs
+    );
+    for input in &silenced {
+        println!(
+            "  silenced: {:2} {}",
+            input,
+            super::explain::INPUTS[*input].name
+        );
+    }
+
+    let corpus = imitation::lessons(pills);
+    let mut rows: Vec<(u64, f64, u32, u32)> = (0..clones)
+        .into_par_iter()
+        .map(|clone| {
+            let network = imitation::teach_without(&corpus, epochs, clone, &silenced);
+            let report = imitation::measure(&corpus, &network);
+            let results = unseen_results(network.into());
+            (
+                clone,
+                report.agreement,
+                results.iter().map(|r| r.cleared()).sum(),
+                results.iter().map(|r| r.bonus()).sum(),
+            )
+        })
+        .collect();
+    rows.sort_by_key(|(clone, _, _, _)| *clone);
+
+    for (clone, agreement, viruses, bottles) in &rows {
+        println!(
+            "  clone {:2}: agreement {:.1}%, {} viruses, {} bottles",
+            clone + 1,
+            100.0 * agreement,
+            viruses,
+            bottles
+        );
+    }
+
+    let mut viruses: Vec<u32> = rows.iter().map(|(_, _, v, _)| *v).collect();
+    viruses.sort_unstable();
+    let mut agreement: Vec<f64> = rows.iter().map(|(_, a, _, _)| *a).collect();
+    agreement.sort_by(f64::total_cmp);
+    let cleared = viruses.iter().filter(|v| **v >= TAUGHT_ENOUGH).count();
+    println!(
+        "median {} viruses, mean {}, best {}, {} of {} cleared {}; median agreement {:.1}%",
+        median(&viruses),
+        viruses.iter().sum::<u32>() / viruses.len().max(1) as u32,
+        viruses.last().copied().unwrap_or(0),
+        cleared,
+        viruses.len(),
+        TAUGHT_ENOUGH,
+        100.0 * agreement[agreement.len() / 2]
+    );
+    Ok(())
+}
+
+/// the middle of a sorted slice, averaging the two middles of an even one
+fn median(sorted: &[u32]) -> u32 {
+    match sorted.len() {
+        0 => 0,
+        n if n % 2 == 1 => sorted[n / 2],
+        n => (sorted[n / 2 - 1] + sorted[n / 2]) / 2,
+    }
+}
+
 /// `ga dr pretrain [pills] [threshold]`: stage one on its own. Teaches networks from the
 /// deterministic ai until one plays `threshold` viruses over the verification games, reports
 /// how well it learned and how it plays, and prints the weights.

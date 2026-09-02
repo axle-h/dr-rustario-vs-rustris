@@ -189,66 +189,42 @@ fn all_placements(before: &Bottle) -> Vec<Placement> {
 /// separating the input it is for.
 const SCENARIOS: [Scene; engine::ai::BOTTLE_FEATURE_INPUTS] = [
     // ---- how the bottle moved
-    // a virus and two of its colour: one half completes the line and takes the virus
-    Scene::one(&["Rrr....."]),
     // one virus and nothing else: a matching half lowers the work, another colour raises it
     Scene::one(&["...R...."]),
-    // one virus to bury under a different colour
-    Scene::one(&["...R...."]),
-    // one loose half to bury under a different colour
-    Scene::one(&["...r...."]),
-    // empty: a pill stood up raises the stack twice as far as one laid flat
-    Scene::one(&["........"]),
-    // empty: over the spawn columns against out of the way
-    Scene::one(&["........"]),
-    // one step: a pill laid across it leaves a hole under the overhang
-    Scene::one(&["r......."]),
-    // ---- runs one and two short
-    // a virus and one of its colour along the floor
+    // a virus with one of its colour along the floor, so the work that moves is the row's
     Scene::one(&["Rr......"]),
-    // the same standing up, so the run that grows is a column
+    // the same standing up, so the work that moves is the column's
     Scene::one(&["r.......", "R......."]),
-    Scene::one(&["R......."]),
-    Scene::one(&["R......."]),
-    // two loose halves of a colour: no virus in the run, so it only tidies
+    // A red virus in the corner with a blue beside it: its row is already dead and the only
+    // line it has left is the column above. Anything of another colour on top walls it in.
+    Scene::one(&["Rb......"]),
+    // two loose halves of a colour: a third lowers the work on all three, another colour adds
+    // its own instead
     Scene::one(&["rr......"]),
-    Scene::one(&["r......."]),
-    // ---- what the placement did
-    // three in a row: one half clears them
-    Scene::one(&["rrr....."]),
-    // two of a colour to land against
-    Scene::one(&["rr......"]),
-    // a run with a gap in it a pill could still drop into
-    Scene::one(&["r.r....."]),
-    Scene::one(&["rr......"]),
-    Scene::one(&["r......."]),
-    // a virus in the run the half lands in
-    Scene::one(&["R......."]),
     // A roofed pit one cell wide, with the column beside it open so a half can be walked in
     // under the roof and nothing else can join it: the roof stops a line growing upwards and
     // the wall two along stops one growing sideways.
     Scene::one(&["b.b.....", "..b.....", ".bb....."]),
-    // the same, with a virus under the pit to be stranded on top of
-    Scene::one(&["b.b.....", "..b.....", "Rbb....."]),
-    // one virus to come to rest on
-    Scene::one(&["...R...."]),
-    // the roofed pit again: a half walked in covers the virus *and* is stranded
-    Scene::one(&["b.b.....", "..b.....", "Rbb....."]),
-    // three in a row left standing: the next pill has somewhere to clear
+    // ---- what the placement did
+    // two of a colour to land against, so a half can leave itself one short of a match
     Scene::one(&["rr......"]),
-    // the same with a virus in it
+    // a run with a gap in it a pill could still drop into: work says one short, touching says two
+    Scene::one(&["r.r....."]),
+    // a virus in the run a half lands in
     Scene::one(&["Rr......"]),
-    // Three reds along the floor and three yellows on top of them, with a fourth yellow waiting
-    // over the gap: a half completing the reds clears them, and the yellows that were resting on
-    // them fall into a line of their own. `chains` asks whether the bottle a placement *leaves*
-    // is one half away from exactly that.
-    Scene::one(&["...y....", "yyy.....", "rrr....."]),
+    // three of a colour: a fourth half is exactly one short of them, or exactly two
+    Scene::one(&["rr......"]),
+    Scene::one(&["r......."]),
+    // ---- what is one block from going, by axis
+    Scene::one(&["Rr......"]),
+    Scene::one(&["r.......", "R......."]),
+    Scene::one(&["rr......"]),
+    Scene::one(&["r.......", "r......."]),
+    // empty: a pill stood up in a column raises that column twice as far as one laid flat
+    Scene::one(&["........"]),
     // ---- what kind of bottle this is: two bottles, not two placements
     Scene::two(&FULL, &EMPTY),
     Scene::two(&FULL, &EMPTY),
-    Scene::two(&FULL, &EMPTY),
-    Scene::two(&FULL, &EMPTY),
-    Scene::two(&HOLED, &EMPTY),
     // hold is off, so this is zero in any bottle at all
     Scene::two(&FULL, &EMPTY),
 ];

@@ -207,7 +207,6 @@ fn drop_and_settle(
     stats_before: BottleStats,
 ) -> Placement {
     let landing = landing(bottle);
-    let before = bottle;
     let mut bottle = bottle.clone();
     bottle.hard_drop();
     let placed: Vec<BottlePoint> = bottle
@@ -227,11 +226,10 @@ fn drop_and_settle(
         while bottle.step_down_garbage() {}
     }
 
-    // the settled bottle is read once and then asked everything: the stats it leaves behind,
-    // and what the placement itself did to get there
+    // the settled bottle is read once and then asked everything
     let grid = Grid::of(&bottle);
     let stats = grid.stats();
-    let placement = placement_stats(before, &bottle, &grid, &placed, patterns_cleared);
+    let placement = placement_stats(&grid, &placed, patterns_cleared);
 
     Placement {
         inputs: inputs.with(Translation::HardDrop),
@@ -321,7 +319,10 @@ mod tests {
         );
         // whatever it picks, the bottle it reports is quiescent: a run of four would have gone
         for placement in bottle.placements(bottle.stats()) {
-            assert!(placement.features().global().virus_3_row() >= 0);
+            assert!(
+                placement.settled().pattern().0.is_empty(),
+                "a settled bottle still has a match in it"
+            );
         }
     }
 

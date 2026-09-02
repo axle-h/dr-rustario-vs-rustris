@@ -61,9 +61,60 @@ Each game supplies board features, placement search and agent under `<crate>/src
 
 * **Dr. Rustario** - every difficulty plays `game/ai/n64/`, a port of Dr. Mario 64's
   deterministic scorer (`params.rs` holds the weights and `SKILL_ORDER`). There is also a
-  trained neural model (`ai/models.rs`, `imitation.rs` then `genetic.rs`) used only as player 1
-  of the 2-player demo. `DrAiKind` picks between them. `probe.rs` and `explain.rs` are the
-  diagnostics for feature choice and trained-model behaviour.
+  trained neural model (`ai/models.rs`, `imitation.rs` then `genetic.rs`). `DrAiKind` picks
+  between them. `probe.rs` and `explain.rs` are the diagnostics for feature choice and
+  trained-model behaviour.
+
+  **Its features are one scan.** For a settled cell, take the four windows of four that
+  contain it on each axis; a window is *live* when nothing in it is another colour and every
+  empty cell in it is `Grid::reachable`. `work` is the fewest empties any live window has, so
+  1, 2 or 3; `buried` is no live window on either axis - buried is work with no answer, which
+  is why they are one measurement and why nothing can report a cost it cannot pay. A 4096
+  entry `OnceLock` table (six neighbours, two bits each) does it in one index, which is what
+  buys measuring *every* occupied cell rather than only the viruses. Nineteen inputs come off
+  it, in `evaluator::raw_inputs`.
+
+  **They were selected, not designed**, by `ga dr screen` - a 15 second harness that teaches
+  fifty clones in parallel off one corpus, reports the **median** of what they play, and can
+  *silence* an input throughout training so a feature is taken away without rebuilding the
+  network around a smaller `BOTTLE_FEATURE_INPUTS`. It is deterministic, so every variant is a
+  paired comparison. Its statistics are the point: best-of-N reversed the ordering of two
+  candidate sets twice, and held-out agreement moves the *opposite* way to play often enough
+  to be useless on its own - the set that finally worked has lower agreement than one that
+  did not. `ga dr pretrain` is the same thing when you want the weights.
+
+  Four things it measured that are each the opposite of what they look like:
+
+  * **A number is not an indicator.** `place.halves_work` says the better placed half is one
+    block short; `halves_one_short`/`halves_two_short` say it as counts. Feeding the pair as
+    well as the number is worth **+763** on the median, and neither is worth anything without
+    the other - drop either alone and nothing moves, drop both and it all goes.
+  * **The tallest column is the wrong height.** `delta.max_height` costs 201 to feed;
+    `delta.landing_height` - the *shortest* column, the lowest a pill can still be put - is
+    worth **+337**. One virus on the floor makes the tallest column 1 and changes nothing at
+    all, because every other column is still open to the floor.
+  * **More inputs are worse.** A 26 input superset of these same measurements scores a median
+    of 3222 against the nineteen's 3814; an earlier one scored 644 where its own best eight
+    scored 2275. An input the network has to learn to ignore is not free.
+  * **The two cells the pill put down have to be fed on their own.** The bottle-wide work sums
+    add up forty-odd blocks, so the two the decision is about are a twentieth of the number
+    and are conflated with every other block the placement touched.
+
+  **What was tried and dropped**, all measured the same way: a one ply lookahead (`one_away`,
+  `one_away_virus`, and its `chains`) cost 433 and its bottle clone per candidate with it;
+  `halves_over_virus` cost 1788; `patterns_cleared` cost 18, because the board deltas already
+  say what a clear did; `entrance_height` and `holes` never earned a place and are the probe's
+  control group instead. Two hypotheses about *why* the small sets were losing were also tested
+  and are both false: they are not under-trained (10, 20, 40 and 80 epochs are flat past 20),
+  and the thirty two input set they replaced is not merely winning because it was reverse
+  engineered from the same N64 scorer it is taught by - with the N64 out of the loop entirely,
+  `ga dr trial 60 25 scratch` had it ahead 672 viruses to 444.
+
+  `BOTTLE_FEATURE_WIDTH` is separate from the input count and is 21, which is where a sweep
+  from 9 to 32 flattens. Watch it against [`engine::ai::NEURAL_GENOME_SIZE`]: `Genome` is keyed
+  on nothing but its length, so if the two `feature_network!` shapes ever total the same number
+  of weights the second will not compile. Rustris is 1281 and this is 1366.
+
 * **Rustris** - a small neural network, weights embedded in `game/ai/models.rs`.
 * **Puyo Rusto** - `game/ai/beam.rs`, a beam search over `eval.rs`'s fifteen weights with a
   quiescence search (`quiet.rs`); no neural model, and none provisioned for. Its difficulty

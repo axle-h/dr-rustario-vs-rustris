@@ -8,12 +8,36 @@
 //! times further from pill to pill than it did between the placements of one pill, which makes
 //! most of its choices rounding error.
 //!
-//! The last few inputs are deliberately *not* centred. They say what kind of bottle this is -
-//! how much is left in it, how buried it is, how high it stands - and they are the same for
-//! every candidate by construction, so they cannot rank anything. They are there because the
-//! N64 runs what amounts to two opposite policies, one while it is digging a full bottle out
-//! and another once the end is in sight, and a network with no idea which it is in can only
-//! learn the average of the two.
+//! The context inputs at the end are deliberately *not* centred. They are the same for every
+//! candidate by construction, so they cannot rank anything; they are there because the N64 runs
+//! what amounts to two opposite policies, one while it is digging a full bottle out and another
+//! once the end is in sight, and a network with no idea which it is in can only learn the
+//! average of the two. Which is also why the context block is the bottle **before** the pill:
+//! the after-bottle varies per candidate and [`inputs`] would centre it away.
+//!
+//! **These were selected, not designed.** [`crate::game::ai::features`] measures more than is
+//! fed - every field of `BottleStats` and `PlacementStats` comes out of the same pass and costs
+//! almost nothing extra - and what is fed is what `ga dr screen` chose by adding and removing
+//! one input at a time, ranked on the median of fifty taught clones. Three of those measurements
+//! are worth writing down, because each is the opposite of what it looks like:
+//!
+//! * **A number is not an indicator.** `place.halves_work` says the better placed half is one
+//!   block short; `place.halves_one_short` and `place.halves_two_short` say the same thing as
+//!   counts. Feeding the two indicators as well as the number is worth **+763** on the median,
+//!   and neither indicator is worth anything without the other - drop either alone and nothing
+//!   moves, drop both and it all goes. A sigmoid layer should be able to carve "exactly one"
+//!   out of a continuous input and in practice it does not.
+//! * **The tallest column is the wrong height.** `delta.max_height` costs 201 to feed;
+//!   `delta.landing_height` - the *shortest* column, which is the lowest a pill can still be
+//!   put - is worth 337. One virus on the floor makes the tallest column 1 and changes nothing
+//!   about the game, because every other column is still open to the floor.
+//! * **More inputs are not better.** The same measurements with eight more of their own kind
+//!   fed alongside score a median of 3222 against this set's 3749. An input the network has to
+//!   learn to ignore is not free.
+//!
+//! To try a different set, change [`raw_inputs`] and [`SPREAD`], move [`COMPARATIVE`] to how
+//! many are centred, and set `BOTTLE_FEATURE_INPUTS`. `ga dr screen`'s silencing does the search
+//! without any of that.
 
 use crate::game::ai::features::BottleFeatures;
 use crate::game::ai::models::DrNeuralNetwork;
@@ -21,42 +45,35 @@ use engine::ai::{Tensor, BOTTLE_FEATURE_INPUTS};
 
 /// How many of the inputs are comparative, and so centred on the pill's own candidates. The
 /// rest are the context block at the end.
-pub const COMPARATIVE: usize = 26;
+pub const COMPARATIVE: usize = 16;
 
 /// Roughly how far each input moves between the placements of one pill, which is what it is
 /// divided by. The layers are sigmoid activated, so inputs have to arrive at about the same
 /// size as each other or the first layer saturates and every placement scores the same.
 #[rustfmt::skip]
 const SPREAD: [f64; BOTTLE_FEATURE_INPUTS] = [
-    // the bottle the placement leaves behind, as a change
-    4.0,   // viruses
-    12.0,  // virus work
-    8.0,   // buried viruses
-    12.0,  // buried blocks
-    4.0,   // max height
-    3.0,   // how high the spawn columns stand
-    6.0,   // holes
-    2.0, 2.0, 2.0, 2.0, 2.0, 2.0, // runs one and two short, by axis
+    // how the bottle moved
+    12.0,  // the work its viruses still need
+    12.0,  // the same along rows only
+    12.0,  // and down columns only
+    4.0,   // viruses no line can reach any more
+    12.0,  // the work everything else still needs
+    4.0,   // blocks no line can reach any more
     // what the placement did
-    2.0,   // patterns cleared
-    4.0,   // touching
-    4.0,   // reach
-    2.0,   // open 3
-    2.0,   // open 2
-    4.0,   // viruses in the run
-    2.0,   // stranded
-    2.0,   // stranded on a virus
-    2.0,   // covers a virus
-    2.0,   // buries a virus
-    4.0,   // one away
-    2.0,   // one away, taking a virus
-    1.0,   // chains
+    2.0,   // the work the better of the two placed halves still needs
+    4.0,   // the longest run actually touching one of them
+    4.0,   // viruses in the line they are working on
+    2.0,   // placed halves exactly one short
+    2.0,   // placed halves exactly two short
+    // what is one block from going, by axis
+    2.0,   // viruses one from dying along a row
+    2.0,   // and down a column
+    2.0,   // blocks one from clearing along a row
+    2.0,   // and down a column
+    3.0,   // the lowest a pill can still be put
     // what kind of bottle this is, which is not centred
-    100.0, // viruses left
-    200.0, // work left
-    16.0,  // how high it stands
-    16.0,  // how high the spawn columns stand
-    32.0,  // holes in it
+    50.0,  // blocks already one from clearing
+    30.0,  // viruses already one from dying
     1.0,   // whether this is the held pill rather than the one in play
 ];
 
@@ -70,37 +87,24 @@ pub fn raw_inputs(features: &BottleFeatures) -> [f64; BOTTLE_FEATURE_INPUTS] {
     let placement = features.placement();
 
     [
-        delta.viruses() as f64,
         delta.virus_work() as f64,
-        delta.buried_viruses() as f64,
-        delta.buried_blocks() as f64,
-        delta.max_height() as f64,
-        delta.entrance_height() as f64,
-        delta.holes() as f64,
-        delta.virus_3_row() as f64,
-        delta.virus_3_col() as f64,
-        delta.virus_2_row() as f64,
-        delta.virus_2_col() as f64,
-        delta.block_3_row() as f64,
-        delta.block_3_col() as f64,
-        placement.patterns_cleared() as f64,
-        placement.touching() as f64,
-        placement.reach() as f64,
-        placement.open_3() as f64,
-        placement.open_2() as f64,
-        placement.run_viruses() as f64,
-        placement.stranded() as f64,
-        placement.stranded_on_virus() as f64,
-        placement.covers_virus() as f64,
-        placement.buries_virus() as f64,
-        placement.one_away() as f64,
-        placement.one_away_virus() as f64,
-        placement.chains() as f64,
-        before.viruses() as f64,
-        before.virus_work() as f64,
-        before.max_height() as f64,
-        before.entrance_height() as f64,
-        before.holes() as f64,
+        delta.virus_work_row() as f64,
+        delta.virus_work_col() as f64,
+        delta.viruses_buried() as f64,
+        delta.block_work() as f64,
+        delta.blocks_buried() as f64,
+        placement.halves_work() as f64,
+        placement.halves_touching() as f64,
+        placement.halves_run_viruses() as f64,
+        placement.halves_one_short() as f64,
+        placement.halves_two_short() as f64,
+        delta.viruses_at_work_1_row() as f64,
+        delta.viruses_at_work_1_col() as f64,
+        delta.blocks_at_work_1_row() as f64,
+        delta.blocks_at_work_1_col() as f64,
+        delta.landing_height() as f64,
+        before.blocks_at_work_1() as f64,
+        before.viruses_at_work_1() as f64,
         features.held() as u8 as f64,
     ]
 }
@@ -151,38 +155,31 @@ impl Scorer {
     }
 }
 
-/// The hand written baseline, weighted the way the N64 turned out to weigh things rather than
-/// the way it looks like it ought to: getting a virus out matters, but leaving a half where no
-/// line can ever join it costs more, and a run one short of a match with room to finish is
-/// worth more than most clears.
+/// The hand written baseline, in the order the game itself would put these things: bringing a
+/// virus nearer to killable is what the game is, walling one in where no line can ever reach it
+/// is the worst, and a half left one block from a clear is what a placement is for. Nothing here
+/// says a virus actually *died*: the selection left that input out, because the work counts
+/// already say it.
 fn linear(features: &BottleFeatures) -> f64 {
     let delta = features.delta();
     let placement = features.placement();
 
-    // delta.viruses() is negative when the placement killed some
-    -300.0 * delta.viruses() as f64
-        - 40.0 * delta.virus_work() as f64
-        - 25.0 * delta.buried_viruses() as f64
-        - 5.0 * delta.buried_blocks() as f64
-        - 8.0 * delta.max_height() as f64
-        - 20.0 * delta.entrance_height() as f64
-        - 15.0 * delta.holes() as f64
-        + 30.0 * delta.virus_3_row() as f64
-        + 20.0 * delta.virus_3_col() as f64
-        + 8.0 * delta.virus_2_row() as f64
-        + 5.0 * delta.virus_2_col() as f64
-        + 4.0 * delta.block_3_row() as f64
-        + 2.0 * delta.block_3_col() as f64
-        + 40.0 * placement.open_3() as f64
-        + 12.0 * placement.open_2() as f64
-        + 6.0 * placement.reach() as f64
-        + 8.0 * placement.run_viruses() as f64
-        - 90.0 * placement.stranded() as f64
-        - 60.0 * placement.stranded_on_virus() as f64
-        - 30.0 * placement.buries_virus() as f64
-        + 6.0 * placement.one_away() as f64
-        + 20.0 * placement.one_away_virus() as f64
-        + 25.0 * placement.chains() as f64
+    -40.0 * delta.virus_work() as f64
+        - 20.0 * delta.virus_work_row() as f64
+        - 10.0 * delta.virus_work_col() as f64
+        - 120.0 * delta.viruses_buried() as f64
+        - 8.0 * delta.block_work() as f64
+        - 30.0 * delta.blocks_buried() as f64
+        - 25.0 * placement.halves_work() as f64
+        + 6.0 * placement.halves_touching() as f64
+        + 8.0 * placement.halves_run_viruses() as f64
+        + 40.0 * placement.halves_one_short() as f64
+        + 12.0 * placement.halves_two_short() as f64
+        + 30.0 * delta.viruses_at_work_1_row() as f64
+        + 20.0 * delta.viruses_at_work_1_col() as f64
+        + 4.0 * delta.blocks_at_work_1_row() as f64
+        + 2.0 * delta.blocks_at_work_1_col() as f64
+        - 15.0 * delta.landing_height() as f64
 }
 
 #[cfg(test)]
