@@ -109,10 +109,19 @@ pub fn panel_shadow(margin: (u32, u32, u32, u32)) -> PanelShadow {
     }
 }
 
+/// A track a match may be dealt: a one-shot lead-in, where the tune has one, and the part
+/// that loops behind it forever.
+///
+/// The lead-in is optional because a console's own music often has none - Mean Bean Machine's
+/// four stage tunes all loop from their first bar. What that game writes beside each of them
+/// is the *stage announcement screen's* music, which is not the head of the stage tune and is
+/// nine seconds long, so the theme says `None` here rather than open every match on it.
+pub type MusicTrack = (Option<&'static [u8]>, &'static [u8]);
+
 pub struct Sounds {
-    /// the tracks a match on this theme may be dealt, as `(intro, repeat)` pairs - as many
-    /// as this theme's own game wrote, which is not the same number for all of them
-    pub music: &'static [(&'static [u8], &'static [u8])],
+    /// the tracks a match on this theme may be dealt - as many as this theme's own game
+    /// wrote, which is not the same number for all of them
+    pub music: &'static [MusicTrack],
     pub move_pair: &'static [u8],
     pub rotate: &'static [u8],
     pub lock: &'static [u8],
@@ -165,7 +174,7 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
     );
     let mut audio = AudioTheme::new(config, &sfx)?.with_effects_at(EFFECTS_TRIM);
     for (intro, repeat) in sounds.music {
-        audio = audio.with_game_music_track(Some(intro), repeat)?;
+        audio = audio.with_game_music_track(*intro, repeat)?;
     }
     audio
         .with_game_over_music(sounds.game_over, None)?

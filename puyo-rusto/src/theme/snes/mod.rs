@@ -16,7 +16,7 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, hud, panel_shadow, previews, Sounds};
+use crate::theme::data::{audio, cells, hud, panel_shadow, previews, MusicTrack, Sounds};
 use crate::theme::sound;
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
@@ -89,7 +89,11 @@ mod music {
 /// Kirby's Avalanche wrote **three** stage tunes where Mean Bean Machine wrote four, which is
 /// why nothing says how many a theme must have. Nothing picks between them either - the engine
 /// deals one when a match opens on this theme - so the order is only the dump's own.
-pub const GAME_MUSIC: [(&[u8], &[u8]); 3] = [music::STAGE_1, music::STAGE_2, music::STAGE_3];
+pub const GAME_MUSIC: [MusicTrack; 3] = [
+    (Some(music::STAGE_1.0), music::STAGE_1.1),
+    (Some(music::STAGE_2.0), music::STAGE_2.1),
+    (Some(music::STAGE_3.0), music::STAGE_3.1),
+];
 
 mod kirby;
 
@@ -598,7 +602,8 @@ mod tests {
     fn every_sound_this_theme_owns_decodes() {
         let mut sounds = vec![music::VICTORY, music::GAME_OVER];
         for (intro, repeat) in GAME_MUSIC {
-            sounds.extend([intro, repeat]);
+            sounds.extend(intro);
+            sounds.push(repeat);
         }
         for bytes in sounds {
             engine::audio::Sound::load(bytes, 100).expect("a snes sound did not decode");
