@@ -110,6 +110,19 @@ Each game supplies board features, placement search and agent under `<crate>/src
   engineered from the same N64 scorer it is taught by - with the N64 out of the loop entirely,
   `ga dr trial 60 25 scratch` had it ahead 672 viruses to 444.
 
+  **A `ga dr auto` over these features gains nothing, and the reason is the fitness's own
+  noise.** 100 generations from a taught seed of 4008 viruses on the unseen block went 4085,
+  4080, 4173, 3558 at its four checkpoints - no trend, and the last one below the seed it
+  started from. `ga dr diagnose` plays one model on five seeds and gets 723, 873, 854, 833,
+  875, so a seed is worth about +-8%; `SEEDS_PER_GAME` is 4, which puts the standard error on
+  a candidate's fitness near 4%, and 4008 to 4173 *is* 4%. Selection is picking the luckiest
+  four seed draw rather than the better player, which is what the end-of-run playoff and
+  `Fitness::confirm` exist to catch and cannot fix mid-run. It looks different from the old
+  runs only because stage one now lands where a whole training run used to: the previous model
+  entered stage two at 2163 with 100% of headroom, far above the noise floor, and this one
+  enters at 4008 with a few percent left under it. Raising `SEEDS_PER_GAME` is the lever -
+  8 halves the error and roughly doubles a generation, with `PROBE_SEEDS` clawing some back.
+
   `BOTTLE_FEATURE_WIDTH` is separate from the input count and is 21, which is where a sweep
   from 9 to 32 flattens. Watch it against [`engine::ai::NEURAL_GENOME_SIZE`]: `Genome` is keyed
   on nothing but its length, so if the two `feature_network!` shapes ever total the same number
