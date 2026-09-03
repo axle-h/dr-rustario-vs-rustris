@@ -16,8 +16,9 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, hud, panel_shadow, previews, MusicTrack, Sounds};
-use crate::theme::sound;
+use crate::theme::data::{
+    audio, cells, hud, panel_shadow, previews, MusicTrack, Sounds, CLEAR_CLASSES,
+};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -51,11 +52,12 @@ mod sprites {
     pub const FONT: &[u8] = include_bytes!("font.png");
 }
 
-/// Kirby's Avalanche's own music, cut by `puyo-rusto/art/retro_audio.py snes`.
+/// Kirby's Avalanche's own sound, cut by `puyo-rusto/art/retro_audio.py snes`.
 ///
-/// The music and nothing else: the source is a set of SPC dumps, which carry no sound effects
-/// at all, so this theme goes on playing the game's own out of [`crate::theme::sound`] the way
-/// it played everything before there was a rip to cut.
+/// **Two sources, not one.** The music is a set of SPC dumps, which carry no sound effects at
+/// all; the effects are a recording of the game's own debug sound test, split at the silences
+/// into clips. `retro_audio.py`'s `SNES_SFX` says which clip each effect is and how the three
+/// that were not matched by ear were read out of the audio instead.
 ///
 /// Every track is a *pair*, the mixer having no loop marker. What the first half of each pair
 /// holds is **not** a lead-in the way Mean Bean Machine's is - these tunes loop from their
@@ -64,7 +66,27 @@ mod sprites {
 /// fills, which is the only part of the render that does not repeat, and it is cut off here so
 /// that the loop carries the echo the way the hardware does. `retro_audio.py`'s docstring is
 /// the long version.
-mod music {
+mod sound {
+    pub const MOVE: &[u8] = include_bytes!("move.ogg");
+    pub const ROTATE: &[u8] = include_bytes!("rotate.ogg");
+    /// and [`Sounds::settle`] too: the game plays this one sound both for a pair coming to
+    /// rest and for the puyos left standing dropping into the gap a cleared group left, so
+    /// there is no `settle.ogg` to carry beside it
+    pub const LOCK: &[u8] = include_bytes!("lock.ogg");
+    pub const HARD_DROP: &[u8] = include_bytes!("hard-drop.ogg");
+    pub const POP: [&[u8]; super::CLEAR_CLASSES] = [
+        include_bytes!("pop-1.ogg"),
+        include_bytes!("pop-2.ogg"),
+        include_bytes!("pop-3.ogg"),
+        include_bytes!("pop-4.ogg"),
+    ];
+    pub const ATTACK: &[u8] = include_bytes!("attack.ogg");
+    /// the game pans this one to the side of the field the garbage lands on; the cut is
+    /// centred, since the mixer places an effect itself
+    pub const GARBAGE: &[u8] = include_bytes!("garbage.ogg");
+    pub const SPEED_UP: &[u8] = include_bytes!("speed-up.ogg");
+    pub const PAUSE: &[u8] = include_bytes!("pause.ogg");
+
     pub const STAGE_1: (&[u8], &[u8]) = (
         include_bytes!("stage-1-intro.ogg"),
         include_bytes!("stage-1-repeat.ogg"),
@@ -90,9 +112,9 @@ mod music {
 /// why nothing says how many a theme must have. Nothing picks between them either - the engine
 /// deals one when a match opens on this theme - so the order is only the dump's own.
 pub const GAME_MUSIC: [MusicTrack; 3] = [
-    (Some(music::STAGE_1.0), music::STAGE_1.1),
-    (Some(music::STAGE_2.0), music::STAGE_2.1),
-    (Some(music::STAGE_3.0), music::STAGE_3.1),
+    (Some(sound::STAGE_1.0), sound::STAGE_1.1),
+    (Some(sound::STAGE_2.0), sound::STAGE_2.1),
+    (Some(sound::STAGE_3.0), sound::STAGE_3.1),
 ];
 
 mod kirby;
@@ -386,15 +408,16 @@ pub fn snes_theme<'a>(
                 move_pair: sound::MOVE,
                 rotate: sound::ROTATE,
                 lock: sound::LOCK,
-                settle: sound::SETTLE,
+                // one sound for both, which is what the game does - see [`sound::LOCK`]
+                settle: sound::LOCK,
                 hard_drop: sound::HARD_DROP,
                 pop: sound::POP,
                 attack_sent: sound::ATTACK,
                 receive_nuisance: sound::GARBAGE,
                 speed_up: sound::SPEED_UP,
                 paused: sound::PAUSE,
-                victory: music::VICTORY,
-                game_over: music::GAME_OVER,
+                victory: sound::VICTORY,
+                game_over: sound::GAME_OVER,
             },
         )?,
         // right aligned where the game printed its own, just after the `SC` its border keeps
@@ -595,12 +618,25 @@ mod tests {
         assert_eq!(width % 10, 0);
     }
 
-    /// The dump this theme's music is cut from is 44.1 kHz already, so `retro_audio.py`
-    /// resamples nothing and a rate the decoder refuses would only be caught when a match
-    /// opened on this theme. The theme builder decodes them all, but no test builds a theme.
+    /// The dump this theme's music is cut from is 44.1 kHz already and the sound test capture
+    /// its effects come off is 32,040, so `retro_audio.py` resamples one and not the other and
+    /// a rate the decoder refuses would only be caught when a match opened on this theme. The
+    /// theme builder decodes them all, but no test builds a theme.
     #[test]
     fn every_sound_this_theme_owns_decodes() {
-        let mut sounds = vec![music::VICTORY, music::GAME_OVER];
+        let mut sounds = vec![
+            sound::VICTORY,
+            sound::GAME_OVER,
+            sound::MOVE,
+            sound::ROTATE,
+            sound::LOCK,
+            sound::HARD_DROP,
+            sound::ATTACK,
+            sound::GARBAGE,
+            sound::SPEED_UP,
+            sound::PAUSE,
+        ];
+        sounds.extend(sound::POP);
         for (intro, repeat) in GAME_MUSIC {
             sounds.extend(intro);
             sounds.push(repeat);

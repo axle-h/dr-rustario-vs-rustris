@@ -80,8 +80,8 @@ of a theme's effects over the RMS of its music and every theme of Rustris and Dr
 lands between +6 and +13 dB, with Rustris's Game Boy theme at +9; this game's retro themes were
 at +15 before the lift above. The rest comes off the effects, in
 `src/theme/data.rs`'s `EFFECTS_TRIM` - a number there rather than a gain in the files because
-`sfx.py`'s rip is not on this machine and because the particle and SNES themes play the *same*
-effect files, so there is no per-theme cut to bake it into.
+`sfx.py`'s rip is not on this machine, so the particle theme's own set cannot be re-cut and
+every other theme is levelled against it where it stands.
 
 ## The sound effects, and the two places this differs from `sfx.py`
 
@@ -100,6 +100,30 @@ The second difference is that one effect is not cut from the rip at all: `hard-d
 slot in the theme standing in for an action Mean Bean Machine does not have, is *built* - out of
 the game's own noise, because the rip has no whoosh anywhere in it to take. See [`whoosh`]. It
 is levelled by the same rule as everything else and needs no exception to it.
+
+## Kirby's Avalanche's effects, which are a capture and not a rip
+
+There is no sound effect rip of this game. What there is instead is a recording of its own debug
+sound test, split at the silences into forty six clips - `snes-sfx/manifest.tsv` is the split's
+record of what it cut - so a slot names a clip by number and [`clip`] finds the file. **That
+numbering is the split's and not the game's**: recording the sound test again and splitting it
+again renumbers everything in [`SNES_SFX`], which is the one way this source is worse than a rip.
+
+A capture also keeps what a rip throws away, which is where a sound sits in the field. This game
+pans: garbage lands on the side it was sent to, the sound test plays it where the game would, and
+that clip is therefore hard right with digital silence in the other channel. An effect the mixer
+places itself has to be centred, so the loud channel is copied over the silent one - see
+[`centre`]. Nothing else in the capture needs it; every other clip has its two channels within a
+decibel of each other.
+
+The trim is the Genesis rip's, unchanged. **The levelling is not**, and the difference is the
+one thing about this source worth getting right: a recording of the running game still carries
+the game's own mix, so its effects are moved as a *set* rather than one at a time. See
+[`set_gain`].
+
+Nothing here is built, either. This capture carries a fall - ninety milliseconds from 5.8 kHz to
+1.3 kHz - so `hard-drop` is cut like everything else and [`whoosh`] stays the Genesis theme's
+alone.
 """
 
 import argparse
@@ -121,6 +145,11 @@ SOURCES = os.path.join(ART, "retro")
 SILENCE = 0.005
 LEAD_IN = 0.004
 FADE_OUT = 0.008
+
+# how far under the loud channel the other one has to be before [`centre`] calls it silence
+# rather than a pan. The clip it is there for holds exact zeroes, so this is only loose enough
+# that a capture with a dither floor under it would still be caught.
+SILENT_CHANNEL = 0.01
 
 # Mean Bean Machine's music. A track is `(rip number, one pass, loop)` - the number is the
 # filename prefix the rip gives it, and the two seconds are the rip's own loop table: how long
@@ -204,6 +233,48 @@ SNES_MUSIC = {
 SNES_JINGLES = {
     "victory": ("115a", "115b"),
     "game-over": ("113",),
+}
+
+# Which clip of the sound test capture each of the theme's effects is - the number in the
+# clip's name, never the whole name, since the rest of that is the second of the recording it
+# was cut at. See the docstring for what the capture is and why the numbering is fragile.
+#
+# **Every slot here was chosen by ear**, against the game, the way `GENESIS_SFX`'s were not and
+# says so. What the audio decided on its own is only which clips were worth listening to, and
+# for the pops it decided the whole answer:
+#
+# * **The pops are one sound pitched up.** Clips 07 to 13 are seven recordings of the same
+#   length, 0.690s, at the same peak, whose spectra match one another under a shift of about a
+#   tone a step - 07 to 08 is +2.1 semitones, 08 to 09 +2.1, 10 to 11 +1.1, and so on up. That
+#   is the chain ladder, the shape Mean Bean Machine's `chain_1..7` has, and `clear_class`
+#   grades a step 0..3 so it is the first four that are wanted.
+# * **`hard-drop` is the only clip that falls.** Score every one of the forty six for how far
+#   its brightness moves over its length and clip 15 is alone in the short ones: 5.8 kHz down
+#   to 1.3 kHz in 92ms. It is a third the length of the hard drop the other two themes play and
+#   is cut at its own length anyway, a sound being shorter than its neighbours' being no reason
+#   to stretch it.
+# * **`garbage` is the hard right one**, which is [`centre`]'s whole job. Clip 21 is the same
+#   sound recorded hard left and is not wanted twice. Two other clips are panned this way and
+#   neither is used: 30 and 31 are one pair, and 32, 33 and 41 are one sound right, left and
+#   centred.
+#
+# There is no `settle`: the game plays one sound for a pair coming to rest and for the puyos
+# left standing dropping into the gap a group left, so the theme cuts `lock` and points both
+# slots at it rather than carrying the same file twice. Clip 42 is a second recording of that
+# sound, 2.7 dB quieter and otherwise the same, and is not wanted either.
+SNES_SFX = {
+    "move": "24",
+    "rotate": "04",
+    "lock": "06",
+    "hard-drop": "15",
+    "pop-1": "07",
+    "pop-2": "08",
+    "pop-3": "09",
+    "pop-4": "10",
+    "attack": "43",
+    "garbage": "20",
+    "speed-up": "26",
+    "pause": "03",
 }
 
 # The hard drop, which is the one sound in this theme that is **made** rather than cut.
@@ -438,6 +509,18 @@ def source(directory, prefix):
     return os.path.join(directory, matches[0])
 
 
+def clip(directory, number):
+    """the one clip of the sound test capture with that number - [`source`] for the other rip
+
+    The split names a clip for its number *and* for the second of the recording it was cut at,
+    so a table can carry only the number and the second has to be found.
+    """
+    matches = [f for f in sorted(os.listdir(directory)) if f.startswith(f"clip-{number}_")]
+    if len(matches) != 1:
+        raise SystemExit(f"clip-{number}: {len(matches)} matches in {directory}")
+    return os.path.join(directory, matches[0])
+
+
 def whoosh(directory):
     """The hard drop: the game's own noise under a falling cutoff. See [`HARD_DROP_NOISE`].
 
@@ -496,6 +579,22 @@ def trim(frames):
     fade = min(len(cut), int(FADE_OUT * RATE))
     cut[-fade:] *= np.linspace(1, 0, fade)[:, None]
     return cut
+
+
+def centre(frames):
+    """copy the loud channel over a silent one
+
+    Kirby's Avalanche pans, and its sound test plays a sound where the game would play it, so
+    the garbage clip is hard right and its left channel is digital silence. The mixer places an
+    effect itself, and what the capture holds instead of anything centred is a second recording
+    of the same sound hard *left*, so the answer is to widen the one there is rather than to
+    reach for the other. Every other clip has its two channels within a decibel of each other
+    and comes through this untouched.
+    """
+    levels = np.abs(frames).max(axis=0)
+    if levels.min() > SILENT_CHANNEL * levels.max():
+        return frames
+    return np.repeat(frames[:, [int(np.argmax(levels))]], frames.shape[1], axis=1)
 
 
 def rms(frames):
@@ -569,11 +668,50 @@ def reference_peaks():
     }
 
 
-def write_effect(out, slug, levels, frames, provenance):
-    """one effect, put back to the peak the particle theme's own sound for that slot has"""
+def reference_peak(levels, slug):
+    """what the particle theme's own sound for one slot peaks at
+
+    A slot the particle theme has no sound for would be a slot the engine has no key for, so a
+    miss is a mistake and says so.
+    """
     if slug not in levels:
         raise SystemExit(f"{slug}: the particle theme has no sound to level it against")
-    gain = levels[slug] / peak(frames)
+    return levels[slug]
+
+
+def set_gain(levels, cuts):
+    """One gain for a whole capture's effects, the way [`music_gain`] does a dump's music.
+
+    Levelling slot by slot is right for the Genesis rip and wrong here, and what separates them
+    is what each source did to the levels. That rip is peak normalised - every one of its sixty
+    files sits at -0.5 dBFS - so putting each effect back to the particle theme's peak for its
+    slot restores a mix rather than imposing one. **A recording of the running game is the
+    opposite: what it holds is the mix**, fourteen decibels of it, from the blip a pair moves on
+    to the fanfare a speed up plays. Levelling that slot by slot flattens it to the particle
+    theme's own eight and hands `move` - which fires on every frame of a held direction - a
+    twenty two decibel lift over the sound the game plays quietest.
+
+    So the set moves as a set: to where the particle theme's sounds for these same slots sit on
+    average, or until the loudest thing in it is as loud as the loudest thing that theme plays,
+    whichever comes first.
+
+    **It is the second that binds**, at +12.8 dB against the +18.0 the mean asks for, and the
+    five decibels between them are the price of keeping the mix. They leave the theme at the
+    bottom of the house band - mean effect peak over music RMS is +6.4 dB where the band is +6
+    to +13 and `rustris/gb` is +9 - because a set with one loud fanfare in it and eleven quiet
+    sounds around it cannot be both peaked like the particle theme's and spread like the game's.
+    Raising it further is not a gain's to do: it would want the *fanfare* pulled down, which is
+    the mix again.
+    """
+    wanted = np.mean([reference_peak(levels, slug) for slug in cuts]) / np.mean(
+        [peak(frames) for frames in cuts.values()]
+    )
+    room = max(levels[slug] for slug in cuts) / max(peak(frames) for frames in cuts.values())
+    return (wanted, "the level") if wanted <= room else (room, "the loudest sound it may match")
+
+
+def write_effect(out, slug, frames, gain, provenance):
+    """one effect, at whatever gain its source's rule allows it"""
     target = os.path.join(out, slug + ".ogg")
     encode(frames * gain, target)
     print(f"{os.path.relpath(target, THEMES):34} {len(frames) / RATE:6.2f}s "
@@ -608,32 +746,45 @@ def genesis(only):
     levels = reference_peaks()
     for slug, sound in GENESIS_SFX.items():
         cut = trim(decode(os.path.join(effects, sound + ".wav")))
-        write_effect(out, slug, levels, cut, f"{sound}.wav")
-    write_effect(out, "hard-drop", levels, whoosh(effects), f"built from {HARD_DROP_NOISE[0]}.wav")
+        write_effect(out, slug, cut, reference_peak(levels, slug) / peak(cut), f"{sound}.wav")
+    built = whoosh(effects)
+    write_effect(out, "hard-drop", built, reference_peak(levels, "hard-drop") / peak(built),
+                 f"built from {HARD_DROP_NOISE[0]}.wav")
 
 
 def snes(only):
-    """Kirby's Avalanche
+    """Kirby's Avalanche, whose two halves come from two different places
 
-    Music only: the SNES dump is a set of SPCs and carries no sound effects at all, so this
-    theme keeps playing the game's own until a rip of them turns up. `--only sfx` has nothing
-    to do here and says so.
+    The music is a set of SPC dumps, which carry no sound effects at all; the effects are a
+    recording of the game's own debug sound test, split into clips. See [`SNES_SFX`].
     """
     music = os.path.join(SOURCES, "snes-music")
+    effects = os.path.join(SOURCES, "snes-sfx")
     out = os.path.join(THEMES, "snes")
-    if not os.path.isdir(music):
-        raise SystemExit(f"no rip at {music}")
-    if only == "sfx":
-        raise SystemExit("the SNES dump is SPCs and carries no effects; there is nothing to cut")
+    for folder in (music, effects):
+        if not os.path.isdir(folder):
+            raise SystemExit(f"no rip at {folder}")
 
-    cuts, loops = {}, []
-    for slug, (prefix, loop) in SNES_MUSIC.items():
-        intro, repeat = measured_split(music, prefix, loop)
-        cuts[f"{slug}-intro"], cuts[f"{slug}-repeat"] = intro, repeat
-        loops.append(repeat)
-    for slug, parts in SNES_JINGLES.items():
-        cuts[slug] = np.concatenate([trim(decode(source(music, prefix))) for prefix in parts])
-    write_music(out, cuts, loops)
+    if only != "sfx":
+        cuts, loops = {}, []
+        for slug, (prefix, loop) in SNES_MUSIC.items():
+            intro, repeat = measured_split(music, prefix, loop)
+            cuts[f"{slug}-intro"], cuts[f"{slug}-repeat"] = intro, repeat
+            loops.append(repeat)
+        for slug, parts in SNES_JINGLES.items():
+            cuts[slug] = np.concatenate([trim(decode(source(music, prefix))) for prefix in parts])
+        write_music(out, cuts, loops)
+
+    if only == "music":
+        return
+    levels = reference_peaks()
+    cuts = {slug: trim(centre(decode(clip(effects, number))))
+            for slug, number in SNES_SFX.items()}
+    gain, bound = set_gain(levels, cuts)
+    print(f"the whole set at {20 * np.log10(gain):+.1f} dB, held by {bound}, peaking at "
+          f"{max(peak(frames) for frames in cuts.values()) * gain:.2f}")
+    for slug, frames in cuts.items():
+        write_effect(out, slug, frames, gain, f"clip-{SNES_SFX[slug]}")
 
 
 def main():
