@@ -249,7 +249,7 @@ What a future theme here owes, and the traps:
   `the_panel_art_stops_where_the_trim_says_it_does` reads the columns off the png and is the only
   thing that can hold art and constant together.
 
-### Phase 3d, the `snes` audio — music `done` 2026-09-01, effects outstanding
+### Phase 3d, the `snes` audio — music `done` 2026-09-01, effects `done` 2026-09-03
 
 `retro_audio.py snes` cuts Kirby's Avalanche's music out of the Zophar SPC set (2.4 MiB into
 `src/theme/snes/`, a test decoding all eight files): three stage tunes, which the engine deals
@@ -280,19 +280,43 @@ matched to, so they peak at `MUSIC_CEILING` (0.95) and stay a couple of dB under
 The rest came off the effects. The metric: mean effect peak over music RMS, measured across
 every theme of all three games. The house range is +6 to +13 dB and `rustris/gb` — Alex's
 reference for a balance that reads right — is +9. Puyo Rusto was +11.0 (particle) and +15
-(retro). After the music lift and `data.rs`'s `EFFECTS_TRIM` (71%, −3 dB) it is +7.9 / +10.8 /
-+10.6. The trim lives in Rust, not in the files, because `sfx.py`'s rip is not on this machine
-and because the particle and SNES themes share one effect set.
+(retro). After the music lift and `data.rs`'s `EFFECTS_TRIM` (71%, −3 dB) it is +8.0 / +10.3 /
++6.4 — the last of those being `snes` once it stopped borrowing the particle theme's effects
+and got its own, which sit at the bottom of the band for the reason `set_gain` writes up. The
+trim lives in Rust, not in the files, because `sfx.py`'s rip is not on this machine, so the
+particle theme's set cannot be re-cut and every other theme is levelled against it as it is.
 
 **Still slightly off: `genesis`'s own effects are RMS-hot** (+0.7 dB where `gb` is −2.0).
 `retro_audio.py` levels each one to the *peak* of the particle theme's sound for the same slot,
 and Mean Bean Machine's effects are much denser at the same peak — `lock` has three times the
 RMS. Levelling on RMS with the peak as a cap would fix it, and is a `--only sfx` re-run away.
 
-**Still outstanding: the effects.** `snes` plays the particle theme's, because an SPC set
-carries none. Anything cut for it must be **OGG Vorbis at exactly 44,100 Hz** (the decoder
-rejects anything else), trimmed at both ends and levelled against `src/theme/sfx/` the way
-`GENESIS_SFX` is.
+**The effects came from somewhere else entirely.** An SPC set carries none, so what `snes`
+plays is cut from a recording Alex made of the game's own debug sound test, split at the
+silences into forty six clips (`art/retro/snes-sfx/`, a `manifest.tsv` beside them). `SNES_SFX`
+names a clip per slot. Three of the twelve were read out of the audio rather than heard:
+
+* **the pops are one sound pitched up** — clips 07 to 13 are seven recordings of equal length
+  (0.690s) at equal peak whose spectra match under a shift of about a tone a step, which is the
+  chain ladder; `clear_class` wants the first four.
+* **`hard-drop` is the only clip that falls** — 5.8 kHz to 1.3 kHz in 92ms, and the only one of
+  the short ones that moves at all, so unlike `genesis` nothing had to be built here.
+* **`garbage` is recorded hard right**, the game panning it to the side it lands on. `centre`
+  copies the loud channel over the silent one; clip 21 is the same sound hard left and is not
+  wanted twice.
+
+There is no `settle.ogg`: the game plays one sound for a pair coming to rest and for the puyos
+left standing dropping into the gap, so the theme points both slots at `lock`.
+
+**The one thing this source needed that the rips did not** is `set_gain`. `sfx.py` and the
+Genesis cut both say the levels within a source are its own mix and are not to be flattened —
+and the Genesis rip is peak-normalised, every file at −0.5 dBFS, so levelling *slot by slot*
+restores a mix there rather than imposing one. A recording of the running game is the opposite:
+what it holds **is** the mix, 14.4 dB of it, and per-slot levelling flattened that to the
+particle theme's 7.8 and handed `move` — which fires on every frame of a held direction — a
++22 dB lift. So the set moves as a set, at one gain, and the bound is the same shape as the
+music's: +12.8 dB where matching the mean would want +18.0, held by not letting its loudest
+sound pass the loudest the particle theme plays.
 
 **Also open: seven of `genesis`'s effects are inferred, not heard.** The rip names only the sounds
 whoever made it recognised and numbers the rest `sfx_N`; RetroArch would not stay up long enough

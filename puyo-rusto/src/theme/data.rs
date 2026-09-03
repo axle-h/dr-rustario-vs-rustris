@@ -149,8 +149,8 @@ pub struct Sounds {
 /// here. That leaves all three themes inside the band the other two games occupy.
 ///
 /// It is a number here rather than a gain in the files because `art/sfx.py`'s rip is not on
-/// this machine and cannot be re-cut, and because the set is shared: the particle theme and
-/// the SNES theme play the same effect files.
+/// this machine and cannot be re-cut, so the particle theme's own set has to be taken where it
+/// stands - and it is that set every other theme is levelled against.
 const EFFECTS_TRIM: i32 = 71;
 
 pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> {
