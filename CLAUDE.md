@@ -130,8 +130,8 @@ Each game supplies board features, placement search and agent under `<crate>/src
 
 * **Rustris** - a small neural network, weights embedded in `game/ai/models.rs`.
 * **Puyo Rusto** - `game/ai/beam.rs`, a beam search over `eval.rs`'s fifteen weights with a
-  quiescence search (`quiet.rs`); no neural model, and none provisioned for. Its difficulty
-  ladder (`skill.rs`) is *measured* by `ga puyo rank`, not assumed. Built from the open
+  quiescence search (`quiet.rs`); no neural model, and none ever - the search is the ai. Its
+  difficulty ladder (`skill.rs`) is *measured* by `ga puyo rank`, not assumed. Built from the open
   literature, mostly [ama](https://github.com/citrus610/ama).
 
 The search is stepped once a frame and always interruptible (`agent.rs`), so a piece keeps
@@ -196,7 +196,7 @@ matches RMS with the peak only as a cap.
 ## Docs
 
 * [docs/puyo-puyo-plan.md](docs/puyo-puyo-plan.md) - shared memory for Puyo Rusto, which is
-  still being built in phases. **Read it before touching that crate.**
+  built bar three named items. **Read it before touching that crate.**
 * [docs/puyo-nexus-rules.md](docs/puyo-nexus-rules.md) - local copy of the wiki's rule pages.
   Search it before implementing a Puyo rule, and search for the mechanic rather than the page
   you expect it on.

@@ -32,10 +32,11 @@ impl GameKind {
     ///
     /// A third list because it is a third thing: a game is on the pre-menu as soon as it can
     /// be played, and joins the playlists once it has the themes and the ai to hold up its
-    /// end of one. Puyo Rusto is on the menu from phase 2 of `docs/puyo-puyo-plan.md` and
-    /// joins this list in phase 5, which is where its attack prices and its half of the
-    /// difficulty dial are measured. Until then every playlist deals exactly what it dealt
-    /// before, seed for seed.
+    /// end of one. Puyo Rusto is on the menu already and joins this list in item 3 of
+    /// `docs/puyo-puyo-plan.md`, which is where its attack prices and its half of the
+    /// difficulty dial are measured - and where this const stops being read directly, since
+    /// a playlist will deal only the games its menu has ticked. Until then every playlist
+    /// deals exactly what it dealt before, seed for seed.
     pub const PLAYLIST_ORDER: &'static [GameKind] = &[GameKind::Rustris, GameKind::DrRustario];
 
     pub const COUNT: usize = Self::ALL.len();
@@ -195,9 +196,8 @@ pub fn rustris_brain(
 
 /// a Puyo Rusto brain, playing only Puyo boards
 ///
-/// It is the placeholder until phase 4 of `docs/puyo-puyo-plan.md`: see
-/// [`puyo_rusto::game::ai`]. The seam is the finished one, so that phase swaps the brain and
-/// leaves the menu, the controller and this function alone.
+/// The brain behind it is a beam search and stays one - there is no neural model for that game
+/// and none is coming, see [`puyo_rusto::game::ai`].
 pub fn puyo_brain(
     brain: puyo_rusto::game::ai::PuyoAiKind,
     key_delay: Duration,
