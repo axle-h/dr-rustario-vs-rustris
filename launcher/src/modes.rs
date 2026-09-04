@@ -924,7 +924,7 @@ impl Difficulty {
             // one Rustris starting level per step (the guideline fall speed curve runs to
             // level 14, so even 10 leaves headroom)
             GameKind::Rustris => self.0,
-            // one speed step per dial step. Phase 5 of `docs/puyo-puyo-plan.md` measures
+            // one speed step per dial step. Item 3 of `docs/puyo-puyo-plan.md` measures
             // what this should really be, along with whether the colour count belongs on
             // the dial too; until then Puyo is not in `GameKind::PLAYLIST_ORDER` and no
             // playlist asks

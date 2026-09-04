@@ -19,10 +19,9 @@
 //! * Ikeda, Tomizawa, Viennot and Tanaka, *Playing PuyoPuyo: two search algorithms for
 //!   constructing chain and tactical heuristics*, which is what both of the above cite.
 //!
-//! A neural model over the same features is the other half of phase 4 and is deliberately not
-//! provisioned for here: nothing in this module is shaped around one, and adding it means
-//! adding a `PuyoAiKind` variant beside [`PuyoAiKind::Scorer`], the way `DrAiKind` carries
-//! both.
+//! **There is no neural model here and there will not be one.** The search is the ai; nothing in
+//! this module is shaped around a `Genome` and `ga puyo` trains nothing. See
+//! `docs/puyo-puyo-plan.md`.
 
 pub mod beam;
 pub mod eval;
