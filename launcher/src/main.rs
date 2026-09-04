@@ -46,8 +46,9 @@ fn main() -> Result<(), String> {
                 return match args.get(2).map(String::as_str) {
                     None | Some("rank") => harness::rank_main(&args[3..]),
                     Some("play") => harness::harness_main(&args[3..]),
+                    Some("duel") => harness::duel_main(&args[3..]),
                     Some(other) => Err(format!(
-                        "unknown ga puyo mode '{}', expected: play or rank",
+                        "unknown ga puyo mode '{}', expected: play, rank or duel",
                         other
                     )),
                 };

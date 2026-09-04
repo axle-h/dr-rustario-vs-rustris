@@ -9,15 +9,18 @@ the *why*.
 ## Status
 
 The game is built, themed, charactered and animated, and plays on its own menu against its own ai.
-**Three items are left** — 1, 2 and 3 below, and only the third is large. The fourth row is
-finished work kept here for what it found:
+The table below is what is left and what has been done; the rows marked `done` are kept for
+what they found:
 
 | # | what | where |
 |---|---|---|
-| 1 | **the ai answers what is thrown at it** — an incoming tray fires a chain it is holding | `puyo-rusto/src/game/ai/` |
+| 1 | the ai answers what is thrown at it — **`done` 2026-09-04**, kept below for what it found | `puyo-rusto/src/game/ai/` |
 | 2 | **the defeat drain** — the field falls off the bottom of the screen when a player is buried | `engine/src/animate/game_over.rs` |
 | 3 | **vs. integration** — a playlist that picks its games, and six directed attack prices | `launcher/`, every `game/mod.rs` |
 | 4 | audio levels across the whole app — **`done` 2026-09-04**, kept below for what it found | `engine/art/audio_levels.py` |
+
+**Two items are left**, 2 and 3, and only the third is large. Rows 1 and 4 are finished work kept
+here for what they found. Item 3 wants `ga puyo duel`, which item 1 built.
 
 Everything else — the rules, the three themes, their music and effects, the ai's beam search and
 its measured ladder, the characters, and how the whole thing moves — is `done`. What is worth
@@ -30,49 +33,87 @@ reintroduce it.
 
 ---
 
-## 1. The ai answers what is thrown at it
+## 1. The ai answers what is thrown at it — `done` 2026-09-04
 
-Today no `game/ai/` in this repository reads the pending-attack tray, which is why ai duels are
-one-sided. Puyo is the game where that costs the most, because **offset is its identity
-mechanic**: a chain fired while nuisance is queued cancels it outright, and a bot that ignores the
-tray takes every hit it is ever sent while sitting on a chain that would have paid for it.
+Puyo Rusto's agent now reads `pending_nuisance()`, and it is still the only `game/ai/` in the
+repository that reads a tray at all. **Two rules came out of it, and they are not equally worth
+having** — the one the plan asked for is right and almost never applies, and the one it did not
+ask for does all the work. Both are in `agent.rs` and `beam::ranking`, and `ga puyo duel` is what
+told them apart.
 
-**The seam is already there and is small.** `beam::ranking(candidates, config, pressed)` decides
-between `Plan::Build` and `Plan::Fire`, and today fires on two things: a chain at or over the
-row's `SearchConfig::trigger`, or `pressed` — the spawn column within three rows of the death
-square. Incoming nuisance is a third, and it arrives through `Game::pending_nuisance()`, which is
-public, is in nuisance puyos, and **already counts cross-game garbage**, since a foreign attack
-joins the same queue.
+### What the ai is asked, and when
 
-The shape to build:
+The tray is read **at commit**, not at `begin` — and then **again, whenever it deepens while the
+keys are still being pressed**. That second read is not a refinement, it is the feature. The
+search finishes about a dozen frames after a pair spawns and a fielded opponent takes 300-500 ms
+*per key* after that, so an attack essentially always arrives after the ai has already decided;
+and classic Tsu offset drops the tray the moment this pair locks, so the pair in play when an
+attack arrives is the only pair that can ever do anything about it. Deciding once and looking
+away let **95%** of incoming through unseen (9 trays seen in 202 pairs). Keeping the search alive
+in `Thinking::Decided` and re-ranking on a deeper tray costs one re-rank and a fresh route, and
+takes it to **most of them** (25 in 450).
 
-* The agent reads `pending_nuisance()` in `act` and hands it to `ranking` beside `pressed`. Take
-  it at commit time rather than at `begin`, for the same reason the route is recomputed there: a
-  tray can fill while the search runs.
-* **Fire the smallest chain that covers it, not the biggest one on offer.** `skill.rs`'s
-  `nuisance(count)` is the conversion — `count * TARGET_POINTS`, the same units `Candidate::fires`
-  is in — and is private today, so make it `pub(crate)` on the way past. The answer is the
-  candidates whose `fires` is at least `nuisance(pending)`; among *those*, rank by `horizon` — the
-  board they leave
-  — rather than by `fires`. Firing biggest-first is right when `pressed` (there is no board left
-  to leave) and wrong when answering (the rest of the chain is next turn's ammunition).
-* **A row that cannot cover it should not empty itself trying.** If nothing on offer reaches
-  `nuisance(pending)`, carry on building: taking a partial answer is how a bot turns one hit into
-  two.
-* **How eagerly a row answers is a rung on the ladder**, not a constant. Add one number to
-  `SearchConfig` — the tray depth at which the row starts looking for an answer, with `u32::MAX`
-  for a row that never does. `greedy` fires at everything already and needs nothing; the top rows
-  should answer a single rock; the middle is what the measurement is for.
+### The rule that works: fire before the rock lands, not after
 
-**Measuring it needs a new harness mode.** `ga puyo rank` is a *solo marathon* where no nuisance
-ever arrives, so it cannot see any of this and must not be trusted to rank it. Add `ga puyo duel`
-— two rows over the same seeds, each sending the other what its chains buy — which is also exactly
-what item 3 wants for pricing. Keep `rank` as it is: it measures building, which is a different
-thing and still the right measure for that.
+`agent.rs`'s `incoming_rows` adds the part of the tray that is *certain* to land — full rows
+first, so `min(pending, MAX_DROP) / COLUMNS` — to the spawn column's height, and a board that
+would be over `PRESSED_HEIGHT` after it counts as `pressed`. A comfortable board with a rock
+hanging over it fires now, because in Tsu there is no *after*.
 
-**Done when:** a duel between two top rows shows chains being spent on incoming trays rather than
-on nothing, `SKILL_ORDER` is re-measured, and CLAUDE.md's "nothing in any `game/ai/` reads the
-pending-attack tray" is corrected in the same commit.
+It fires on **half the trays a row sees** (15 of 25 for one row, 14 of 30 for the other), and both
+sides of a duel are better for it: over 24 seeds of `sharp` against `patient` at 400 ms a key,
+pairs survived went 450 → 505, chains 18 → 28, nuisance sent 1,489 → 1,595, and the head to head
+went 12-12 to 14-10.
+
+### The rule the plan asked for, which is nearly dead code
+
+`SearchConfig::answer_at` is the tray depth at which a row starts looking, and above it the ai
+takes the **smallest** chain whose `fires` is at least `skill::nuisance(pending)`, ranked by the
+board it leaves rather than by size. Everything about that is right, including the part that
+looks wrong: **a partial answer is worth nothing**, because offset cancels against the tray and
+then whatever is *still* waiting drops anyway — cover 102 of 132 and all 30 of the next drop lands
+regardless. So a row that cannot cover it carries on building.
+
+**It fired zero times in three thousand duelled pairs**, and the dial measures flat from `1` to
+`u32::MAX`. The reason is specific and was measured rather than guessed — printing what was on
+offer at every tray sighting:
+
+* `Candidate::fires` is what the pair **in play** sets off *right now*, and it is **zero** at
+  about six of every ten moments a tray is seen. The board has a chain; the trigger for it is not
+  in the hand.
+* The trays that actually arrive are big — 26, 31, 32, 35, 38, 39, 56, 62, 97, 126, 127, 132 — so
+  covering one costs 1,800 to 9,200 points, where what is triggerable at that moment is 0 to
+  1,000. The one sighting that could have covered its tray (38 pending, 5,440 available) fired
+  through the `trigger` branch anyway.
+* The rest are `pressed` already.
+
+It is kept because it is correct and costs nothing at runtime, and because the numbers above are
+worth having written down rather than rediscovered. **Do not read a low `answers` column as a
+bug.**
+
+### `ga puyo duel`, and the ladder it found
+
+`ga puyo duel [seeds] [pair cap] [difficulty] [key delay ms] [a] [b]` — two rows on one seed
+(so the same pairs: it is a paired comparison), each sending the other what its chains buy,
+delivered only after both boards have stepped, the way the match screen routes it. Name both
+brains for a head to head, neither for every row against every other. A brain can be written
+`sharp@12` to move that row's `answer_at` without rebuilding, which is what a sweep is made of.
+The key delay matters and defaults to zero: a fielded opponent presses keys at 300-500 ms and the
+answering window is a different shape there.
+
+**The ladder under fire roughly reverses at the top.** `swift` wins nine duels in ten; `sharp` —
+what the marathon calls the best row, and what `hard` fields — loses more than it wins. A marathon
+rewards patience and a fight rewards tempo: holding out for a chain worth forty-eight nuisance
+takes a dozen pairs and a row throwing twelve every four buries you inside them. The ordering is
+the same at 0 ms and at 400 ms a key, so it is not an artefact of one row thinking faster than
+another. The table is in `SKILL_ORDER`'s doc comment.
+
+**`SKILL_ORDER` was re-measured and deliberately not changed.** `ga puyo rank 12 600` reproduces
+its old table to the decimal, which it must: a solo marathon takes no nuisance, so nothing in this
+item can touch it. Making the difficulty ladder the *duel* ladder instead would make `swift` the
+hardest opponent and change what all four dials mean — a gameplay decision, and Alex's.
+**This is the open question item 3 inherits**, since item 3 is where the Puyo half of
+`Difficulty::level` is set.
 
 ## 2. The defeat drain
 
