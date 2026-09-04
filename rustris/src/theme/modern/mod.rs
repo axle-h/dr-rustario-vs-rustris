@@ -1,7 +1,7 @@
 use crate::game::board::{BOARD_WIDTH, TOTAL_HEIGHT};
 use crate::game::tetromino::TetrominoShape;
 use crate::game::{HARD_DROP_ROWS_PER_FRAME, VISIBLE_HEIGHT};
-use crate::theme::data::{audio, cells, curtain, previews, Sounds, HUD_MAX};
+use crate::theme::data::{audio, cells, curtain, previews, Sounds, HUD_MAX, PARTICLE_EFFECTS};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::config::Config;
@@ -113,6 +113,7 @@ pub fn modern_rustris_theme<'a>(
                 stack_drop: Some(STACK_DROP_SOUND),
                 hard_drop: Some(HARD_DROP_SOUND),
                 hold: Some(HOLD_SOUND),
+                effects: PARTICLE_EFFECTS,
             },
         )?,
         columns: BOARD_WIDTH,

@@ -102,6 +102,8 @@ pub const MENU_SOUNDS: MenuSounds = MenuSounds {
     title: MenuMusic::IntroLoop(sound::MENU.0, sound::MENU.1),
     menu: MenuMusic::IntroLoop(sound::MENU.0, sound::MENU.1),
     high_score: MenuSounds::MODERN.high_score,
+    // the menu rip is the particle theme's own, and is levelled with it
+    gain: data::MENU_GAIN,
 };
 
 /// every theme, in the order a theme sprint plays them: oldest hardware first, with the

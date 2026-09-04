@@ -20,10 +20,13 @@ pub enum Command {
         volume: i32,
     },
     /// Play `intro` once (if given) then `repeat` `loops` times (`-1` = forever, `0`/`1` = once).
+    /// `gain` is the theme's own level for this track, as a percentage of the volume the
+    /// config asks for - see [`crate::render::sound::AudioTheme::with_gain`].
     PlayMusic {
         intro: Option<Box<dyn MusicSource>>,
         repeat: Box<dyn MusicSource>,
         loops: i32,
+        gain: i32,
     },
     PauseMusic,
     ResumeMusic,
@@ -40,6 +43,8 @@ struct Voice {
 
 struct Music {
     source: Box<dyn MusicSource>,
+    /// the theme's level for this track, as a percentage
+    gain: i32,
     /// Plays remaining after the current one; `None` = forever.
     remaining: Option<u32>,
     /// Track to chain to when the current one ends (after an intro).
@@ -102,16 +107,19 @@ impl Mixer {
                 intro,
                 repeat,
                 loops,
+                gain,
             } => {
                 self.music = Some(match intro {
                     Some(intro) => Music {
                         source: intro,
+                        gain,
                         remaining: Some(0),
                         next: Some((repeat, loops)),
                         paused: false,
                     },
                     None => Music {
                         source: repeat,
+                        gain,
                         remaining: remaining_plays(loops),
                         next: None,
                         paused: false,
@@ -198,7 +206,9 @@ impl Mixer {
                 }
             }
         }
-        let volume = self.music_volume;
+        // the config's volume and the theme's own gain, which is why the two are multiplied
+        // rather than one of them winning
+        let volume = self.music_volume * music.gain / 100;
         for (acc, &s) in accumulator.iter_mut().zip(&self.scratch[..written]) {
             *acc += s as i32 * volume / MAX_VOLUME;
         }
@@ -304,10 +314,26 @@ mod tests {
             intro: None,
             repeat: tone(400, 3),
             loops: -1,
+            gain: 100,
         })
         .unwrap();
         assert_eq!(mix(&mut m, 8), vec![100; 8]);
         assert_eq!(mix(&mut m, 8), vec![100; 8]);
+    }
+
+    /// the config's dial and the theme's own level multiply, so a theme levelled against the
+    /// house is still levelled when the player moves the slider
+    #[test]
+    fn a_themes_music_gain_multiplies_the_configured_volume() {
+        let (tx, mut m) = mixer_with_volume(1, MAX_VOLUME / 2);
+        tx.send(Command::PlayMusic {
+            intro: None,
+            repeat: tone(400, 3),
+            loops: -1,
+            gain: 50,
+        })
+        .unwrap();
+        assert_eq!(mix(&mut m, 4), vec![100; 4]);
     }
 
     #[test]
@@ -317,6 +343,7 @@ mod tests {
             intro: None,
             repeat: tone(7, 5),
             loops: 1,
+            gain: 100,
         })
         .unwrap();
         assert_eq!(mix(&mut m, 8), vec![7, 7, 7, 7, 7, 0, 0, 0]);
@@ -330,6 +357,7 @@ mod tests {
             intro: None,
             repeat: tone(1, 2),
             loops: 3,
+            gain: 100,
         })
         .unwrap();
         assert_eq!(mix(&mut m, 8), vec![1, 1, 1, 1, 1, 1, 0, 0]);
@@ -342,6 +370,7 @@ mod tests {
             intro: Some(tone(9, 3)),
             repeat: tone(2, 2),
             loops: -1,
+            gain: 100,
         })
         .unwrap();
         assert_eq!(mix(&mut m, 9), vec![9, 9, 9, 2, 2, 2, 2, 2, 2]);
@@ -355,6 +384,7 @@ mod tests {
             intro: Some(tone(9, 10)),
             repeat: tone(2, 2),
             loops: -1,
+            gain: 100,
         })
         .unwrap();
         assert_eq!(mix(&mut m, 2), vec![9, 9]);
@@ -369,6 +399,7 @@ mod tests {
             intro: None,
             repeat: tone(5, 4),
             loops: 1,
+            gain: 100,
         })
         .unwrap();
         assert_eq!(mix(&mut m, 2), vec![5, 5]);
@@ -385,6 +416,7 @@ mod tests {
             intro: None,
             repeat: tone(1, 100),
             loops: -1,
+            gain: 100,
         })
         .unwrap();
         mix(&mut m, 4);
@@ -392,6 +424,7 @@ mod tests {
             intro: None,
             repeat: tone(3, 100),
             loops: -1,
+            gain: 100,
         })
         .unwrap();
         assert_eq!(mix(&mut m, 4), vec![3; 4]);

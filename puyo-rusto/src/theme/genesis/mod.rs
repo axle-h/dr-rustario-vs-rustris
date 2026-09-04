@@ -14,7 +14,9 @@
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
-use crate::theme::data::{audio, cells, panel_shadow, previews, MusicTrack, Sounds, CLEAR_CLASSES};
+use crate::theme::data::{
+    audio, cells, panel_shadow, previews, MusicTrack, Sounds, CLEAR_CLASSES, GENESIS_GAIN,
+};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
 use engine::animate::game_over::GameOverStyle;
@@ -449,6 +451,7 @@ pub fn genesis_theme<'a>(
         audio: audio(
             config.audio,
             Sounds {
+                gain: GENESIS_GAIN,
                 music: &GAME_MUSIC,
                 move_pair: sound::MOVE,
                 rotate: sound::ROTATE,

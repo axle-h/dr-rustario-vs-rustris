@@ -44,6 +44,9 @@ pub struct MenuSounds {
     pub title: MenuMusic,
     pub menu: MenuMusic,
     pub high_score: MenuMusic,
+    /// this set's level against the house, as a percentage - the menu's half of
+    /// [`crate::render::sound::AudioTheme::with_gain`], and 100 for a set already there
+    pub gain: i32,
 }
 
 impl MenuSounds {
@@ -54,6 +57,7 @@ impl MenuSounds {
         title: MenuMusic::Loop(TITLE),
         menu: MenuMusic::Loop(MENU),
         high_score: MenuMusic::IntroLoop(HIGH_SCORE_INTRO, HIGH_SCORE_REPEAT),
+        gain: 100,
     };
 }
 
@@ -67,12 +71,19 @@ pub struct MenuSound {
 
 impl MenuSound {
     pub fn new(config: AudioConfig, sounds: MenuSounds) -> Result<Self, String> {
+        let music = |track: MenuMusic| -> Result<Rc<StructuredMusic>, String> {
+            let track = track.load()?;
+            track.set_gain(sounds.gain);
+            Ok(track)
+        };
         Ok(Self {
-            chime: config.load_sound(sounds.chime)?,
-            select: config.load_sound(sounds.select.unwrap_or(sounds.chime))?,
-            menu_music: sounds.menu.load()?,
-            title_music: sounds.title.load()?,
-            high_score_music: sounds.high_score.load()?,
+            chime: config.load_sound(sounds.chime)?.with_gain(sounds.gain),
+            select: config
+                .load_sound(sounds.select.unwrap_or(sounds.chime))?
+                .with_gain(sounds.gain),
+            menu_music: music(sounds.menu)?,
+            title_music: music(sounds.title)?,
+            high_score_music: music(sounds.high_score)?,
         })
     }
 
