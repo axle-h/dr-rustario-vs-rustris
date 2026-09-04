@@ -39,6 +39,8 @@ pub struct AudioTheme {
     game_over_music: Option<Rc<StructuredMusic>>,
     next_stage_music: Option<Rc<StructuredMusic>>,
     victory_music: Option<Rc<StructuredMusic>>,
+    /// what [`Self::with_gain`] set, so a track added after it is levelled too
+    music_gain: i32,
 }
 
 impl AudioTheme {
@@ -59,6 +61,7 @@ impl AudioTheme {
             game_over_music: None,
             next_stage_music: None,
             victory_music: None,
+            music_gain: 100,
         })
     }
 
@@ -97,29 +100,67 @@ impl AudioTheme {
         intro: Option<&'static [u8]>,
         repeating: &'static [u8],
     ) -> Result<Self, String> {
-        self.game_music.push(
-            match intro {
-                Some(intro) => StructuredMusic::new(intro, repeating)?,
-                None => StructuredMusic::repeat(repeating)?,
-            }
-            .into_rc(),
-        );
+        let track = match intro {
+            Some(intro) => StructuredMusic::new(intro, repeating)?,
+            None => StructuredMusic::repeat(repeating)?,
+        }
+        .into_rc();
+        track.set_gain(self.music_gain);
+        self.game_music.push(track);
         Ok(self)
     }
 
-    /// Plays every one of this theme's effects at `percent` of the volume the config asks for.
+    /// Levels this whole theme - its music and its effects together - against the house.
     ///
-    /// Where a game's effects and its music come off rips that were not mastered against each
-    /// other, this is the one place that can say so. The alternative is a gain baked into every
-    /// effect, and that cannot be done at all when the rip the effects were cut from is gone
-    /// and its script cannot be re-run - which is the case in `puyo-rusto`, whose `EFFECTS_TRIM`
-    /// is the only caller.
-    pub fn with_effects_at(mut self, percent: i32) -> Self {
-        for sound in self.sfx.values_mut() {
-            let volume = sound.volume();
-            sound.set_volume(volume * percent / 100);
+    /// **The house baseline is a theme's music at -22 dBFS RMS**, with its effects within a few
+    /// decibels of that, and `engine/art/audio_levels.py` is the meter that reads it: it decodes
+    /// every embedded file in the repository, applies these gains, and prints what is out of
+    /// band. Rustris and Dr. Rustario came off rips that happen to sit there already; Puyo
+    /// Rusto's are mastered some eight decibels hotter than the rest of the app and are brought
+    /// back here, which is a gain rather than a re-cut because most of those rips are not on
+    /// this machine and cannot be re-run.
+    ///
+    /// Applied to music and effects **together**, so a theme's own internal balance - which is
+    /// the mix its source was mastered with - survives being levelled. Use
+    /// [`Self::with_effects_at`] for the other thing, when a theme's effects sit wrong against
+    /// its own music.
+    pub fn with_gain(mut self, percent: i32) -> Self {
+        self.sfx = self
+            .sfx
+            .drain()
+            .map(|(key, sound)| (key, sound.with_gain(percent)))
+            .collect();
+        self.music_gain = percent;
+        for music in self.music_tracks() {
+            music.set_gain(percent);
         }
         self
+    }
+
+    /// Plays this theme's effects at `percent` of what its music plays at.
+    ///
+    /// Where a game's effects and its music come off rips that were not mastered against each
+    /// other, this is the one place that can say so - a set that is *balanced* wrong rather than
+    /// levelled wrong. Over 100 lifts a set that sits too far under its own music, which is why
+    /// it is a gain on the samples and not the config's volume dial: that dial has no headroom
+    /// above it.
+    pub fn with_effects_at(mut self, percent: i32) -> Self {
+        self.sfx = self
+            .sfx
+            .drain()
+            .map(|(key, sound)| (key, sound.with_gain(percent)))
+            .collect();
+        self
+    }
+
+    /// every track this theme can play, whatever the occasion
+    fn music_tracks(&self) -> Vec<&Rc<StructuredMusic>> {
+        self.game_music
+            .iter()
+            .chain(self.game_over_music.iter())
+            .chain(self.next_stage_music.iter())
+            .chain(self.victory_music.iter())
+            .collect()
     }
 
     /// how many tracks a match may be played on
@@ -142,7 +183,9 @@ impl AudioTheme {
         music: &'static [u8],
         repeating: R,
     ) -> Result<Self, String> {
-        self.game_over_music = Some(Self::music(music, repeating)?);
+        let track = Self::music(music, repeating)?;
+        track.set_gain(self.music_gain);
+        self.game_over_music = Some(track);
         Ok(self)
     }
 
@@ -151,7 +194,9 @@ impl AudioTheme {
         music: &'static [u8],
         repeating: R,
     ) -> Result<Self, String> {
-        self.next_stage_music = Some(Self::music(music, repeating)?);
+        let track = Self::music(music, repeating)?;
+        track.set_gain(self.music_gain);
+        self.next_stage_music = Some(track);
         Ok(self)
     }
 
@@ -160,13 +205,17 @@ impl AudioTheme {
         music: &'static [u8],
         repeating: R,
     ) -> Result<Self, String> {
-        self.victory_music = Some(Self::music(music, repeating)?);
+        let track = Self::music(music, repeating)?;
+        track.set_gain(self.music_gain);
+        self.victory_music = Some(track);
         Ok(self)
     }
 
     /// one track that loops from the start
     pub fn with_looping_victory_music(mut self, music: &'static [u8]) -> Result<Self, String> {
-        self.victory_music = Some(StructuredMusic::repeat(music)?.into_rc());
+        let track = StructuredMusic::repeat(music)?.into_rc();
+        track.set_gain(self.music_gain);
+        self.victory_music = Some(track);
         Ok(self)
     }
 

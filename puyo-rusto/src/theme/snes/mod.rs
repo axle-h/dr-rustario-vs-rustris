@@ -17,7 +17,7 @@ use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoCell, PuyoColor, PuyoSkin};
 use crate::game::rules::{MAX_LEVEL, MAX_SCORE};
 use crate::theme::data::{
-    audio, cells, hud, panel_shadow, previews, MusicTrack, Sounds, CLEAR_CLASSES,
+    audio, cells, hud, panel_shadow, previews, MusicTrack, Sounds, CLEAR_CLASSES, SNES_GAIN,
 };
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
@@ -404,6 +404,7 @@ pub fn snes_theme<'a>(
         audio: audio(
             config.audio,
             Sounds {
+                gain: SNES_GAIN,
                 music: &GAME_MUSIC,
                 move_pair: sound::MOVE,
                 rotate: sound::ROTATE,

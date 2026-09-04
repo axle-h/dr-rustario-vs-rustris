@@ -92,6 +92,26 @@ impl Sound {
         })
     }
 
+    /// Scales the decoded samples by `percent`, which is how a theme is levelled against the
+    /// house (see [`crate::render::sound::AudioTheme::with_gain`]).
+    ///
+    /// In the samples rather than in [`Self::volume`] because a set may need **lifting** as
+    /// well as trimming, and volume is the config's own 0..=[`MAX_VOLUME`] dial with no room
+    /// above it. Anything that would clip is clamped, which is audible, so a gain over 100 is
+    /// only ever set from a measured peak that has the headroom for it - `audio_levels.py`
+    /// reports both.
+    pub fn with_gain(mut self, percent: i32) -> Self {
+        if percent != 100 {
+            let scaled = self
+                .pcm
+                .iter()
+                .map(|s| (*s as i32 * percent / 100).clamp(i16::MIN as i32, i16::MAX as i32) as i16)
+                .collect();
+            self.pcm = Arc::new(scaled);
+        }
+        self
+    }
+
     pub fn volume(&self) -> i32 {
         self.volume
     }
@@ -148,12 +168,18 @@ fn current_music() -> Result<std::sync::MutexGuard<'static, Option<MusicId>>, St
 }
 
 /// Plays `intro` once (if any) then `repeat` `loops` times (`-1` forever), replacing any current music.
-pub fn play_music(intro: Option<Music>, repeat: Music, loops: i32) -> Result<(), String> {
+pub fn play_music(
+    intro: Option<Music>,
+    repeat: Music,
+    loops: i32,
+    gain: i32,
+) -> Result<(), String> {
     *current_music()? = Some(music_id(intro, repeat, loops));
     send(Command::PlayMusic {
         intro: intro.map(Music::stream),
         repeat: repeat.stream(),
         loops,
+        gain,
     })
 }
 
@@ -164,12 +190,13 @@ pub fn play_music_unless_current(
     intro: Option<Music>,
     repeat: Music,
     loops: i32,
+    gain: i32,
 ) -> Result<(), String> {
     if loops < 0 && *current_music()? == Some(music_id(intro, repeat, loops)) {
         // already playing this loop: just make sure it is not paused
         return resume_music();
     }
-    play_music(intro, repeat, loops)
+    play_music(intro, repeat, loops, gain)
 }
 
 pub fn pause_music() -> Result<(), String> {

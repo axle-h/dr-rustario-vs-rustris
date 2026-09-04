@@ -85,4 +85,5 @@ pub const MENU_SOUNDS: MenuSounds = MenuSounds {
     title: MenuMusic::Loop(menu_assets::MAIN_MENU),
     menu: MenuMusic::Loop(menu_assets::MAIN_MENU),
     high_score: MenuMusic::Loop(menu_assets::HIGH_SCORE),
+    gain: 100,
 };

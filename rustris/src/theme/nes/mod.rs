@@ -101,6 +101,7 @@ pub fn nes_theme<'a>(
                 stack_drop: None,
                 hard_drop: None,
                 hold: None,
+                effects: 100,
             },
         )?,
         font: FontThemeOptions::simple(

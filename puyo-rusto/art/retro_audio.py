@@ -604,7 +604,7 @@ def rms(frames):
 def reference_music_level():
     """what this game's own music sits at, as RMS
 
-    Read off `src/theme/music/` rather than written down, the way [`reference_peaks`] reads the
+    Read off `src/theme/music/` rather than written down, the way [`reference_levels`] reads the
     effects, and for the same reason: those tracks and every theme's effects are cut from one
     Puyo Puyo Tetris rip, so that is the level the effects were balanced against and the level
     a console dump has to be put back to. A theme can be switched with a keypress in the middle
@@ -653,30 +653,52 @@ def write_music(out, cuts, loops):
               f"{os.path.getsize(target) // 1024:5} KiB")
 
 
-def reference_peaks():
-    """what the particle theme's own effect for each slot peaks at
+def reference_levels():
+    """what the particle theme's own effect for each slot peaks at, and what it sits at
 
     Read rather than written down: that theme is levelled the way its rip was mixed, and these
-    are the numbers this one has to be put back to. A slot the particle theme has no sound for
-    would be a slot the engine has no key for, so a miss is a mistake and says so.
+    are the numbers this one has to be put back to. Each slot is `(peak, rms)`; a slot the
+    particle theme has no sound for would be a slot the engine has no key for, so a miss is a
+    mistake and says so.
     """
     folder = os.path.join(THEMES, "sfx")
-    return {
-        os.path.splitext(name)[0]: peak(decode(os.path.join(folder, name)))
-        for name in sorted(os.listdir(folder))
-        if name.endswith(".ogg")
-    }
+    levels = {}
+    for name in sorted(os.listdir(folder)):
+        if name.endswith(".ogg"):
+            frames = decode(os.path.join(folder, name))
+            levels[os.path.splitext(name)[0]] = (peak(frames), rms(frames))
+    return levels
 
 
-def reference_peak(levels, slug):
-    """what the particle theme's own sound for one slot peaks at
-
-    A slot the particle theme has no sound for would be a slot the engine has no key for, so a
-    miss is a mistake and says so.
-    """
+def reference(levels, slug):
+    """the particle theme's `(peak, rms)` for one slot"""
     if slug not in levels:
         raise SystemExit(f"{slug}: the particle theme has no sound to level it against")
     return levels[slug]
+
+
+def slot_gain(levels, slug, cut):
+    """The gain that puts one cut where the particle theme's sound for the same slot sits.
+
+    **On RMS, with the peak as the cap** - which is the correction that matters here, and the
+    one this script got wrong first time round. Levelling each effect so that its *peak* matched
+    the particle theme's put a set out that measured right and sounded hot: peak is one sample
+    and says nothing about loudness, and Mean Bean Machine's effects are far denser than the
+    modern rip's at the same peak (`lock` carries three times the RMS). The theme came out with
+    its effects sitting +0.7 dB against its own music where `rustris/gb` - the balance Alex
+    reads as right - is around -2, and the whole set had eight decibels of spread that the game
+    itself does not have.
+
+    RMS is loudness, so RMS is what is matched. The peak is kept as a ceiling rather than a
+    target: a sound that would have to clip to reach the reference level is left as loud as that
+    slot's reference peak and no louder, which is the honest answer for a dense sound that
+    cannot be made to measure like a sparse one. `engine/art/audio_levels.py` is the meter that
+    reads the result back.
+    """
+    reference_peak, reference_rms = reference(levels, slug)
+    wanted = reference_rms / rms(cut)
+    room = reference_peak / peak(cut)
+    return (wanted, "its level") if wanted <= room else (room, "its peak")
 
 
 def set_gain(levels, cuts):
@@ -703,10 +725,10 @@ def set_gain(levels, cuts):
     Raising it further is not a gain's to do: it would want the *fanfare* pulled down, which is
     the mix again.
     """
-    wanted = np.mean([reference_peak(levels, slug) for slug in cuts]) / np.mean(
+    wanted = np.mean([reference(levels, slug)[0] for slug in cuts]) / np.mean(
         [peak(frames) for frames in cuts.values()]
     )
-    room = max(levels[slug] for slug in cuts) / max(peak(frames) for frames in cuts.values())
+    room = max(levels[slug][0] for slug in cuts) / max(peak(frames) for frames in cuts.values())
     return (wanted, "the level") if wanted <= room else (room, "the loudest sound it may match")
 
 
@@ -743,13 +765,15 @@ def genesis(only):
 
     if only == "music":
         return
-    levels = reference_peaks()
+    levels = reference_levels()
     for slug, sound in GENESIS_SFX.items():
         cut = trim(decode(os.path.join(effects, sound + ".wav")))
-        write_effect(out, slug, cut, reference_peak(levels, slug) / peak(cut), f"{sound}.wav")
+        gain, bound = slot_gain(levels, slug, cut)
+        write_effect(out, slug, cut, gain, f"{sound}.wav, held by {bound}")
     built = whoosh(effects)
-    write_effect(out, "hard-drop", built, reference_peak(levels, "hard-drop") / peak(built),
-                 f"built from {HARD_DROP_NOISE[0]}.wav")
+    gain, bound = slot_gain(levels, "hard-drop", built)
+    write_effect(out, "hard-drop", built, gain,
+                 f"built from {HARD_DROP_NOISE[0]}.wav, held by {bound}")
 
 
 def snes(only):
@@ -777,7 +801,7 @@ def snes(only):
 
     if only == "music":
         return
-    levels = reference_peaks()
+    levels = reference_levels()
     cuts = {slug: trim(centre(decode(clip(effects, number))))
             for slug, number in SNES_SFX.items()}
     gain, bound = set_gain(levels, cuts)

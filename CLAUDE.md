@@ -167,9 +167,31 @@ hand-editing its output:
 * `puyo-rusto/art/sprites.py` - the procedural art the rip replaced, kept as a description of
   what the sheet must contain
 * `dr-rustario/art/build_doc.py` - the feature-reference page
+* `engine/art/audio_levels.py` - the whole app's audio meter; see below
 
 Retro theme geometry was measured against the emulated games, not read off the rips; the
 numbers live in each theme module beside a comment saying what they were measured from.
+
+### The house audio levels
+
+**Loudness is RMS, and every theme in the app is levelled to one baseline**: its music at
+**-22 dBFS RMS** with its effects within about four decibels of that (`rustris/gb`, the balance
+Alex reads as right, is -2.0), and no file peaking over -0.5 dBFS. `engine/art/audio_levels.py`
+decodes every embedded ogg, applies the gains the Rust adds, and prints what is out of band -
+run it after cutting *any* new audio.
+
+Two knobs, and they are different things. `AudioTheme::with_gain` levels a whole theme, music
+and effects together, so the mix its source was mastered with survives; `with_effects_at` says
+that a theme's effects sit wrong **against its own music**. Puyo Rusto's rips are mastered some
+eight decibels hotter than the rest of the app and are trimmed with the first
+(`puyo-rusto/src/theme/data.rs`); Rustris's particle theme was five decibels quiet against its
+own tune and is lifted with the second. A gain over 100 scales the decoded samples, since the
+config's volume dial has no headroom above it.
+
+**Never level a set slot by slot on peaks.** Peak is one sample: two effects that both peak at
+-0.5 dBFS are ten decibels apart if one is a click and the other a chord. That is what made Mean
+Bean Machine's effects measure right and sound hot, and `retro_audio.py`'s `slot_gain` now
+matches RMS with the peak only as a cap.
 
 ## Docs
 

@@ -119,6 +119,8 @@ pub fn panel_shadow(margin: (u32, u32, u32, u32)) -> PanelShadow {
 pub type MusicTrack = (Option<&'static [u8]>, &'static [u8]);
 
 pub struct Sounds {
+    /// this theme's level against the rest of the compendium - one of the gains below
+    pub gain: i32,
     /// the tracks a match on this theme may be dealt - as many as this theme's own game
     /// wrote, which is not the same number for all of them
     pub music: &'static [MusicTrack],
@@ -137,16 +139,38 @@ pub struct Sounds {
     pub game_over: &'static [u8],
 }
 
-/// How loud this game's effects play against the volume the config asks for, as a percentage.
+/// How loud each theme plays against the rest of the compendium, as a percentage.
 ///
-/// **Measured, against the balance the other two games already strike.** Take the mean peak of
-/// a theme's effects over the RMS of its music: every theme of Rustris and Dr. Rustario lands
-/// between +6 and +13 dB, and Rustris's Game Boy theme - the one that sounds right - is at +9.
-/// Puyo Rusto's retro themes were at +15. Two things put them there and this is the second: the
-/// console dumps were levelled to themselves rather than to this game's own music, which
-/// `retro_audio.py` now fixes as far as their headroom allows; and the Puyo Puyo Tetris rip the
-/// effects come off is peakier than the same rip's music, by about the three decibels taken
-/// here. That leaves all three themes inside the band the other two games occupy.
+/// **Puyo Rusto's own assets are mastered some eight decibels hotter than everything else in
+/// the app**, music and effects alike: its music sits around -14 dBFS RMS where every theme of
+/// Rustris and Dr. Rustario sits at -22, which is the house baseline
+/// ([`engine::render::sound::AudioTheme::with_gain`]). Nobody had heard it, because Puyo does
+/// not take a playlist turn yet and no other game's tune ever follows one of these; the moment
+/// it does, this game is the loud one. Measured by `engine/art/audio_levels.py`, which reads
+/// these constants back out of this file so the two cannot disagree.
+///
+/// It is a gain here rather than a re-cut because most of these files cannot be re-cut at all -
+/// `art/sfx.py`'s rip and `art/music.py`'s are not on this machine - and because re-encoding a
+/// lossy file to change its level is a worse answer than multiplying it on the way out.
+///
+/// One number per theme, applied to its music and its effects **together**, so each theme's own
+/// internal balance survives being levelled. [`EFFECTS_TRIM`] is the other thing, and is what
+/// says the effects sit wrong against the music rather than the whole theme sitting wrong
+/// against the app.
+pub const GENESIS_GAIN: i32 = 45;
+pub const SNES_GAIN: i32 = 44;
+pub const PARTICLE_GAIN: i32 = 39;
+/// the menu screens, whose music comes off the same rip as the particle theme's
+pub const MENU_GAIN: i32 = 38;
+
+/// How loud this game's effects play against **its own music**, as a percentage.
+///
+/// **Measured, against the balance the other two games already strike.** Take a theme's effects
+/// as RMS against the RMS of its music: every theme of Rustris and Dr. Rustario lands between
+/// -7 and +2 dB, and Rustris's Game Boy theme - the one that sounds right - is at -2. The three
+/// Puyo themes came off one Puyo Puyo Tetris rip whose effects are peakier than its own music,
+/// by about the three decibels taken here, which puts all three inside that band: -3.7, -1.7
+/// and -2.8 for `genesis`, `snes` and the particle theme.
 ///
 /// It is a number here rather than a gain in the files because `art/sfx.py`'s rip is not on
 /// this machine and cannot be re-cut, so the particle theme's own set has to be taken where it
@@ -172,7 +196,9 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
             .enumerate()
             .map(|(class, sound)| (SfxKey::Clear(class as u16), *sound)),
     );
-    let mut audio = AudioTheme::new(config, &sfx)?.with_effects_at(EFFECTS_TRIM);
+    let mut audio = AudioTheme::new(config, &sfx)?
+        .with_gain(sounds.gain)
+        .with_effects_at(EFFECTS_TRIM);
     for (intro, repeat) in sounds.music {
         audio = audio.with_game_music_track(*intro, repeat)?;
     }

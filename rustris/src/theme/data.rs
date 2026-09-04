@@ -205,7 +205,21 @@ pub struct Sounds {
     pub stack_drop: Option<&'static [u8]>,
     pub hard_drop: Option<&'static [u8]>,
     pub hold: Option<&'static [u8]>,
+    /// how loud this theme's effects play against its own music, as a percentage - see
+    /// [`PARTICLE_EFFECTS`]. 100 for a theme whose rip already balances itself
+    pub effects: i32,
 }
+
+/// How loud the particle theme's effects play against its own music, as a percentage.
+///
+/// **Measured by `engine/art/audio_levels.py`**, the compendium's audio meter: take a theme's
+/// effects as RMS against the RMS of its music and every other theme in the app lands between
+/// -7 and +2 dB, with `rustris/gb` - the balance Alex reads as right - at -2.0. This theme sat
+/// at -6.9, the quietest set in the app against the loudest music, which is a set that is
+/// *balanced* wrong rather than levelled wrong: nothing it plays is too quiet on its own, they
+/// are all too quiet under this particular tune. The lift is +4.9 dB and its bound is the
+/// headroom: `stack-drop`, the loudest thing here, peaks at -8.1 dBFS and lands at -3.2.
+pub const PARTICLE_EFFECTS: i32 = 176;
 
 pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> {
     let mut sfx = vec![
@@ -230,6 +244,7 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
         sfx.push((SfxKey::Hold, hold));
     }
     AudioTheme::new(config, &sfx)?
+        .with_effects_at(sounds.effects)
         .with_looping_game_music(sounds.music)?
         .with_game_over_music(sounds.game_over, None)?
         .with_victory_music(sounds.victory, None)

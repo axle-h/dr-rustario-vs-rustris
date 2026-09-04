@@ -7,7 +7,7 @@
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, SPAWN, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
-use crate::theme::data::{audio, cells, previews, Sounds, HUD_MAX};
+use crate::theme::data::{audio, cells, previews, Sounds, HUD_MAX, PARTICLE_GAIN};
 use crate::theme::{sound, GAME_MUSIC};
 use engine::animate::destroy::DestroyStyle;
 use engine::animate::frames::FrameAnimationType;
@@ -185,6 +185,7 @@ pub fn modern_puyo_theme<'a>(
         audio: audio(
             config.audio,
             Sounds {
+                gain: PARTICLE_GAIN,
                 music: &GAME_MUSIC,
                 move_pair: sound::MOVE,
                 rotate: sound::ROTATE,
