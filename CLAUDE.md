@@ -36,7 +36,7 @@ cargo run --example scale_report                          # where every theme pu
 
 Each example's doc comment carries its own usage. AI training and measurement is the `ga`
 subcommand of the main binary, dispatched in `launcher/src/main.rs` (`ga dr auto|trial|play|
-probe|explain|...`, `ga puyo rank|play`, `ga auto|play|...` for Rustris); the readme's
+probe|explain|...`, `ga puyo rank|play|duel`, `ga auto|play|...` for Rustris); the readme's
 *Training Dr. Rustario* is the walkthrough.
 
 ## Architecture
@@ -134,9 +134,29 @@ Each game supplies board features, placement search and agent under `<crate>/src
   difficulty ladder (`skill.rs`) is *measured* by `ga puyo rank`, not assumed. Built from the open
   literature, mostly [ama](https://github.com/citrus610/ama).
 
+  **It is the one ai here that reads what is being thrown at it**, and what that turned out to
+  be worth is not what it looks like. Two rules came out of `ga puyo duel`, and only one of
+  them earns its place:
+
+  * **Firing because the tray is about to bury you is worth having.** `agent.rs`'s
+    `incoming_rows` adds what is queued to the spawn column's height, so a comfortable board
+    with a rock hanging over it counts as `pressed` and fires now - there is no *later*, since
+    classic Tsu offset drops the tray the moment this pair locks. It fires on **half** the
+    trays a row sees, and both sides of a duel last longer and chain more for it.
+  * **Firing the smallest chain that cancels the tray is nearly dead code.** It is right - a
+    partial answer buys nothing, because the remainder drops anyway - but `Candidate::fires`,
+    what the pair in play can set off *right now*, is zero at most of the moments a tray is
+    seen and far short of the 2,000-9,000 points a real tray costs at the rest. Over three
+    thousand duelled pairs it fired **never**. `SearchConfig::answer_at` is the dial and it
+    measures flat from 1 to `u32::MAX`.
+
+  **The ladder under fire is not the ladder in a marathon**, and roughly reverses at the top:
+  see `SKILL_ORDER`'s doc comment. `ga puyo rank` is a solo marathon and takes no nuisance at
+  all, so it can only ever measure building.
+
 The search is stepped once a frame and always interruptible (`agent.rs`), so a piece keeps
-falling while it thinks. Nothing in any `game/ai/` reads the pending-attack tray, which is why
-AI duels are one-sided.
+falling while it thinks. **Only Puyo Rusto's ai reads the pending-attack tray**; Dr. Rustario's
+and Rustris's do not, which is why their duels are one-sided.
 
 ### Rendering and themes
 

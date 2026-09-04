@@ -9,14 +9,15 @@
 //! once per frame and the answer is taken when it is ready. The search is not made smaller to
 //! fit a slow device - it is taken in pieces, which costs nothing at all.
 //!
-//! Two things follow, and both are handled below. The pair goes on **falling** while the
+//! Three things follow, and all are handled below. The pair goes on **falling** while the
 //! search runs, so the keys the search worked out from where the pair *was* are no longer the
-//! keys to press - they are worked out again from where it is. And the pair may come to
-//! **rest** before the search is done, on a board too full to fall through, so the search has
-//! to be interruptible: it is, because every placement is scored before the first step and
-//! only sharpened after it.
+//! keys to press - they are worked out again from where it is. The pair may come to **rest**
+//! before the search is done, on a board too full to fall through, so the search has to be
+//! interruptible: it is, because every placement is scored before the first step and only
+//! sharpened after it. And the **tray** can fill in the meantime, so what is waiting to land
+//! is read when the answer is taken rather than when the thinking started.
 
-use crate::game::ai::beam::Search;
+use crate::game::ai::beam::{Plan, Search, SearchConfig};
 use crate::game::ai::field::{of_color, Field, VISIBLE};
 use crate::game::ai::input_sequence::Translation;
 use crate::game::ai::placement::root_moves;
@@ -37,14 +38,44 @@ const PLACEHOLDER_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
 /// will draw, and not so early that it gives up on every chain it starts.
 const PRESSED_HEIGHT: usize = VISIBLE - 3;
 
+/// How much taller a tray of `pending` is about to make every column.
+///
+/// Only [`MAX_DROP`](crate::game::nuisance::MAX_DROP) of it falls at once, and it falls full
+/// rows first with the remainder scattered - so this is the part of it that is certain to
+/// land on the spawn column, and the part the ai can count on being buried by. It is what
+/// makes a board that is comfortable now count as pressed: a chain fired *before* the rock
+/// lands is worth one fired after it, and there is no fired-after in Tsu, because the tray
+/// drops the moment this pair locks.
+fn incoming_rows(pending: u32) -> usize {
+    (pending.min(crate::game::nuisance::MAX_DROP) / COLUMNS) as usize
+}
+
 /// What the agent is doing about the pair in play.
 enum Thinking {
     /// there is no pair, or the one there is has not been looked at yet
     Idle,
     /// a search is under way, one step a frame
     Running(Box<Search>),
-    /// the keys are queued; there is nothing left to decide for this pair
-    Decided,
+    /// The keys are queued. The search is kept rather than dropped, because one thing can
+    /// still change this pair's mind - see [`PuyoAiAgent::act`]. It is `None` when the keys
+    /// were not a search's to begin with, which is the placeholder and the board with nowhere
+    /// left to put anything; neither has a mind to change.
+    Decided {
+        search: Option<Box<Search>>,
+        /// what was in the tray when it decided, so a deeper one can be noticed
+        pending: u32,
+    },
+}
+
+impl Thinking {
+    /// keys queued by something that was not a search: there is nothing to reconsider, so a
+    /// tray that can never be deeper than this is what it remembers seeing
+    fn blind() -> Self {
+        Thinking::Decided {
+            search: None,
+            pending: u32::MAX,
+        }
+    }
 }
 
 pub struct PuyoAiAgent {
@@ -52,6 +83,19 @@ pub struct PuyoAiAgent {
     keys: KeyPacer<Translation>,
     thinking: Thinking,
     rng: ChaCha8Rng,
+    /// a search to run in place of the row's own, which only the harness ever sets - see
+    /// [`with_search`](Self::with_search)
+    search: Option<SearchConfig>,
+    /// how many pairs this agent has committed to a chain that cancels the tray, which is
+    /// what `ga puyo duel` reports and the only visible sign that a row is answering at all
+    answers: u32,
+    /// how many pairs it committed with anything at all waiting in the tray. The ceiling on
+    /// [`answers`](Self::answers), and the number that says whether a row that never answers
+    /// is being fussy or is simply never asked
+    trays: u32,
+    /// how many pairs it fired on because of what the tray was about to do to the board
+    /// rather than because it had the chain it wanted - see [`incoming_rows`]
+    crowded: u32,
 }
 
 impl Default for PuyoAiAgent {
@@ -67,12 +111,42 @@ impl PuyoAiAgent {
             keys: KeyPacer::new(Duration::ZERO),
             thinking: Thinking::Idle,
             rng: ChaCha8Rng::seed_from_u64(PLACEHOLDER_SEED),
+            search: None,
+            answers: 0,
+            trays: 0,
+            crowded: 0,
         }
     }
 
     pub fn with_key_delay(mut self, key_delay: Duration) -> Self {
         self.keys = KeyPacer::new(key_delay);
         self
+    }
+
+    /// Play this row's weights with a search of someone else's choosing.
+    ///
+    /// Nothing in the game does this: a difficulty is a whole row, and a row is its weights
+    /// and its search together. It exists so that `ga puyo duel` can move one dial of one row
+    /// and play the result, which is how a [`SearchConfig`] gets a number in it at all - the
+    /// alternative is editing a const and rebuilding for every point of a sweep.
+    pub fn with_search(mut self, search: SearchConfig) -> Self {
+        self.search = Some(search);
+        self
+    }
+
+    /// how many times this agent has spent a chain on what was waiting in its tray
+    pub fn answers(&self) -> u32 {
+        self.answers
+    }
+
+    /// how many pairs it decided with anything waiting in its tray at all
+    pub fn trays(&self) -> u32 {
+        self.trays
+    }
+
+    /// how many pairs it fired on because the tray was about to bury it
+    pub fn crowded(&self) -> u32 {
+        self.crowded
     }
 
     /// forget whatever was queued and whatever was being thought about; the board it was meant
@@ -96,16 +170,31 @@ impl PuyoAiAgent {
         if matches!(self.thinking, Thinking::Idle) {
             self.begin(game);
         }
-        if let Thinking::Running(search) = &mut self.thinking {
-            // the pair is about to lock: take the best answer the search has got to, which is
-            // never nothing, because every placement was scored before the first step
-            let out_of_time = pair.is_resting(game.board());
-            if !out_of_time {
-                search.step();
+        match &mut self.thinking {
+            Thinking::Running(search) => {
+                // the pair is about to lock: take the best answer the search has got to, which
+                // is never nothing, because every placement was scored before the first step
+                let out_of_time = pair.is_resting(game.board());
+                if !out_of_time {
+                    search.step();
+                }
+                if out_of_time || search.finished() {
+                    self.commit(game);
+                }
             }
-            if out_of_time || search.finished() {
+            // **An attack landed while the keys were still being pressed.** Deciding once and
+            // then looking away would make answering nearly useless: the search finishes a
+            // dozen frames after the pair spawns, an ai opponent takes a third of a second per
+            // key after that, and classic Tsu offset drops the tray the moment this pair
+            // locks. So the pair in play when an attack arrives is the only pair that can
+            // answer it, and it has usually been committed to something else by then. The
+            // search is still here and every placement in it is still scored, so changing its
+            // mind costs one re-rank and a fresh route.
+            Thinking::Decided { pending, .. } if game.pending_nuisance() > *pending => {
+                self.keys.abandon();
                 self.commit(game);
             }
+            _ => {}
         }
 
         // a speed limited agent gets one key here and then has to wait; at full speed the
@@ -129,7 +218,7 @@ impl PuyoAiAgent {
     fn begin(&mut self, game: &Game) {
         let PuyoAiKind::Scorer(row) = self.brain else {
             self.place_at_random(game);
-            self.thinking = Thinking::Decided;
+            self.thinking = Thinking::blind();
             return;
         };
         let skill = &crate::game::ai::skill::ROWS[row % crate::game::ai::SKILLS];
@@ -139,7 +228,7 @@ impl PuyoAiAgent {
             // nowhere to put it, which means the game is over in a frame or two; press
             // something rather than freezing
             self.place_at_random(game);
-            self.thinking = Thinking::Decided;
+            self.thinking = Thinking::blind();
             return;
         }
 
@@ -156,7 +245,7 @@ impl PuyoAiAgent {
             roots,
             &queue,
             skill.weights,
-            skill.search,
+            self.search.unwrap_or(skill.search),
         )));
     }
 
@@ -167,14 +256,33 @@ impl PuyoAiAgent {
     /// lower is a different set of rotations. If the placement it settled on can no longer be
     /// reached at all, the next one down the order is taken instead - which is why
     /// [`Search::ranking`] hands back an order rather than a winner.
+    ///
+    /// **What is waiting in the tray is read here rather than at
+    /// [`begin`](Self::begin)**, for the same reason the route is: a tray fills while the
+    /// search runs, and an attack that arrived a frame ago is exactly the one this pair still
+    /// has time to answer.
     fn commit(&mut self, game: &mut Game) {
-        let Thinking::Running(search) = &self.thinking else {
-            return;
+        let search = match std::mem::replace(&mut self.thinking, Thinking::Idle) {
+            Thinking::Running(search)
+            | Thinking::Decided {
+                search: Some(search),
+                ..
+            } => search,
+            other => {
+                self.thinking = other;
+                return;
+            }
         };
         let Some(pair) = game.pair() else { return };
         let field = Field::from_board(game.board());
-        let pressed = field.height(SPAWN.x as usize) as usize >= PRESSED_HEIGHT;
-        let (ranked, _) = search.ranking(pressed);
+        let pending = game.pending_nuisance();
+        let height = field.height(SPAWN.x as usize) as usize;
+        let pressed = height >= PRESSED_HEIGHT;
+        // the board is fine and is about to not be
+        let crowded = !pressed && height + incoming_rows(pending) >= PRESSED_HEIGHT;
+        self.trays += u32::from(pending > 0);
+        self.crowded += u32::from(crowded);
+        let (ranked, plan) = search.ranking(pressed || crowded, pending);
         let routes = root_moves(game.board(), pair);
 
         let chosen = ranked.iter().find_map(|candidate| {
@@ -182,10 +290,20 @@ impl PuyoAiAgent {
             routes.iter().find(|route| route.drop == wanted)
         });
         match chosen {
-            Some(route) => self.keys.queue(route.inputs.clone()),
+            Some(route) => {
+                // every placement in an answering order fires a chain that covers the tray,
+                // so falling back down the order is still an answer
+                if plan == Plan::Answer {
+                    self.answers += 1;
+                }
+                self.keys.queue(route.inputs.clone())
+            }
             None => self.place_at_random(game),
         }
-        self.thinking = Thinking::Decided;
+        self.thinking = Thinking::Decided {
+            search: Some(search),
+            pending,
+        };
     }
 
     fn place_at_random(&mut self, game: &Game) {
@@ -282,6 +400,62 @@ mod tests {
         assert!(
             scorer > placeholder * 2,
             "scorer {scorer} against placeholder {placeholder}"
+        );
+    }
+
+    /// what a tray is certain to add to every column, including the one pairs spawn in
+    #[test]
+    fn only_a_drops_worth_of_the_tray_counts_towards_being_pressed() {
+        assert_eq!(incoming_rows(0), 0);
+        assert_eq!(
+            incoming_rows(5),
+            0,
+            "a scattered remainder misses most columns"
+        );
+        assert_eq!(incoming_rows(6), 1);
+        assert_eq!(incoming_rows(30), 5, "a rock is five rows");
+        assert_eq!(
+            incoming_rows(400),
+            5,
+            "and no more than a rock ever falls at once"
+        );
+    }
+
+    /// **The tray is read again after the keys are queued.**
+    ///
+    /// The search finishes a dozen frames after a pair spawns and a fielded opponent then
+    /// takes a third of a second per key, so an attack almost always arrives after the ai has
+    /// decided. Deciding once and looking away would let nearly all of them through: classic
+    /// Tsu offset drops the tray the moment this pair locks, so the pair in play when an
+    /// attack arrives is the only pair that can do anything about it.
+    #[test]
+    fn an_attack_that_lands_after_it_has_decided_is_still_looked_at() {
+        use engine::game::Attack;
+
+        let mut game = game_of(7);
+        let mut agent =
+            PuyoAiAgent::of(PuyoAiKind::best()).with_key_delay(Duration::from_millis(400));
+        for _ in 0..200 {
+            agent.act(&mut game, Duration::from_millis(8));
+            game.update(Duration::from_millis(8));
+            game.drain_events();
+            if matches!(agent.thinking, Thinking::Decided { .. }) {
+                break;
+            }
+        }
+        assert!(
+            matches!(agent.thinking, Thinking::Decided { .. }),
+            "the ai never settled on a placement"
+        );
+        assert_eq!(agent.trays(), 0, "nothing was waiting when it decided");
+        assert!(game.pair().is_some(), "the pair is still being walked over");
+
+        game.receive_attack(Attack::new(crate::game::GAME_ID, 30));
+        agent.act(&mut game, Duration::from_millis(8));
+        assert_eq!(
+            agent.trays(),
+            1,
+            "the rock that arrived after it decided was never looked at"
         );
     }
 

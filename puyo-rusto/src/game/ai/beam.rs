@@ -57,6 +57,14 @@ pub struct SearchConfig {
     /// the chain score at which it stops building and fires. Zero fires at the first thing it
     /// finds, which is what a beginner does
     pub trigger: u32,
+    /// How deep the tray has to get - in nuisance puyos, not points - before this row looks
+    /// for a chain to answer it with. [`u32::MAX`] is a row that never does, which is right
+    /// for one whose [`trigger`](Self::trigger) is low enough that it has fired already.
+    ///
+    /// It is a rung of the ladder rather than a constant: noticing that something is about to
+    /// land on you, and spending the smallest chain that covers it, is a thing a better
+    /// player does. See [`ranking`].
+    pub answer_at: u32,
 }
 
 /// How many boards one [`Search::step`] plays the next pair onto before handing the frame back.
@@ -351,8 +359,8 @@ impl Search {
     ///
     /// Handing back the whole order rather than the winner is what lets the agent take the
     /// next one down when the pair has fallen too far to reach the best.
-    pub fn ranking(&self, pressed: bool) -> (Vec<usize>, Plan) {
-        ranking(&self.candidates, &self.config, pressed)
+    pub fn ranking(&self, pressed: bool, pending: u32) -> (Vec<usize>, Plan) {
+        ranking(&self.candidates, &self.config, pressed, pending)
     }
 }
 
@@ -429,6 +437,9 @@ pub enum Plan {
     Build,
     /// fire: this placement sets off a chain worth having
     Fire,
+    /// fire, because of what is waiting in the tray: this placement sets off the smallest
+    /// chain that cancels the whole of it
+    Answer,
 }
 
 /// The root placements in the order this player would rather make them, and what making the
@@ -436,9 +447,21 @@ pub enum Plan {
 ///
 /// Building is the default and firing is the exception, which is the right way round: a
 /// placement that clears nothing but leaves a bigger chain behind beats one that takes four
-/// puyos off the board now. Three things make it fire anyway - a chain at or over the
-/// difficulty's [`SearchConfig::trigger`], a board with nowhere left to build (`pressed`), or
-/// a placement that has to be made because every other one is fatal.
+/// puyos off the board now. Four things make it fire anyway - a chain at or over the
+/// difficulty's [`SearchConfig::trigger`], a board with nowhere left to build (`pressed`), a
+/// placement that has to be made because every other one is fatal, and `pending`: what is
+/// waiting in the tray to land the moment this player's next chain finishes.
+///
+/// **Answering is not firing, and is ranked the other way round.** Firing takes the biggest
+/// chain on offer, because it is being done for its own sake. Answering is done to make
+/// `pending` puyos not land, so the chain that is wanted is the *smallest* one that covers
+/// them - `skill::nuisance(pending)` in the points [`Candidate::fires`] is counted in - and
+/// what separates the ones that qualify is the board each leaves behind, since the rest of
+/// the chain is next turn's ammunition. Classic Tsu offset is why the whole of `pending` has
+/// to be covered rather than a drop's worth of it: a chain cancels against the tray and then
+/// whatever is *still* waiting falls, so a partial answer buys nothing at all. That is also
+/// why a row with nothing big enough carries on building rather than emptying itself trying:
+/// taking a partial answer is how a bot turns one hit into two.
 ///
 /// It is an order and not a winner because the pair goes on falling while the search runs, and
 /// by the time there is an answer the best placement may be out of reach - see
@@ -447,6 +470,7 @@ pub fn ranking(
     candidates: &[Candidate],
     config: &SearchConfig,
     pressed: bool,
+    pending: u32,
 ) -> (Vec<usize>, Plan) {
     if candidates.is_empty() {
         return (vec![], Plan::Build);
@@ -463,6 +487,8 @@ pub fn ranking(
         survivable
     };
 
+    let worth = |i: usize| candidates[i].horizon.unwrap_or(candidates[i].immediate);
+
     let fires = allowed
         .iter()
         .map(|i| candidates[*i].fires)
@@ -478,6 +504,28 @@ pub fn ranking(
         return (allowed, Plan::Fire);
     }
 
+    // what is queued against this player is deep enough to be worth a chain, and there is a
+    // chain here that covers the whole of it
+    if pending > 0 && pending >= config.answer_at {
+        let wanted = crate::game::ai::skill::nuisance(pending);
+        let mut answers: Vec<usize> = allowed
+            .iter()
+            .copied()
+            .filter(|i| candidates[*i].fires >= wanted)
+            .collect();
+        if !answers.is_empty() {
+            answers.sort_by(|a, b| {
+                worth(*b)
+                    .cmp(&worth(*a))
+                    // between two placements that leave the board equally well off, the one
+                    // that spent less of it on the answer keeps the rest for next turn
+                    .then_with(|| candidates[*a].fires.cmp(&candidates[*b].fires))
+                    .then_with(|| candidates[*a].root.inputs.cmp(&candidates[*b].root.inputs))
+            });
+            return (answers, Plan::Answer);
+        }
+    }
+
     // the beam's survivors are ranked against each other; only if it cut every branch does
     // the board as it stands right now have to decide it
     let reached: Vec<usize> = allowed
@@ -486,7 +534,6 @@ pub fn ranking(
         .filter(|i| candidates[*i].horizon.is_some())
         .collect();
     let mut ranked = if reached.is_empty() { allowed } else { reached };
-    let worth = |i: usize| candidates[i].horizon.unwrap_or(candidates[i].immediate);
 
     ranked.sort_by(|a, b| {
         worth(*b)
@@ -503,8 +550,9 @@ pub fn choose(
     candidates: &[Candidate],
     config: &SearchConfig,
     pressed: bool,
+    pending: u32,
 ) -> Option<(usize, Plan)> {
-    let (ranked, plan) = ranking(candidates, config, pressed);
+    let (ranked, plan) = ranking(candidates, config, pressed, pending);
     ranked.first().map(|best| (*best, plan))
 }
 
@@ -525,6 +573,7 @@ mod tests {
             lookahead: 2,
             queues: 2,
             trigger: 3_000,
+            answer_at: 30,
         }
     }
 
@@ -571,11 +620,11 @@ mod tests {
             (PuyoColor::Red, PuyoColor::Blue),
         );
         config.trigger = u32::MAX;
-        let (patient, plan) = choose(&candidates, &config, false).expect("a placement");
+        let (patient, plan) = choose(&candidates, &config, false, 0).expect("a placement");
         assert_eq!(plan, Plan::Build);
 
         config.trigger = 0;
-        let (greedy, plan) = choose(&candidates, &config, false).expect("a placement");
+        let (greedy, plan) = choose(&candidates, &config, false, 0).expect("a placement");
         assert_eq!(plan, Plan::Fire);
         assert_ne!(
             patient, greedy,
@@ -592,9 +641,114 @@ mod tests {
             (PuyoColor::Red, PuyoColor::Blue),
         );
         config.trigger = 0;
-        let (chosen, plan) = choose(&candidates, &config, false).expect("a placement");
+        let (chosen, plan) = choose(&candidates, &config, false, 0).expect("a placement");
         assert_eq!(plan, Plan::Fire);
         assert!(candidates[chosen].fires > 0);
+    }
+
+    /// The tray is a third reason to fire, beside the trigger and being pressed. With the
+    /// trigger out of reach this board would build; with a rock hanging over it, the chain in
+    /// front of it is worth more than the one behind it.
+    #[test]
+    fn a_chain_that_covers_the_tray_is_fired_at_a_trigger_it_could_never_reach() {
+        let (candidates, mut config) = run(
+            &[".g....", "rg....", "rrgg.."],
+            (PuyoColor::Red, PuyoColor::Blue),
+        );
+        config.trigger = u32::MAX;
+        config.answer_at = 1;
+        let covers = candidates.iter().map(|c| c.fires).max().unwrap_or(0)
+            / crate::game::score::TARGET_POINTS;
+        assert!(covers > 0, "some placement here fires something");
+
+        let (_, plan) = choose(&candidates, &config, false, 0).expect("a placement");
+        assert_eq!(
+            plan,
+            Plan::Build,
+            "with an empty tray there is nothing to answer"
+        );
+
+        let (chosen, plan) = choose(&candidates, &config, false, covers).expect("a placement");
+        assert_eq!(plan, Plan::Answer);
+        assert!(
+            candidates[chosen].fires >= crate::game::ai::skill::nuisance(covers),
+            "the placement chosen does not cover the tray it was chosen to answer"
+        );
+    }
+
+    /// A row only looks at the tray once it is deep enough to be worth a chain. Below that it
+    /// eats what is coming and carries on building, which is what makes answering a rung of
+    /// the ladder rather than a reflex.
+    #[test]
+    fn a_tray_shallower_than_the_rows_own_depth_is_ignored() {
+        let (candidates, mut config) = run(
+            &[".g....", "rg....", "rrgg.."],
+            (PuyoColor::Red, PuyoColor::Blue),
+        );
+        config.trigger = u32::MAX;
+        config.answer_at = 30;
+        let (_, plan) = choose(&candidates, &config, false, 29).expect("a placement");
+        assert_eq!(plan, Plan::Build);
+    }
+
+    /// Classic Tsu offset cancels first and drops what is *still* waiting, so a chain that
+    /// covers half the tray leaves the other half to land anyway - it has spent the board for
+    /// nothing. A row with no answer big enough carries on building instead.
+    #[test]
+    fn a_tray_nothing_can_cover_is_not_half_answered() {
+        let (candidates, mut config) = run(
+            &[".g....", "rg....", "rrgg.."],
+            (PuyoColor::Red, PuyoColor::Blue),
+        );
+        config.trigger = u32::MAX;
+        config.answer_at = 1;
+        let (_, plan) = choose(&candidates, &config, false, 500).expect("a placement");
+        assert_eq!(
+            plan,
+            Plan::Build,
+            "no chain here is worth five hundred puyos"
+        );
+    }
+
+    /// Firing takes the biggest chain on offer; answering takes the smallest that covers the
+    /// tray, because the rest of the chain is next turn's ammunition.
+    #[test]
+    fn answering_spends_less_than_firing_does() {
+        let (candidates, mut config) = run(
+            &["......", "bg....", "bg....", "brrb..", "grrg..", "ggbb.."],
+            (PuyoColor::Red, PuyoColor::Green),
+        );
+        config.trigger = 0;
+        let (biggest, plan) = choose(&candidates, &config, false, 0).expect("a placement");
+        assert_eq!(plan, Plan::Fire);
+
+        // a tray one puyo deep: anything that fires at all covers it
+        config.trigger = u32::MAX;
+        config.answer_at = 1;
+        let (answer, plan) = choose(&candidates, &config, false, 1).expect("a placement");
+        assert_eq!(plan, Plan::Answer);
+        assert!(
+            candidates[answer].fires < candidates[biggest].fires,
+            "answering spent {} where firing would have spent {}",
+            candidates[answer].fires,
+            candidates[biggest].fires
+        );
+    }
+
+    /// a board with nowhere left to build fires the biggest thing it has whatever is in the
+    /// tray: there is no board left to leave, so there is nothing to be careful with
+    #[test]
+    fn being_pressed_still_fires_biggest_first() {
+        let (candidates, mut config) = run(
+            &[".g....", "rg....", "rrgg.."],
+            (PuyoColor::Red, PuyoColor::Blue),
+        );
+        config.trigger = u32::MAX;
+        config.answer_at = 1;
+        let (chosen, plan) = choose(&candidates, &config, true, 1).expect("a placement");
+        assert_eq!(plan, Plan::Fire);
+        let biggest = candidates.iter().map(|c| c.fires).max().unwrap_or(0);
+        assert_eq!(candidates[chosen].fires, biggest);
     }
 
     /// a placement that buries the player is never chosen while any other one exists
@@ -606,7 +760,7 @@ mod tests {
         let (candidates, config) = run(&rows, (PuyoColor::Red, PuyoColor::Blue));
         let fatal = candidates.iter().filter(|c| c.fatal).count();
         assert!(fatal > 0, "some placement in that column has to be fatal");
-        let (chosen, _) = choose(&candidates, &config, false).expect("a placement");
+        let (chosen, _) = choose(&candidates, &config, false, 0).expect("a placement");
         assert!(!candidates[chosen].fatal);
     }
 
@@ -668,7 +822,7 @@ mod tests {
         let mut steps = 0;
         let mut search = build;
         loop {
-            let (ranked, _) = search.ranking(false);
+            let (ranked, _) = search.ranking(false, 0);
             assert!(!ranked.is_empty(), "no answer after {steps} steps");
             if search.step() {
                 break;
