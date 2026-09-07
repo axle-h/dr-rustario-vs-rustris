@@ -197,13 +197,27 @@ Threading it through:
   `SelectList`; a checkbox row is a `select_list` of `on`/`off`, which every menu theme already
   draws and which costs no font glyph and no new art. A `Toggle` variant would have to be drawn in
   both the retro and modern menu renderers for no gain.
-* **The high score key is a trap.** `HighScoreKey`'s `game` field is the mode's `title()` string
-  and is persisted verbatim in `high_scores.yml`, so renaming the mode orphans every existing
-  versus table. Keep `title()` as it is and rename only what the pre-menu displays
-  (`ModeChoice::name` in `shell.rs`). For the selection itself the recommendation is that **only
-  the full set competes for a high score table** — nine playlists times seven subsets is
-  sixty-three tables in `all_high_score_keys` and a high score screen nobody can read. A reduced
-  set plays and scores on screen, and does not rank. Alex's call if the other way is wanted.
+* **The vs. playlist stops ranking at all** (Alex, 2026-09-07). Not "only the full set competes":
+  **no** set competes, and `VersusMode` has no high score table. Nine playlists times seven game
+  subsets is sixty-three tables, and that is before the difficulty dial and the games' own
+  variants — too many variations of the game to track in a way anybody can read. The three single
+  game modes keep their tables untouched; ranking is what *they* are for.
+
+  Threading it: `Mode::high_score_key` returns `Option<HighScoreKey>` and
+  `Mode::all_high_score_keys` returns an empty `Vec` for `VersusMode`, which drops it out of the
+  high score screen's key list in `shell.rs` on its own. `MatchSettings::high_score_key`
+  (`engine/src/app/mod.rs`) becomes an `Option` too and is carried into `Match::new`, where a
+  match with no key loads no `HighScoreTable` and can never reach `PostGameAction::NewHighScore`
+  — so the name entry screen is never offered after a playlist. The two tests at the foot of
+  `modes.rs` that assert the versus key is in `all_high_score_keys` invert.
+
+  **Two things this decision removes.** The rename trap is gone: `HighScoreKey`'s `game` field is
+  the mode's `title()` string persisted verbatim in `high_scores.yml`, so renaming the mode used
+  to orphan every existing versus table — with no table there is nothing to orphan, and `title()`
+  can be renamed to `vs. playlist` alongside `ModeChoice::name`. And the per-subset table
+  explosion never has to be designed around. **Existing versus rows in anyone's
+  `high_scores.yml` are left alone**, not pruned: they simply stop being displayed, which is the
+  reversible choice if this is ever revisited.
 
 **Then the six directed prices, which are the rest of the work.** Today
 `puyo_rusto::game::foreign_attack` returns zero for every receiver, so a Puyo attack is *dropped*
@@ -234,7 +248,8 @@ arm of `Difficulty::level(game)` in `modes.rs`, plus a speed dial of its own if 
 way `dr_rustario_speed()` is Dr. Rustario's. The arm exists and returns the dial unchanged.
 
 **Done when:** the pre-menu says `vs. playlist`, its menu ticks three games, a 2-player match on
-each playlist has the ticked games taking turns, garbage crosses sensibly in all six directions,
+each playlist has the ticked games taking turns, no playlist offers name entry and the high score
+screen lists only the three single game modes, garbage crosses sensibly in all six directions,
 and the README table carries the measurements. The attack ball has also never been *watched* in a
 Rustris / Dr. Rustario match, which the same play test closes.
 
@@ -324,6 +339,9 @@ so compare decoded PCM and `git restore` the files that did not actually move.
   kick tables, the quick turn and what happens to the halves all differ; a shared engine pair-piece
   would be all parameters and no substance.
 * **No neural model, ever** (see *Status*).
+* **The vs. playlist does not rank** (Alex, 2026-09-07). It has no high score table and never
+  offers name entry; the three single game modes keep theirs. See item 3 for what that is instead
+  of, and for the two problems it makes go away.
 
 ## The art, and the rule about it
 
