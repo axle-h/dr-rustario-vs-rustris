@@ -28,21 +28,21 @@ impl GameKind {
     pub const RUNNING_ORDER: [GameKind; 3] =
         [GameKind::Rustris, GameKind::DrRustario, GameKind::Puyo];
 
-    /// The games a versus playlist deals, in the order it deals them.
+    /// The games a versus playlist *can* deal, in the order it deals them.
     ///
     /// A third list because it is a third thing: a game is on the pre-menu as soon as it can
     /// be played, and joins the playlists once it has the themes and the ai to hold up its
-    /// end of one. Puyo Rusto is on the menu already and joins this list in item 3 of
-    /// `docs/puyo-puyo-plan.md`, which is where its attack prices and its half of the
-    /// difficulty dial are measured - and where this const stops being read directly, since
-    /// a playlist will deal only the games its menu has ticked. Until then every playlist
-    /// deals exactly what it dealt before, seed for seed.
-    pub const PLAYLIST_ORDER: &'static [GameKind] = &[GameKind::Rustris, GameKind::DrRustario];
+    /// end of one.
+    ///
+    /// **This is the turn order and the default selection, not what a playlist deals.** The
+    /// vs. playlist menu ticks a row per game and a match deals only the ticked ones, in this
+    /// order - so everything that deals a stage reads `VersusMode`'s selection (see
+    /// `modes::Dealt`) rather than this list. Anyone who wants the old two-game compendium
+    /// unticks Puyo Rusto.
+    pub const PLAYLIST_ORDER: &'static [GameKind] =
+        &[GameKind::Rustris, GameKind::DrRustario, GameKind::Puyo];
 
     pub const COUNT: usize = Self::ALL.len();
-
-    /// how many games a versus playlist deals
-    pub const PLAYLIST_COUNT: usize = Self::PLAYLIST_ORDER.len();
 
     /// what this game is called on the pre-menu
     pub fn name(self) -> &'static str {
@@ -428,6 +428,52 @@ mod tests {
         );
     }
 
+    /// The best a game's ai manages, in that game's own units, as `ga cross` measured it:
+    /// a three pattern Dr. Rustario combo, a Rustris tetris, and a Puyo chain worth two rocks.
+    /// Anything at least this big has to be felt in every other game.
+    fn a_real_attack(sender: GameKind, receiver: GameKind) -> u32 {
+        let id = |game| match game {
+            GameKind::DrRustario => engine::game::ids::DR_RUSTARIO,
+            GameKind::Rustris => engine::game::ids::RUSTRIS,
+            GameKind::Puyo => engine::game::ids::PUYO,
+        };
+        match sender {
+            GameKind::DrRustario => dr_rustario::game::foreign_attack(id(receiver), 3),
+            GameKind::Rustris => rustris::game::foreign_attack(
+                id(receiver),
+                rustris::game::ClearAction {
+                    lines: 4,
+                    spin: None,
+                    perfect_clear: false,
+                },
+            ),
+            GameKind::Puyo => puyo_rusto::game::foreign_attack(id(receiver), 60),
+        }
+    }
+
+    /// **Every one of the six crossings is priced.**
+    ///
+    /// An unpriced pair is worth nothing and the attack is dropped at the border - which is
+    /// the safe default and is also completely silent, since nothing arriving looks exactly
+    /// like nothing being sent. The game crates are siblings and none of them can see this
+    /// table, so this is the only place the whole of it can be checked at once. A fourth game
+    /// adds six more pairs and this test asks for every one of them.
+    #[test]
+    fn every_crossing_between_two_games_is_priced() {
+        for sender in GameKind::ALL {
+            for receiver in GameKind::ALL {
+                if sender == receiver {
+                    continue;
+                }
+                assert!(
+                    a_real_attack(sender, receiver) > 0,
+                    "{sender:?} -> {receiver:?} is unpriced: its attacks are dropped at the \
+                     border and nothing arrives"
+                );
+            }
+        }
+    }
+
     /// the two lists are the same games in different orders: one game left out of either
     /// would go missing from the menus or from a per-game collection
     #[test]
@@ -461,7 +507,6 @@ mod tests {
                 "{game:?} takes two turns"
             );
         }
-        assert_eq!(GameKind::PLAYLIST_COUNT, GameKind::PLAYLIST_ORDER.len());
     }
 
     #[test]

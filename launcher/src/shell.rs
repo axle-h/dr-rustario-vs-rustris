@@ -43,8 +43,9 @@ impl ModeChoice {
     fn name(&self) -> &'static str {
         match self {
             ModeChoice::Game(game) => game.name(),
-            // the compendium's own title: a game joining it does not retitle it
-            ModeChoice::Versus => "dr. rustario vs. rustris",
+            // named for what it is rather than for the two games it used to be, since its
+            // own menu now picks which games it deals
+            ModeChoice::Versus => "vs. playlist",
         }
     }
 }
@@ -69,8 +70,9 @@ enum Screen {
     },
     Playing {
         mode: ModeChoice,
-        /// the high score table the match competes for
-        key: HighScoreKey,
+        /// the high score table the match competes for, or `None` for a mode that does not
+        /// rank - which never reaches [`PostGameAction::NewHighScore`] to want one
+        key: Option<HighScoreKey>,
         screen: Box<MatchScreen<'static, AnyGame>>,
     },
     HighScores(HighScoreViewScreen<'static>),
@@ -278,10 +280,15 @@ impl Shell {
                         m.next_stage(themes, player, completed)
                     })?;
                 Ok(exit.map(|exit| match exit {
-                    PostGameAction::NewHighScore(high_score) => Transition::ToNameEntry {
-                        mode: *mode,
-                        key: key.clone(),
-                        high_score,
+                    // a match with no table can never report one, so there is no name entry
+                    // to offer and the playlist simply goes back to its menu
+                    PostGameAction::NewHighScore(high_score) => match key {
+                        Some(key) => Transition::ToNameEntry {
+                            mode: *mode,
+                            key: key.clone(),
+                            high_score,
+                        },
+                        None => Transition::ToModeMenu(*mode),
                     },
                     PostGameAction::ReturnToMenu => Transition::ToModeMenu(*mode),
                     PostGameAction::Quit => Transition::Exit,

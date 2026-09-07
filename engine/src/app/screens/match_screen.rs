@@ -75,7 +75,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             games,
             settings.rules,
             &theme_counts,
-            &settings.high_score_key,
+            settings.high_score_key.as_ref(),
         )
         .with_ai_players(ai_players);
         let is_single_player = fixture.is_single_player();

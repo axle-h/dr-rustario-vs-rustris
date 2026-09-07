@@ -160,7 +160,10 @@ impl MatchState {
 
 pub struct Match<G: Game> {
     pub players: Vec<Player<G>>,
-    high_scores: HighScoreTable,
+    /// the table this match competes for, or `None` for a mode that does not rank at all -
+    /// the vs. playlist, whose sixty-odd combinations of playlist, games and difficulty are
+    /// more variations than anybody could read a table of
+    high_scores: Option<HighScoreTable>,
     state: MatchState,
     rules: MatchRules,
     /// stages in a theme sprint: the fewest themes any player has
@@ -186,12 +189,13 @@ pub struct AttackRoute {
 
 impl<G: Game> Match<G> {
     /// `theme_counts` is how many themes each player cycles through; `high_score_key` picks
-    /// the high score table this match competes for
+    /// the high score table this match competes for, and `None` is a match that competes for
+    /// none - it loads no table and can never reach [`NewHighScore`]
     pub fn new(
         games: Vec<G>,
         rules: MatchRules,
         theme_counts: &[u32],
-        high_score_key: &HighScoreKey,
+        high_score_key: Option<&HighScoreKey>,
     ) -> Self {
         assert!(!games.is_empty());
         Self {
@@ -200,7 +204,7 @@ impl<G: Game> Match<G> {
                 .enumerate()
                 .map(|(pid, game)| Player::new(pid as u32, game))
                 .collect(),
-            high_scores: HighScoreStore::load().unwrap().table(high_score_key),
+            high_scores: high_score_key.map(|key| HighScoreStore::load().unwrap().table(key)),
             state: MatchState::Normal,
             rules,
             theme_count: theme_counts.iter().copied().min().unwrap_or(1).max(1),
@@ -368,7 +372,11 @@ impl<G: Game> Match<G> {
             return false;
         }
 
-        // only human players can enter the high score table
+        // only human players can enter the high score table, and only a mode that has one
+        let Some(table) = self.high_scores.as_ref() else {
+            self.state = MatchState::GameOver { high_score: None };
+            return true;
+        };
         let humans = self.players.iter().filter(|p| !self.is_ai_player(p.player));
         let high_score = if self.rules.is_sprint() {
             // a sprint's table is the quickest finishes, so only a player who finished may
@@ -378,12 +386,12 @@ impl<G: Game> Match<G> {
             humans
                 .filter(|p| self.reached_sprint_goal(p))
                 .max_by_key(|p| p.game.score())
-                .filter(|_| self.high_scores.is_high_score(millis))
+                .filter(|_| table.is_high_score(millis))
                 .map(|best| NewHighScore::new(best.player, millis))
         } else {
             humans
                 .max_by_key(|p| p.game.score())
-                .filter(|best| self.high_scores.is_high_score(best.game.score()))
+                .filter(|best| table.is_high_score(best.game.score()))
                 .map(|best| NewHighScore::new(best.player, best.game.score()))
         };
 
@@ -562,7 +570,7 @@ mod tests {
         other.id = 1;
         Match {
             players: vec![Player::new(0, counter(0, 0, 0)), Player::new(1, other)],
-            high_scores: HighScoreTable::default(),
+            high_scores: Some(HighScoreTable::default()),
             state: MatchState::Normal,
             rules: MatchRules::Marathon,
             theme_count: 1,
@@ -628,7 +636,7 @@ mod tests {
                 Player::new(0, counter(500, 0, 1)),
                 Player::new(1, counter(100, 0, 2)),
             ],
-            high_scores: HighScoreTable::default(),
+            high_scores: Some(HighScoreTable::default()),
             state: MatchState::Normal,
             rules: MatchRules::Marathon,
             theme_count: 1,
@@ -647,7 +655,7 @@ mod tests {
     fn sprint(players: Vec<Player<Counter>>, rules: MatchRules) -> Match<Counter> {
         Match {
             players,
-            high_scores: HighScoreTable::new(rules.ranking()),
+            high_scores: Some(HighScoreTable::new(rules.ranking())),
             state: MatchState::Normal,
             rules,
             theme_count: 1,

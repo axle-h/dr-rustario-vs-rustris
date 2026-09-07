@@ -27,9 +27,21 @@ impl<T> KeyPacer<T> {
         self.pending.extend(inputs);
     }
 
+    /// whether the next key is due
+    fn is_ready(&self) -> bool {
+        self.since_last_key >= self.key_delay
+    }
+
+    /// Give back the delay the last [`Self::next_key`] charged, for a plan that carries
+    /// **waypoints as well as keys**: a step that presses nothing costs the agent's hands
+    /// nothing, so whatever follows it is due straight away rather than a key delay later.
+    pub fn refund(&mut self) {
+        self.since_last_key = self.key_delay;
+    }
+
     /// the next key to press, once enough time has passed since the last one
     pub fn next_key(&mut self) -> Option<T> {
-        if self.since_last_key < self.key_delay {
+        if !self.is_ready() {
             return None;
         }
         let key = self.pending.pop_front()?;

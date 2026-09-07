@@ -43,9 +43,19 @@ fn play(level: u32, key_delay: Duration, max_pills: u32) -> Played {
 }
 
 fn play_with(agent: DrAiAgent, level: u32, key_delay: Duration, max_pills: u32) -> Played {
+    play_at(agent, level, GameSpeed::Medium, key_delay, max_pills)
+}
+
+fn play_at(
+    agent: DrAiAgent,
+    level: u32,
+    speed: GameSpeed,
+    key_delay: Duration,
+    max_pills: u32,
+) -> Played {
     let mut agent = agent.with_key_delay(key_delay);
     let random = GameRandom::from_seed(Seed::from_u64(1), RandomMode::Bag);
-    let mut game = Game::new(level, GameSpeed::Medium, random).expect("could not deal a bottle");
+    let mut game = Game::new(level, speed, random).expect("could not deal a bottle");
 
     let mut played = Played {
         steps: 0,
@@ -231,5 +241,58 @@ fn the_trained_model_clears_bottles() {
         played.stages >= 5,
         "the embedded model cleared {} bottles before it was buried",
         played.stages
+    );
+}
+
+/// **A tuck does not wait out gravity.**
+///
+/// The agent soft drops to its rest waypoint rather than watching the pill drift down a bottle
+/// it has already been lined up over, which is the whole of what a tuck looked like from
+/// outside. Measured on the slowest fall speed and a near empty bottle - where a pill has the
+/// length of the bottle to fall and this is at its worst - the same seed took **134 frames a
+/// pill** before the wait became a soft drop and takes **41** now, with the same 137 tucks out
+/// of 300 pills. Nothing was traded for it.
+///
+/// The bound is a wide one: gravity alone is about seventy frames a *row* at this speed, so
+/// anything under it says the agent is not sitting through the fall.
+#[test]
+fn a_tuck_soft_drops_rather_than_waiting_out_gravity() {
+    let played = play_at(DrAiAgent::n64(), 5, GameSpeed::Low, Duration::ZERO, 300);
+    assert!(
+        played.tucked > 0,
+        "nothing tucked, so this measures nothing"
+    );
+    let frames_per_pill = played.steps as f64 / played.pills as f64;
+    assert!(
+        frames_per_pill < 80.0,
+        "{frames_per_pill:.1} frames a pill over {} pills ({} tucked): the agent is sitting \
+         through the fall at its rest waypoints again",
+        played.pills,
+        played.tucked
+    );
+}
+
+/// ... and it lets go of soft drop before the tuck, which is what keeps the tuck executable.
+///
+/// Soft drop cuts the lock delay from 500 ms to 150, which is shorter than every speed limited
+/// difficulty's key delay - hold it down through the tuck and the pill locks in exactly the
+/// place the tuck was meant to move it out of. A waypoint is also refunded at the pacer, since
+/// pressing nothing costs the agent's hands nothing, so the move after it is due the moment
+/// the pill lands rather than a key delay later. This run tucks 145 times in 300 pills, both
+/// before the soft drop and after.
+#[test]
+fn a_speed_limited_agent_still_tucks_after_the_soft_drop() {
+    let played = play_at(
+        DrAiAgent::n64(),
+        5,
+        GameSpeed::Low,
+        Duration::from_millis(400),
+        300,
+    );
+    assert!(
+        played.tucked > 50,
+        "only {} tucks in {} pills: the pill is locking before the agent can walk it in",
+        played.tucked,
+        played.pills
     );
 }

@@ -200,14 +200,25 @@ impl GameState {
 /// hurts, up to the four rows a tetris sends
 const MAX_FOREIGN_GARBAGE_ROWS: u32 = 4;
 
+/// How many nuisance puyos one of those rows-worth is, since Puyo Rusto's board is six wide
+/// and half the height: a combo beyond its first pattern is worth half a row of nuisance
+/// there, so a three pattern combo is a full row of it.
+///
+/// **Measured with `ga cross`.** At three apiece a Dr. Rustario player fills an eighth of a
+/// visible Puyo board a minute, which is within a hair of what the same player's combos fill
+/// of a Rustris well, board for board - and it is the gentler of the two in practice, because
+/// nuisance lands in a tray where offset can cancel it and a Rustris row lands on the board.
+const NUISANCE_PER_FOREIGN_ROW: u32 = 3;
+
 /// what `blocks` of garbage is worth to a player of `receiver`, in that game's own units.
 /// Only the sender knows what the combo took, so only it can price the crossing; a game
 /// nothing here prices is worth nothing and the attack never leaves.
-fn foreign_attack(receiver: GameId, blocks: u32) -> u32 {
-    if receiver == ids::RUSTRIS {
-        blocks.saturating_sub(1).min(MAX_FOREIGN_GARBAGE_ROWS)
-    } else {
-        0
+pub fn foreign_attack(receiver: GameId, blocks: u32) -> u32 {
+    let rows = blocks.saturating_sub(1).min(MAX_FOREIGN_GARBAGE_ROWS);
+    match receiver {
+        ids::RUSTRIS => rows,
+        ids::PUYO => rows * NUISANCE_PER_FOREIGN_ROW,
+        _ => 0,
     }
 }
 
@@ -452,6 +463,7 @@ impl Game {
         let blocks = garbage.len() as u32;
         Attack::new(GAME_ID, blocks)
             .with_foreign_for(ids::RUSTRIS, foreign_attack(ids::RUSTRIS, blocks))
+            .with_foreign_for(ids::PUYO, foreign_attack(ids::PUYO, blocks))
             .with_detail(encode_garbage(garbage))
     }
 
@@ -1329,6 +1341,31 @@ mod tests {
                 "{blocks} blocks to Rustris"
             );
         }
+    }
+
+    /// The same combo crosses to both of the other games, in each one's own units: a row of
+    /// Rustris garbage per pattern past the first, and half a row of Puyo nuisance for each of
+    /// those. A crossing nobody priced is worth nothing and never leaves.
+    #[test]
+    fn a_combo_prices_itself_for_both_of_the_other_games() {
+        for (blocks, rows) in [(0, 0), (1, 0), (2, 1), (3, 2), (5, 4), (99, 4)] {
+            assert_eq!(
+                foreign_attack(ids::RUSTRIS, blocks),
+                rows,
+                "{blocks} blocks"
+            );
+            assert_eq!(
+                foreign_attack(ids::PUYO, blocks),
+                rows * NUISANCE_PER_FOREIGN_ROW,
+                "{blocks} blocks"
+            );
+        }
+        assert_eq!(foreign_attack(GameId(u16::MAX), 4), 0);
+
+        let attack = Game::attack(&vec![VirusColor::Red, VirusColor::Blue, VirusColor::Yellow]);
+        assert_eq!(attack.strength_for(GAME_ID), 3);
+        assert_eq!(attack.strength_for(ids::RUSTRIS), 2);
+        assert_eq!(attack.strength_for(ids::PUYO), 6);
     }
 
     #[test]

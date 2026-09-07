@@ -29,12 +29,17 @@ mod run;
 pub use models::{DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
 pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 
-/// Which brain an ai player is thinking with. The default is the **trained network**, which a
-/// `ga dr` run produces and which is now the strongest player here: the 1-player demo, the
-/// hardest difficulty and player 1 of the 2-player demo all field it. Dr. Mario 64's own
-/// deterministic opponent, ported in [n64], is what the three difficulties below the top play -
-/// its six rows of weights are the only difficulty *dial* either of them has - and the linear
-/// scorer is the hand written baseline that training is measured against.
+/// Which brain an ai player is thinking with. **Nothing in the game fields the trained
+/// network** (Alex, 2026-09-07): every difficulty and both demos play Dr. Mario 64's own
+/// deterministic opponent, ported in [n64], whose six rows of weights are the only difficulty
+/// dial there is. The linear scorer is the hand written baseline training is measured against.
+///
+/// The network is still built, still trained by `ga dr` and still the *stronger* player on the
+/// numbers - over twenty seeds at the training budget it destroyed 20,016 viruses and finished
+/// 422 bottles against the strongest N64 row's 18,093 and 405, winning seventeen of the twenty.
+/// **It is not good to watch**, which is a different question and the one that decides what is
+/// fielded: it wins by grinding where the port plays legibly. `ga dr play`, `explain` and
+/// `probe` are where it lives now.
 #[derive(Clone, Copy, Debug)]
 pub enum DrAiKind {
     N64(N64Ai),
@@ -55,13 +60,9 @@ impl DrAiKind {
 }
 
 impl Default for DrAiKind {
-    /// The trained network, which is now the better player: over twenty seeds at the training
-    /// budget it destroyed 20,016 viruses and finished 422 bottles against the strongest N64
-    /// row's 18,093 and 405, winning seventeen of the twenty. That is the first time it has
-    /// beaten the ai it learned from - it was 40% *slower* per bottle before the placement
-    /// search learned to tuck and the entrance height was fed to it - so this is what a
-    /// 1-player demo watches and what the hardest difficulty plays.
+    /// The strongest of the N64 ai's six rows, which is what everything that fields an ai here
+    /// plays. See the type's own comment for why it is not the network.
     fn default() -> Self {
-        Self::Neural(models::survival_trained())
+        Self::N64(N64Ai::new())
     }
 }

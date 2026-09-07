@@ -21,6 +21,8 @@ pub struct DrAiAgent {
     /// past where it comes to rest, so there is no row to hit and nothing to time, and once it
     /// is there extended placement lock down gives the agent another lock delay - restarted by
     /// every move it makes - to walk it sideways under the overhang.
+    ///
+    /// **The wait is a soft drop, not a watch** - see [`DrAiAgent::act`].
     resting: bool,
     /// Hold has been pressed and the swapped pill has not spawned yet. The bottle has no pill
     /// in it while that is true, which is otherwise the signal to throw the plan away - so this
@@ -58,8 +60,8 @@ pub enum Hold {
 }
 
 impl DrAiAgent {
-    /// Dr. Mario 64's own deterministic opponent, on its strongest row. Named outright rather
-    /// than taken from [`DrAiKind::default`], which is the trained network now.
+    /// Dr. Mario 64's own deterministic opponent, on its strongest row - which is also what
+    /// [`DrAiKind::default`] is, named outright here so a harness asking for the port says so.
     pub fn n64() -> Self {
         Self::of(DrAiKind::N64(N64Ai::new()))
     }
@@ -117,6 +119,8 @@ impl DrAiAgent {
             if self.swapping {
                 return;
             }
+            // nothing is falling, so nothing should still be held down
+            game.set_soft_drop(false);
             // between pills: the bottle is clearing, cascading or spawning, and anything still
             // queued belonged to a pill that has already locked
             self.keys.abandon();
@@ -131,11 +135,22 @@ impl DrAiAgent {
             self.decided = true;
         }
 
-        // the plan is waiting for the pill to land before the rest of it can be pressed
+        // The plan is waiting for the pill to land before the rest of it can be pressed, and
+        // **it waits by soft dropping rather than by watching gravity**. A tuck used to cost a
+        // second or more of a pill drifting down a bottle it had already been lined up over,
+        // which is the whole of what a tuck looked like from outside; soft drop divides the
+        // fall step by twenty and the pill cannot fall past where it comes to rest, so there is
+        // still nothing to time.
         if self.resting {
             if !game.bottle().is_collision() {
+                game.set_soft_drop(true);
                 return;
             }
+            // Let go before the tuck. Soft drop cuts the lock delay from 500 ms to 150, which
+            // is shorter than every speed limited difficulty's key delay, so holding it down
+            // through the tuck would lock the pill exactly where the tuck was meant to move it
+            // from.
+            game.set_soft_drop(false);
             self.resting = false;
         }
 
@@ -150,6 +165,13 @@ impl DrAiAgent {
                 Translation::HardDrop => game.hard_drop(),
                 Translation::Rest => {
                     if !game.bottle().is_collision() {
+                        // A waypoint is not a key press and costs the agent's hands nothing,
+                        // so the move that follows it is due the moment the pill lands. That
+                        // only started to matter once the wait became a soft drop: the pill
+                        // now arrives in a few frames rather than a second, and a speed
+                        // limited agent charged a key delay for the waypoint would stand on
+                        // the stack burning the lock delay that the tuck itself needs.
+                        self.keys.refund();
                         self.resting = true;
                         return;
                     }

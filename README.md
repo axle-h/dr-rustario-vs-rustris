@@ -194,13 +194,57 @@ All key names are defined in [engine/src/config.rs](engine/src/config.rs).
 
 There are no default player 2 controls.
 
+## The vs. playlist
+
+`vs. playlist` runs one playlist over the three games, every player playing the same sequence.
+Its menu picks **which** games are in it - a tick per game, all three on to start with, and
+the last one cannot be turned off - so the old two-game compendium is two ticks away. A
+playlist deals its ticked games in turn, theme slot by theme slot; a game with fewer themes
+than the longest list replays its own from the start rather than shortening the playlist.
+
+**The playlist does not rank.** Nine playlists times seven subsets of three games is more
+variations of the game than any high score table could usefully hold, so there is none and a
+playlist never offers name entry. The three single game modes keep their tables.
+
+### What an attack is worth in another game
+
+Only the sender knows what a clear took, so only it can say what that is worth to somebody
+playing a different game - which makes six directed prices between three games. They are
+**measured, not guessed**: `cargo run --release -- ga cross` plays each game's own ai alone
+for fifty minutes of game time and counts what it throws, then every crossing is read as a
+share of what a player of the receiving game faces from an opponent of *their* game. 1.00 is
+a foreign opponent pressing exactly as hard as a home one, and nothing is over it.
+
+| sender | receiver | what crosses | share of a home opponent |
+|--|--|--|--|
+| Dr. Rustario | Rustris | a row per pattern past the first, up to 4 | 0.24 |
+| Dr. Rustario | Puyo Rusto | three nuisance for each of those rows | an eighth of a board a minute |
+| Rustris | Dr. Rustario | 2 blocks for a tetris or T-spin double, 3 for a triple, 4 for a perfect clear | 0.79 |
+| Rustris | Puyo Rusto | the same clears, at a row of nuisance a block | a fifth of a board a minute |
+| Puyo Rusto | Dr. Rustario | a block per two rocks of nuisance, up to 4 | 0.49 |
+| Puyo Rusto | Rustris | a row per two rocks of nuisance, up to 4 | 0.23 |
+
+The two directions are not symmetric and are not meant to be. Garbage arriving at a Puyo board
+joins the nuisance tray, where offset can cancel it and the ai will chain back at it, so a
+crossing *into* Puyo is read against how much board it fills rather than against Puyo's own
+output - a Puyo player alone throws 327 nuisance a minute, four boards' worth, because nothing
+is arriving to offset. What leaves Puyo lands on a player with no offset at all, so it is
+tuned a long way down: the routine two-chains a Puyo player throws constantly cross as
+nothing, and only a chain worth digging out of is felt elsewhere.
+
 ## The AI
 
 All three games find every placement the piece in play can reach, score them, and hand the best
 one to an agent that presses the keys. Rustris scores with a small neural network;
-Dr. Rustario plays a port of Dr. Mario 64's own hand written scorer, and has a neural network
-that is trained but not yet strong enough to field as a difficulty; Puyo Rusto searches several
+Dr. Rustario plays a port of Dr. Mario 64's own hand written scorer; Puyo Rusto searches several
 pairs ahead with a beam search over a hand written evaluation, and has no neural model at all.
+
+Dr. Rustario also has a **trained neural network, and nothing fields it**. It is the stronger
+player on the numbers - over twenty seeds at the training budget it destroyed 20,016 viruses
+and finished 422 bottles against the port's 18,093 and 405, winning seventeen of the twenty -
+and it is not good to watch, which is the question that decides what a difficulty plays. It
+wins by grinding where the port plays legibly. Every difficulty and both demos are rows of the
+port's own six; the network stays reachable through `ga dr`.
 The network and the genetic algorithm that trains it are shared in `engine/src/ai`; each game
 supplies its own features, placement search and agent. Only human players can enter the high
 score table.

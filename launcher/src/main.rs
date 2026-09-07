@@ -1,5 +1,8 @@
 #![windows_subsystem = "windows"]
 
+/// `ga cross` goes with the rest of the `ga` subcommand, which the browser build has none of
+#[cfg(not(target_os = "emscripten"))]
+mod cross;
 mod games;
 mod modes;
 mod shell;
@@ -54,6 +57,12 @@ fn main() -> Result<(), String> {
                 };
             }
 
+            // `ga cross` is the launcher's own: it is the only place that can see all
+            // three games at once, which is what pricing an attack between them needs
+            if args.get(1).map(String::as_str) == Some("cross") {
+                return crate::cross::cross_main(&args[2..]);
+            }
+
             use rustris::game::ai::{genetic, harness};
             return match args.get(1).map(String::as_str) {
                 None | Some("auto") => genetic::ga_main_auto(),
@@ -62,8 +71,8 @@ fn main() -> Result<(), String> {
                 Some("diagnose") => genetic::ga_diagnose(),
                 Some("play") => harness::harness_main(&args[2..]),
                 Some(other) => Err(format!(
-                    "unknown ga mode '{}', expected: dr, puyo, auto, survival, score, diagnose \
-                     or play",
+                    "unknown ga mode '{}', expected: dr, puyo, cross, auto, survival, score, \
+                     diagnose or play",
                     other
                 )),
             };

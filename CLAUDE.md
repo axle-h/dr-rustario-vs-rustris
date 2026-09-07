@@ -8,7 +8,7 @@
 | `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), its four themes and its AI |
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), its four themes and its AI |
 | `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, nuisance), its three themes and its AI |
-| `launcher/` | the `dr-rustario-vs-rustris` binary: `shell.rs` (screens), `games.rs` (`AnyGame`), `modes.rs` (playlists) |
+| `launcher/` | the `dr-rustario-vs-rustris` binary: `shell.rs` (screens), `games.rs` (`AnyGame`), `modes.rs` (playlists), `cross.rs` (`ga cross`, which prices the attacks between the games) |
 
 Game crates are siblings and never depend on each other; anything shared goes in `engine`.
 
@@ -36,8 +36,8 @@ cargo run --example scale_report                          # where every theme pu
 
 Each example's doc comment carries its own usage. AI training and measurement is the `ga`
 subcommand of the main binary, dispatched in `launcher/src/main.rs` (`ga dr auto|trial|play|
-probe|explain|...`, `ga puyo rank|play|duel`, `ga auto|play|...` for Rustris); the readme's
-*Training Dr. Rustario* is the walkthrough.
+probe|explain|...`, `ga puyo rank|play|duel`, `ga cross` for the crossings between the games,
+`ga auto|play|...` for Rustris); the readme's *Training Dr. Rustario* is the walkthrough.
 
 ## Architecture
 
@@ -52,17 +52,31 @@ at runtime; the tests in that file are the only thing that catches it. Prefer a 
 
 Attacks between players cross games: the sender prices the clear in the receiver's units via a
 `ForeignPrices` table (`foreign_attack` in each game's `game/mod.rs`), keyed on the ids in
-`engine::game::ids`. An unpriced pair is worth nothing and drops.
+`engine::game::ids`. An unpriced pair is worth nothing and drops - silently, since nothing
+arriving looks like nothing being sent, which is what `every_crossing_between_two_games_is_priced`
+in `games.rs` exists to catch. **The six prices are measured, not guessed**: `ga cross` plays each
+game's own ai alone and reads every crossing as a share of what the receiving game's own opponents
+throw. Its doc comment is the method and the README carries the table.
 
 ### AI
 
 `engine/src/ai/` owns the network shapes, genome, genetic algorithm and its `Fitness` seam.
 Each game supplies board features, placement search and agent under `<crate>/src/game/ai/`:
 
-* **Dr. Rustario** - every difficulty plays `game/ai/n64/`, a port of Dr. Mario 64's
-  deterministic scorer (`params.rs` holds the weights and `SKILL_ORDER`). There is also a
-  trained neural model (`ai/models.rs`, `imitation.rs` then `genetic.rs`). `DrAiKind` picks
-  between them. `probe.rs` and `explain.rs` are the diagnostics for feature choice and
+* **Dr. Rustario** - every difficulty *and both demos* play `game/ai/n64/`, a port of Dr.
+  Mario 64's deterministic scorer (`params.rs` holds the weights and `SKILL_ORDER`). There is
+  also a trained neural model (`ai/models.rs`, `imitation.rs` then `genetic.rs`) and
+  **nothing fields it** (Alex, 2026-09-07): it wins on the numbers and is not good to watch,
+  which is the question that decides what a difficulty plays. `DrAiKind` still picks between
+  them and `ga dr` is where the model lives. The ladder therefore runs out at the top - `hard`
+  and `impossible` share the best row and differ in key rate.
+
+  **A tuck soft drops.** `agent.rs` waits at a `Translation::Rest` waypoint by holding soft
+  drop rather than watching gravity, and lets go the moment the pill lands - soft drop cuts the
+  lock delay from 500 ms to 150, which is shorter than every speed limited difficulty's key
+  delay. The waypoint is also refunded at the `KeyPacer`, since pressing nothing costs no
+  hands. At the slowest fall speed this took a pill from 134 frames to 41 with the tuck count
+  unchanged. `probe.rs` and `explain.rs` are the diagnostics for feature choice and
   trained-model behaviour.
 
   **Its features are one scan.** For a settled cell, take the four windows of four that

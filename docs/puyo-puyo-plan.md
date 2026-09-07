@@ -16,11 +16,14 @@ what they found:
 |---|---|---|
 | 1 | the ai answers what is thrown at it — **`done` 2026-09-04**, kept below for what it found | `puyo-rusto/src/game/ai/` |
 | 2 | the defeat drain — **`done` 2026-09-04**, kept below for what it found | `engine/src/animate/game_over.rs` |
-| 3 | **vs. integration** — a playlist that picks its games, and six directed attack prices | `launcher/`, every `game/mod.rs` |
+| 3 | **vs. integration** — a playlist that picks its games, and six directed attack prices — **built 2026-09-07, one play test outstanding** | `launcher/`, every `game/mod.rs` |
 | 4 | audio levels across the whole app — **`done` 2026-09-04**, kept below for what it found | `engine/art/audio_levels.py` |
 
-**One item is left**, 3, and it is the large one. Rows 1, 2 and 4 are finished work kept here for
-what they found. Item 3 wants `ga puyo duel`, which item 1 built.
+**Every item is built.** What is left of item 3 is a *play test*, which nobody but Alex can do:
+the compendium has never been sat down in front of with three games in the playlist, and the
+attack ball has never been watched crossing between a Rustris board and a Dr. Rustario one at
+all. The six prices are measured and land where they were aimed; whether they *feel* right is
+the thing a measurement cannot answer.
 
 Everything else — the rules, the three themes, their music and effects, the ai's beam search and
 its measured ladder, the characters, and how the whole thing moves — is `done`. What is worth
@@ -176,82 +179,142 @@ Three things the build found:
 the fall can be watched beside a board still in play. It is the only way to see this without
 losing a real match, and it is how all three themes were checked.
 
-## 3. Vs. integration — the playlist picks its games, and garbage crosses
+## 3. Vs. integration — built 2026-09-07, one play test outstanding
 
-**The playlist becomes a playlist of *chosen* games.** The top-level menu entry is renamed **`vs.
-playlist`** from `dr. rustario vs. rustris`, and its menu gains **a row per game with a checkbox,
-every one on by default**. A playlist deals only the games that are ticked, in
-`GameKind::PLAYLIST_ORDER`. This is what makes joining Puyo to the playlists safe: anyone who
-wants the old two-game compendium ticks two boxes.
+The playlist now picks its games, the mode has stopped ranking, and all six crossings are
+priced off a measurement. **What is not done is playing it.**
 
-Threading it through:
+### The playlist picks its games
 
-* The selection is a `PerGame<bool>` on `VersusMode` beside `playlist` and `difficulty`, and
-  **at least one game stays ticked** — the last one cannot be turned off.
-* **`GameKind::PLAYLIST_ORDER` stops being consulted directly.** Everything that deals a stage
-  reads the selection instead: `PlaylistThemes::slots`, `Playlist::stage_count`, `first_game`,
-  `fixed_stages` and `random_game` (`launcher/src/modes.rs`), plus every test in that file and in
-  `games.rs` that is written against the const. `PLAYLIST_ORDER` stays as the *turn order* and the
-  default selection — three games, Puyo included.
-* **The engine has no checkbox and does not need one.** `MenuAction` is `Select` and
-  `SelectList`; a checkbox row is a `select_list` of `on`/`off`, which every menu theme already
-  draws and which costs no font glyph and no new art. A `Toggle` variant would have to be drawn in
-  both the retro and modern menu renderers for no gain.
-* **The vs. playlist stops ranking at all** (Alex, 2026-09-07). Not "only the full set competes":
-  **no** set competes, and `VersusMode` has no high score table. Nine playlists times seven game
-  subsets is sixty-three tables, and that is before the difficulty dial and the games' own
-  variants — too many variations of the game to track in a way anybody can read. The three single
-  game modes keep their tables untouched; ranking is what *they* are for.
+The top-level menu entry is **`vs. playlist`**, renamed from `dr. rustario vs. rustris`, and its
+menu carries a tick per game between the playlist row and the difficulty dial — every one on to
+start with, and **the last one cannot be turned off**. Puyo Rusto is in `PLAYLIST_ORDER`;
+anyone who wants the old two-game compendium unticks it.
 
-  Threading it: `Mode::high_score_key` returns `Option<HighScoreKey>` and
-  `Mode::all_high_score_keys` returns an empty `Vec` for `VersusMode`, which drops it out of the
-  high score screen's key list in `shell.rs` on its own. `MatchSettings::high_score_key`
-  (`engine/src/app/mod.rs`) becomes an `Option` too and is carried into `Match::new`, where a
-  match with no key loads no `HighScoreTable` and can never reach `PostGameAction::NewHighScore`
-  — so the name entry screen is never offered after a playlist. The two tests at the foot of
-  `modes.rs` that assert the versus key is in `all_high_score_keys` invert.
+* The selection is a `GameSelection(PerGame<bool>)` on `VersusMode`, and what it hands out is a
+  **`Dealt`** — `PLAYLIST_ORDER` filtered, in turn order. `PLAYLIST_ORDER` is the turn order and
+  the default selection and **is no longer read by anything that deals a stage**: `PlaylistThemes`
+  carries a `Dealt` and `slots`, `stage_count`, `first_game`, `fixed_stages` and `random_game` all
+  narrow together. `GameKind::PLAYLIST_COUNT` is gone with it — what a playlist deals is a value,
+  not a constant.
+* **A checkbox is a `select_list` of `on`/`off`**, as planned, and unticking the last game is
+  *refused* rather than prevented: the menu redraws its rows from the mode after every pick, so
+  the row snaps back to `on` on its own.
 
-  **Two things this decision removes.** The rename trap is gone: `HighScoreKey`'s `game` field is
-  the mode's `title()` string persisted verbatim in `high_scores.yml`, so renaming the mode used
-  to orphan every existing versus table — with no table there is nothing to orphan, and `title()`
-  can be renamed to `vs. playlist` alongside `ModeChoice::name`. And the per-subset table
-  explosion never has to be designed around. **Existing versus rows in anyone's
-  `high_scores.yml` are left alone**, not pruned: they simply stop being displayed, which is the
-  reversible choice if this is ever revisited.
+**A playlist is as long as the *longest* theme list, not the shortest** (Alex, 2026-09-07), and a
+game with fewer themes replays its own from the start. This is the one thing the plan had wrong.
+Puyo Rusto has three themes where the other two have four, so the old rule — "only as long as the
+shortest of the lists" — would have quietly stopped dealing Dr. Rustario's and Rustris's *particle*
+themes the moment Puyo was ticked, and taken N64 and Rustris's SNES out of the retro marathon:
+a theme sprint that is not every theme. Longest and shortest are the same number whenever the
+lists are, which is every playlist there was before Puyo joined, so nothing moved seed for seed.
+The fallback to every theme is now `covers_every_game` rather than `slots() > 0`, since under a
+max a game with none of the family no longer empties the playlist.
 
-**Then the six directed prices, which are the rest of the work.** Today
-`puyo_rusto::game::foreign_attack` returns zero for every receiver, so a Puyo attack is *dropped*
-at the border rather than mispriced, and Dr. Rustario and Rustris each price only the one crossing
-they already had. Each sending game's `foreign_attack(receiver, ...)` gains an arm and the caller
-a `with_foreign_for(receiver, price)`; the default is zero, so a crossing this work forgets is
-silent and harmless and shows up as nothing arriving.
+### It does not rank, and `MatchSettings` carries an `Option`
 
-* **Measure rather than guess**, the way the README's existing table was built: run each game's own
-  ai on one protocol (five seeds at full speed for fifty minutes of game time, counting what it
-  sent), then hand-tune *down* so a Puyo chain does not bury a Rustris or Dr. Rustario player.
-  Extend the README's measured table from three rows to six. `ga puyo duel` from item 1 is the
-  Puyo end of that protocol.
-* **Price the two directions asymmetrically, because they are not symmetric.** Attacks *into* Puyo
-  land in the tray and can be answered — and once item 1 is in, the ai answers them, so a number
-  that looked brutal on paper is often absorbed for free. Attacks *out of* Puyo land on a player
-  with no offset at all. Tuning both ends off one table will get one of them wrong.
-* Starting intuitions to test, not to ship: a four-chain is roughly the work of a tetris; routine
-  two-chains are what a Puyo player throws constantly and should cross for little or nothing.
+As decided: `Mode::high_score_key` returns `Option<HighScoreKey>` and `all_high_score_keys` is
+empty for `VersusMode`, which drops it out of the high score screen on its own.
+`MatchSettings::high_score_key` and `Match`'s `high_scores` are `Option` too, so a match with no
+key loads no table and `maybe_set_game_over` returns before it can name a `NewHighScore` — the
+name entry screen is unreachable from a playlist. `Playlist::ranking` went with it, having no
+caller left.
 
-**Margin time is the knob to reach for if matches drag.** It is sourced and not built: from 96 s,
-target points go to 3/4 and halve every 16 s, at most 14 iterations or until they reach 1. It
-makes every chain send more as a match wears on, which is what an endless playlist needs and what
-nothing else here provides. It lands *on top of* the speed ramp, not instead of it.
+### The six prices, and how they were measured
 
-This is also where **the Puyo half of `Difficulty`** is set — what the 0-10 vs. dial maps to, as an
-arm of `Difficulty::level(game)` in `modes.rs`, plus a speed dial of its own if it wants one the
-way `dr_rustario_speed()` is Dr. Rustario's. The arm exists and returns the dial unchanged.
+**`ga cross` is the harness** (`launcher/src/cross.rs`, `cargo run --release -- ga cross`), and
+the launcher is the only place it could live: pricing an attack between two games means seeing
+all three. It plays each game's own ai alone — a fielded opponent, at that opponent's own key
+delay — for five seeds of up to ten minutes, and keeps **every attack as the sender priced it**,
+`strength` at home and `strength_for` abroad. That is the shipped table being measured rather
+than a number worked out on paper, so re-running it after a change re-reads the change.
 
-**Done when:** the pre-menu says `vs. playlist`, its menu ticks three games, a 2-player match on
-each playlist has the ticked games taking turns, no playlist offers name entry and the high score
-screen lists only the three single game modes, garbage crosses sensibly in all six directions,
-and the README table carries the measurements. The attack ball has also never been *watched* in a
-Rustris / Dr. Rustario match, which the same play test closes.
+What it prints per crossing is a **share of home**: what a player faces from a foreign opponent
+divided by what they face from an opponent of their own game. 1.00 is a foreign opponent pressing
+exactly as hard as a home one.
+
+| sender | receiver | what crosses | share |
+|---|---|---|---|
+| Dr. Rustario | Rustris | a row per pattern past the first, cap 4 | 0.24 |
+| Dr. Rustario | Puyo Rusto | three nuisance for each of those rows | (see below) |
+| Rustris | Dr. Rustario | 2 blocks for a tetris or T-spin double, 3 for a triple, 4 for a perfect clear | 0.79 |
+| Rustris | Puyo Rusto | the same clears, at a row of nuisance a block | (see below) |
+| Puyo Rusto | Dr. Rustario | a block per two rocks of nuisance, cap 4 | 0.49 |
+| Puyo Rusto | Rustris | a row per two rocks of nuisance, cap 4 | 0.23 |
+
+**The two crossings that already shipped are the calibration.** Dr. Rustario into Rustris reads
+0.24 and Rustris into Dr. Rustario reads 0.79 — a three-fold spread between two prices that have
+been played and are right, which is worth knowing before trusting any single number. The two new
+crossings out of Puyo were aimed between them and landed at 0.49 and 0.23, either side of the
+pair they sit beside.
+
+**The table moved once the ai did**, which is the point of measuring the shipped code rather
+than a model of it. Making the Dr. Rustario agent soft drop to its tuck waypoints took it from
+2.36 attacks a minute to 2.98 — a quarter more, from nothing but placing pills faster — and
+three of the six shares moved with it (0.19 → 0.24, 0.99 → 0.79, 0.61 → 0.49). Nothing needed
+re-pricing; the spread got *tighter*. **Re-run `ga cross` after touching an agent**, not only
+after touching a price.
+
+**Four things it found that argument would not have.**
+
+* **A Puyo player alone throws four boards of nuisance a minute** — 327 nuisance where Rustris
+  manages thirteen rows and Dr. Rustario six blocks. It is a chain-building paradise: nothing
+  arrives, so nothing offsets, and `sharp` holds out for monsters (the biggest single chain in
+  fifty minutes was worth 449). Priced at parity a single chain would bury either of the others,
+  which is why what ships is a *thirtieth* of parity and why the routine two-chains — most of what
+  was counted — cross as **nothing at all**.
+* **Puyo's own rate is therefore useless as a yardstick for attacks going the other way.** A share
+  of 1.00 into Puyo would be a hundred nuisance a minute onto a 72 cell board. The crossings
+  *into* Puyo are read as board filled per minute instead, against what the same sender delivers
+  to the game it already crossed to: Dr. Rustario fills about a tenth of a Puyo board a minute
+  and Rustris about a fifth, where Dr. Rustario fills a tenth of a Rustris well. **This is the
+  asymmetry the plan predicted**, and it is bigger than it looks on paper.
+* **"A four-chain is roughly the work of a tetris" is refuted by the rate.** A Puyo four-chain
+  sends about thirty two nuisance, and a Rustris player lands a tetris-or-better two and a half
+  times a minute — that pairing is a board of nuisance a minute and a Puyo player buried inside a
+  stage. A tetris ships as **one row** of nuisance, a fifth of that.
+* **Rustris's own ai is buried in every configuration measured** — at the mid difficulty dial it
+  lasts two to three minutes, and at `normal` on four of five seeds it lasts twelve seconds. Its
+  home rate is per minute *played*, which is the right denominator, but it means the 0.99 that
+  Rustris-into-Dr.-Rustario reads is a ratio of two small numbers. Worth remembering before
+  reading that column as precise.
+
+The crossings are priced in each game's own `game/mod.rs` beside the ones that were already
+there, and `every_crossing_between_two_games_is_priced` in `launcher/src/games.rs` is the guard:
+the game crates are siblings and none of them can see the whole table, so that test is the only
+place all six can be checked at once. **A forgotten pair is worth nothing and drops silently** —
+nothing arriving looks exactly like nothing being sent.
+
+### The Puyo half of the difficulty dial
+
+**One speed step per dial step and nothing else** (Alex, 2026-09-07). The colour count and the
+starting rows of nuisance stay at Puyo's own `rules::Difficulty::default()`, so the vs. dial
+changes how fast a Puyo match plays and never what it deals. The fall curve has twelve steps, so
+a dial of 10 is inside it — past `rules::MAX_START_LEVEL`, which is what Puyo's own menu offers
+rather than a bound on the game.
+
+**`SKILL_ORDER` stays the marathon's ladder** (Alex, 2026-09-07), which closes the question item 1
+left open. `hard` goes on fielding `sharp` even though `sharp` loses more duels than it wins; the
+ladder is right for the three single game modes, which is where most people meet it, and the duel
+measurement stays written down in `SKILL_ORDER`'s doc comment.
+
+### What is left
+
+* **The play test**, which is Alex's: three games in a playlist, the ticks, and whether the six
+  prices *feel* the way they measure. The attack ball has never been watched crossing between a
+  Rustris board and a Dr. Rustario one either, and the same sitting closes that.
+* **Margin time is still unbuilt**, and is the knob to reach for if matches drag. Sourced, not
+  invented: from 96 s, target points go to 3/4 and halve every 16 s, at most 14 iterations or
+  until they reach 1. It makes every chain send more as a match wears on, which is what an endless
+  playlist needs and what nothing else here provides, and it lands *on top of* the speed ramp
+  rather than instead of it. Nothing measured so far asks for it — every crossing is tuned *down*
+  and a long playlist is exactly where that would show — so it is the first thing to try if the
+  play test says matches go on too long.
+* **`ga cross` measures a solo board**, not a fight. A duel between two different games would
+  measure what each side *nets* after the other's pressure, which is the number a really careful
+  tuning would want; `ga puyo duel` does that within one game and there is no cross-game
+  equivalent. It was not needed to land the six prices in the band and it would be the next tool
+  if they turn out wrong.
 
 ## 4. Audio levels — `done` 2026-09-04
 
@@ -342,6 +405,17 @@ so compare decoded PCM and `git restore` the files that did not actually move.
 * **The vs. playlist does not rank** (Alex, 2026-09-07). It has no high score table and never
   offers name entry; the three single game modes keep theirs. See item 3 for what that is instead
   of, and for the two problems it makes go away.
+* **A playlist is as long as the longest theme list, and a short game wraps** (Alex, 2026-09-07),
+  so that joining a game with fewer themes cannot take another game's themes off the playlist.
+  See item 3.
+* **The vs. difficulty dial is a speed step to Puyo Rusto and nothing else** (Alex, 2026-09-07):
+  not the colour count, not the starting nuisance. `speed_index` may change how a game feels,
+  never what it deals — and a vs. match must not hand one game a handicap the others do not have.
+* **`SKILL_ORDER` stays the marathon's ladder** (Alex, 2026-09-07), even though the duel ladder
+  roughly reverses at the top. See items 1 and 3.
+* **The crossings are measured with `ga cross` and tuned down from parity**, never guessed, and
+  the two directions across a Puyo border are priced separately because offset makes them
+  different problems. See item 3.
 
 ## The art, and the rule about it
 

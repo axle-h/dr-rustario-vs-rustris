@@ -13,7 +13,9 @@ const FIELDS: usize = 28;
 
 /// The six rows worst to best, which is what a difficulty picks from, and which the strongest
 /// of - `DEFAULT_SKILL` - is the teacher [`crate::game::ai::imitation`] gathers its corpus
-/// from, the defender in the 2-player demo, and what `impossible` plays.
+/// from, the winning side of the 2-player demo, and what both `hard` and `impossible` play:
+/// nothing here fields the trained network, so the ladder runs out at this row and the top two
+/// difficulties differ in their key rate rather than in their weights.
 ///
 /// The rows are personalities rather than a ladder - the original picks one per character, not
 /// per skill setting - so the order is measured. **It is measured in the same currency the

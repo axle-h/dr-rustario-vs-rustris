@@ -287,10 +287,12 @@ impl Game {
                 self.queue.earn_all_clear();
             }
             if outgoing.sent > 0 {
-                // what this is worth to a player of another game is phase 5's to price; until
-                // then it crosses as nothing and the session drops it
-                self.events
-                    .push(GameEvent::AttackSent(Attack::new(GAME_ID, outgoing.sent)));
+                let sent = outgoing.sent;
+                self.events.push(GameEvent::AttackSent(
+                    Attack::new(GAME_ID, sent)
+                        .with_foreign_for(ids::DR_RUSTARIO, foreign_attack(ids::DR_RUSTARIO, sent))
+                        .with_foreign_for(ids::RUSTRIS, foreign_attack(ids::RUSTRIS, sent)),
+                ));
             }
             // one event per stage the chain paid for, since a big enough chain pops more
             // than a stage's worth of puyos at once and each step owed is a step faster
@@ -607,14 +609,42 @@ impl engine::game::Game for Game {
     }
 }
 
-/// what an attack from this game is worth to a player of `receiver`, in their own units
+/// How much nuisance one row of Rustris garbage, or one Dr. Rustario garbage block, is worth.
 ///
-/// Nothing yet: the six directed prices between three games are measured in phase 5, and
-/// [`engine::game::ForeignPrices`] defaults to zero so an unpriced crossing is dropped rather
-/// than landing the wrong units on somebody.
-pub fn foreign_attack(receiver: GameId, _nuisance: u32) -> u32 {
-    let _ = (receiver, ids::DR_RUSTARIO, ids::RUSTRIS);
-    0
+/// **Two rocks** - [`nuisance::MAX_DROP`] is the most that can fall at once, so this is the
+/// price of a chain that would take a Puyo player two whole drops to dig out of. It is one
+/// number for both crossings rather than two because it landed in the right place for both:
+/// see [`foreign_attack`].
+const NUISANCE_PER_FOREIGN_UNIT: u32 = 2 * nuisance::MAX_DROP;
+
+/// the most a single chain sends abroad, however big it was: a Dr. Rustario combo and a
+/// Rustris tetris are each worth four over there, and nothing this game does should be worth
+/// more than the biggest thing the receiving game can do to itself
+const MAX_FOREIGN: u32 = 4;
+
+/// What a chain worth `nuisance` puyos is worth to a player of `receiver`, in their own units.
+///
+/// **Measured with `ga cross`**, which plays each game's own ai alone and counts what it
+/// throws. A Puyo player alone is in a chain-building paradise - nothing arrives to offset, so
+/// the ai fires 327 nuisance a minute where Rustris manages thirteen rows and Dr. Rustario
+/// six blocks. Priced at that ratio a single chain would bury either of them, so this is
+/// tuned a long way down: at two rocks apiece a Puyo player lands 0.49 of the pressure a Dr.
+/// Rustario opponent applies to a bottle and 0.23 of what a Rustris opponent applies to a
+/// well, either side of the two crossings that already shipped and play well (0.79 and 0.24).
+///
+/// **It is deliberately harsher out than in.** Garbage arriving at a Puyo board joins the
+/// tray, where offset can cancel it and the ai will chain back at it; what leaves here lands
+/// on a player with no offset at all and no way to answer, so the same number is not fair in
+/// both directions.
+///
+/// The routine two-chains a Puyo player throws constantly - the 1s to 20s that are most of
+/// what `ga cross` counted - cross as **nothing**, which is the intent: only a chain worth
+/// digging out of should be felt in another game at all.
+pub fn foreign_attack(receiver: GameId, nuisance: u32) -> u32 {
+    match receiver {
+        ids::DR_RUSTARIO | ids::RUSTRIS => (nuisance / NUISANCE_PER_FOREIGN_UNIT).min(MAX_FOREIGN),
+        _ => 0,
+    }
 }
 
 #[cfg(test)]
@@ -1138,8 +1168,52 @@ mod tests {
         // ... and one that has been priced lands in its own units
         game.receive_attack(Attack::new(GameId(u16::MAX), 8).with_foreign_for(GAME_ID, 3));
         assert_eq!(game.pending_nuisance(), 3);
-        assert_eq!(foreign_attack(ids::RUSTRIS, 10), 0);
-        assert_eq!(foreign_attack(ids::DR_RUSTARIO, 10), 0);
+        // ... and a game nobody priced still gets nothing
+        assert_eq!(foreign_attack(GameId(u16::MAX), 600), 0);
+    }
+
+    /// Only a chain worth digging out of crosses at all, and it crosses at two rocks a unit -
+    /// see [`foreign_attack`]. The routine two-chains a Puyo player throws constantly are
+    /// worth nothing in another game, which is the intent rather than an oversight.
+    #[test]
+    fn only_a_chain_worth_digging_out_of_crosses_to_another_game() {
+        for receiver in [ids::RUSTRIS, ids::DR_RUSTARIO] {
+            for (nuisance, expected) in [
+                (0, 0),
+                (12, 0),
+                (nuisance::MAX_DROP, 0),
+                (2 * nuisance::MAX_DROP, 1),
+                (2 * nuisance::MAX_DROP - 1, 0),
+                (4 * nuisance::MAX_DROP, 2),
+                (8 * nuisance::MAX_DROP, 4),
+                // however big the chain, it is never worth more than the biggest thing the
+                // receiving game can do to itself
+                (100 * nuisance::MAX_DROP, MAX_FOREIGN),
+            ] {
+                assert_eq!(
+                    foreign_attack(receiver, nuisance),
+                    expected,
+                    "{nuisance} nuisance to {receiver:?}"
+                );
+            }
+        }
+    }
+
+    /// ... and a chain that crosses says so on the attack it sends, in both games' units
+    #[test]
+    fn a_chain_prices_itself_for_both_of_the_other_games() {
+        let attack = Attack::new(GAME_ID, 4 * nuisance::MAX_DROP)
+            .with_foreign_for(
+                ids::DR_RUSTARIO,
+                foreign_attack(ids::DR_RUSTARIO, 4 * nuisance::MAX_DROP),
+            )
+            .with_foreign_for(
+                ids::RUSTRIS,
+                foreign_attack(ids::RUSTRIS, 4 * nuisance::MAX_DROP),
+            );
+        assert_eq!(attack.strength_for(GAME_ID), 4 * nuisance::MAX_DROP);
+        assert_eq!(attack.strength_for(ids::DR_RUSTARIO), 2);
+        assert_eq!(attack.strength_for(ids::RUSTRIS), 2);
     }
 
     /// Tsu's all clear: the bonus rides on the next chain, not the one that emptied the board

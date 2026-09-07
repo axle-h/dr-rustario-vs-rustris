@@ -73,6 +73,18 @@ const FOREIGN_TETRIS_GARBAGE: u32 = 2;
 const FOREIGN_T_SPIN_GARBAGE: [u32; 4] = [0, 0, 2, 3];
 /// blocks a perfect clear sends abroad, as much as a Dr. Rustario combo ever sends
 const FOREIGN_PERFECT_CLEAR_GARBAGE: u32 = 4;
+
+/// How many nuisance puyos one of those garbage blocks is worth, so that the same three
+/// clears cross to Puyo Rusto as cross to Dr. Rustario: **a tetris is a row of nuisance**, a
+/// T-spin triple is a row and a half, and a perfect clear two rows.
+///
+/// **Measured with `ga cross`.** The plan's starting intuition was that a tetris is roughly
+/// the work of a Puyo four-chain, and that is refuted by the rate rather than by argument: a
+/// four-chain sends about thirty two nuisance, and a Rustris player lands a qualifying clear
+/// two and a half times a minute, which would be a board of nuisance a minute and a Puyo
+/// player buried inside a stage. At a row apiece it is fifteen a minute - a row every
+/// twenty five seconds, into a tray that offset can still cancel.
+const NUISANCE_PER_FOREIGN_BLOCK: u32 = 3;
 const SOFT_DROP_POINTS_PER_ROW: u32 = 1;
 const HARD_DROP_POINTS_PER_ROW: u32 = 2;
 
@@ -166,10 +178,12 @@ impl ClearAction {
 /// Only the sender knows what the clear took, so only it can price the crossing - and it
 /// prices each game it can reach separately, since a row, a garbage block and a nuisance puyo
 /// are not the same thing. A game nothing here prices is worth nothing and never gets hit.
-fn foreign_attack(receiver: GameId, action: ClearAction) -> u32 {
-    if receiver != ids::DR_RUSTARIO {
-        return 0;
-    }
+pub fn foreign_attack(receiver: GameId, action: ClearAction) -> u32 {
+    let scale = match receiver {
+        ids::DR_RUSTARIO => 1,
+        ids::PUYO => NUISANCE_PER_FOREIGN_BLOCK,
+        _ => return 0,
+    };
     let spin_index = (action.lines as usize).min(FOREIGN_T_SPIN_GARBAGE.len() - 1);
     let tetris = if action.lines as usize == MAX_DESTROYED_LINES {
         FOREIGN_TETRIS_GARBAGE
@@ -186,7 +200,7 @@ fn foreign_attack(receiver: GameId, action: ClearAction) -> u32 {
     } else {
         0
     };
-    tetris.max(spin).max(perfect_clear)
+    tetris.max(spin).max(perfect_clear) * scale
 }
 
 /// The reasons a game ends, as named by the Tetris guideline.
@@ -681,7 +695,8 @@ impl Game {
         if attack > 0 {
             self.events.push(GameEvent::AttackSent(
                 Attack::new(GAME_ID, attack)
-                    .with_foreign_for(ids::DR_RUSTARIO, foreign_attack(ids::DR_RUSTARIO, action)),
+                    .with_foreign_for(ids::DR_RUSTARIO, foreign_attack(ids::DR_RUSTARIO, action))
+                    .with_foreign_for(ids::PUYO, foreign_attack(ids::PUYO, action)),
             ));
         }
 
@@ -1231,6 +1246,96 @@ mod tests {
         assert_eq!(foreign_attack_sent(&mut game), FOREIGN_TETRIS_GARBAGE);
         clear(&mut game, 4);
         assert_eq!(foreign_attack_sent(&mut game), FOREIGN_TETRIS_GARBAGE);
+    }
+
+    /// The same three clears cross to Puyo Rusto as cross to Dr. Rustario, scaled into that
+    /// game's own units: a tetris is a row of nuisance, a T-spin triple a row and a half, a
+    /// perfect clear two rows. One arm rather than a second table, so the two crossings can
+    /// never disagree about which clears are worth working for.
+    #[test]
+    fn the_same_clears_cross_to_puyo_rusto_at_a_row_of_nuisance_a_block() {
+        for action in [
+            ClearAction {
+                lines: 4,
+                spin: None,
+                perfect_clear: false,
+            },
+            ClearAction {
+                lines: 3,
+                spin: Some(Spin::Full),
+                perfect_clear: false,
+            },
+            ClearAction {
+                lines: 1,
+                spin: None,
+                perfect_clear: true,
+            },
+            // ... and the ones that stay at home stay at home over there too
+            ClearAction {
+                lines: 1,
+                spin: None,
+                perfect_clear: false,
+            },
+            ClearAction {
+                lines: 2,
+                spin: Some(Spin::Mini),
+                perfect_clear: false,
+            },
+        ] {
+            assert_eq!(
+                foreign_attack(ids::PUYO, action),
+                foreign_attack(ids::DR_RUSTARIO, action) * NUISANCE_PER_FOREIGN_BLOCK,
+                "{action:?}"
+            );
+        }
+        // a tetris is one row of the six wide Puyo board
+        assert_eq!(
+            foreign_attack(
+                ids::PUYO,
+                ClearAction {
+                    lines: 4,
+                    spin: None,
+                    perfect_clear: false,
+                }
+            ),
+            6
+        );
+        // and a game nobody priced still gets nothing
+        assert_eq!(
+            foreign_attack(
+                GameId(u16::MAX),
+                ClearAction {
+                    lines: 4,
+                    spin: None,
+                    perfect_clear: false,
+                }
+            ),
+            0
+        );
+    }
+
+    /// ... and a clear that crosses says so on the attack it sends, for both games at once
+    #[test]
+    fn a_tetris_prices_itself_for_both_of_the_other_games() {
+        let mut game = game();
+        clear(&mut game, 4);
+        let attacks: Vec<Attack> = game
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::AttackSent(attack) => Some(*attack),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(attacks.len(), 1);
+        assert_eq!(
+            attacks[0].strength_for(ids::DR_RUSTARIO),
+            FOREIGN_TETRIS_GARBAGE
+        );
+        assert_eq!(
+            attacks[0].strength_for(ids::PUYO),
+            FOREIGN_TETRIS_GARBAGE * NUISANCE_PER_FOREIGN_BLOCK
+        );
     }
 
     #[test]

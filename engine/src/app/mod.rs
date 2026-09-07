@@ -99,8 +99,9 @@ pub struct StageChange<G> {
 pub struct MatchSettings {
     pub rules: MatchRules,
     pub players: Vec<PlayerSettings>,
-    /// which high score table the match competes for
-    pub high_score_key: HighScoreKey,
+    /// which high score table the match competes for, or `None` for a mode that does not
+    /// rank: such a match loads no table and never offers name entry
+    pub high_score_key: Option<HighScoreKey>,
     /// stages may switch games, so every stage boundary shows the stage card
     pub playlist: bool,
 }
