@@ -15,7 +15,7 @@ This board is authoritative. Do not start a second game while one is in progress
 | Game | Status | Plan |
 |---|---|---|
 | **Puyo Puyo** (Tsu ruleset) | **done** — shipped as `puyo-rusto` | — |
-| Super Puzzle Fighter II Turbo | queued | — |
+| **Super Puzzle Fighter II Turbo** — shipping as *Super Rustle Fighter II Turbo* | **planned**, not started | [plan](super-rustle-fighter-plan.md) · [rules](super-puzzle-fighter-rules.md) |
 | Tetris Battle Gaiden *(as a Rustris ruleset)* | queued | — |
 | Bombliss *(as a Rustris ruleset)* | queued | — |
 | Everything else below | rejected | — |
@@ -70,7 +70,7 @@ an entry in a list rather than as a rewrite, and a fourth would be the same.
 | Game | Engine fit | Battle | Assets | Docs | Verdict |
 |---|---|---|---|---|---|
 | **Puyo Puyo (Tsu)** | Excellent — pair piece ≈ pill | Best in class: chain power, nuisance queue, offset | Mean Bean Machine (Genesis/SMS/GG), Kirby's Avalanche (SNES), arcade | Puyo Nexus documents the formulas exactly | **Done** — shipped as `puyo-rusto`, three themes, in the vs. playlist |
-| Super Puzzle Fighter II Turbo | Good — pair piece, but needs multi-cell power gems | Excellent and very distinct: crash gems, countdown counter gems, per-character attack patterns | Spriters Resource (arcade CPS2, PS1, GBA) | StrategyWiki and FAQs cover it well | Strong runner-up |
+| Super Puzzle Fighter II Turbo | Good — pair piece; multi-cell power gems, which Puyo Rusto's `LinkMask` since solved | Excellent and very distinct: crash gems, countdown counter gems, per-character attack patterns | Spriters Resource (arcade CPS2, PS1, GBA) | **Read from the PS1 executable**, not from guides | **Picked** — see the status board |
 | Tetris Battle Gaiden (SNES) | Excellent — it *is* Rustris plus a gauge | Excellent: crystals on pieces fill a magic gauge, four spell levels per character, offensive and defensive | SNES rip, Japan-only | GameFAQs guides list every spell | **Cheapest win — a Rustris ruleset, not a new crate** |
 | Bombliss / Tetris Blast / Super Bombliss | Excellent — tetrominoes carrying bomb cells | Good: completing a line detonates the bombs in it, chains, four small bombs in a 2x2 merge into a big one | GB/SFC/FC rips | TetrisWiki and Hard Drop | **Also a Rustris ruleset, not a new crate** |
 | Tetris 2 (1993) | Good, but it is essentially Dr. Rustario | Modest: "fishbowl" vs., clear the flashing blocks | NES/SNES/GB rips | Hard Drop and StrategyWiki | Skip — overlaps Dr. Rustario |
@@ -90,10 +90,15 @@ chosen by the character you picked, each carrying a countdown that ticks down on
 you place before it turns into an ordinary gem — so an attack is a timer as well as a mess,
 and a crash gem placed against it defuses it early.
 
-Against it: power gems are rectangles spanning several board cells, which the sprite pipeline
-does not currently do (`CellSpriteData` is one snip per cell), and the per-character attack
-patterns are a content surface with no obvious floor. Worth doing after Puyo Puyo if the
-appetite is there.
+Against it: the per-character attack patterns are a content surface with no obvious floor. The
+other objection recorded here — that power gems are rectangles spanning several board cells and
+the sprite pipeline does one snip per cell — **was written before Puyo Rusto shipped and is no
+longer true**: `puyo-rusto/src/theme/data.rs` picks a snip per cell from a `LinkMask` of which
+neighbours join it, and a power gem is the same trick with a rectangle constraint.
+
+**Picked, 2026-09-07.** Its rules were read out of the PlayStation port's own executable rather
+than from strategy guides — [super-puzzle-fighter-rules.md](super-puzzle-fighter-rules.md) — and
+the *how* is [super-rustle-fighter-plan.md](super-rustle-fighter-plan.md).
 
 ### The official Tetris variants — the important finding
 
@@ -163,7 +168,9 @@ being written and was deleted once it was; `git log` has it.
 
 **The others**
 
-- Super Puzzle Fighter II Turbo:
+- Super Puzzle Fighter II Turbo: the rules are **read from the game**, see
+  [super-puzzle-fighter-rules.md](super-puzzle-fighter-rules.md); the guides below are what it was
+  checked against, not what it was built from.
   [arcade sprites](https://www.spriters-resource.com/arcade/superpuzfightiiturb/),
   [PlayStation sprites](https://www.spriters-resource.com/playstation/superpuzzlefighteriiturbo/),
   rules on [StrategyWiki](https://strategywiki.org/wiki/Super_Puzzle_Fighter_II_Turbo/Gameplay)

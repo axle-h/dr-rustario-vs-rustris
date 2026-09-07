@@ -242,8 +242,13 @@ matches RMS with the peak only as a cap.
 ## Docs
 
 * [docs/next-game-ideas.md](docs/next-game-ideas.md) - which game comes next, and why every
-  other candidate lost. The only doc left: the implementation plans that carried Puyo Rusto and
-  the particle scenes are done and deleted, and `git log` has them.
+  other candidate lost. The implementation plans that carried Puyo Rusto and the particle scenes
+  are done and deleted, and `git log` has them.
+* [docs/super-puzzle-fighter-rules.md](docs/super-puzzle-fighter-rules.md) - the rules of Super
+  Puzzle Fighter II Turbo, read out of the PlayStation port's own executable with Ghidra rather
+  than from strategy guides. Says which findings are certain and which are still open.
+* [docs/super-rustle-fighter-plan.md](docs/super-rustle-fighter-plan.md) - the *how* for the
+  fourth game, planned and not started.
 
 **Puyo Nexus rejects automated fetches**, so a Puyo rule has to be read in a browser - ask Alex
 to fetch a page rather than scripting it. Every module of `puyo-rusto/src/game/` names the page
