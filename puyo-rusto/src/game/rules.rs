@@ -194,11 +194,9 @@ pub const MAX_LEVEL: u32 = 99;
 /// the biggest score the HUD ever has to show
 pub const MAX_SCORE: u32 = 9_999_999;
 
-/// Which themes a match runs through.
-///
-/// Phase 2 of the plan gives Puyo one theme; the retro ones join this list as they are built,
-/// and `all` is what runs through every one of them in the order
-/// [`crate::theme::all_themes`] builds them.
+/// Which themes a match runs through: `genesis`, `snes` and the particle theme, plus `all`,
+/// which runs through every one of them in the order [`crate::theme::all_themes`] builds
+/// them - oldest hardware first.
 #[derive(
     Clone,
     Copy,
@@ -250,10 +248,9 @@ impl MatchThemes {
 
 /// How well the ai plays, under the four names every game in the compendium offers.
 ///
-/// The names and the key delays are the other games' exactly - see
-/// `ai_difficulties_agree` in the launcher, which holds every game to the same four. What is
-/// behind them is not yet: phase 4 of the plan replaces the placeholder brain with one that
-/// can play, and nothing on this menu surface changes when it does.
+/// The names and the key delays are the other games' exactly - see `ai_difficulties_agree` in
+/// the launcher, which holds every game to the same four. What is *behind* them is this game's
+/// own: rows of [`crate::game::ai::skill::SKILL_ORDER`], which is measured rather than assumed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AiDifficulty {
     Easy,

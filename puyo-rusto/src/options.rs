@@ -284,9 +284,9 @@ mod tests {
     }
 
     /// A theme sprint runs one level per theme, so it is only offered while there is more
-    /// than one to run through. Phase 2 shipped a single theme and it was not on the list;
-    /// phase 3a added the second and it came back on its own, which is the whole of what
-    /// `Options::modes` has to get right here.
+    /// than one to run through. This game shipped with a single theme and the sprint was not
+    /// on the list; it came back on its own the moment a second theme was built, which is the
+    /// whole of what `Options::modes` has to get right here.
     #[test]
     fn a_theme_sprint_is_offered_once_there_is_more_than_one_theme() {
         let options = Options::default();

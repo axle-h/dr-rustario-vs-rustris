@@ -22,7 +22,8 @@ cargo fmt --all                  # stock rustfmt, no rustfmt.toml
 ./build-browser.sh               # wasm via emscripten, `browser` feature
 ```
 
-Headless render harnesses (no window needed - the way to *see* a change):
+Headless render harnesses (no window needed - the way to *see* a change). On a machine with no
+display run them with `SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software`:
 
 ```shell
 cargo run --example frame_shot -- 640 480 1 out/ [game]   # one frame on every theme
@@ -44,6 +45,12 @@ probe|explain|...`, `ga puyo rank|play|duel`, `ga cross` for the crossings betwe
 A game implements `engine::game::Game` (headless board of `Cell`s with game-private `CellId`s,
 emitting `GameEvent`s) and `engine::render::GameRender`. Its themes are data handed to the
 engine's `retro_theme` / `modern_theme` builders in `engine/src/render/`.
+
+**`speed_index` may change how a game *feels*, never what it *deals*.** A playlist advances
+stages per player while the pieces are dealt from one shared seed to independent randomisers, so
+anything that changes what is dealt part way through desynchronises two players who reach the
+change at different moments. Puyo Rusto's colour count is fixed for a whole match for exactly
+this reason; the rule is the compendium's, not that game's.
 
 **Every match runs through `launcher/src/games.rs`'s `AnyGame` wrapper, and a defaulted trait
 method it does not delegate is silently never asked of the game.** This compiles fine and fails
@@ -206,6 +213,11 @@ hand-editing its output:
 Retro theme geometry was measured against the emulated games, not read off the rips; the
 numbers live in each theme module beside a comment saying what they were measured from.
 
+**RetroArch, if you drive it:** `--set video_vsync=false` or the session hangs a few seconds in
+with no error; `--set savestate_file_compression=false` or a state is `#RZIP` rather than a plain
+file. `video_driver=sdl2` does not start in this build, and neither Puyo core publishes a memory
+map. Sessions die after a while on this machine - do not plan a long emulator drive.
+
 ### The house audio levels
 
 **Loudness is RMS, and every theme in the app is levelled to one baseline**: its music at
@@ -229,8 +241,6 @@ matches RMS with the peak only as a cap.
 
 ## Docs
 
-* [docs/puyo-puyo-plan.md](docs/puyo-puyo-plan.md) - shared memory for Puyo Rusto, which is
-  built bar three named items. **Read it before touching that crate.**
 * [docs/puyo-nexus-rules.md](docs/puyo-nexus-rules.md) - local copy of the wiki's rule pages.
   Search it before implementing a Puyo rule, and search for the mechanic rather than the page
   you expect it on.

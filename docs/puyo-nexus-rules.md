@@ -11,11 +11,11 @@ modules already do; this copy is for finding the rule, not for being the record 
 
 ## Why this exists
 
-Puyo Nexus rejects automated fetches, so [the plan](puyo-puyo-plan.md) told each agent to read
-the pages in a browser. That works, but it only finds the pages you think to look for. Phase 1
-implemented the hidden thirteenth row as an ordinary row, because the rule that a **ghost puyo
-cannot pop** is not on any page in `Category:Rules` — it is three paragraphs inside a page
-filed under *Gameplay Guides*. Alex found it; the code was wrong until then.
+Puyo Nexus rejects automated fetches, so the pages have to be read in a browser - **ask Alex to
+fetch one rather than scripting it.** That works, but it only finds the pages you think to look
+for. The hidden thirteenth row was first implemented as an ordinary row, because the rule that a
+**ghost puyo cannot pop** is not on any page in `Category:Rules` — it is three paragraphs inside
+a page filed under *Gameplay Guides*. Alex found it; the code was wrong until then.
 
 So this file is deliberately **wider than the category**. If you are implementing a rule, search
 here first, and search for the mechanic rather than the page you expect it to be on.
@@ -27,8 +27,9 @@ here first, and search for the mechanic rather than the page you expect it to be
 * **It is a snapshot.** The wiki is edited. If something here disagrees with the live page, the
   live page wins — and this file should be re-scraped.
 * **The "areas of interest" list in *Reverse Engineering (index)* is the list of known
-  unknowns.** It is how phase 1 established that the nuisance scatter pattern is undocumented
-  rather than merely unfound, which is worth knowing before guessing at something.
+  unknowns.** It is how the nuisance scatter pattern was established to be undocumented rather
+  than merely unfound - which is worth knowing before guessing at something, and is why this
+  game's scatter is a *documented guess* rather than a silent one.
 
 ## What is here, and what is not
 

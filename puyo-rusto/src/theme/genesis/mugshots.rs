@@ -6,8 +6,9 @@
 //! sheet would have to be loaded whole to build any one of them.
 //!
 //! **Every number below is measured**, off screen captures of the emulated game, one character
-//! at a time; the readings are written up per character in `docs/puyo-puyo-plan.md` phase 6.
-//! A capture is variable rate, so take a period as within about a fifth of the truth.
+//! at a time - each character's reading is the constants it appears in here, and
+//! `puyo-rusto/art/mugshots.py` is what produced them. A capture is variable rate, so take a
+//! period as within about a fifth of the truth.
 //!
 //! Two things are already baked into the art and so are absent here.  A row is cut **action
 //! first and rest last**, because [`FrameAnimationType::LinearWithPause`] holds the *last* frame

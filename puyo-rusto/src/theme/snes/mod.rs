@@ -210,9 +210,8 @@ const LEVEL_AT: (i32, i32) = (STAGE_BOX.0 + STAGE_BOX.2 as i32, STAGE_BOX.1);
 /// This and the two constants under it are **not measured off Kirby's Avalanche**, unlike
 /// every geometric number in this file. They are the genesis theme's own beats, shortened:
 /// the two games are the same Compile engine with different art, so the shape of a pop is the
-/// same, but genesis is deliberately the slower of the two (see `POP_HOLD` there, and the
-/// note in `docs/puyo-puyo-plan.md`) and this theme was 290 ms a chain step before it had a
-/// strip at all. The three of them plus `POP_DELAY` come to about 550 ms, against genesis's
+/// same, but genesis is deliberately the slower of the two (Alex's choice - see `POP_HOLD`
+/// there) and this theme was 290 ms a chain step before it had a strip at all. The three of them plus `POP_DELAY` come to about 550 ms, against genesis's
 /// 820. If a capture of the real thing ever settles it, these are the three numbers to set.
 const POP_HOLD: Duration = Duration::from_millis(260);
 

@@ -2,8 +2,9 @@
 """Read a Dr. Robotnik's Mean Bean Machine character off the Mugshots sheet, and off a
 screen capture of the emulated game.
 
-This is the tooling behind phase 6 of docs/puyo-puyo-plan.md, which is where every number it
-produced is written up.  It exists because the sheet carries the *frames* and nothing else: not
+This is the tooling behind the Mean Bean Machine cast; every number it produced is written up
+in `puyo-rusto/src/theme/genesis/mugshots.rs`, which this script prints ready to paste back.
+It exists because the sheet carries the *frames* and nothing else: not
 the timings, not where the loose sprites go, not which palette ramp runs on which row, and not
 what any of it means.  Those come off short clips Alex records one character at a time.
 

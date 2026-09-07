@@ -35,7 +35,7 @@ DEFAULT_SOURCE = os.path.expanduser("~/Downloads/pp/ogg")
 
 # what each track in `loops.json` is called here, and which directory it belongs to. The menu
 # track is the menus' own; the other four are the game music, in a directory of their own
-# rather than the particle theme's, because phase 3's retro themes are the same game's music
+# rather than the particle theme's, because the retro themes are the same game's music
 TRACKS = {
     "Puyo Puyo Tetris - It's Main Menu!": ("menu", "menu"),
     "Puyo Puyo Tetris - Korobeiniki (2014)": ("music", "korobeiniki"),

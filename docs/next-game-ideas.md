@@ -14,7 +14,7 @@ This board is authoritative. Do not start a second game while one is in progress
 
 | Game | Status | Plan |
 |---|---|---|
-| **Puyo Puyo** (Tsu ruleset) | **in progress** | [puyo-puyo-plan.md](puyo-puyo-plan.md) |
+| **Puyo Puyo** (Tsu ruleset) | **done** — shipped as `puyo-rusto` | — |
 | Super Puzzle Fighter II Turbo | queued | — |
 | Tetris Battle Gaiden *(as a Rustris ruleset)* | queued | — |
 | Bombliss *(as a Rustris ruleset)* | queued | — |
@@ -38,7 +38,9 @@ Every candidate was judged on five things.
 
 ## Puyo Puyo — chosen
 
-**Plan: [puyo-puyo-plan.md](puyo-puyo-plan.md).**
+**Built and shipped as the `puyo-rusto` crate.** What is worth knowing about it lives in that
+crate's own module doc comments and in `CLAUDE.md`; the implementation plan that carried the
+work was deleted once it was done, and `git log` has it.
 
 Puyo Puyo is the canonical 2-player falling block battle game, and it fits this codebase
 better than anything else on the list. Its pair piece is mechanically Dr. Rustario's pill —
@@ -60,15 +62,14 @@ bots whose evaluation functions are described in the literature.
 
 The cost is a full game crate — the existing two are about 9-10k lines each, of which the art
 and audio is the real expense — plus generalising the launcher past its assumption that there
-are exactly two games. That work is scoped in the plan, and the generalising half of it is
-**done**: the engine and launcher take a third game as an entry in a list rather than as a
-rewrite.
+are exactly two games. Both halves are **done**: the engine and launcher take a third game as
+an entry in a list rather than as a rewrite, and a fourth would be the same.
 
 ## The other candidates
 
 | Game | Engine fit | Battle | Assets | Docs | Verdict |
 |---|---|---|---|---|---|
-| **Puyo Puyo (Tsu)** | Excellent — pair piece ≈ pill | Best in class: chain power, nuisance queue, offset | Mean Bean Machine (Genesis/SMS/GG), Kirby's Avalanche (SNES), arcade | Puyo Nexus documents the formulas exactly | **In progress** — built and playable, three items left, see the [plan](puyo-puyo-plan.md) |
+| **Puyo Puyo (Tsu)** | Excellent — pair piece ≈ pill | Best in class: chain power, nuisance queue, offset | Mean Bean Machine (Genesis/SMS/GG), Kirby's Avalanche (SNES), arcade | Puyo Nexus documents the formulas exactly | **Done** — shipped as `puyo-rusto`, three themes, in the vs. playlist |
 | Super Puzzle Fighter II Turbo | Good — pair piece, but needs multi-cell power gems | Excellent and very distinct: crash gems, countdown counter gems, per-character attack patterns | Spriters Resource (arcade CPS2, PS1, GBA) | StrategyWiki and FAQs cover it well | Strong runner-up |
 | Tetris Battle Gaiden (SNES) | Excellent — it *is* Rustris plus a gauge | Excellent: crystals on pieces fill a magic gauge, four spell levels per character, offensive and defensive | SNES rip, Japan-only | GameFAQs guides list every spell | **Cheapest win — a Rustris ruleset, not a new crate** |
 | Bombliss / Tetris Blast / Super Bombliss | Excellent — tetrominoes carrying bomb cells | Good: completing a line detonates the bombs in it, chains, four small bombs in a 2x2 merge into a big one | GB/SFC/FC rips | TetrisWiki and Hard Drop | **Also a Rustris ruleset, not a new crate** |

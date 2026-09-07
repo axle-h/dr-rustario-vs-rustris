@@ -7,9 +7,18 @@ pub enum FrameAnimationType {
     Linear {
         fps: u32,
     },
+    /// Runs `0..n` and back, **repeating each end** - `0 1 2 2 1 0`.
+    ///
+    /// That is not the shape of a ping-pong as the games this compendium is drawn from play
+    /// one: every one measured off a capture holds each end *once*. Nothing here uses this,
+    /// and a ping-pong is instead cut unrolled into its strip and played as a plain
+    /// [`FrameAnimationType::Linear`]. Reach for it only if a repeated end is what you want.
     YoYo {
         fps: u32,
     },
+    /// Plays the strip and then waits, and **holds the last frame while it waits** - so a pass
+    /// is `n/fps + pause_for` and a row has to be cut *action first, rest last*: the pose the
+    /// sprite settles into is the one at the end of the strip, not the one at the start.
     LinearWithPause {
         fps: u32,
         pause_for: Duration,

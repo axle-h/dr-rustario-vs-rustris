@@ -98,7 +98,7 @@ SOUNDS = {
     # The menus'. Puyo Rusto already plays its own menu music where the other games play
     # the engine's, and these are the two clicks that go with it; they land beside that music
     # in `theme/menu/` rather than in the particle theme, because a menu is not a theme and
-    # phase 3's retro themes walk the same one.
+    # the retro themes walk the same one.
     "menu/chime.ogg": ("se_sys", "se_sys05_cursor"),
     "menu/select.ogg": ("se_sys", "se_sys02_decide"),
 }

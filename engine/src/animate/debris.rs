@@ -10,7 +10,7 @@
 //! entirely, which is why this is drawn on the window and clipped to the player rather than
 //! into the board's own texture. One [`BurstSpec`] therefore fits any theme at any window
 //! size, and the same spec serves a droplet, an arriving attack shattering over a tray, and
-//! whatever phase 6 wants to throw.
+//! whatever a later theme wants to throw.
 //!
 //! Decoration, in the sense `popup.rs` establishes: it holds nothing, the board carries on
 //! underneath it, and a theme that asks for no burst pays nothing at all.

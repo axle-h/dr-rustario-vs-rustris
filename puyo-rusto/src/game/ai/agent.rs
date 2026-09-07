@@ -387,8 +387,8 @@ mod tests {
         );
     }
 
-    /// the whole of phase 4 in one assertion: a brain that reads the board outscores one that
-    /// does not, on the same seeds, over the same pairs
+    /// the whole of the search in one assertion: a brain that reads the board outscores one
+    /// that does not, on the same seeds, over the same pairs
     #[test]
     fn the_scorer_outplays_the_placeholder() {
         let scorer: u32 = (0..2)

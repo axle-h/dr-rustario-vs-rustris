@@ -78,8 +78,8 @@ const FOREIGN_PERFECT_CLEAR_GARBAGE: u32 = 4;
 /// clears cross to Puyo Rusto as cross to Dr. Rustario: **a tetris is a row of nuisance**, a
 /// T-spin triple is a row and a half, and a perfect clear two rows.
 ///
-/// **Measured with `ga cross`.** The plan's starting intuition was that a tetris is roughly
-/// the work of a Puyo four-chain, and that is refuted by the rate rather than by argument: a
+/// **Measured with `ga cross`.** The starting intuition was that a tetris is roughly the work
+/// of a Puyo four-chain, and that is refuted by the rate rather than by argument: a
 /// four-chain sends about thirty two nuisance, and a Rustris player lands a qualifying clear
 /// two and a half times a minute, which would be a board of nuisance a minute and a Puyo
 /// player buried inside a stage. At a row apiece it is fifteen a minute - a row every

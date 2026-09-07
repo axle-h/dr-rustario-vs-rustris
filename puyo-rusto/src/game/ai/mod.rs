@@ -19,9 +19,8 @@
 //! * Ikeda, Tomizawa, Viennot and Tanaka, *Playing PuyoPuyo: two search algorithms for
 //!   constructing chain and tactical heuristics*, which is what both of the above cite.
 //!
-//! **There is no neural model here and there will not be one.** The search is the ai; nothing in
-//! this module is shaped around a `Genome` and `ga puyo` trains nothing. See
-//! `docs/puyo-puyo-plan.md`.
+//! **There is no neural model here and there will not be one** (Alex, 2026-09-04). The search is
+//! the ai; nothing in this module is shaped around a `Genome` and `ga puyo` trains nothing.
 
 pub mod beam;
 pub mod eval;

@@ -33,8 +33,8 @@ pub const LONG_CHAIN: u32 = 4;
 
 /// What a [`GameEvent::Clear`] carries in its game-private `detail`.
 ///
-/// The renderer reads it back out in phase 2 to grade the clear and pick a word for it; the
-/// engine never looks inside.
+/// The renderer reads it back out to grade the clear and pick a word for it; the engine never
+/// looks inside.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ClearDetail {
     /// which step of the chain this was, counting from 1
@@ -1159,7 +1159,8 @@ mod tests {
         assert_eq!(tray.len(), 2, "a large icon and a small one");
     }
 
-    /// an attack from another game is worth nothing here until phase 5 prices it
+    /// an attack from a game nobody has priced a crossing to is worth nothing here, which is
+    /// the safe default - see [`foreign_attack`] for the six that *are* priced
     #[test]
     fn an_unpriced_foreign_attack_lands_as_nothing() {
         let mut game = game();

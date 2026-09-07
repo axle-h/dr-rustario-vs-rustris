@@ -1,4 +1,14 @@
 //! Puyo Rusto's themes: data handed to the engine's theme builders.
+//!
+//! Three of them: `genesis`, `snes` and `modern` (the particle theme), oldest first, which is
+//! the theme sprint's order and the retro playlist's.
+//!
+//! **A fourth was built and cut**, `3ds` (Puyo Puyo Chronicle), on 2026-08-28 - `git log` has
+//! it. Modern art in a retro slot, and, the part that cost something, **its panel sized the
+//! board for every other theme**: cell size is set by the largest all of a game's themes can
+//! hold, so one theme's panel dimensions are load-bearing for the rest. `SceneType::Cover` was
+//! written for it and is kept. If the slot is ever filled again it wants something 16-bit
+//! whose sheet carries the frames a bean needs to pop.
 
 pub mod data;
 pub mod genesis;
@@ -110,9 +120,9 @@ pub const MENU_SOUNDS: MenuSounds = MenuSounds {
 /// particle theme last, the way the other two games order theirs
 ///
 /// The retro themes are built first and the particle theme is sized against them, since a
-/// retro theme renders its art at a fixed size and the particle one does not. Until phase 3
-/// there were no retro themes to measure, so the particle theme was built once to measure
-/// and once to keep - that is gone, and this reads like `dr-rustario` and `rustris` now.
+/// retro theme renders its art at a fixed size and the particle one does not. Before there
+/// were any retro themes to measure, the particle theme had to be built once to measure and
+/// once to keep - that is gone, and this reads like `dr-rustario` and `rustris` now.
 pub fn all_themes<'a>(
     canvas: &mut WindowCanvas,
     texture_creator: &'a TextureCreator<WindowContext>,
