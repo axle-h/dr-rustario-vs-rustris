@@ -15,12 +15,12 @@ what they found:
 | # | what | where |
 |---|---|---|
 | 1 | the ai answers what is thrown at it — **`done` 2026-09-04**, kept below for what it found | `puyo-rusto/src/game/ai/` |
-| 2 | **the defeat drain** — the field falls off the bottom of the screen when a player is buried | `engine/src/animate/game_over.rs` |
+| 2 | the defeat drain — **`done` 2026-09-04**, kept below for what it found | `engine/src/animate/game_over.rs` |
 | 3 | **vs. integration** — a playlist that picks its games, and six directed attack prices | `launcher/`, every `game/mod.rs` |
 | 4 | audio levels across the whole app — **`done` 2026-09-04**, kept below for what it found | `engine/art/audio_levels.py` |
 
-**Two items are left**, 2 and 3, and only the third is large. Rows 1 and 4 are finished work kept
-here for what they found. Item 3 wants `ga puyo duel`, which item 1 built.
+**One item is left**, 3, and it is the large one. Rows 1, 2 and 4 are finished work kept here for
+what they found. Item 3 wants `ga puyo duel`, which item 1 built.
 
 Everything else — the rules, the three themes, their music and effects, the ai's beam search and
 its measured ladder, the characters, and how the whole thing moves — is `done`. What is worth
@@ -115,70 +115,66 @@ hardest opponent and change what all four dials mean — a gameplay decision, an
 **This is the open question item 3 inherits**, since item 3 is where the Puyo half of
 `Difficulty::level` is set.
 
-## 2. The defeat drain
+## 2. The defeat drain — `done` 2026-09-04
 
 When a player is buried, **every puyo on the field pauses, then falls straight down and off the
 bottom of the screen, column by column at different offsets** (Alex, 2026-09-04). That is Puyo's
-own game over and it is what **all three themes** play, the particle theme included.
-
-What is there now: all three set `GameOverStyle::Curtain`, which is Tetris's game over, and
-`genesis` and `snes` pass `curtain_cell: None` — so the curtain draws *nothing at all* and a
-burial is a blank three-second pause. Replacing it costs no art.
+own game over and it is what **all three themes** play, the particle theme included. It is
+`GameOverStyle::Drain` in `engine/src/animate/game_over.rs`, beside `Screen` and `Curtain`, and
+what it replaced was a `Curtain` with `curtain_cell: None` — a burial was a blank three-second
+pause on two of the three themes.
 
 **Measured off Alex's capture** of Kirby's Avalanche (`Screencast From 2026-09-04 13-10-09.mp4`,
 4.1 s at ~30 fps, a stage theme this repo does not use — the mechanic is the game's, not the
 theme's). Tracked by cross-correlating each column band of every frame against the first, which
-gives that column's displacement to the pixel:
+gives that column's displacement to the pixel. The numbers are the constants at the top of
+`game_over.rs`:
 
 * **Each column falls as one rigid block.** Correlation stays above 0.9 at a single offset the
   whole way down, so the gaps in a column are carried with it: nothing re-settles, nothing
-  compacts, and a hole in the middle of a column is still a hole as it leaves the screen.
+  compacts, and a hole in the middle of a column is still a hole as it leaves the screen. That is
+  free in the renderer — the offset is keyed on the column and nothing else.
 * **Every column has its own start, and the order is scattered rather than a sweep.** The six
   columns started at 0.00, 0.00, 0.03, 0.08, 0.29 and 0.35 s — in column order 2, 3, 1, 4, 5, 0.
-  A spread of **at least 0.35 s**, and neighbours deliberately unalike. That is exactly what
-  `animate/nuisance.rs`'s golden-ratio hash of the column index produces, so use it rather than
-  an RNG: the same board drains the same way twice and nothing random reaches the render path.
+  A spread of **at least 0.35 s**, and neighbours deliberately unalike. `Drain::delay` is
+  `animate/nuisance.rs`'s golden-ratio hash of the column index rather than an RNG, so the same
+  board drains the same way twice and nothing random reaches the render path. It leaves in the
+  order 0, 5, 2, 4, 1, 3, which is **not** the capture's order and is not meant to be: what was
+  measured is the spread and the scatter, and reproducing one console's exact permutation would
+  cost a table for nothing.
 * **It accelerates, and does not reach a terminal speed inside the board.** Fitting the four
   columns whose start is inside the capture gives 2226-2554 px/s² at a 76 px cell, so
-  **≈30 cells/s²** (0.008 cells per frame² at 60 Hz). A column clears the 13 rows in ~0.9 s and,
-  with the stagger, the whole field is gone about 1.3 s after the first column moves.
+  **≈30 cells/s²**. A column clears the 12 rows in ~0.9 s and, with the stagger, the whole field
+  is gone **1.3 s** after the first column moves — which a test in `game_over.rs` pins, since it
+  is the one number that says the drain still looks like the capture.
 * **Puyos are clipped at the field's bottom edge** — they slide under the frame, cut off mid
-  sprite, rather than being drawn over the panel below.
-* **The hold before the first column moves is not in the capture**, which opens mid-fall. Pick
-  something short enough to read as a pause and not a hang (~0.3 s) and say here that it was
-  chosen, not measured.
+  sprite, rather than being drawn over the panel below. The clip is set in `Theme::draw_board`
+  around the whole sprite-sheet call rather than inside its cell loop: that loop returns on `?`
+  in a dozen places and every one of them would have to put the clip back.
+* **The hold before the first column moves is not in the capture**, which opens mid-fall. 0.3 s,
+  chosen and not measured: short enough to read as a pause and not as a hang.
 * **The winner's board is not draining** in this capture: it is already empty and is showing a
   blinking `YOU WIN` plaque with celebration confetti rising through it. Whether the winner's
-  own field drains too is unevidenced — drain the defeated board only, until someone captures
-  otherwise.
+  own field drains too is unevidenced — the defeated board drains and only it, until someone
+  captures otherwise.
 
-The shape to build:
+Three things the build found:
 
-* **A third `GameOverStyle`, `Drain`**, beside `Screen` and `Curtain`, in
-  `engine/src/animate/game_over.rs`, carrying the hold, the stagger and the acceleration.
-  `GameOverAnimation::update` advances it and `is_complete` waits until the last column is off
-  the board plus a beat.
-* **It is drawn as a per-column `offset_y` on the cells already being drawn.**
-  `BlockSpriteSheet::draw_board` takes a fractional row offset per cell for the fall, the lock and
-  the hard drop; the drain is the same offset applied to every `Stack` and `Garbage` cell by
-  column. Clip to `geometry.game_snip()` the way the nuisance fall does, or the puyos leave the
-  well and cross the panel's stonework on the way down.
-* **Nothing about the rules changes.** The board still reports its cells; the drain is decoration
-  over a game that has already ended, like `popup` and `debris`. It does not block a tick, because
-  there is no tick left to block.
-* **The other two games keep `Curtain`.** The drain is Puyo's, unless someone measures a reason
-  otherwise.
+* **The drain runs on its own clock, and nothing was gating the stage on the loser anyway.**
+  `is_complete` is the hold, the stagger, the fall and a 0.5 s beat — about 2.15 s, where every
+  other style is a flat 6 s. It changes nothing downstream because
+  `is_all_post_game_animation_complete` waits on the *winner* too and a victory is 10 s, so the
+  loser's clock has never been what ends a stage. It also means a drain is over before
+  `GAME_OVER_SCREEN_DELAY`, so it can never be dismissed by a held key — there is no card to skip.
+* **Stack and garbage cells are the whole board at that moment.** `next_pair` tests the death
+  square *before* it spawns, so a lost Puyo board never has an active pair on it, and the drain
+  needs no arm for one.
+* **`GameOverStyle` lost its `Eq`**, since the drain carries an acceleration. Nothing compared
+  two of them.
 
-**The character's defeat pose is held for the rest of the match** — through the drain and until
-the next round. That is already what `CharacterState::Defeat` does (it is terminal, and
-`start_routine` re-deals the defeat row, whose last frame `LinearWithPause` holds), and the
-half-brightness fade frame at the end of a sheet's defeat row is **never drawn**, which
-`genesis/mugshots.rs` already records. The old open question of how long the game waits before
-that fade is **closed by decision, not by measurement**: it never does.
-
-**Done when:** `animation_shot` on each of the three themes shows a burial draining column by
-column at its own moment, nothing draws outside the well, and the mugshot holds its defeat pose
-the whole way through.
+`animation_shot` grew a **`scene` argument** for this: `drain` buries player one on the spot, so
+the fall can be watched beside a board still in play. It is the only way to see this without
+losing a real match, and it is how all three themes were checked.
 
 ## 3. Vs. integration — the playlist picks its games, and garbage crosses
 
@@ -657,8 +653,10 @@ PuyoPuyo*.
 * `cargo run --example frame_shot -- 640 480 1 out/ puyo` — one frame on every theme, which is how
   theme geometry is checked without a display.
 * `cargo run --example animation_shot -- 1920 1080 out/ genesis 50 80` — a scripted match stepped a
-  frame at a time, one PNG every 50 ms, which is how anything that *moves* is checked, item 2
-  included. Run it with `SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software`.
+  frame at a time, one PNG every 50 ms, which is how anything that *moves* is checked. Its seventh
+  argument is the scene: `drain` buries player one at the first frame, which is the only way to
+  watch a game over without losing a match. Run it with `SDL_VIDEODRIVER=dummy
+  SDL_RENDER_DRIVER=software`.
 * `cargo run --example menu_shot -- 960 720 out/`; `field_preview sheet`; `character_shot` and
   `kirby_shot` for the cast.
 * `ga puyo rank` for what a row builds; `ga puyo duel` for what it does under fire, which item 1

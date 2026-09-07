@@ -916,6 +916,12 @@ impl<'a> BlockSpriteSheet<'a> {
         // doing between two of them
         let fall_offset = game.fall_progress();
 
+        // a lost board slides off the bottom of the screen, column by column, each carrying
+        // whatever it is holding. Only what is settled goes: the drain starts after the last
+        // piece has locked, so there is nothing else on the board to take with it
+        let drain = animations.game_over().drain();
+        let drain_offset = |point: CellPoint| drain.map_or(0.0, |d| d.offset(point.x));
+
         // a cell that is still falling in from over the top is drawn after the board, on its
         // way down, and not where the rules have already put it
         let falling = animations.nuisance().state();
@@ -953,19 +959,25 @@ impl<'a> BlockSpriteSheet<'a> {
                         GhostStyle::None => {}
                     },
                     Cell::Stack(id) => {
-                        let offset_y = if lock_animates(point) {
+                        let landing = if lock_animates(point) {
                             lock_offset_y
                         } else {
                             0.0
                         };
+                        let offset_y = landing + drain_offset(point);
                         self.draw_stack_cell(canvas, point, id, dest, offset_y, animations)?
                     }
                     // through the stack path, so garbage that idles gets its strip: a Puyo
                     // nuisance blinks where a Dr. Mario virus wriggles. With no strip this
                     // is the still stacked sprite, which is what every other game gets
-                    Cell::Garbage(id) if !in_the_air(point) => {
-                        self.draw_stack_cell(canvas, point, id, dest, 0.0, animations)?
-                    }
+                    Cell::Garbage(id) if !in_the_air(point) => self.draw_stack_cell(
+                        canvas,
+                        point,
+                        id,
+                        dest,
+                        drain_offset(point),
+                        animations,
+                    )?,
                     _ => {}
                 }
             }

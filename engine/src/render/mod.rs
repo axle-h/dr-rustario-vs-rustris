@@ -1035,8 +1035,20 @@ impl<'a> Theme<'a> {
                 }
             }
         } else {
-            self.sprites
-                .draw_board(canvas, game, &self.geometry, animations, self.ghost_style)?;
+            // a draining board leaves the well: clipped to it, so the puyos slide under the
+            // frame and are cut off mid sprite rather than crossing the panel's stonework
+            let draining = animations.game_over().drain().is_some();
+            let clip = canvas.clip_rect();
+            if draining {
+                canvas.set_clip_rect(self.geometry.game_snip());
+            }
+            let result =
+                self.sprites
+                    .draw_board(canvas, game, &self.geometry, animations, self.ghost_style);
+            if draining {
+                canvas.set_clip_rect(clip);
+            }
+            result?;
         }
 
         if let (Some(rows), Some(height)) = (

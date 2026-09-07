@@ -228,10 +228,7 @@ pub fn modern_puyo_theme<'a>(
         // particles in the shape of each puyo that went, which is how a group bursts
         clear_particles: ClearParticles::Masked { fade_in: POP_HOLD },
         destroy_style: Some(DestroyStyle::Vanish { hold: POP_HOLD }),
-        game_over_style: Some(GameOverStyle::Curtain {
-            from_top: false,
-            rows: VISIBLE_ROWS,
-        }),
+        game_over_style: Some(GameOverStyle::drain(VISIBLE_ROWS)),
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,
         pop_debris: None,

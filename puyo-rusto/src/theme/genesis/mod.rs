@@ -572,10 +572,7 @@ pub fn genesis_theme<'a>(
                 .blinking_for(POP_BLINK, POP_BLINKS)
                 .holding_first(POP_FACE_HOLD),
         ),
-        game_over_style: Some(GameOverStyle::Curtain {
-            from_top: false,
-            rows: VISIBLE_ROWS,
-        }),
+        game_over_style: Some(GameOverStyle::drain(VISIBLE_ROWS)),
         curtain_cell: None,
         ghost_style: GhostStyle::Alpha,
         hard_drop_rows_per_frame: engine::animate::hard_drop::DEFAULT_ROWS_PER_FRAME,

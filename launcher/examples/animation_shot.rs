@@ -11,8 +11,13 @@
 //! fan them out to the animations, and **skip the game's own update while an animation holds
 //! the tick**, which is the rule the whole timing of a chain rests on.
 //!
+//! `scene` picks what it is a shot *of*: `chain` (the default) plays the match described
+//! above, and `drain` buries player one on the spot so the game over drain can be watched -
+//! the field falling off the bottom of the well, column by column, beside a board still in
+//! play.
+//!
 //! ```text
-//! cargo run -p dr-rustario-vs-rustris --example animation_shot -- [width] [height] [out] [theme] [every_ms] [frames]
+//! cargo run -p dr-rustario-vs-rustris --example animation_shot -- [width] [height] [out] [theme] [every_ms] [frames] [scene]
 //! ```
 
 use engine::app_info::{init, AppInfo};
@@ -37,6 +42,12 @@ fn main() -> Result<(), String> {
     let wanted = arg(4, "genesis");
     let every: u64 = arg(5, "50").parse().unwrap();
     let shots: usize = arg(6, "40").parse().unwrap();
+    let scene = arg(7, "chain");
+    let buried: Option<u32> = match scene.as_str() {
+        "chain" => None,
+        "drain" => Some(0),
+        other => return Err(format!("unknown scene '{other}', expected chain or drain")),
+    };
 
     init(AppInfo {
         name: "animation-shot",
@@ -103,9 +114,14 @@ fn main() -> Result<(), String> {
         })
         .collect::<Vec<PlayerTextures>>();
 
+    // buried before the first shot, so the whole drain is in the run rather than most of it
+    if let Some(player) = buried {
+        themes.animate_game_over(player);
+    }
+
     let per_shot = (every * 1000 / TICK.as_micros() as u64).max(1);
     println!(
-        "{} on {}: {shots} shots, one every {every}ms ({per_shot} ticks)",
+        "{} on {} ({scene}): {shots} shots, one every {every}ms ({per_shot} ticks)",
         "puyo",
         all[index].name()
     );
