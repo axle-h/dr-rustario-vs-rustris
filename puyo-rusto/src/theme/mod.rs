@@ -213,7 +213,7 @@ mod tests {
     /// A theme is dealt out of its own table and every table has something in it, which the
     /// arrays' own types say - so what is left to check is that no *track* is empty, which an
     /// `include_bytes!` of a file the cutting script never wrote would be. A track with no
-    /// lead-in is fine and is what the Genesis theme's four are; a lead-in of no bytes is not.
+    /// lead-in is fine and is what the Genesis theme's three are; a lead-in of no bytes is not.
     #[test]
     fn every_track_a_theme_deals_has_something_in_it() {
         let tracks = GAME_MUSIC

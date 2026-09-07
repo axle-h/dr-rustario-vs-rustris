@@ -157,14 +157,18 @@ SILENT_CHANNEL = 0.01
 # whole seconds and are used as whole seconds: the loop is what `loop_length` starts its search
 # from and the intro is what the answer is checked against, never what is cut.
 #
-# The game's four stage tunes in stage order. Nothing picks between them - a match is dealt one
-# - so the order is only the order they were written in. Every one of them loops from its first
-# bar, which is what the pass and the loop being the same second says and what the search then
+# The game's stage tunes in stage order. Nothing picks between them - a match is dealt one - so
+# the order is only the order they were written in. Every one of them loops from its first bar,
+# which is what the pass and the loop being the same second says and what the search then
 # confirms; the rip's four `... Intro` tracks are the stage announcement screen's music and are
 # not these tunes' lead-ins, so nothing here reaches for them.
+#
+# Three of the game's four. The rip's `07 Stages 5-8` was cut for a while and is gone: it is
+# not a fourth tune but `Stages 1-4` at 7/6 speed, which is what its 27 second pass against the
+# other's 31 is saying. Slowed by 6/7 the two decode to the same length to the sample and
+# correlate at 0.77 across the spectrogram. Do not put it back.
 GENESIS_MUSIC = {
     "stages-1-4": ("05", 31, 31),
-    "stages-5-8": ("07", 27, 26),
     "stages-9-12": ("09", 31, 31),
     "stage-13": ("11", 47, 47),
 }

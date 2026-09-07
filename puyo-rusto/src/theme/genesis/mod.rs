@@ -88,24 +88,27 @@ mod sound {
     /// the continue screen it puts you on
     pub const GAME_OVER: &[u8] = include_bytes!("game-over.ogg");
 
-    /// Each of the four is the whole tune and loops from its first bar, which is why none of
+    /// Each of the three is the whole tune and loops from its first bar, which is why none of
     /// them is a pair. The rip carries a `Stages 1-4 Intro` beside each one and it is not the
     /// head of the tune: it is the stage announcement screen's own music, nine seconds of it,
     /// which the game plays *before* a match. See `art/retro_audio.py`.
+    ///
+    /// The rip's fourth, `Stages 5-8`, is not a fourth tune: it is `stages-1-4` played at 7/6
+    /// speed, and slowing it back down puts the two on the same length to the sample and
+    /// correlates them at 0.77 across the spectrogram. It is not carried.
     pub const STAGES_1_4: &[u8] = include_bytes!("stages-1-4-repeat.ogg");
-    pub const STAGES_5_8: &[u8] = include_bytes!("stages-5-8-repeat.ogg");
     pub const STAGES_9_12: &[u8] = include_bytes!("stages-9-12-repeat.ogg");
     pub const STAGE_13: &[u8] = include_bytes!("stage-13-repeat.ogg");
 }
 
 /// the tracks a match on this theme may be dealt, in the game's own order
 ///
-/// Mean Bean Machine deals its four stage tunes by stage, four stages at a time, so the order
-/// is the game's own. Nothing here picks between them - the engine deals one when a match
-/// opens on this theme.
-pub const GAME_MUSIC: [MusicTrack; 4] = [
+/// Mean Bean Machine deals its stage tunes by stage, four stages at a time, so the order is
+/// the game's own. Nothing here picks between them - the engine deals one when a match opens
+/// on this theme. Three of the game's four, since its `Stages 5-8` is `Stages 1-4` sped up
+/// rather than a tune of its own; see [`sound::STAGES_1_4`].
+pub const GAME_MUSIC: [MusicTrack; 3] = [
     (None, sound::STAGES_1_4),
-    (None, sound::STAGES_5_8),
     (None, sound::STAGES_9_12),
     (None, sound::STAGE_13),
 ];
