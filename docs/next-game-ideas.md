@@ -133,10 +133,10 @@ Recorded here so the next person to have the idea can see it was weighed and why
 
 ## Sources
 
-The Puyo Nexus pages reject automated fetches (HTTP 403) — read them in a browser. Every
-Puyo page that carries a rule has been copied into
-[puyo-nexus-rules.md](puyo-nexus-rules.md), which is the faster way in; the live pages remain
-the authority.
+The Puyo Nexus pages reject automated fetches (HTTP 403) — read them in a browser, or ask Alex
+to fetch one. They are the authority, and every module of `puyo-rusto/src/game/` names the page
+its rules came from. A vendored snapshot of them lived in this directory while that game was
+being written and was deleted once it was; `git log` has it.
 
 **Puyo Puyo**
 

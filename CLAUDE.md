@@ -241,7 +241,10 @@ matches RMS with the peak only as a cap.
 
 ## Docs
 
-* [docs/puyo-nexus-rules.md](docs/puyo-nexus-rules.md) - local copy of the wiki's rule pages.
-  Search it before implementing a Puyo rule, and search for the mechanic rather than the page
-  you expect it on.
-* [docs/particle-scenes.md](docs/particle-scenes.md), [docs/next-game-ideas.md](docs/next-game-ideas.md)
+* [docs/next-game-ideas.md](docs/next-game-ideas.md) - which game comes next, and why every
+  other candidate lost. The only doc left: the implementation plans that carried Puyo Rusto and
+  the particle scenes are done and deleted, and `git log` has them.
+
+**Puyo Nexus rejects automated fetches**, so a Puyo rule has to be read in a browser - ask Alex
+to fetch a page rather than scripting it. Every module of `puyo-rusto/src/game/` names the page
+it came from.

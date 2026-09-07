@@ -111,9 +111,14 @@ pub struct PlayerRegion {
 /// The state of the match handed to the field each frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SceneContext {
-    /// the union of the clips of the players on a particle scene. Because player clips are
+    /// The union of the clips of the players on a particle scene. Because player clips are
     /// vertical slices that tile the window this is always one contiguous rect: the whole
-    /// window, the left half or the right half
+    /// window, the left half or the right half.
+    ///
+    /// **Two players is what makes that true.** With three or more, a retro theme in the
+    /// middle would leave two disjoint halves and the union would cover the board between
+    /// them; every routine is authored against this rect (see [`Self::at`]), so a third board
+    /// is a redesign here and not a parameter.
     pub canvas: RectF,
     pub players: Vec<PlayerRegion>,
     /// the union of the games being played, which picks the sprite set and the palette
