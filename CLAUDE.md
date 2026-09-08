@@ -209,8 +209,10 @@ hand-editing its output:
 * `puyo-rusto/art/sprites.py` - the procedural art the rip replaced, kept as a description of
   what the sheet must contain
 * `rustle-fighter/art/rip.py` - the arcade gems, playfield frame, panel and score face; `check`
-  writes a contact sheet. **The nine power gem masks are synthesised**, because the sheets carry
-  a tiled body texture and a border rather than per-cell art - see the script
+  lays the four colours out as a board and fails if any cell does not sit where blue's does -
+  the red sheet is a pixel over from the other three, which is a rip artefact and shipped once.
+  **The nine power gem masks are synthesised**, because the sheets carry a tiled body texture
+  and a border rather than per-cell art - see the script
 * `rustle-fighter/art/music.py` - the arcade QSound VGZ logs, rendered through Alex's
   `~/projects/vgmplay-libvgm` and split at the loop point the VGM header carries
 * `rustle-fighter/art/sfx.py` - the PlayStation port's effects; the doc comment says how each

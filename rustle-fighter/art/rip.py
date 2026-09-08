@@ -7,11 +7,12 @@ is the record of how the committed sheets were made; re-run it rather than hand-
 it writes.
 
     python3 rustle-fighter/art/rip.py            # cut everything
-    python3 rustle-fighter/art/rip.py check      # ... and write a contact sheet beside it
+    python3 rustle-fighter/art/rip.py check      # ... and write the alignment board beside it
 
-Four gem sheets share one geometry and differ only in their colour and in how they key their
-background: the red sheet is ``Gems.png`` and keys on green, the other three key on magenta.
-That is the one thing the reader has to handle twice.
+Four gem sheets share one geometry and differ only in their colour, in how they key their
+background and in **where the whole sheet sits**: the red sheet is ``Gems.png``, keys on green,
+and every pixel on it is one to the right and one up from where the other three put it. See
+[`SHEETS`] - that offset is what `check` exists to catch, and it was shipped once.
 
 **The power gem is synthesised, and this is the finding that made it necessary.** The plan for
 this game assumed the sheets carried per-cell power gem art that the corner codes could index.
@@ -26,7 +27,7 @@ power gem tile. The art is the arcade's; the *arrangement* into nine cells is ou
 
 import os
 import sys
-from PIL import Image
+from PIL import Image, ImageDraw
 
 RIPS = os.path.expanduser("~/Downloads/Super Puzzle Fighter Art")
 PREFIX = "Arcade - Super Puzzle Fighter 2 Turbo - "
@@ -87,14 +88,22 @@ DIGITS_PER_ROW = 5
 TILES = "Miscellaneous - Character-Specific Background Tiles.png"
 BRICK = (8, 74, 64, 32)
 
+# name, background key, and where the sheet's own grid starts.
+#
+# **The red sheet is laid out one pixel over.** Its art is the same art - matched against blue
+# as a silhouette it agrees on all 347,616 pixels - but the whole sheet is shifted right one
+# and up one. A cut on the grid the other three share therefore takes the red gem sitting a
+# pixel high and a pixel right in its cell: flush to the top and to the right, with a bare row
+# under it, which on a board is a red gem that does not stand where its neighbours do. That is
+# a rip artefact and not something the arcade draws, so it is corrected here in [`load`] rather
+# than in the twenty-odd coordinates below, all of which are measured off blue.
 SHEETS = {
-    # name, background key
-    "blue": ("Miscellaneous - Blue Gems.png", (255, 0, 255)),
-    "yellow": ("Miscellaneous - Yellow Gems.png", (255, 0, 255)),
-    "green": ("Miscellaneous - Green Gems.png", (255, 0, 255)),
-    # the red sheet is the odd one out twice over: it is the unprefixed `Gems.png` and it
-    # keys on green rather than magenta
-    "red": ("Miscellaneous - Gems.png", (0, 255, 0)),
+    "blue": ("Miscellaneous - Blue Gems.png", (255, 0, 255), (0, 0)),
+    "yellow": ("Miscellaneous - Yellow Gems.png", (255, 0, 255), (0, 0)),
+    "green": ("Miscellaneous - Green Gems.png", (255, 0, 255), (0, 0)),
+    # the red sheet is the odd one out three times over: it is the unprefixed `Gems.png`, it
+    # keys on green rather than magenta, and it is the shifted one
+    "red": ("Miscellaneous - Gems.png", (0, 255, 0), (1, -1)),
 }
 
 # the order colours are written in, which is `GemColor`'s own numbering: 1 blue, 2 yellow,
@@ -117,12 +126,16 @@ POWER_MASKS = [
 ]
 
 
-def load(name, key):
-    """One sheet, with its background key turned into real transparency.
+def load(name, key, origin=(0, 0)):
+    """One sheet, keyed to real transparency and slid onto the grid the cuts are measured on.
 
     The key is matched with a little slack rather than exactly. The red sheet is a JPEG-era
     rip and its green has a hundred-odd pixels that are a shade off, which as an exact match
     leaves a fringe of green confetti round the art.
+
+    `origin` is where that sheet's grid begins - see [`SHEETS`]. The sheet is slid back by it,
+    so everything downstream reads one set of coordinates and the shifted sheet is a fact
+    stated once rather than an offset threaded through every cut.
     """
     im = Image.open(os.path.join(RIPS, PREFIX + name)).convert("RGBA")
     px = im.load()
@@ -133,7 +146,11 @@ def load(name, key):
                 key = (r, g, b)
             if max(abs(r - key[0]), abs(g - key[1]), abs(b - key[2])) <= 24:
                 px[x, y] = (0, 0, 0, 0)
-    return im
+    if origin == (0, 0):
+        return im
+    grid = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    grid.paste(im, (-origin[0], -origin[1]))
+    return grid
 
 
 def cell(sheet, at, size=BLOCK):
@@ -186,8 +203,8 @@ def gems():
     columns = 2 + len(POWER_MASKS) + 10
     sheet = Image.new("RGBA", (columns * PITCH, len(COLORS) * PITCH), (0, 0, 0, 0))
     for row, color in enumerate(COLORS):
-        name, key = SHEETS[color]
-        src = load(name, key)
+        name, key, origin = SHEETS[color]
+        src = load(name, key, origin)
         cells = [cell(src, PLAIN_ROW), cell(src, CRASH_ROW)]
         cells += power_cells(src)
         cells += [
@@ -289,6 +306,111 @@ def scene():
     return im.crop((BRICK[0], BRICK[1], BRICK[0] + BRICK[2], BRICK[1] + BRICK[3]))
 
 
+# --- the alignment board -----------------------------------------------------------------
+CHECK_OUT = os.path.normpath(os.path.join(os.path.dirname(__file__), "gems-check.png"))
+CHECK_SCALE = 6
+# the sprite columns of the written sheet, in the order `gems` writes them
+PLAIN, CRASH = 0, 1
+POWER_COLUMNS = [2 + index for index in range(len(POWER_MASKS))]
+DIGIT_COLUMNS = [2 + len(POWER_MASKS) + digit for digit in range(10)]
+
+
+def sprite(sheet, color, column):
+    """one cell off the written sheet, by the same arithmetic `theme/arcade/mod.rs` uses"""
+    x, y = column * PITCH + PAD, COLORS.index(color) * PITCH + PAD
+    return sheet.crop((x, y, x + BLOCK, y + BLOCK))
+
+
+def boxes(sheet):
+    """Where the art actually sits inside every cell of the written sheet.
+
+    The four colours are the same shapes in four palettes, so every colour's cell has to have
+    the same bounding box as blue's. A colour whose sheet is laid out a pixel over reads as a
+    whole row of cells one out, which is exactly what the red sheet did.
+
+    It is a floor and not a proof: a cell with no transparency in it - the power gem body, a
+    counter gem - boxes the same whole 16 square however far over it is cut, and the red sheet
+    tripped only six of its twenty-one cells. The board below is what shows the other fifteen.
+    """
+    out = {}
+    for color in COLORS:
+        for column in range(2 + len(POWER_MASKS) + 10):
+            art = sprite(sheet, color, column)
+            out[(color, column)] = art.getbbox()
+    return out
+
+
+def check(sheet):
+    """Draw the gems on a board, and say which cells do not sit where blue's do.
+
+    The picture is the point. A one pixel shift is invisible on a contact sheet of separated
+    cells and unmissable in a run of gems: the checker underneath is one square to the cell, so
+    a gem that is not centred in its cell shows a fat border on one side and none on the other,
+    and its neighbours' gaps go uneven.
+    """
+    bad = []
+    found = boxes(sheet)
+    for (color, column), box in found.items():
+        want = found[(COLORS[0], column)]
+        if box != want:
+            bad.append(f"    {color} cell {column}: {box}, blue has {want}")
+    print(f"{len(found)} cells, {len(bad)} out of place")
+    for line in bad:
+        print(line)
+
+    # every colour beside and above every other, so a shift shows as an uneven gap
+    def weave(column, height):
+        return [
+            [(COLORS[(x + y) % len(COLORS)], column) for x in range(12)]
+            for y in range(height)
+        ]
+
+    # the nine masks assembled, which is what a 3x3 power gem looks like in play, once per
+    # colour and side by side: a seam between two of the nine shows here and nowhere else
+    power = [
+        [
+            (color, POWER_COLUMNS[index])
+            for color in COLORS
+            for index, (_, _, my) in enumerate(POWER_MASKS)
+            if my == gy
+        ]
+        for gy in range(3)
+    ]
+
+    sections = [
+        ("plain gems", weave(PLAIN, 3)),
+        ("crash gems", weave(CRASH, 2)),
+        ("power gems, one 3x3 a colour", power),
+        ("counter gems", [[(color, column) for column in DIGIT_COLUMNS] for color in COLORS]),
+    ]
+
+    header = 13
+    width = max(len(row) for _, rows in sections for row in rows) * BLOCK
+    height = sum(header + len(rows) * BLOCK for _, rows in sections)
+    board = Image.new("RGBA", (width, height), (16, 16, 22, 255))
+    label = ImageDraw.Draw(board)
+    top = 0
+    for title, rows in sections:
+        label.text((2, top + 1), title, fill=(255, 235, 0, 255))
+        top += header
+        # a checker one square to the cell: a gem is inset a pixel all round, so a gem that is
+        # not centred in its cell shows a fat border on one side and none on the other
+        for y in range(len(rows)):
+            for x in range(width // BLOCK):
+                shade = 88 if (x + y) % 2 else 64
+                at = (x * BLOCK, top + y * BLOCK)
+                board.paste((shade, shade, shade + 12, 255), at + (at[0] + BLOCK, at[1] + BLOCK))
+        for y, row in enumerate(rows):
+            for x, (color, column) in enumerate(row):
+                board.alpha_composite(sprite(sheet, color, column), (x * BLOCK, top + y * BLOCK))
+        top += len(rows) * BLOCK
+
+    board = board.resize((board.width * CHECK_SCALE, board.height * CHECK_SCALE), Image.NEAREST)
+    board.convert("RGB").save(CHECK_OUT)
+    print(f"{CHECK_OUT}  {board.width}x{board.height}  alignment board at {CHECK_SCALE}x")
+    return not bad
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     sheet = gems()
@@ -296,26 +418,19 @@ def main():
     sheet.save(path)
     print(f"{path}  {sheet.width}x{sheet.height}  {len(COLORS)} colours x {sheet.width // PITCH} cells")
 
-    sheet = hud()
+    hud_sheet = hud()
     for name, art in (
-        ("board.png", board_backdrop(sheet)),
-        ("background.png", panel(sheet)),
-        ("font.png", digits(sheet)),
+        ("board.png", board_backdrop(hud_sheet)),
+        ("background.png", panel(hud_sheet)),
+        ("font.png", digits(hud_sheet)),
         ("scene.png", scene()),
     ):
         path = os.path.normpath(os.path.join(OUT, name))
         art.save(path)
         print(f"{path}  {art.width}x{art.height}")
 
-    if "check" in sys.argv:
-        # the same sheet at 4x on a mid grey, which is the only way to see whether a cut
-        # landed on the art or a pixel beside it
-        big = Image.new("RGBA", sheet.size, (96, 96, 110, 255))
-        big.alpha_composite(sheet)
-        big = big.resize((sheet.width * 4, sheet.height * 4), Image.NEAREST)
-        check = os.path.normpath(os.path.join(OUT, "..", "..", "..", "art", "gems-check.png"))
-        big.save(check)
-        print(f"{check}  contact sheet at 4x")
+    if "check" in sys.argv and not check(sheet):
+        raise SystemExit("cells out of place")
 
 
 if __name__ == "__main__":

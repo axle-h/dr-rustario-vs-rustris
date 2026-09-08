@@ -28,8 +28,8 @@ menu-*.png
 # that uses all sixteen link masks, to be looked at
 /puyo-rusto/art/retro-alignment.png
 
-# `rustle-fighter/art/rip.py check` writes this: every gem the theme keys, at 4x on a grey, to
-# be looked at
+# `rustle-fighter/art/rip.py check` writes this: the four colours laid out as a board, so a
+# cell that does not sit where the others do shows as an uneven gap, to be looked at
 /rustle-fighter/art/gems-check.png
 
 # the arcade and PlayStation rips `rustle-fighter/art/` cuts that game out of - the sprite
