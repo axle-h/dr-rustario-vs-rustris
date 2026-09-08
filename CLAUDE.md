@@ -256,7 +256,9 @@ matches RMS with the peak only as a cap.
   are done and deleted, and `git log` has them.
 * [docs/super-puzzle-fighter-rules.md](docs/super-puzzle-fighter-rules.md) - the rules of Super
   Puzzle Fighter II Turbo, read out of the PlayStation port's own executable with Ghidra rather
-  than from strategy guides. Says which findings are certain and which are still open.
+  than from strategy guides. Says which findings are certain and which are still open. **The
+  crash gem throttle in `rustle-fighter/src/game/random.rs` is the one place the game
+  deliberately departs from it**, and its doc comment says why and carries the measurements.
 * [docs/super-rustle-fighter-plan.md](docs/super-rustle-fighter-plan.md) - the *how* for the
   fourth game. Phases 1 (Puyo's rotation into `engine/src/game/pair.rs`), 2 (the headless
   rules) and 4 (the arcade theme, and the menu entry that makes it playable) are done. **The

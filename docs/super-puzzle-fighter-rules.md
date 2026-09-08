@@ -148,18 +148,69 @@ feed the end-of-round bonus — but it is worth confirming.
 
 ## Piece generation **[code]**
 
-`FUN_8012fd78`. Each half of the pair is an independent draw from a **64-entry weighted table**
-at `0x8016D81C`, selected by `+0x292`:
+`FUN_8012fd78`, and it deals in **two phases** — a fact no guide records and the thing that
+makes the opening of a round feel nothing like the middle of one.
+
+**Which phase is `+0xd8`**, an int that `FUN_8012fa20` steps by one every tenth piece (its
+`+0x22d` is a piece counter, reset with `+0xd8` at round start, and `FUN_8012fa20` is called
+from the piece-locked branch of the state handler `FUN_8012f794`, not per frame). It saturates
+at 99. The generator's only test on it is `< 2`, so the split falls at **twenty pieces**.
+
+### The opening — the first twenty pieces
+
+* first half: `(&DAT_8016DA1C)[(rng & 0x1F) + table*0x20]` — eight 32-entry tables that hold
+  **values 1-4 only. No crash gems at all.**
+* second half: `(&DAT_8016DB1C)[rng & 0x1F]` — one 32-entry table shared by all eight biases,
+  of which 12 entries in 32 are crash gems.
+* then both halves are compared with the crash bit stripped (`if (7 < iVar) iVar -= 8`), and if
+  the **colours** match, both are written back as the plain gem. So an opening pair is never a
+  crash gem sitting on its own colour.
+
+That is about **0.28 crash gems a pair** before the drought rule, and the drought is the only
+way the opening's first half is ever a crash gem.
+
+> **`rustle-fighter` does not ship this rate.** The arcade's opening is twenty pieces long and
+> then stops, into a deal that hands you a crash gem in four pairs out of five; the game here
+> holds that opening for the same twenty pairs at one crash gem in twenty, then climbs
+> steadily onto the executable's own rate by pair 160. It is the one deliberate departure from
+> this document and it is documented where it lives, in `rustle-fighter/src/game/random.rs`
+> (`CRASH_GAP_START`), with the measurements. Everything else in this section is transcribed.
+
+### The rest of the round
+
+Each half is an independent draw from a **64-entry weighted table** at `0x8016D81C`, selected
+by `+0x292`:
 
 * first half uses `rng & 0x3F` — the whole table
 * second half uses `rng & 0x1F` — **only the first 32 entries**
 
-The two halves therefore have *different* distributions. Four tables exist, each biasing two of
-the four colours (12 entries each) over the other two (7 each), with crash gems making up
-**40.6% of the first half's draw and 34.4% of the second's** — identical rates in all four
-tables, which differ only in which colours they favour. If both halves come out as the same crash gem, the first half is demoted to the
-normal gem of that colour (`if (a == b && a > 8) a -= 8`), so a pair never self-destructs on
-landing.
+The two halves therefore have *different* distributions. Crash gems are **40.6% of the first
+half's draw and 34.4% of the second's**, so about **0.73 a pair** — two and a half times the
+opening, arriving as one step rather than a ramp.
+
+If both halves come out as the same crash gem, the first half is demoted to the normal gem of
+that colour (`if (a == b && a > 8) a -= 8`), so a pair never self-destructs on landing. This
+runs in both phases.
+
+### The tables — there are eight, not four
+
+`0x8016D81C` is `8 × 64` bytes and `0x8016DA1C` is `8 × 32`, both indexed by `+0x292`. Six of
+the eight bias two of the four colours (12 entries each) over the other two (7 each) — one
+table for each of the six pairs of four colours — and the last two are flat at nine each. The
+biased six hold 26 crash gems in 64 and 11 in their first 32; the flat two hold 28 and 12. The
+opening's eight carry the same six biases and two flat shapes with the crash gems taken out.
+
+**Nothing in the executable writes `+0x292` anything but zero.** The only write is the
+struct-clearing routine `FUN_80123FFC`, and the only other read is `+0x1FA = (+0x292 & 3) + 1`.
+So the PS1 port only ever deals from table 0 — blue and yellow favoured over green and red —
+and the other seven are reachable data with no setter, presumably driven by something the
+arcade set. `rustle-fighter` draws it from the match seed instead and
+fixes it for the whole match.
+
+There is also `DAT_8019C3F2`, checked in the settled branch only: when it is set, a first half
+that came out as a plain gem is promoted to the crash gem of that colour (`if (cVar1 < 7)
++0xF0 = cVar1 + 8`). It is set to 1 in one place (`FUN_80102D7C`) and gates a dozen unrelated
+things elsewhere, so it reads as a mode flag rather than a rule. Not implemented.
 
 **Rainbow gem.** `+0x106` counts pairs dealt and is never reset. When it reaches `+0x108` the
 second half of the pair becomes class `5` and `+0x108` is reloaded from the schedule at
@@ -168,7 +219,8 @@ counted. The schedule runs `25, 50, …, 600` and then jumps: `800, 850, 900, 95
 `9999`, which is to say never again. All twenty-eight entries are transcribed in
 `rustle-fighter/src/game/tables.rs`.
 
-**All four distribution tables are transcribed**, in that same module, along with the eight
+**All sixteen distribution tables are transcribed** — the eight settled and the eight opening
+ones, with the opening's shared second-half table — in that same module, along with the eight
 column orderings and the 11 × 12 × 6 drop pattern table. Every published description of them
 checks out against the bytes: Ryu is six straight columns, Chun-Li six 2×2 blocks, Ken's rows
 alternate colours, Dan's board is one colour, and the Drop Alley is last in all eight orderings.
@@ -176,7 +228,8 @@ alternate colours, Dan's board is one colour, and the Drop Alley is last in all 
 **The drought rule — undocumented anywhere.** `FUN_8012FF2C` counts every gem dealt per colour in
 `+0x26C`…`+0x26F`. When any colour's counter passes 12, it resets and the *next* piece's first
 half is forced to the crash gem of that colour (class 9/10/11/12). You are guaranteed a crash gem
-for whatever colour you have been flooded with.
+for whatever colour you have been flooded with — and in the opening phase this is the *only*
+thing that puts a crash gem in the first half.
 
 ## Piece lifecycle — the state machine **[code]**
 
