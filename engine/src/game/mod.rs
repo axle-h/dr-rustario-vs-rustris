@@ -7,6 +7,7 @@
 
 pub mod geometry;
 pub mod hold;
+pub mod pair;
 pub mod random;
 pub mod timing;
 

@@ -1,79 +1,39 @@
 //! The two-puyo piece the player controls.
 //!
-//! It rhymes with Dr. Rustario's pill - two halves, a pivot, kicks, splitting once it lands -
-//! but the kick rules are Puyo's own, so this is a sibling of `pill.rs` rather than anything
-//! shared with it. The rules here are Puyo Nexus's
-//! [Rotation](https://puyonexus.com/wiki/Rotation), read 2026-08-27:
-//!
-//! * a **floor kick** pushes the whole pair *up* when the cell a puyo is rotating down into is
-//!   taken;
-//! * a **wall kick** pushes it sideways when the cell it is rotating into is a wall or a puyo;
-//! * when the kicked-to cell is taken as well, the rotation is refused and the **double
-//!   rotate** (quick turn) rule takes over: pressing rotate again flips the pair end over end,
-//!   in place, the two halves swapping the cells they already hold.
-//!
-//! One rule is not on that page and is easy to miss: a pair whose pivot is already in the
-//! ghost row may not turn upright at all once the cell it wants is taken - the rotation is
-//! refused rather than kicked anywhere. That is the game's own *current row check*, from
-//! [Rotation, collision and push
-//! back](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Rotation,_collision_and_push_back), and it
-//! is what stops a player shuffling a pair about up in the ghost rows.
+//! Thin: the colours are here and the movement is [`engine::game::pair`]'s, which owns Puyo
+//! Puyo's rotation - the floor and wall kicks, the quick turn, and the ceiling above the
+//! thirteenth row - and cites the pages it was read from. What is left here is what makes the
+//! pair a *puyo* pair: the two colours, the sprites they draw as, and laying them down.
 
-use crate::game::board::{self, Board};
+use crate::game::board::Board;
 use crate::game::cell::{PuyoCell, PuyoColor, PuyoPiece, PuyoSkin};
 use engine::game::geometry::{Point, Rotation};
+use engine::game::pair::PairMotion;
 use engine::game::PlacedCell;
 
-/// where the child sits relative to the pivot, in a `y`-grows-down grid
-fn child_offset(rotation: Rotation) -> Point {
-    match rotation {
-        Rotation::North => Point::new(0, -1),
-        Rotation::East => Point::new(1, 0),
-        Rotation::South => Point::new(0, 1),
-        Rotation::West => Point::new(-1, 0),
-    }
-}
+pub use engine::game::pair::RotateOutcome;
 
-/// What a rotation attempt did, so the game can tell a refused press from a taken one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RotateOutcome {
-    /// turned on the spot
-    Turned,
-    /// turned after the pair was pushed out of the way
-    Kicked,
-    /// flipped end over end, the pair being wedged too tightly to turn
-    QuickTurned,
-    /// nothing was possible; a second press will try the quick turn
-    Blocked,
-}
-
-/// The pair in play: a pivot, a child orbiting it, and the two colours.
+/// The pair in play: where it is, and the two colours.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Pair {
-    pivot: Point,
-    rotation: Rotation,
+    motion: PairMotion,
     piece: PuyoPiece,
-    /// a rotation has already been refused, so the next one may flip the pair instead
-    quick_turn_armed: bool,
 }
 
 impl Pair {
     pub fn new(pivot: Point, piece: PuyoPiece) -> Self {
         Self {
-            pivot,
-            // a pair enters standing up, the child above the pivot
-            rotation: Rotation::North,
+            motion: PairMotion::new(pivot),
             piece,
-            quick_turn_armed: false,
         }
     }
 
     pub fn pivot(&self) -> Point {
-        self.pivot
+        self.motion.pivot()
     }
 
     pub fn rotation(&self) -> Rotation {
-        self.rotation
+        self.motion.rotation()
     }
 
     pub fn piece(&self) -> PuyoPiece {
@@ -81,18 +41,18 @@ impl Pair {
     }
 
     pub fn child(&self) -> Point {
-        self.pivot + child_offset(self.rotation)
+        self.motion.child()
     }
 
     pub fn points(&self) -> [Point; 2] {
-        [self.pivot, self.child()]
+        self.motion.points()
     }
 
     /// the two halves and their colours, pivot first, out of `skin`'s sprites. They always
     /// draw **unlinked**: a pair joins to what it lands next to on lock, never before.
     pub fn cells(&self, skin: PuyoSkin) -> Vec<PlacedCell> {
         vec![
-            (self.pivot, PuyoCell::loose(self.piece.pivot).id(skin)),
+            (self.pivot(), PuyoCell::loose(self.piece.pivot).id(skin)),
             (self.child(), PuyoCell::loose(self.piece.child).id(skin)),
         ]
     }
@@ -102,59 +62,32 @@ impl Pair {
         [self.piece.pivot, self.piece.child]
     }
 
-    /// would the pair fit here, with both halves on the board and on free cells?
-    fn fits(&self, board: &Board, candidate: &Pair) -> bool {
-        candidate.points().iter().all(|point| board.is_free(*point))
-    }
-
-    fn moved(&self, dx: i32, dy: i32) -> Pair {
-        Pair {
-            pivot: self.pivot.translate(dx, dy),
-            ..*self
-        }
-    }
-
     /// slide sideways, if there is room for both halves
     pub fn shift(&mut self, board: &Board, dx: i32) -> bool {
-        let candidate = self.moved(dx, 0);
-        if self.fits(board, &candidate) {
-            self.pivot = candidate.pivot;
-            true
-        } else {
-            false
-        }
+        self.motion.shift(board, dx)
     }
 
     /// step down one row, if there is room
     pub fn fall(&mut self, board: &Board) -> bool {
-        let candidate = self.moved(0, 1);
-        if self.fits(board, &candidate) {
-            self.pivot = candidate.pivot;
-            true
-        } else {
-            false
-        }
+        self.motion.fall(board)
     }
 
     /// nothing below either half: the pair is about to lock
     pub fn is_resting(&self, board: &Board) -> bool {
-        !self.fits(board, &self.moved(0, 1))
+        self.motion.is_resting(board)
     }
 
     /// fall as far as the pair will go, returning how many rows it dropped
     pub fn hard_drop(&mut self, board: &Board) -> u32 {
-        let mut rows = 0;
-        while self.fall(board) {
-            rows += 1;
-        }
-        rows
+        self.motion.hard_drop(board)
     }
 
     /// where the pair would come to rest, for the ghost
     pub fn ghost(&self, board: &Board) -> Pair {
-        let mut ghost = *self;
-        ghost.hard_drop(board);
-        ghost
+        Pair {
+            motion: self.motion.ghost(board),
+            ..*self
+        }
     }
 
     /// Turn a quarter, kicking off the floor or a wall if that is what it takes.
@@ -162,67 +95,7 @@ impl Pair {
     /// Refusing a rotation arms the quick turn, so a second press flips the pair instead -
     /// which is the only way out when it is wedged between two columns.
     pub fn rotate(&mut self, board: &Board, clockwise: bool) -> RotateOutcome {
-        let rotation = self.rotation.rotate(clockwise);
-        let turned = Pair { rotation, ..*self };
-        if self.fits(board, &turned) {
-            self.rotation = rotation;
-            self.quick_turn_armed = false;
-            return RotateOutcome::Turned;
-        }
-
-        // A pair whose pivot is in the ghost row may not turn upright at all once the cell it
-        // wants is taken: the rotation is refused outright rather than pushed anywhere, and it
-        // does not even arm the quick turn. Puyo Nexus, [Rotation, collision and push
-        // back](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Rotation,_collision_and_push_back)
-        // - the current row check, `if(current_row < 2) if(target_cell == bottom || target_cell
-        // == top) exit;`. It is what keeps a player from shoving a pair about up in the ghost
-        // rows, and it is half of Tsu's ceiling: the other half is the board having no
-        // fourteenth row to turn into.
-        if board::is_ghost(self.pivot) && matches!(rotation, Rotation::North | Rotation::South) {
-            return RotateOutcome::Blocked;
-        }
-
-        // push the pair away from whatever the child was turning into: down into the floor
-        // pushes up, into a wall pushes sideways
-        let away = -child_offset(rotation);
-        let kicked = Pair {
-            rotation,
-            pivot: self.pivot + away,
-            ..*self
-        };
-        if self.fits(board, &kicked) {
-            self.pivot = kicked.pivot;
-            self.rotation = rotation;
-            self.quick_turn_armed = false;
-            return RotateOutcome::Kicked;
-        }
-
-        if self.quick_turn_armed {
-            *self = self.quick_turn();
-            return RotateOutcome::QuickTurned;
-        }
-        self.quick_turn_armed = true;
-        RotateOutcome::Blocked
-    }
-
-    /// The double rotate: the two halves swap cells, so the pair flips end over end without
-    /// moving.
-    ///
-    /// Puyo Nexus, [Rotation, collision and push
-    /// back](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Rotation,_collision_and_push_back): "a
-    /// rotation pushes the pair's main puyo upwards, with the slave puyo taking its place at
-    /// the bottom; or the slave puyo ends up at the top with the main puyo being pushed down
-    /// by one cell". Either way the pair ends up on the same two squares with the halves the
-    /// other way round - which is why the page can say that by this point "nothing will cancel
-    /// the rotation". Those two squares are the ones the pair is already standing on, so there
-    /// is nothing left to collide with and this cannot fail.
-    fn quick_turn(&self) -> Pair {
-        Pair {
-            pivot: self.child(),
-            rotation: self.rotation.rotate(true).rotate(true),
-            quick_turn_armed: false,
-            ..*self
-        }
+        self.motion.rotate(board, clockwise)
     }
 
     /// Put both halves on the board where they lie.
@@ -233,7 +106,7 @@ impl Pair {
     /// does, because a pair that lands on flat ground settles nothing and pops nothing, and
     /// nothing else would ever recompute the masks of what it just landed beside.
     pub fn lock(&self, board: &mut Board) {
-        board.set(self.pivot, Some(PuyoCell::loose(self.piece.pivot)));
+        board.set(self.pivot(), Some(PuyoCell::loose(self.piece.pivot)));
         board.set(self.child(), Some(PuyoCell::loose(self.piece.child)));
         board.recompute_links();
     }
@@ -459,10 +332,7 @@ mod tests {
         // the column to the left goes away, and the pair can turn again
         assert_eq!(pair.rotate(&wall, true), RotateOutcome::Kicked);
         // back into the wedge: the first press is refused, not flipped
-        let mut pair = Pair {
-            rotation: Rotation::North,
-            ..pair
-        };
+        let mut pair = pair_at(pair.pivot().x, pair.pivot().y);
         assert_eq!(pair.rotate(&wedge, true), RotateOutcome::Blocked);
     }
 

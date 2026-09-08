@@ -7,6 +7,7 @@
 use crate::game::cell::{LinkMask, PuyoCell, PuyoSkin};
 use crate::game::score::{PoppedGroup, PUYOS_TO_POP};
 use engine::game::geometry::Point;
+use engine::game::pair::PairBoard;
 use engine::game::PlacedCell;
 
 pub const COLUMNS: u32 = 6;
@@ -47,6 +48,20 @@ pub const SPAWN: Point = DEATH_SQUARE;
 /// a ghost will not.
 pub fn is_ghost(point: Point) -> bool {
     point.y < HIDDEN_ROWS as i32
+}
+
+/// The board as [`Pair`](crate::game::pair::Pair)'s movement sees it: which cells are free,
+/// and where the ceiling is.
+impl PairBoard for Board {
+    fn is_free(&self, point: Point) -> bool {
+        Board::is_free(self, point)
+    }
+
+    /// The ghost row is Tsu's ceiling, and refuses an upright rotation outright - see
+    /// [`is_ghost`] and [`engine::game::pair::PairBoard::is_ceiling`].
+    fn is_ceiling(&self, pivot: Point) -> bool {
+        is_ghost(pivot)
+    }
 }
 
 /// the four orthogonal neighbours, paired with the link bit each one sets
