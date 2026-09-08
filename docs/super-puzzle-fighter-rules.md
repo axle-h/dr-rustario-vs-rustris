@@ -163,8 +163,15 @@ landing.
 
 **Rainbow gem.** `+0x106` counts pairs dealt and is never reset. When it reaches `+0x108` the
 second half of the pair becomes class `5` and `+0x108` is reloaded from the schedule at
-`0x8016DB3C`, which reads `25, 50, 75, 100, …, 400`. So the guides are right: **every 25th pair**,
-and now it is sourced rather than counted.
+`0x8016DB3C`. So the guides are right: **every 25th pair**, and now it is sourced rather than
+counted. The schedule runs `25, 50, …, 600` and then jumps: `800, 850, 900, 950`, and then
+`9999`, which is to say never again. All twenty-eight entries are transcribed in
+`rustle-fighter/src/game/tables.rs`.
+
+**All four distribution tables are transcribed**, in that same module, along with the eight
+column orderings and the 11 × 12 × 6 drop pattern table. Every published description of them
+checks out against the bytes: Ryu is six straight columns, Chun-Li six 2×2 blocks, Ken's rows
+alternate colours, Dan's board is one colour, and the Drop Alley is last in all eight orderings.
 
 **The drought rule — undocumented anywhere.** `FUN_8012FF2C` counts every gem dealt per colour in
 `+0x26C`…`+0x26F`. When any colour's counter passes 12, it resets and the *next* piece's first
@@ -291,6 +298,16 @@ get codes `0x30`/`1`, `0x60`/`2`, `0x90`/`4`, `0xC0`/`8`.
 **Merging** (`FUN_801343A4`, `FUN_801340B4`, `FUN_80133DC4`, ~750 bytes each) is the same idea
 applied to two existing gems: it walks from a `1` corner to a `4` corner, requires the corner sum
 to be exactly **30**, and rewrites the union as one gem.
+
+**The sum has to be read as what it means, not as a sum.** Implementing it (2026-09-07) turned
+this up: "the corner codes inside the rectangle sum to 0, 15 or 30" is a compact way of saying
+*every power gem this rectangle touches is wholly inside it, and there are at most two of them* —
+because a whole gem contributes all four of its corners and a partly-covered one contributes some
+other number. Taken literally as a sum it also accepts a rectangle sitting entirely in the
+**middle** of a large power gem, where there are no corners to count at all, and a search that
+does that restamps the same gem for ever. The original never asks that question because its scan
+anchors on a gem's own corner and grows outward. `rustle-fighter/src/game/gems.rs` implements the
+meaning and asserts the sum agrees with it.
 
 **[partial]**: the structure, the caps and the acceptance rule are certain. The exact
 column-by-column growth loop is ~1,700 bytes of pointer arithmetic per function and has not been
@@ -436,7 +453,10 @@ every FAQ reports for that case.
 Three things fall out that no guide states correctly:
 
 * **Damage grows with elapsed round time, not board height.** `+0x1f0` is a seconds counter. Every
-  30 seconds past 75 adds another 10% of `base` to `v`, to a maximum of +120% at 405 seconds. The
+  30 seconds past 75 adds another 10% of `base` to `v`, to a maximum of +120% at 405 seconds.
+  **The threshold comparison is `<=`**, settled 2026-09-07: the two forms written above disagree
+  at exactly the two boundaries this sentence quotes — under a strict `<` the count gives 0 at 75
+  seconds and 11 at 405 — and inclusive is the only reading under which they agree everywhere. The
   guides' "how late in the game" is this, and their "destroying gems high on the screen is worth
   more" is *not* in this function at all.
 * **`L` is a global difficulty/level setting**, worth ×0.8 at its lowest and ×1.5 at its highest.
@@ -612,6 +632,23 @@ The **attack** animations are driven separately and are **[open]**. The inputs a
 and set by the erase pass `FUN_80134A28`: `+0x265` total gems destroyed, `+0x266` best chain,
 `+0x229` current chain, and the six class flags `+0x237`-`+0x23c`, one per erased gem class in the
 8-13 range. Finding the consumer of those flags is the remaining work.
+
+## Confirmed by the art
+
+The arcade sprite rips settled one thing the disassembly had already said, and it is worth
+recording because the two are independent sources:
+
+**The playfield frame's top row is hatched tabs over every column except column 3, which is
+left open.** That is the Drop Alley - the column pieces enter down - arrived at by measuring
+the frame off `Miscellaneous - HUD.png` rather than by reading `DAT_8016E524`. The frame's
+interior is also exactly six columns and thirteen rows at sixteen pixels to the cell, which is
+the board shape this document derives from the census and gravity scans.
+
+**The gem sheets do not carry per-cell power gem art.** They carry a tiled body texture in four
+shine frames plus a top edge row with rounded corner notches, which says the game composites a
+border over a tiled fill at draw time rather than indexing a sprite per corner code. That does
+not change any rule here - the corner codes are a data structure, not a sprite table - but it
+does mean the corner codes are *only* the acceptance rule's arithmetic.
 
 ## What is not mapped yet
 

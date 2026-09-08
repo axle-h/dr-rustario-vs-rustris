@@ -110,8 +110,26 @@ fn main() -> Result<(), String> {
                 puyo_game,
             )
         }
+        "rustle-fighter" => {
+            let themes = leak(rustle_fighter::theme::all_themes(
+                &mut canvas,
+                texture_creator,
+                config,
+            )?);
+            shoot(
+                &mut canvas,
+                texture_creator,
+                themes,
+                config,
+                (width, height),
+                players,
+                &out,
+                &game,
+                rustle_fighter_game,
+            )
+        }
         other => Err(format!(
-            "unknown game '{other}', expected rustris, dr-rustario or puyo"
+            "unknown game '{other}', expected rustris, dr-rustario, puyo or rustle-fighter"
         )),
     }
 }
@@ -265,6 +283,43 @@ fn rustris_game(_player: usize) -> rustris::game::Game {
 
 /// a board part way through: a stack with groups linked up in it, an attack in the tray and,
 /// so the shot carries a clear to replay, play stopped the moment something popped
+/// A board stacked up without being tidied, so the shot shows what this game is *about*: gems
+/// of a colour beside each other, crash gems among them, and - once a rectangle turns up - a
+/// power gem drawn joined across its own cells.
+fn rustle_fighter_game(_player: usize) -> rustle_fighter::game::Game {
+    use engine::game::Game as _;
+    static SEED: std::sync::OnceLock<rustle_fighter::game::random::Seed> =
+        std::sync::OnceLock::new();
+    let seed = *SEED.get_or_init(rustle_fighter::game::random::Seed::random);
+    let mut game = rustle_fighter::game::Game::new(
+        rustle_fighter::game::counter::Fighter::Ryu,
+        rustle_fighter::game::rules::Difficulty::Normal,
+        2,
+        rustle_fighter::game::random::GameRandom::from_seed(seed),
+    );
+    // round the columns from the left, which stacks the board without tidying it
+    for column in (0..rustle_fighter::game::board::COLUMNS as i32)
+        .cycle()
+        .take(70)
+    {
+        for _ in 0..rustle_fighter::game::board::COLUMNS {
+            game.left();
+        }
+        for _ in 0..column {
+            game.right();
+        }
+        game.hard_drop();
+        // let the chain loop finish before the next piece
+        for _ in 0..400 {
+            game.update(Duration::from_millis(16));
+        }
+        game.drain_events();
+    }
+    // and some garbage waiting, so the tray is drawn
+    game.receive_attack(engine::game::Attack::new(rustle_fighter::game::GAME_ID, 4));
+    game
+}
+
 fn puyo_game(player: usize) -> puyo_rusto::game::Game {
     use engine::game::Game as _;
     // three colours make a group turn up in a handful of placements, which is what this shot

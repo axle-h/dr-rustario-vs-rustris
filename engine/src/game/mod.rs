@@ -34,6 +34,7 @@ pub mod ids {
     pub const DR_RUSTARIO: GameId = GameId(1);
     pub const RUSTRIS: GameId = GameId(2);
     pub const PUYO: GameId = GameId(3);
+    pub const RUSTLE_FIGHTER: GameId = GameId(4);
 }
 
 /// A game-private key for how a cell should be drawn, e.g. "red virus" or "left half of a

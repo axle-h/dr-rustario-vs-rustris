@@ -44,6 +44,7 @@ engine = { path = "../engine" }
 dr-rustario = { path = "../dr-rustario" }
 rustris = { path = "../rustris" }
 puyo-rusto = { path = "../puyo-rusto" }
+rustle-fighter = { path = "../rustle-fighter" }
 sdl2.workspace = true
 titlecase.workspace = true
 

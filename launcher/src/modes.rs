@@ -43,6 +43,7 @@ impl<'a> Themes<'a> {
             GameKind::DrRustario => dr_rustario::theme::race_themes(themes),
             GameKind::Rustris => rustris::theme::race_themes(themes),
             GameKind::Puyo => puyo_rusto::theme::race_themes(themes),
+            GameKind::RustleFighter => rustle_fighter::theme::race_themes(themes),
         };
         for theme in race.iter_mut() {
             theme.theme += range.start;
@@ -222,6 +223,7 @@ pub fn game_mode(game: GameKind) -> Box<dyn Mode> {
         GameKind::DrRustario => Box::new(DrRustarioMode::new()),
         GameKind::Rustris => Box::new(RustrisMode::new()),
         GameKind::Puyo => Box::new(PuyoMode::new()),
+        GameKind::RustleFighter => Box::new(RustleFighterMode::new()),
     }
 }
 
@@ -568,6 +570,111 @@ impl Mode for PuyoMode {
     }
 }
 
+/// The mode that plays Super Rustle Fighter on its own.
+///
+/// The shortest of the four, and every gap is a phase of its plan rather than an oversight:
+/// no ai controllers (phase 3), one theme so no theme mode to offer, and no playlist turn -
+/// see `GameKind::PLAYLIST_ORDER`.
+pub struct RustleFighterMode {
+    options: rustle_fighter::options::Options,
+}
+
+impl RustleFighterMode {
+    pub fn new() -> Self {
+        Self {
+            options: rustle_fighter::options::Options::default(),
+        }
+    }
+}
+
+impl Default for RustleFighterMode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Mode for RustleFighterMode {
+    fn title(&self) -> String {
+        "Super Rustle Fighter".to_string()
+    }
+
+    fn menu_sounds(&self) -> MenuSounds {
+        rustle_fighter::theme::MENU_SOUNDS
+    }
+
+    fn race(&self, themes: &Themes) -> Vec<RaceTheme> {
+        themes.race(GameKind::RustleFighter)
+    }
+
+    fn title_items(&self, max_players: u32) -> Vec<MenuItem> {
+        let (players, current) = self.options.players_list(max_players);
+        vec![MenuItem::select_list(PLAYERS, players, current)]
+    }
+
+    fn title_select(&mut self, name: &str, value: &str) {
+        if name == PLAYERS {
+            self.options.select_players(value);
+        }
+    }
+
+    fn menu_items(&self) -> Vec<MenuItem> {
+        self.options.menu_items(false)
+    }
+
+    fn menu_select(&mut self, name: &str, value: &str) {
+        self.options.select(name, value);
+    }
+
+    fn subtitle(&self) -> String {
+        subtitle("", self.options.players()).trim().to_string()
+    }
+
+    fn high_score_key(&self) -> Option<HighScoreKey> {
+        let rules = self.options.rules();
+        Some(HighScoreKey::new(
+            self.title(),
+            rules.name(rustle_fighter::options::STAGE_NOUN),
+            rules.ranking(),
+        ))
+    }
+
+    fn all_high_score_keys(&self) -> Vec<HighScoreKey> {
+        game_high_score_keys(&self.title(), rustle_fighter::options::STAGE_NOUN)
+    }
+
+    fn settings(&self, themes: &Themes) -> MatchSettings {
+        MatchSettings {
+            rules: self.options.rules(),
+            players: (0..self.options.players())
+                .map(|_| PlayerSettings {
+                    themes: themes.range(GameKind::RustleFighter),
+                    theme_mode: self.options.theme_mode(),
+                })
+                .collect(),
+            high_score_key: self.high_score_key(),
+            playlist: false,
+        }
+    }
+
+    fn games(&self) -> Result<Vec<AnyGame>, String> {
+        Ok(self
+            .options
+            .games(self.options.players() as usize)
+            .into_iter()
+            .map(AnyGame::RustleFighter)
+            .collect())
+    }
+
+    fn next_stage(&self, _: &Themes, _: u32, _: u32) -> Option<StageChange<AnyGame>> {
+        None
+    }
+
+    /// **No ai plays this game yet**, so a match is whoever is holding the pads. Phase 3.
+    fn controllers(&self) -> Vec<Controller> {
+        vec![]
+    }
+}
+
 // ---------------------------------------------------------------- Versus
 
 const PLAYLIST: &str = "playlist";
@@ -716,6 +823,10 @@ impl VersusAi {
                     })
                     .collect()
             }
+            // no ai fields this game yet - phase 3 of its plan - so it fields none here
+            // either. It is not on `PLAYLIST_ORDER` for the same reason, so nothing that
+            // deals a playlist ever reaches this arm.
+            GameKind::RustleFighter => vec![],
         }
     }
 
@@ -726,8 +837,12 @@ impl VersusAi {
     /// them to - so an ai player is one brain from each game's list. A game joining the
     /// compendium adds a brain to each player rather than a dimension to this.
     fn brains(&self) -> Vec<(u32, Vec<Box<dyn AiBrain>>)> {
+        // only the games that field an ai: one that does not would contribute no brains and
+        // take the `min` below to zero, which is every ai player in the compendium vanishing
+        // because a fourth game has not got one yet
         let mut per_game: Vec<std::vec::IntoIter<(u32, Box<dyn AiBrain>)>> = GameKind::ALL
             .into_iter()
+            .filter(|game| game.fields_an_ai())
             .map(|game| self.ai_players(game).into_iter())
             .collect();
         let players = per_game.iter().map(|game| game.len()).min().unwrap_or(0);
@@ -1077,6 +1192,9 @@ impl Difficulty {
             // inside it - it is past `rules::MAX_START_LEVEL`, which is what Puyo's own
             // menu offers rather than a bound on the game
             GameKind::Puyo => self.0,
+            // one speed step per dial step, the same as Puyo's - the two games' pairs fall on
+            // the same ladder, so their dials read the same
+            GameKind::RustleFighter => self.0,
         }
     }
 
@@ -1239,6 +1357,23 @@ impl VersusMode {
                             self.difficulty.level(kind),
                             rand,
                             skin,
+                        ))
+                    })
+                    .collect()
+            }
+            // Every board is dealt the same sequence, which is this game's own rule: the
+            // fighter decides only what the *opponent's* garbage looks like, so two boards of
+            // one match are the same game twice.
+            GameKind::RustleFighter => {
+                let fighter = rustle_fighter::game::counter::Fighter::default();
+                let difficulty = rustle_fighter::game::rules::Difficulty::default();
+                (0..count)
+                    .map(|_| {
+                        AnyGame::RustleFighter(rustle_fighter::game::Game::new(
+                            fighter,
+                            difficulty,
+                            self.difficulty.level(kind),
+                            rustle_fighter::game::random::GameRandom::from_seed(seed),
                         ))
                     })
                     .collect()
@@ -1499,6 +1634,9 @@ mod tests {
                 .iter()
                 .map(|d| d.name())
                 .collect(),
+            // no ai fields this game yet, so it offers no difficulties to agree with the
+            // others about - phase 3 of its plan, and the test below skips an empty list
+            GameKind::RustleFighter => vec![],
         }
     }
 
@@ -1533,9 +1671,15 @@ mod tests {
         .collect()
     }
 
+    /// every mode that has an ai offers the same opponents and demos under the same names
     #[test]
     fn every_mode_offers_the_same_ai_opponents_and_demos() {
-        for mode in all_modes() {
+        let modes = GameKind::ALL
+            .into_iter()
+            .filter(|game| game.fields_an_ai())
+            .map(game_mode)
+            .chain([Box::new(VersusMode::new()) as Box<dyn Mode>]);
+        for mode in modes {
             assert_eq!(
                 mode.title_items(2),
                 vec![MenuItem::select_list(PLAYERS, ai_players_list(), 0)],
@@ -1551,7 +1695,7 @@ mod tests {
     fn ai_difficulties_agree() {
         let versus: Vec<&str> = AiDifficulty::ALL.iter().map(|d| d.name()).collect();
         assert_eq!(versus, vec!["easy", "normal", "hard", "impossible"]);
-        for game in GameKind::ALL {
+        for game in GameKind::ALL.into_iter().filter(|g| g.fields_an_ai()) {
             assert_eq!(ai_difficulty_names(game), versus, "{game:?}");
         }
     }
@@ -1604,8 +1748,9 @@ mod tests {
                 .collect::<Vec<u32>>(),
             vec![0, 1]
         );
+        let with_ai = GameKind::ALL.iter().filter(|g| g.fields_an_ai()).count();
         for (player, brains) in brains.iter() {
-            assert_eq!(brains.len(), GameKind::COUNT, "player {player}");
+            assert_eq!(brains.len(), with_ai, "player {player}");
         }
     }
 
@@ -1641,7 +1786,11 @@ mod tests {
 
         // every game in turn, and then back to the first: a brain has to survive its board
         // being taken away and given back
-        let dealt = GameKind::ALL.into_iter().chain([GameKind::ALL[0]]);
+        let with_ai: Vec<GameKind> = GameKind::ALL
+            .into_iter()
+            .filter(|game| game.fields_an_ai())
+            .collect();
+        let dealt = with_ai.clone().into_iter().chain([with_ai[0]]);
         for kind in dealt {
             let mut played = mode.new_games(kind, 1, 0).unwrap().pop().unwrap();
             let mut alone = mode.new_games(kind, 1, 0).unwrap().pop().unwrap();
@@ -1903,7 +2052,7 @@ mod tests {
 
     #[test]
     fn picking_an_ai_opponent_puts_the_agent_on_player_two() {
-        for game in GameKind::ALL {
+        for game in GameKind::ALL.into_iter().filter(|g| g.fields_an_ai()) {
             let mut mode = game_mode(game);
             assert!(mode.controllers().is_empty(), "{game:?}");
 
@@ -2198,6 +2347,7 @@ mod tests {
                 GameKind::DrRustario => vec![2, 5],
                 GameKind::Rustris => vec![0, 1],
                 GameKind::Puyo => vec![4, 6],
+                GameKind::RustleFighter => vec![0],
             }),
             Dealt::default(),
         );
@@ -2225,6 +2375,7 @@ mod tests {
                 GameKind::DrRustario => vec![0, 1, 2, 3],
                 GameKind::Rustris => vec![0, 1, 2, 3],
                 GameKind::Puyo => vec![0, 1, 2],
+                GameKind::RustleFighter => vec![0],
             }),
             Dealt::default(),
         );

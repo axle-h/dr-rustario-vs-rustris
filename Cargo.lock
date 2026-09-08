@@ -206,6 +206,7 @@ dependencies = [
  "engine",
  "image",
  "puyo-rusto",
+ "rustle-fighter",
  "rustris",
  "sdl2",
  "titlecase",
@@ -688,6 +689,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "rustle-fighter"
+version = "1.0.0"
+dependencies = [
+ "engine",
+ "image",
+ "rand",
+ "rand_chacha",
+ "sdl2",
+ "strum",
+ "strum_macros",
 ]
 
 [[package]]

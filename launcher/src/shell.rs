@@ -125,6 +125,7 @@ fn theme_count() -> u32 {
             GameKind::DrRustario => dr_rustario::game::rules::MatchThemes::count(),
             GameKind::Rustris => rustris::game::rules::MatchThemes::count(),
             GameKind::Puyo => puyo_rusto::game::rules::MatchThemes::count(),
+            GameKind::RustleFighter => rustle_fighter::game::rules::MatchThemes::count(),
         })
         .sum::<usize>() as u32
 }
@@ -163,6 +164,9 @@ impl Shell {
                 }
                 GameKind::Puyo => {
                     puyo_rusto::theme::all_themes_with_progress(canvas, tc, config, built)?
+                }
+                GameKind::RustleFighter => {
+                    rustle_fighter::theme::all_themes_with_progress(canvas, tc, config, built)?
                 }
             });
             ranges.push(start..all.len());

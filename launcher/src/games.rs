@@ -14,19 +14,29 @@ pub enum GameKind {
     DrRustario,
     Rustris,
     Puyo,
+    RustleFighter,
 }
 
 impl GameKind {
     /// every game the launcher can run, in the order they are numbered. This is the key of
     /// every per-game collection - see [`PerGame`] - and the order the themes are built in,
     /// so a game's themes keep one place in the shared list.
-    pub const ALL: [GameKind; 3] = [GameKind::DrRustario, GameKind::Rustris, GameKind::Puyo];
+    pub const ALL: [GameKind; 4] = [
+        GameKind::DrRustario,
+        GameKind::Rustris,
+        GameKind::Puyo,
+        GameKind::RustleFighter,
+    ];
 
     /// the order the games are billed in: the pre-menu's list, and the turns a fixed versus
     /// playlist takes. Rustris opens, which is a decision about presentation rather than
     /// about how the games are numbered, so it is its own list.
-    pub const RUNNING_ORDER: [GameKind; 3] =
-        [GameKind::Rustris, GameKind::DrRustario, GameKind::Puyo];
+    pub const RUNNING_ORDER: [GameKind; 4] = [
+        GameKind::Rustris,
+        GameKind::DrRustario,
+        GameKind::Puyo,
+        GameKind::RustleFighter,
+    ];
 
     /// The games a versus playlist *can* deal, in the order it deals them.
     ///
@@ -39,6 +49,11 @@ impl GameKind {
     /// order - so everything that deals a stage reads `VersusMode`'s selection (see
     /// `modes::Dealt`) rather than this list. Anyone who wants the old two-game compendium
     /// unticks Puyo Rusto.
+    ///
+    /// **Super Rustle Fighter is not on it yet.** It has its theme and its rules and is
+    /// playable on its own; what it does not have is an ai to take a turn against, or the six
+    /// measured crossings a fourth game adds - and `ga cross` cannot measure those until the
+    /// ai exists, since it prices a game by playing it. Phases 3 and 5 of its plan.
     pub const PLAYLIST_ORDER: &'static [GameKind] =
         &[GameKind::Rustris, GameKind::DrRustario, GameKind::Puyo];
 
@@ -50,7 +65,22 @@ impl GameKind {
             GameKind::DrRustario => "dr. rustario",
             GameKind::Rustris => "rustris",
             GameKind::Puyo => "puyo rusto",
+            GameKind::RustleFighter => "super rustle fighter",
         }
+    }
+
+    /// Does this game field an ai at all?
+    ///
+    /// Every one of them does except Super Rustle Fighter, which is phase 3 of its plan. It
+    /// is the same fact that keeps that game off [`Self::PLAYLIST_ORDER`] - a playlist turn
+    /// is taken against an ai - but it is said separately because they are two claims and the
+    /// first will stop being true before the second does.
+    ///
+    /// Everything that offers ai opponents, demos or difficulties asks this rather than
+    /// assuming, which is what stops a game without one being offered an opponent that does
+    /// not exist.
+    pub fn fields_an_ai(self) -> bool {
+        !matches!(self, GameKind::RustleFighter)
     }
 
     /// this game's slot in a [`PerGame`]
@@ -113,6 +143,7 @@ pub enum AnyGame {
     DrRustario(dr_rustario::game::Game),
     Rustris(rustris::game::Game),
     Puyo(puyo_rusto::game::Game),
+    RustleFighter(rustle_fighter::game::Game),
 }
 
 macro_rules! delegate {
@@ -121,6 +152,7 @@ macro_rules! delegate {
             AnyGame::DrRustario($game) => $body,
             AnyGame::Rustris($game) => $body,
             AnyGame::Puyo($game) => $body,
+            AnyGame::RustleFighter($game) => $body,
         }
     };
 }
@@ -133,6 +165,7 @@ impl AnyGame {
             AnyGame::DrRustario(_) => GameKind::DrRustario,
             AnyGame::Rustris(_) => GameKind::Rustris,
             AnyGame::Puyo(_) => GameKind::Puyo,
+            AnyGame::RustleFighter(_) => GameKind::RustleFighter,
         }
     }
 }
@@ -436,6 +469,7 @@ mod tests {
             GameKind::DrRustario => engine::game::ids::DR_RUSTARIO,
             GameKind::Rustris => engine::game::ids::RUSTRIS,
             GameKind::Puyo => engine::game::ids::PUYO,
+            GameKind::RustleFighter => engine::game::ids::RUSTLE_FIGHTER,
         };
         match sender {
             GameKind::DrRustario => dr_rustario::game::foreign_attack(id(receiver), 3),
@@ -448,20 +482,28 @@ mod tests {
                 },
             ),
             GameKind::Puyo => puyo_rusto::game::foreign_attack(id(receiver), 60),
+            // it has no `foreign_attack` because it cannot yet be dealt into a playlist, and
+            // so has no crossing to price - see `PLAYLIST_ORDER`
+            GameKind::RustleFighter => 0,
         }
     }
 
-    /// **Every one of the six crossings is priced.**
+    /// **Every crossing two games can actually make is priced.**
     ///
     /// An unpriced pair is worth nothing and the attack is dropped at the border - which is
     /// the safe default and is also completely silent, since nothing arriving looks exactly
     /// like nothing being sent. The game crates are siblings and none of them can see this
-    /// table, so this is the only place the whole of it can be checked at once. A fourth game
-    /// adds six more pairs and this test asks for every one of them.
+    /// table, so this is the only place the whole of it can be checked at once.
+    ///
+    /// It walks [`GameKind::PLAYLIST_ORDER`] rather than `ALL`, and the difference is the
+    /// point: a crossing only exists between two games a playlist can deal into the same
+    /// match, and a game that no playlist deals can neither send an attack abroad nor receive
+    /// one. Super Rustle Fighter is playable on its own and is not on that list, so it has no
+    /// crossings to price - and the moment it joins, this test asks for all six of them.
     #[test]
     fn every_crossing_between_two_games_is_priced() {
-        for sender in GameKind::ALL {
-            for receiver in GameKind::ALL {
+        for sender in GameKind::PLAYLIST_ORDER.iter().copied() {
+            for receiver in GameKind::PLAYLIST_ORDER.iter().copied() {
                 if sender == receiver {
                     continue;
                 }

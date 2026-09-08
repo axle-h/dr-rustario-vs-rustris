@@ -57,6 +57,7 @@ fn game_id(game: GameKind) -> GameId {
         GameKind::DrRustario => ids::DR_RUSTARIO,
         GameKind::Rustris => ids::RUSTRIS,
         GameKind::Puyo => ids::PUYO,
+        GameKind::RustleFighter => ids::RUSTLE_FIGHTER,
     }
 }
 
@@ -68,7 +69,8 @@ fn game_id(game: GameKind) -> GameId {
 fn cells_per_unit(game: GameKind) -> u32 {
     match game {
         GameKind::Rustris => 9,
-        GameKind::DrRustario | GameKind::Puyo => 1,
+        // a Dr. Rustario garbage block, a nuisance puyo and a counter gem are one cell each
+        GameKind::DrRustario | GameKind::Puyo | GameKind::RustleFighter => 1,
     }
 }
 

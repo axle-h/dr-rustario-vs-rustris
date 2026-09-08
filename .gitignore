@@ -28,6 +28,15 @@ menu-*.png
 # that uses all sixteen link masks, to be looked at
 /puyo-rusto/art/retro-alignment.png
 
+# `rustle-fighter/art/rip.py check` writes this: every gem the theme keys, at 4x on a grey, to
+# be looked at
+/rustle-fighter/art/gems-check.png
+
+# the arcade and PlayStation rips `rustle-fighter/art/` cuts that game out of - the sprite
+# sheets, the 23 QSound VGZ logs and the thirteen zips of effect WAVs - on the same footing as
+# every other rip here: spriters-resource downloads under their own names, kept locally.
+# `~/Downloads/Super Puzzle Fighter Art/` by default; the scripts say so.
+
 # the three retro rips `puyo-rusto/art/rip_retro.py` cuts the retro themes out of, and the roms
 # the board geometry was measured against. Kept locally rather than carried, on the same
 # footing as the Puyo Puyo Tetris sheet above: they are spriters-resource downloads under their

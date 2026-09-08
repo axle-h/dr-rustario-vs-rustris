@@ -2,7 +2,14 @@
 
 The fourth game: Capcom's *Super Puzzle Fighter II Turbo*, as the PlayStation port plays it.
 
-**Status: planned. Not started.** No code exists. This document is the *how*; the *what* is
+**Status: phases 1, 2 and 4 done — the game is playable.** It has a menu entry of its own, the
+arcade theme, its music and effects, and a fighter row that is its character select. **Phase 3,
+the ai, is what is left**, and phase 5 with it: a playlist turn and the six new crossings both
+wait on it, since `ga cross` prices a game by playing it. Phase 4 was taken before phase 3
+deliberately - the plan's own risk note says to play the game before building an ai against it,
+and that could not be done until there was something to play.
+
+This document is the *how*; the *what* is
 [super-puzzle-fighter-rules.md](super-puzzle-fighter-rules.md), read out of the game's own
 executable, and [next-game-ideas.md](next-game-ideas.md) is the status board.
 
@@ -150,13 +157,39 @@ over a new trait method, and trust the tests in `launcher/src/games.rs` to catch
 
 Each phase ends somewhere playable or measurable. Do not start the next until the current one is.
 
-**1 — engine changes.** The rotation move, in its own commit. *Done when:* Puyo Rusto's tests pass
-unchanged and `cargo test` is green.
+**1 — engine changes. Done.** `engine/src/game/pair.rs` holds `PairMotion` and a `PairBoard`
+trait with two questions - is this cell free, and is this row the ceiling - so a game supplies
+its board and keeps its own piece type. Puyo Rusto's `Pair` is now the colours and the lock
+around one; its 253 tests pass unchanged, which is the proof the move asked for. The ceiling
+became a trait method rather than a hard-coded ghost row: Puyo answers yes for its thirteenth,
+and a board with no such row says nothing and gets the ordinary kick.
 
-**2 — headless rules.** Board, cells, pair, crash resolution, chains, power gems, counter gems and
-countdown, scoring and damage. No rendering. *Done when:* unit tests reproduce the four numbers the
-rules doc gives exactly — a 4-gem crash sends 4, twelve loose gems score 1410, the first All Clear
-sends 6, a 24-gem defended break cancels fully.
+**2 — headless rules. Done.** `rustle-fighter/src/game/` — `board`, `cell`, `pair`, `gems`,
+`counter`, `score`, `random`, and `tables`, which is the extracted data on its own because it is
+evidence. All four numbers are pinned by tests: a 4-gem crash sends 4, twelve loose gems score
+1410, the first All Clear sends 6 (and the second 12), a 24-gem defended break cancels fully.
+
+Three things it turned up, all recorded in the rules doc:
+
+* **The tables are extracted, not paraphrased.** The plan said they were "already sitting in the
+  rules doc" and they were not — the doc gives their addresses and describes their shape. They
+  are now read out of `SLUS_004.18` directly into `tables.rs`, and every published description
+  of them checks out: Ryu is six straight columns, Chun-Li six 2x2 blocks, Ken's rows alternate,
+  the Drop Alley is last in all eight column orderings, and every distribution table is 26 crash
+  gems in 64 and 11 in its first 32.
+* **The time tier's comparison is `<=`.** The rules doc gives it two ways and they disagree at
+  the two boundaries it quotes in prose, 75 and 405 seconds. Inclusive is the reading that makes
+  both forms agree everywhere.
+* **The corner-code sum needs saying as what it means.** Summing the corners inside a candidate
+  rectangle is a compact way of saying "every power gem this touches is wholly inside it, and
+  there are at most two" — but read as a bare sum it also accepts a rectangle sitting in the
+  *middle* of a large gem, where there are no corners to count, and restamps it for ever. The
+  original never asks that question because its scan starts at a gem's own corner. `gems.rs`
+  tests the meaning and asserts the sum agrees with it.
+
+**A defaulted rule is recorded rather than guessed**: what sets `+0x292`, the gem distribution
+table, is not read, so it is drawn from the match seed and fixed for the whole match — which is
+the compendium's own rule that `speed_index` may change how a game feels but never what it deals.
 
 **3 — the ai.** Placement search and evaluation. Power gems make this genuinely different from the
 other three: the interesting move is often *not* to break. Puyo Rusto's beam search over a hand
@@ -164,7 +197,39 @@ written evaluation is the closest sibling and the place to start; no neural mode
 *Done when:* a difficulty ladder exists and is **measured**, the way `ga puyo rank` measures Puyo's
 rather than assuming it.
 
-**4 — arcade theme and the fighter layer.** The ripped sprites, panel geometry measured against
+**4 — arcade theme. Done, and the fighter layer is not.** `rustle-fighter/src/theme/arcade/`,
+cut by `art/rip.py`, `art/music.py` and `art/sfx.py`, plus the `AnyGame` arm and menu entry that
+phase 5 was going to add - because a theme nobody can reach is not a theme anyone can judge.
+What went in: the gems, the playfield frame, the NEXT box, the score plate and face, the brick
+wall, seven arcade stage themes as loop pairs, the character select tune over the menus, and
+thirteen effects. What did not: the seven fighters and their animation states, and the arcade's
+own CAUTION / WARNING / DANGER plates, which are cut but unused - the engine's tray of icons
+says the same thing more precisely and the plates are left for the fighter layer.
+
+Five things it settled:
+
+* **The sheets do not carry per-cell power gem art**, which this plan assumed they did ("the
+  multi-cell rectangle has real art behind it and is not something we have to synthesise").
+  What they carry is a tiled body texture in four shine frames and a top edge row with rounded
+  corner notches: the arcade composites a border over a tiled fill at draw time, at whatever
+  size the rectangle is. Our renderer is one snip per cell, so `art/rip.py` builds a 3x3
+  template out of the sheet's own 2x2 tile - its four quadrants are the four corners, the
+  cornerless middles of its edges are the edge cells - and cuts the nine masks from that. Every
+  pixel is the arcade's; the arrangement is ours.
+* **Nine masks, not sixteen.** Every cell of a rectangle at least two on a side is
+  (top | middle | bottom) x (left | middle | right). `PowerMask::REACHABLE` is that list, and a
+  test decodes the cut sheet to hold the script and the theme to it.
+* **The frame confirms the Drop Alley.** Its top row is hatched tabs over every column *except*
+  column 3, which is open - the same fact the disassembly gave, arrived at independently.
+* **The panel layout is composed, not measured**, and that is a departure from the house rule.
+  Every other retro theme's geometry was measured against the emulated game; this one could not
+  be, so the theme arranges the arcade's own furniture rather than reproducing where the arcade
+  puts it. The *board* is exact, straight off the frame. The theme module says so at the top.
+* **Character select is a menu row**, which closes the one shell question left open. A row is
+  what the choice actually is, and the arcade's select screen is as much about picking an
+  opponent - a Street Puzzle mode thing, and out of scope.
+
+**4b — the fighter layer**, still to do. The ripped sprites, panel geometry measured against
 the real thing, and the full character animation layer: seven fighters, every labelled state on the
 sheets, driven by `engine/src/animate/character.rs`. Both halves are specified: board fill drives
 Idle / Disadvantage 1 / Disadvantage 2 with Advantage for a buried opponent, and the attack
@@ -173,8 +238,14 @@ with a floor of 1. *Done when:* `character_shot` renders
 all seven casts, and `frame_shot` and `animation_shot` render a match that reads as the arcade game
 does. This is now the *only* theme, so it is also the phase that makes the game playable at all.
 
-**5 — the playlist.** `AnyGame` arm, `GameId`, the twelve crossings re-measured with `ga cross`,
-high score table for the single-game mode.
+**5 — the playlist.** The `AnyGame` arm, the `GameId` and the high score table came forward into
+phase 4, because a game with no menu entry cannot be played. What is left of this phase is the
+part that needs an ai: a place in `GameKind::PLAYLIST_ORDER`, and the twelve crossings
+re-measured with `ga cross`.
+
+`every_crossing_between_two_games_is_priced` now walks `PLAYLIST_ORDER` rather than `ALL`, and
+the difference is the point: a crossing only exists between two games a playlist can deal into
+one match. The moment this game joins that list the test asks for all six of its prices.
 
 ## Art and audio
 
@@ -298,12 +369,9 @@ repository, exactly as the existing themes do.
 
 ## Open decisions
 
-Character select, the seven-character roster, the full animation layer and the arcade-only theme
-were all decided 2026-09-07 and are folded into *Scope*. What is left is one shell question:
-
-**Where character select lives** — a screen of its own (the art is in
-`Player Select, Mode Select & Level Select Screens.png`) or a row on the existing menu the way a
-theme is picked. Not a rules question; it can wait until phase 4.
+None. Character select, the seven-character roster, the full animation layer and the arcade-only
+theme were all decided 2026-09-07 and are folded into *Scope*; **where character select lives**
+was the last one and phase 4 answered it — a row on the menu, for the reasons above.
 
 ### Resolved while planning, recorded so it is not re-litigated
 

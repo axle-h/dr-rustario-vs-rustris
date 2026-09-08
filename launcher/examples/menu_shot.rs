@@ -9,6 +9,7 @@ use dr_rustario::options::Options as DrOptions;
 use engine::app_info::{init, AppInfo};
 use engine::menu::{Menu, MenuItem};
 use puyo_rusto::options::Options as PuyoOptions;
+use rustle_fighter::options::Options as RustleFighterOptions;
 use rustris::options::Options as RustrisOptions;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::WindowCanvas;
@@ -70,6 +71,21 @@ impl MenuOptions for PuyoOptions {
     }
 }
 
+impl MenuOptions for RustleFighterOptions {
+    fn set_players(&mut self, players: u32) {
+        RustleFighterOptions::set_players(self, players);
+    }
+    fn select(&mut self, name: &str, value: &str) {
+        RustleFighterOptions::select(self, name, value);
+    }
+    fn items(&self) -> Vec<MenuItem> {
+        self.menu_items(false)
+    }
+    fn theme_names(&self) -> Vec<&'static str> {
+        rustle_fighter::game::rules::MatchThemes::names()
+    }
+}
+
 /// every game whose menus are walked: the file name it is shot under, its title, and its
 /// options
 fn all_games() -> Vec<(&'static str, &'static str, Box<dyn MenuOptions>)> {
@@ -88,6 +104,11 @@ fn all_games() -> Vec<(&'static str, &'static str, Box<dyn MenuOptions>)> {
             "puyo",
             "Puyo Rusto",
             Box::new(PuyoOptions::default()) as Box<dyn MenuOptions>,
+        ),
+        (
+            "rustle-fighter",
+            "Super Rustle Fighter",
+            Box::new(RustleFighterOptions::default()) as Box<dyn MenuOptions>,
         ),
     ]
 }

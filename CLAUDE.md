@@ -8,6 +8,7 @@
 | `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), its four themes and its AI |
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), its four themes and its AI |
 | `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, nuisance), its three themes and its AI |
+| `rustle-fighter/` | Super Rustle Fighter's rules (gems, crashes, power gems, counter gems), its one arcade theme and its options. **Playable on its own; no AI and no playlist turn yet** - [docs/super-rustle-fighter-plan.md](docs/super-rustle-fighter-plan.md) is where it is up to |
 | `launcher/` | the `dr-rustario-vs-rustris` binary: `shell.rs` (screens), `games.rs` (`AnyGame`), `modes.rs` (playlists), `cross.rs` (`ga cross`, which prices the attacks between the games) |
 
 Game crates are siblings and never depend on each other; anything shared goes in `engine`.
@@ -207,6 +208,13 @@ hand-editing its output:
 * `puyo-rusto/art/mugshots.py`, `kirby.py` - characters; both print the Rust table to paste back
 * `puyo-rusto/art/sprites.py` - the procedural art the rip replaced, kept as a description of
   what the sheet must contain
+* `rustle-fighter/art/rip.py` - the arcade gems, playfield frame, panel and score face; `check`
+  writes a contact sheet. **The nine power gem masks are synthesised**, because the sheets carry
+  a tiled body texture and a border rather than per-cell art - see the script
+* `rustle-fighter/art/music.py` - the arcade QSound VGZ logs, rendered through Alex's
+  `~/projects/vgmplay-libvgm` and split at the loop point the VGM header carries
+* `rustle-fighter/art/sfx.py` - the PlayStation port's effects; the doc comment says how each
+  slot was chosen, since nobody here can listen to them
 * `dr-rustario/art/build_doc.py` - the feature-reference page
 * `engine/art/audio_levels.py` - the whole app's audio meter; see below
 
@@ -248,7 +256,10 @@ matches RMS with the peak only as a cap.
   Puzzle Fighter II Turbo, read out of the PlayStation port's own executable with Ghidra rather
   than from strategy guides. Says which findings are certain and which are still open.
 * [docs/super-rustle-fighter-plan.md](docs/super-rustle-fighter-plan.md) - the *how* for the
-  fourth game, planned and not started.
+  fourth game. Phases 1 (Puyo's rotation into `engine/src/game/pair.rs`), 2 (the headless
+  rules) and 4 (the arcade theme, and the menu entry that makes it playable) are done. **The
+  ai is what is left**, and with it the playlist turn and the six new crossings, which cannot
+  be measured until it exists.
 
 **Puyo Nexus rejects automated fetches**, so a Puyo rule has to be read in a browser - ask Alex
 to fetch a page rather than scripting it. Every module of `puyo-rusto/src/game/` names the page

@@ -80,6 +80,9 @@ THEMES = {
     "puyo/genesis": ("puyo-rusto/src/theme/genesis",) * 2,
     "puyo/snes": ("puyo-rusto/src/theme/snes",) * 2,
     "puyo/particle": ("puyo-rusto/src/theme/music", "puyo-rusto/src/theme/sfx"),
+    # one folder holds this theme's music, its effects and its menu tune alike - it has one
+    # theme and cut all of it in one place
+    "rustle-fighter/arcade": ("rustle-fighter/src/theme/arcade",) * 2,
     "menu/engine-modern": ("engine/src/menu/modern",) * 2,
     "menu/engine-retro": ("engine/src/menu/retro",) * 2,
     "menu/puyo": ("puyo-rusto/src/theme/menu",) * 2,
@@ -97,6 +100,9 @@ TRIMS = [
     ("puyo/particle", "puyo-rusto/src/theme/data.rs", "PARTICLE_GAIN", "EFFECTS_TRIM"),
     ("menu/puyo", "puyo-rusto/src/theme/data.rs", "MENU_GAIN", None),
     ("rustris/particle", "rustris/src/theme/data.rs", None, "PARTICLE_EFFECTS"),
+    # levelled by its own scripts rather than at build time, so the gain is a plain hundred
+    # and there is no effects trim - see `rustle-fighter/src/theme/data.rs`
+    ("rustle-fighter/arcade", "rustle-fighter/src/theme/data.rs", "ARCADE_GAIN", None),
 ]
 
 

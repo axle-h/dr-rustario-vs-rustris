@@ -15,7 +15,7 @@ This board is authoritative. Do not start a second game while one is in progress
 | Game | Status | Plan |
 |---|---|---|
 | **Puyo Puyo** (Tsu ruleset) | **done** — shipped as `puyo-rusto` | — |
-| **Super Puzzle Fighter II Turbo** — shipping as *Super Rustle Fighter II Turbo* | **planned**, not started | [plan](super-rustle-fighter-plan.md) · [rules](super-puzzle-fighter-rules.md) |
+| **Super Puzzle Fighter II Turbo** — shipping as *Super Rustle Fighter II Turbo* | **in progress** — playable on the arcade theme; the ai is what is left | [plan](super-rustle-fighter-plan.md) · [rules](super-puzzle-fighter-rules.md) |
 | Tetris Battle Gaiden *(as a Rustris ruleset)* | queued | — |
 | Bombliss *(as a Rustris ruleset)* | queued | — |
 | Everything else below | rejected | — |
