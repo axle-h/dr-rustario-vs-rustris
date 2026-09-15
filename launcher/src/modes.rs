@@ -43,6 +43,7 @@ impl<'a> Themes<'a> {
             GameKind::DrRustario => dr_rustario::theme::race_themes(themes),
             GameKind::Rustris => rustris::theme::race_themes(themes),
             GameKind::Puyo => puyo_rusto::theme::race_themes(themes),
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => rustle_fighter::theme::race_themes(themes),
         };
         for theme in race.iter_mut() {
@@ -223,6 +224,7 @@ pub fn game_mode(game: GameKind) -> Box<dyn Mode> {
         GameKind::DrRustario => Box::new(DrRustarioMode::new()),
         GameKind::Rustris => Box::new(RustrisMode::new()),
         GameKind::Puyo => Box::new(PuyoMode::new()),
+        #[cfg(feature = "rustle-fighter")]
         GameKind::RustleFighter => Box::new(RustleFighterMode::new()),
     }
 }
@@ -570,15 +572,18 @@ impl Mode for PuyoMode {
     }
 }
 
-/// The mode that plays Super Rustle Fighter on its own.
+/// The mode that plays Super Rustle Fighter on its own, in a build with the `rustle-fighter`
+/// feature.
 ///
 /// The shortest of the four, and every gap is a phase of its plan rather than an oversight:
 /// no ai controllers (phase 3), one theme so no theme mode to offer, and no playlist turn -
 /// see `GameKind::PLAYLIST_ORDER`.
+#[cfg(feature = "rustle-fighter")]
 pub struct RustleFighterMode {
     options: rustle_fighter::options::Options,
 }
 
+#[cfg(feature = "rustle-fighter")]
 impl RustleFighterMode {
     pub fn new() -> Self {
         Self {
@@ -587,12 +592,14 @@ impl RustleFighterMode {
     }
 }
 
+#[cfg(feature = "rustle-fighter")]
 impl Default for RustleFighterMode {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "rustle-fighter")]
 impl Mode for RustleFighterMode {
     fn title(&self) -> String {
         "Super Rustle Fighter".to_string()
@@ -826,6 +833,7 @@ impl VersusAi {
             // no ai fields this game yet - phase 3 of its plan - so it fields none here
             // either. It is not on `PLAYLIST_ORDER` for the same reason, so nothing that
             // deals a playlist ever reaches this arm.
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => vec![],
         }
     }
@@ -1194,6 +1202,7 @@ impl Difficulty {
             GameKind::Puyo => self.0,
             // one speed step per dial step, the same as Puyo's - the two games' pairs fall on
             // the same ladder, so their dials read the same
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => self.0,
         }
     }
@@ -1364,6 +1373,7 @@ impl VersusMode {
             // Every board is dealt the same sequence, which is this game's own rule: the
             // fighter decides only what the *opponent's* garbage looks like, so two boards of
             // one match are the same game twice.
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => {
                 let fighter = rustle_fighter::game::counter::Fighter::default();
                 let difficulty = rustle_fighter::game::rules::Difficulty::default();
@@ -1610,15 +1620,6 @@ mod tests {
             .collect()
     }
 
-    /// every mode the pre-menu offers: each game on its own, then the versus playlist
-    fn all_modes() -> Vec<Box<dyn Mode>> {
-        GameKind::ALL
-            .into_iter()
-            .map(game_mode)
-            .chain([Box::new(VersusMode::new()) as Box<dyn Mode>])
-            .collect()
-    }
-
     /// what one game calls its ai difficulties, in its own order
     fn ai_difficulty_names(game: GameKind) -> Vec<&'static str> {
         match game {
@@ -1636,6 +1637,7 @@ mod tests {
                 .collect(),
             // no ai fields this game yet, so it offers no difficulties to agree with the
             // others about - phase 3 of its plan, and the test below skips an empty list
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => vec![],
         }
     }
@@ -2347,6 +2349,7 @@ mod tests {
                 GameKind::DrRustario => vec![2, 5],
                 GameKind::Rustris => vec![0, 1],
                 GameKind::Puyo => vec![4, 6],
+                #[cfg(feature = "rustle-fighter")]
                 GameKind::RustleFighter => vec![0],
             }),
             Dealt::default(),
@@ -2375,6 +2378,7 @@ mod tests {
                 GameKind::DrRustario => vec![0, 1, 2, 3],
                 GameKind::Rustris => vec![0, 1, 2, 3],
                 GameKind::Puyo => vec![0, 1, 2],
+                #[cfg(feature = "rustle-fighter")]
                 GameKind::RustleFighter => vec![0],
             }),
             Dealt::default(),

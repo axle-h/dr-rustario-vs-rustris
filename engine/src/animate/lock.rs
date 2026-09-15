@@ -32,6 +32,12 @@ pub struct LockAnimation {
     frame_duration: Duration,
 }
 
+impl Default for LockAnimation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LockAnimation {
     pub fn new() -> Self {
         Self {

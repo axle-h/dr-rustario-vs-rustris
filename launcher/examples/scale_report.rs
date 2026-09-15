@@ -26,24 +26,33 @@ fn main() -> Result<(), String> {
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
     let texture_creator = canvas.texture_creator();
 
-    let mut config = Config::default();
-    config.video = VideoConfig {
-        mode: VideoMode::Window { width, height },
-        vsync: false,
-        disable_screensaver: false,
-        integer_scale,
-        ..Config::default().video
+    let config = Config {
+        video: VideoConfig {
+            mode: VideoMode::Window { width, height },
+            vsync: false,
+            disable_screensaver: false,
+            integer_scale,
+            ..Config::default().video
+        },
+        ..Config::default()
     };
 
     // every game's themes in one list, each game's slice of it recorded; one entry per game
-    const GAMES: [&str; 4] = ["dr-rustario", "rustris", "puyo", "rustle-fighter"];
+    const GAMES: &[&str] = &[
+        "dr-rustario",
+        "rustris",
+        "puyo",
+        #[cfg(feature = "rustle-fighter")]
+        "rustle-fighter",
+    ];
     let mut all = vec![];
     let mut ranges = vec![];
-    for game in GAMES {
+    for &game in GAMES {
         let start = all.len();
         all.extend(match game {
             "dr-rustario" => dr_rustario::theme::all_themes(&mut canvas, &texture_creator, config)?,
             "puyo" => puyo_rusto::theme::all_themes(&mut canvas, &texture_creator, config)?,
+            #[cfg(feature = "rustle-fighter")]
             "rustle-fighter" => {
                 rustle_fighter::theme::all_themes(&mut canvas, &texture_creator, config)?
             }

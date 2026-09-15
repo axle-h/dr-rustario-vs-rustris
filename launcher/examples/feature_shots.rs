@@ -186,6 +186,7 @@ fn main() -> Result<(), String> {
 /// saved on its own, because a theme's board is not the whole of what it draws a bottle with -
 /// the NES one puts the stack on its own backdrop - and cropping is the only way to get what
 /// the player actually sees.
+#[allow(clippy::too_many_arguments)]
 fn shoot(
     canvas: &mut WindowCanvas,
     texture_creator: &'static TextureCreator<WindowContext>,

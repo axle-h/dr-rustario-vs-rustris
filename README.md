@@ -6,7 +6,8 @@ A multi-themed Tetris vs Dr.Mario clone. Written in SDL2 and Rust for fun:
 * **Rustris** - Tetris with the guideline ruleset (Game Boy, NES, SNES and particle themes)
 * **Puyo Rusto** - Puyo Puyo Tsu (Genesis, SNES and particle themes)
 * **Super Rustle Fighter** - Super Puzzle Fighter II Turbo (arcade theme). Playable on its
-  own; it has no ai yet, so it takes no turn in the vs. playlist.
+  own; it has no ai yet, so it takes no turn in the vs. playlist. **Only built with
+  `--features rustle-fighter`**: a plain build carries none of it, not even the menu entry.
 * **Dr. Rustario vs Rustris** - play a multi-player focussed playlist over the games that
   have an ai.
 

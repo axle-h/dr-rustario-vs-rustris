@@ -126,7 +126,7 @@ impl ParticleColor {
     }
 }
 fn to_byte(value: f64) -> u8 {
-    (255.0 * value.max(0.0).min(1.0)).round() as u8
+    (255.0 * value.clamp(0.0, 1.0)).round() as u8
 }
 
 /// hue into 0-360

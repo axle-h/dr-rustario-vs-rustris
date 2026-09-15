@@ -13,10 +13,10 @@ use std::rc::Rc;
 
 const CHIME: &[u8] = include_bytes!("modern/chime.ogg");
 const SELECT: &[u8] = include_bytes!("modern/select.ogg");
-const TITLE: &'static [u8] = include_bytes!("modern/title.ogg");
-const MENU: &'static [u8] = include_bytes!("modern/menu.ogg");
-const HIGH_SCORE_INTRO: &'static [u8] = include_bytes!("modern/high-score-intro.ogg");
-const HIGH_SCORE_REPEAT: &'static [u8] = include_bytes!("modern/high-score-repeat.ogg");
+const TITLE: &[u8] = include_bytes!("modern/title.ogg");
+const MENU: &[u8] = include_bytes!("modern/menu.ogg");
+const HIGH_SCORE_INTRO: &[u8] = include_bytes!("modern/high-score-intro.ogg");
+const HIGH_SCORE_REPEAT: &[u8] = include_bytes!("modern/high-score-repeat.ogg");
 
 /// A menu track: looped, or a one-shot intro then a loop.
 #[derive(Clone, Copy, Debug)]

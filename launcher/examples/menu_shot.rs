@@ -9,6 +9,7 @@ use dr_rustario::options::Options as DrOptions;
 use engine::app_info::{init, AppInfo};
 use engine::menu::{Menu, MenuItem};
 use puyo_rusto::options::Options as PuyoOptions;
+#[cfg(feature = "rustle-fighter")]
 use rustle_fighter::options::Options as RustleFighterOptions;
 use rustris::options::Options as RustrisOptions;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -71,6 +72,7 @@ impl MenuOptions for PuyoOptions {
     }
 }
 
+#[cfg(feature = "rustle-fighter")]
 impl MenuOptions for RustleFighterOptions {
     fn set_players(&mut self, players: u32) {
         RustleFighterOptions::set_players(self, players);
@@ -105,6 +107,7 @@ fn all_games() -> Vec<(&'static str, &'static str, Box<dyn MenuOptions>)> {
             "Puyo Rusto",
             Box::new(PuyoOptions::default()) as Box<dyn MenuOptions>,
         ),
+        #[cfg(feature = "rustle-fighter")]
         (
             "rustle-fighter",
             "Super Rustle Fighter",

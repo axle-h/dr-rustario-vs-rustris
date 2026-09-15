@@ -89,8 +89,11 @@ struct Corpus {
     games: u32,
 }
 
+/// a term of the N64 scorer, named, and how to take it out of a set of weights
+type Ablation = (&'static str, fn(&mut Params));
+
 /// every term of the N64 scorer that can be taken out through its weights, and how
-fn ablations() -> Vec<(&'static str, fn(&mut Params))> {
+fn ablations() -> Vec<Ablation> {
     vec![
         ("chain (rensa_p + rensa_mp)", |p| {
             p.rensa_p = 0;
@@ -577,9 +580,11 @@ fn solve(mut a: Vec<Vec<f64>>) -> Vec<f64> {
             continue;
         }
         for row in i + 1..n {
-            let factor = a[row][i] / a[i][i];
-            for column in i..=n {
-                a[row][column] -= factor * a[i][column];
+            let (above, below) = a.split_at_mut(row);
+            let (pivot, target) = (&above[i], &mut below[0]);
+            let factor = target[i] / pivot[i];
+            for (cell, pivot_cell) in target[i..=n].iter_mut().zip(&pivot[i..=n]) {
+                *cell -= factor * pivot_cell;
             }
         }
     }

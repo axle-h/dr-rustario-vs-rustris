@@ -576,8 +576,8 @@ impl From<Keycode> for GameKey {
     }
 }
 
-impl Into<Keycode> for GameKey {
-    fn into(self) -> Keycode {
-        Keycode::from_i32(self as i32).expect("Invalid keycode")
+impl From<GameKey> for Keycode {
+    fn from(key: GameKey) -> Self {
+        Keycode::from_i32(key as i32).expect("Invalid keycode")
     }
 }

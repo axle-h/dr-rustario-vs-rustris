@@ -91,9 +91,9 @@ impl Add<Coefficient> for Coefficient {
     }
 }
 
-impl Into<f64> for Coefficient {
-    fn into(self) -> f64 {
-        self.into_f64()
+impl From<Coefficient> for f64 {
+    fn from(coefficient: Coefficient) -> Self {
+        coefficient.into_f64()
     }
 }
 

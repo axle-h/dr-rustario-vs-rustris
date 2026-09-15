@@ -60,6 +60,7 @@ impl From<[Point; 4]> for ShapeSprites {
 }
 
 /// sprites in the order I, J, L, O, S, T, Z plus garbage
+#[allow(clippy::too_many_arguments)]
 pub fn cells(
     block_size: u32,
     i: impl Into<ShapeSprites>,

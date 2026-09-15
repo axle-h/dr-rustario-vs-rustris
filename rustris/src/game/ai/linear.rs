@@ -60,6 +60,7 @@ impl LinearCoefficients {
         hole_cover: Coefficient::ZERO,
     };
 
+    #[allow(clippy::too_many_arguments)]
     pub fn from_f64(
         open_holes: f64,
         closed_holes: f64,
@@ -86,6 +87,7 @@ impl LinearCoefficients {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn from_i64(
         open_holes: i64,
         closed_holes: i64,
@@ -153,19 +155,19 @@ impl LinearCoefficients {
     }
 }
 
-impl Into<LinearGenome> for LinearCoefficients {
-    fn into(self) -> LinearGenome {
+impl From<LinearCoefficients> for LinearGenome {
+    fn from(coefficients: LinearCoefficients) -> Self {
         LinearGenome::new([
-            self.open_holes,
-            self.closed_holes,
-            self.max_stack_height,
-            self.sum_stack_roughness,
-            self.max_stack_roughness,
-            self.line_clear,
-            self.tetris_clear,
-            self.max_tetromino_y,
-            self.pillars,
-            self.hole_cover,
+            coefficients.open_holes,
+            coefficients.closed_holes,
+            coefficients.max_stack_height,
+            coefficients.sum_stack_roughness,
+            coefficients.max_stack_roughness,
+            coefficients.line_clear,
+            coefficients.tetris_clear,
+            coefficients.max_tetromino_y,
+            coefficients.pillars,
+            coefficients.hole_cover,
         ])
     }
 }

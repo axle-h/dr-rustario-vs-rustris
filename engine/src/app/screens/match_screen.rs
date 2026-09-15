@@ -38,7 +38,7 @@ pub struct MatchScreen<'a, G: Game + GameRender> {
     paused_screen: PausedScreen<'a>,
     timer: Option<TimerRender<'a>>,
     /// they play for the players they name instead of the keyboard
-    controllers: Vec<(u32, Box<dyn FnMut(&mut G, Duration) + 'static>)>,
+    controllers: Vec<(u32, Controller<G>)>,
     frame_rate: FrameRate,
     /// per player: time since they finished a playlist stage, until the switch happens
     pending_switches: Vec<Option<Duration>>,
@@ -50,6 +50,9 @@ pub struct MatchScreen<'a, G: Game + GameRender> {
     is_single_player: bool,
 }
 
+/// what plays a board in place of the keyboard, handed the frame's delta
+type Controller<G> = Box<dyn FnMut(&mut G, Duration) + 'static>;
+
 impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -60,7 +63,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         settings: MatchSettings,
         fg_particles: &mut ParticleRender,
         bg_particles: &mut ParticleRender,
-        controllers: Vec<(u32, Box<dyn FnMut(&mut G, Duration) + 'static>)>,
+        controllers: Vec<(u32, Controller<G>)>,
     ) -> Result<Self, String> {
         let inputs = GameInputContext::new(app.config.input);
         let players = games.len() as u32;
@@ -473,14 +476,9 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         // update animations
         if !fixture.state().is_paused() {
             let animation_events = themes.update_animations(delta);
-            for event in animation_events.into_iter() {
-                match event {
-                    AnimationEvent::Finished { player, animation }
-                        if animation == AnimationType::Spawn =>
-                    {
-                        events.push((Some(player), GameEvent::Spawned));
-                    }
-                    _ => {}
+            for AnimationEvent::Finished { player, animation } in animation_events {
+                if animation == AnimationType::Spawn {
+                    events.push((Some(player), GameEvent::Spawned));
                 }
             }
         }

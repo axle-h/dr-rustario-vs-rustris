@@ -47,9 +47,9 @@ impl<const N: usize> From<[Coefficient; N]> for Genome<N> {
     }
 }
 
-impl<const N: usize> Into<[Coefficient; N]> for Genome<N> {
-    fn into(self) -> [Coefficient; N] {
-        self.chromosome
+impl<const N: usize> From<Genome<N>> for [Coefficient; N] {
+    fn from(genome: Genome<N>) -> Self {
+        genome.chromosome
     }
 }
 
@@ -59,8 +59,8 @@ impl<const N: usize> From<[f64; N]> for Genome<N> {
     }
 }
 
-impl<const N: usize> Into<[f64; N]> for Genome<N> {
-    fn into(self) -> [f64; N] {
-        self.chromosome.map(Coefficient::into_f64)
+impl<const N: usize> From<Genome<N>> for [f64; N] {
+    fn from(genome: Genome<N>) -> Self {
+        genome.chromosome.map(Coefficient::into_f64)
     }
 }

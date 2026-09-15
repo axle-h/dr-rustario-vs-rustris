@@ -71,10 +71,9 @@ impl<'de> Deserialize<'de> for RecordedInput {
                     });
                 }
 
-                let (is_alt, key_part) = if value.starts_with("alt:") {
-                    (true, &value[4..]) // Skip past "alt:"
-                } else {
-                    (false, value)
+                let (is_alt, key_part) = match value.strip_prefix("alt:") {
+                    Some(key_part) => (true, key_part),
+                    None => (false, value),
                 };
 
                 // Empty key_part (either "" or "alt:") means empty keys vector
@@ -112,6 +111,12 @@ pub struct GameRecording {
     inputs: Vec<RecordedInput>,
 }
 
+impl Default for GameRecording {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GameRecording {
     /// Create a new GameRecorder in inactive state
     pub fn new() -> Self {
@@ -142,8 +147,7 @@ impl GameRecording {
         let writer = BufWriter::new(file);
 
         // Serialize the entire inputs vector using serde_json
-        serde_json::to_writer(writer, &self.inputs)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        serde_json::to_writer(writer, &self.inputs).map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
     }

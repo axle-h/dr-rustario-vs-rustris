@@ -1,6 +1,6 @@
 use crate::game::ai::apply_inputs::ApplyInputs;
 use crate::game::ai::input_sequence::Translation::SoftDrop;
-use crate::game::ai::input_sequence::{InputSequence, ResolvedInputSequence, Translation};
+use crate::game::ai::input_sequence::{InputSequence, Translation};
 use crate::game::board::Board;
 use crate::game::geometry::Pose;
 use crate::game::tetromino::{Minos, TetrominoShape};
@@ -22,7 +22,7 @@ pub struct InputSequenceResult {
 
 impl PartialOrd for InputSequenceResult {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.inputs.partial_cmp(&other.inputs)
+        Some(self.cmp(other))
     }
 }
 
@@ -43,10 +43,6 @@ impl InputSequenceResult {
 
     pub fn board_mut(&mut self) -> &mut Board {
         &mut self.board
-    }
-
-    pub fn minos(&self) -> Minos {
-        self.minos
     }
 }
 

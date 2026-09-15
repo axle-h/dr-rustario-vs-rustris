@@ -88,7 +88,7 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
     };
 
     let rng = RandomTetromino::new(RandomMode::Bag, MIN_GARBAGE_PER_HOLE, seed);
-    let mut agent = AiAgent::new(ActionEvaluator::NeuralNetwork(model), 0);
+    let mut agent = AiAgent::new(ActionEvaluator::NeuralNetwork(model));
     let mut game = Game::new(0, rng);
 
     let mut stats = Stats {

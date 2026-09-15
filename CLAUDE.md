@@ -8,7 +8,7 @@
 | `dr-rustario/` | Dr. Rustario's rules (bottle, pills, viruses), its four themes and its AI |
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), its four themes and its AI |
 | `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, nuisance), its three themes and its AI |
-| `rustle-fighter/` | Super Rustle Fighter's rules (gems, crashes, power gems, counter gems), its one arcade theme and its options. **Playable on its own; no AI and no playlist turn yet** - [docs/super-rustle-fighter-plan.md](docs/super-rustle-fighter-plan.md) is where it is up to |
+| `rustle-fighter/` | Super Rustle Fighter's rules (gems, crashes, power gems, counter gems), its one arcade theme and its options. **Playable on its own; no AI and no playlist turn yet** - [docs/super-rustle-fighter-plan.md](docs/super-rustle-fighter-plan.md) is where it is up to. **Behind the launcher's `rustle-fighter` feature, off by default**: every `GameKind::RustleFighter` arm is `#[cfg]`'d, so a plain build has no code, assets or menu entry for it |
 | `launcher/` | the `dr-rustario-vs-rustris` binary: `shell.rs` (screens), `games.rs` (`AnyGame`), `modes.rs` (playlists), `cross.rs` (`ga cross`, which prices the attacks between the games) |
 
 Game crates are siblings and never depend on each other; anything shared goes in `engine`.
@@ -17,6 +17,7 @@ Game crates are siblings and never depend on each other; anything shared goes in
 
 ```shell
 cargo build --release            # SDL2 links the platform's own way, no flags; see README
+cargo build --release --features rustle-fighter   # ... with Super Rustle Fighter in it
 cargo test                       # dr-rustario/tests/ai_agent.rs pins the AI difficulties
 cargo fmt --all                  # stock rustfmt, no rustfmt.toml
 ./build-portmaster.sh            # aarch64 handheld port, `portmaster` feature

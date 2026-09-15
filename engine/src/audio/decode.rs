@@ -125,11 +125,9 @@ impl MusicSource for VorbisStream {
     fn read(&mut self, out: &mut [i16]) -> usize {
         let mut written = 0;
         while written < out.len() {
-            if self.pending_pos >= self.pending.len() {
-                if self.finished || !self.fill() {
-                    self.finished = true;
-                    break;
-                }
+            if self.pending_pos >= self.pending.len() && (self.finished || !self.fill()) {
+                self.finished = true;
+                break;
             }
             let available = &self.pending[self.pending_pos..];
             let n = available.len().min(out.len() - written);
@@ -162,7 +160,7 @@ mod tests {
     #[test]
     fn decodes_stereo_sfx() {
         let pcm = decode_all(MOVE).unwrap();
-        assert!(pcm.len() > 1000 && pcm.len() % 2 == 0);
+        assert!(pcm.len() > 1000 && pcm.len().is_multiple_of(2));
         assert!(pcm.iter().any(|&s| s != 0));
     }
 

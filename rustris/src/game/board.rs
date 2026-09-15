@@ -56,10 +56,13 @@ pub enum Spin {
     Mini,
 }
 
+/// two corners of a T's bounding box, as offsets from its position
+type Corners = [(i32, i32); 2];
+
 /// The corners of a T's bounding box, as offsets from its position: the two in front of its
 /// stem first, then the two behind it. The box is three wide and three tall whichever way the
 /// piece is turned, so the corners are always its own position plus 0 or 2 in each axis.
-fn t_spin_corners(rotation: Rotation) -> ([(i32, i32); 2], [(i32, i32); 2]) {
+fn t_spin_corners(rotation: Rotation) -> (Corners, Corners) {
     const TOP_LEFT: (i32, i32) = (0, 2);
     const TOP_RIGHT: (i32, i32) = (2, 2);
     const BOTTOM_RIGHT: (i32, i32) = (2, 0);
@@ -70,6 +73,12 @@ fn t_spin_corners(rotation: Rotation) -> ([(i32, i32); 2], [(i32, i32); 2]) {
         Rotation::East => ([TOP_RIGHT, BOTTOM_RIGHT], [TOP_LEFT, BOTTOM_LEFT]),
         Rotation::South => ([BOTTOM_LEFT, BOTTOM_RIGHT], [TOP_LEFT, TOP_RIGHT]),
         Rotation::West => ([TOP_LEFT, BOTTOM_LEFT], [TOP_RIGHT, BOTTOM_RIGHT]),
+    }
+}
+
+impl Default for Board {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -997,7 +1006,7 @@ mod tests {
         can_spawn_tetromino(&mut board, TetrominoShape::O);
         assert!(board.rotate(true));
         should_have_tetromino_at(
-            &mut board,
+            &board,
             &[
                 Point::new(4, 20),
                 Point::new(5, 20),
@@ -1014,7 +1023,7 @@ mod tests {
         can_spawn_tetromino(&mut board, TetrominoShape::L);
         assert!(board.rotate(true));
         should_have_tetromino_at(
-            &mut board,
+            &board,
             &[
                 Point::new(4, 21),
                 Point::new(4, 20),
@@ -1032,7 +1041,7 @@ mod tests {
         having_step_downs(&mut board, BOARD_HEIGHT);
         assert!(board.rotate(true));
         should_have_tetromino_at(
-            &mut board,
+            &board,
             &[
                 Point::new(6, 0),
                 Point::new(6, 1),

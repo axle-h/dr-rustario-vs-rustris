@@ -1435,7 +1435,7 @@ mod tests {
 
     /// a field with one word already outlined, as the renderer would have left it
     fn field_knowing(word: &str, ctx: &SceneContext) -> ParticleField {
-        let mut field = field(ctx);
+        let field = field(ctx);
         field.bus.borrow_mut().shapes.insert_text(
             word,
             crate::particles::field::shapes::EdgeShape::unit_square(),

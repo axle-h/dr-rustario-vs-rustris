@@ -104,18 +104,14 @@ impl HeadlessGame {
 pub struct HeadlessGameOptions {
     pub line_clear_delay: Duration,
     pub step: Duration,
-    pub look_ahead: usize,
     pub record: bool,
 }
-
-pub const DEFAULT_LOOKAHEAD: usize = 0;
 
 impl Default for HeadlessGameOptions {
     fn default() -> Self {
         Self {
             step: Duration::from_millis(16), // 60hz
             line_clear_delay: LINE_CLEAR_DURATION,
-            look_ahead: DEFAULT_LOOKAHEAD,
             record: false,
         }
     }
@@ -187,7 +183,7 @@ impl HeadlessGameFixture {
 
     pub fn play_seed(&self, action_evaluate: ActionEvaluator, seed: Seed) -> GameResult {
         let rng = RandomTetromino::new(self.random_mode, MIN_GARBAGE_PER_HOLE, seed);
-        let mut agent = AiAgent::new(action_evaluate, self.game_options.look_ahead);
+        let mut agent = AiAgent::new(action_evaluate);
         if self.game_options.record {
             agent.start_recording().expect("Failed to start recording");
         }

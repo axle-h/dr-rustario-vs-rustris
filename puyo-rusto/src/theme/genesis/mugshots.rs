@@ -22,6 +22,7 @@
 use engine::animate::character::{EmitterSource, EmitterTrigger};
 use engine::animate::frames::FrameAnimationType;
 use engine::render::character::{CharacterData, CharacterSetData, EmitterData, LayerData};
+use std::f64::consts::FRAC_1_SQRT_2 as DIAG;
 use std::time::Duration;
 
 mod sprites {
@@ -45,11 +46,6 @@ pub const FRAME: (u32, u32) = (80, 56);
 /// rows of a character's png are spaced by this, so a person can read the sheet
 pub const ROW_PITCH: u32 = FRAME.1 + 1;
 
-/// The cast, in the order the sheet draws them.
-///
-/// Dr. Robotnik is in it like anybody else: he is the *final boss* of Mean Bean Machine, not its
-/// player character, so there is no reason to hold him out.
-
 /// The sweat's dial: above this much of the board filled, at this many drops a second when it
 /// is completely full.
 ///
@@ -62,6 +58,10 @@ const SWEAT_TRIGGER: EmitterTrigger = EmitterTrigger::Danger {
     per_second: 10.0,
 };
 
+/// The cast, in the order the sheet draws them.
+///
+/// Dr. Robotnik is in it like anybody else: he is the *final boss* of Mean Bean Machine, not its
+/// player character, so there is no reason to hold him out.
 pub const CAST: &[CharacterData] = &[
     // frankly
     CharacterData {
@@ -91,11 +91,11 @@ pub const CAST: &[CharacterData] = &[
                 sources: &[
                     EmitterSource {
                         at: (6.0, 15.0),
-                        directions: &[(-0.7071, -0.7071), (0.7071, -0.7071), (-0.7071, 0.7071)],
+                        directions: &[(-DIAG, -DIAG), (DIAG, -DIAG), (-DIAG, DIAG)],
                     },
                     EmitterSource {
                         at: (77.0, 15.0),
-                        directions: &[(0.7071, -0.7071), (-0.7071, -0.7071), (0.7071, 0.7071)],
+                        directions: &[(DIAG, -DIAG), (-DIAG, -DIAG), (DIAG, DIAG)],
                     },
                 ],
                 speed: 1.8,
@@ -213,11 +213,11 @@ pub const CAST: &[CharacterData] = &[
                 sources: &[
                     EmitterSource {
                         at: (28.5, 7.5),
-                        directions: &[(-0.7071, -0.7071)],
+                        directions: &[(-DIAG, -DIAG)],
                     },
                     EmitterSource {
                         at: (50.5, 7.5),
-                        directions: &[(0.7071, -0.7071)],
+                        directions: &[(DIAG, -DIAG)],
                     },
                 ],
                 speed: 2.2,
@@ -552,11 +552,11 @@ pub fn characters() -> CharacterSetData {
             sources: &[
                 EmitterSource {
                     at: (10.0, 17.0),
-                    directions: &[(-0.7071, -0.7071), (-0.4500, -0.8900)],
+                    directions: &[(-DIAG, -DIAG), (-0.4500, -0.8900)],
                 },
                 EmitterSource {
                     at: (70.0, 17.0),
-                    directions: &[(0.7071, -0.7071), (0.4500, -0.8900)],
+                    directions: &[(DIAG, -DIAG), (0.4500, -0.8900)],
                 },
             ],
             speed: 1.2,

@@ -24,6 +24,7 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
         data: [[0.0; C]; R],
     };
 
+    #[cfg(test)]
     const ONES: Self = Self {
         data: [[1.0; C]; R],
     };
@@ -88,26 +89,11 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
 
         result
     }
+    #[cfg(test)]
     fn relu_mut(&mut self) {
         for i in 0..self.rows() {
             for j in 0..self.cols() {
                 self.data[i][j] = relu(self.data[i][j]);
-            }
-        }
-    }
-
-    fn sigmoid_mut(&mut self) {
-        for i in 0..self.rows() {
-            for j in 0..self.cols() {
-                self.data[i][j] = sigmoid(self.data[i][j]);
-            }
-        }
-    }
-
-    fn mcculloch_pitts_mut(&mut self, threshold: f64) {
-        for i in 0..self.rows() {
-            for j in 0..self.cols() {
-                self.data[i][j] = mcculloch_pitts(self.data[i][j], threshold);
             }
         }
     }
@@ -171,8 +157,8 @@ fn activate(x: f64, activation: ActivationFunction) -> f64 {
 impl<const SIZE: usize> Tensor<SIZE> {
     pub fn vector(data: [f64; SIZE]) -> Self {
         let mut result = Self::ZEROS;
-        for i in 0..SIZE {
-            result.data[i][0] = data[i]
+        for (row, value) in result.data.iter_mut().zip(data) {
+            row[0] = value
         }
         result
     }
@@ -186,8 +172,8 @@ impl<const SIZE: usize> Tensor<SIZE> {
     }
 
     fn activate_mut(&mut self, activation: [ActivationFunction; SIZE]) {
-        for i in 0..SIZE {
-            self.data[i][0] = activate(self.data[i][0], activation[i])
+        for (row, activation) in self.data.iter_mut().zip(activation) {
+            row[0] = activate(row[0], activation)
         }
     }
 }
@@ -195,8 +181,8 @@ impl<const SIZE: usize> Tensor<SIZE> {
 impl<const SIZE: usize> Tensor<SIZE, SIZE> {
     pub fn diagonal(data: [f64; SIZE]) -> Self {
         let mut result = Self::ZEROS;
-        for i in 0..SIZE {
-            result.data[i][i] = data[i]
+        for (i, value) in data.into_iter().enumerate() {
+            result.data[i][i] = value
         }
         result
     }
@@ -262,18 +248,13 @@ impl<const R: usize, const C: usize> Distribution<Tensor<R, C>> for StandardUnif
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub enum ActivationFunction {
     Identity,
+    #[default]
     Sigmoid,
     ReLU,
     McCullochPitt(f64),
-}
-
-impl Default for ActivationFunction {
-    fn default() -> Self {
-        ActivationFunction::Sigmoid
-    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]

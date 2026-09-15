@@ -61,7 +61,7 @@ impl HyperParameters {
     pub fn new(population_size: usize, elite_rate: f64, survival_rate: f64) -> Self {
         fn rate_to_count(population_size: usize, rate: f64) -> usize {
             assert!(
-                rate >= 0.0 && rate <= 1.0,
+                (0.0..=1.0).contains(&rate),
                 "rates must be between 0.0 and 1.0"
             );
             (population_size as f64 * rate) as usize

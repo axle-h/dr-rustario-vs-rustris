@@ -490,9 +490,11 @@ fn region(
     }
 }
 
+type PreviewEntry = (&'static str, GameId, fn() -> Palette);
+
 /// Every game a preview can put a player on: its short name (what the `games` argument
 /// takes), its [`GameId`] and the colours it radiates into the field. One entry per game.
-const PREVIEW_GAMES: [(&str, GameId, fn() -> Palette); 3] = [
+const PREVIEW_GAMES: [PreviewEntry; 3] = [
     ("dr", engine::game::ids::DR_RUSTARIO, dr_palette),
     ("rustris", engine::game::ids::RUSTRIS, rustris_palette),
     ("puyo", engine::game::ids::PUYO, puyo_palette),

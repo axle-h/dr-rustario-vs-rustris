@@ -14,6 +14,7 @@ use crate::render::context::ThemeContext;
 use crate::render::sprite_sheet::MascotKind;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
+use std::cmp::Reverse;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -61,9 +62,9 @@ impl PrescribedParticles {
             PrescribedParticles::FadeInLatticeBurstAndFall { fade_in, color } => {
                 let limit = lattice.len() as u32 / n_blocks;
                 if is_horizontal {
-                    lattice.sort_by(|p1, p2| p2.x().cmp(&p1.x()));
+                    lattice.sort_by_key(|p| Reverse(p.x()));
                 } else {
-                    lattice.sort_by(|p1, p2| p1.y().cmp(&p2.y()));
+                    lattice.sort_by_key(|p| p.y());
                 }
 
                 RandomParticleSource::new(

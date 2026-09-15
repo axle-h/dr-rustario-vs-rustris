@@ -32,6 +32,12 @@ pub struct NextStageAnimation {
     rng: ThreadRng,
 }
 
+impl Default for NextStageAnimation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NextStageAnimation {
     pub fn new() -> Self {
         Self {

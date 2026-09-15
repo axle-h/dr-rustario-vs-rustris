@@ -34,6 +34,10 @@ vcpkg = ["engine/vcpkg"]
 pkgconfig = ["engine/pkgconfig"]
 portmaster = ["engine/portmaster", "dr-rustario/portmaster"]
 browser = ["engine/browser", "dr-rustario/browser"]
+# Super Rustle Fighter is off until it has an ai and a playlist turn: without this the binary
+# carries none of its code or assets and nothing in it knows the game exists. Everything it
+# shares with the others lives in `engine` and is built either way.
+rustle-fighter = ["dep:rustle-fighter"]
 
 [build-dependencies]
 built = { version = "0.8.1", default-features = false, features = [] }
@@ -44,7 +48,7 @@ engine = { path = "../engine" }
 dr-rustario = { path = "../dr-rustario" }
 rustris = { path = "../rustris" }
 puyo-rusto = { path = "../puyo-rusto" }
-rustle-fighter = { path = "../rustle-fighter" }
+rustle-fighter = { path = "../rustle-fighter", optional = true }
 sdl2.workspace = true
 titlecase.workspace = true
 
