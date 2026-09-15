@@ -50,12 +50,16 @@ impl From<ParticleColor> for VariableQuantity<ParticleColor> {
 }
 
 impl VariableQuantity<f64> {
+    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> f64 {
         self.quantity + self.variance * self.rand_signed_f64()
     }
 }
 
 impl VariableQuantity<Vec2D> {
+    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Vec2D {
         self.quantity
             + Vec2D::new(
@@ -66,6 +70,8 @@ impl VariableQuantity<Vec2D> {
 }
 
 impl VariableQuantity<ParticleColor> {
+    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> ParticleColor {
         self.quantity
             + self.variance
@@ -74,6 +80,8 @@ impl VariableQuantity<ParticleColor> {
 }
 
 impl VariableQuantity<ParticleWave> {
+    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> ParticleWave {
         let magnitude =
             self.quantity.magnitude() + self.variance.magnitude() * self.rng.random::<f64>();
@@ -101,6 +109,12 @@ pub struct ProbabilityTable<T: Clone> {
     rows: Vec<ProbabilityRow<T>>,
     total: f64,
     rng: ThreadRng,
+}
+
+impl<T: Clone> Default for ProbabilityTable<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: Clone> ProbabilityTable<T> {

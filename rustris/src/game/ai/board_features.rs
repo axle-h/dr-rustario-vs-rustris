@@ -108,7 +108,7 @@ impl Sub<StackStats> for StackStats {
                 .map(|(a, b)| a - b)
                 .collect::<Vec<i32>>()
                 .try_into()
-                .unwrap_or_else(|_| [0; BOARD_WIDTH as usize]),
+                .unwrap_or([0; BOARD_WIDTH as usize]),
         }
     }
 }
@@ -212,7 +212,7 @@ impl BoardFeatures for Board {
                 }
             }
 
-            let roughness = prev_height_delta.abs() as u32;
+            let roughness = prev_height_delta.unsigned_abs();
             max_roughness = max_roughness.max(roughness);
             sum_roughness += roughness;
         }
@@ -748,7 +748,7 @@ mod tests {
 
     impl BoardHarness for Board {
         fn having_stack_at(mut self, points: &[(u32, u32)]) -> Self {
-            for point in points.into_iter() {
+            for point in points.iter() {
                 self.set_block(
                     *point,
                     BlockState::Stack(TetrominoShape::L, Rotation::North, 0),

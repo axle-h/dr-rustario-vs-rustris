@@ -41,6 +41,8 @@ pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 /// fielded: it wins by grinding where the port plays legibly. `ga dr play`, `explain` and
 /// `probe` are where it lives now.
 #[derive(Clone, Copy, Debug)]
+// a player holds one of these for a whole match, and it is `Copy`, which a boxed network is not
+#[allow(clippy::large_enum_variant)]
 pub enum DrAiKind {
     N64(N64Ai),
     Neural(DrNeuralNetwork),

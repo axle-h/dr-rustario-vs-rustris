@@ -60,6 +60,8 @@ impl RandomTetromino {
         result
     }
 
+    /// not `Iterator::next`: this never runs out, so an `Option` would be a lie
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> TetrominoShape {
         self.shapes.next()
     }

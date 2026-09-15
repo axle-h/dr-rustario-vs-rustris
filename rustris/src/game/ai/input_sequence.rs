@@ -1,5 +1,4 @@
 use crate::game::geometry::{Point, Pose, Rotation};
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::ops::{Add, Deref};

@@ -5,6 +5,12 @@ pub struct FrameRate {
     t0: SystemTime,
 }
 
+impl Default for FrameRate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FrameRate {
     pub fn new() -> Self {
         Self {

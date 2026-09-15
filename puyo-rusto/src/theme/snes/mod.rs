@@ -193,7 +193,9 @@ const TRAY_MAX: u32 = ARCH_MOUTH.2 / TRAY_ICON;
 /// found the pair by matching the two digits the layer render happens to carry against a
 /// decode of every tile in VRAM. They are drawn on an eight pixel pitch with no gap, which
 /// is what the font's own spacing is set to.
+#[cfg(test)]
 const FONT_HEIGHT: u32 = 16;
+#[cfg(test)]
 const FONT_WIDTH: u32 = 8;
 
 /// where the game right aligns its own score, and the cell it prints it in
@@ -592,12 +594,14 @@ mod tests {
         let (width, height) = png_size(sprites::ANIMATIONS);
         assert_eq!(width, SRC_BLOCK_SIZE * POP_FRAMES as u32);
         assert_eq!(height, (SRC_BLOCK_SIZE + ANIM_ROW_GAP) * ANIM_ROWS);
-        assert!(
-            BOUNCE_FRAMES <= POP_FRAMES
-                && DEBRIS_FRAMES <= POP_FRAMES
-                && POP_DEBRIS.at_frame < POP_FRAMES,
-            "every other strip shares the sheet's width with the pop, which is its widest"
-        );
+        const {
+            assert!(
+                BOUNCE_FRAMES <= POP_FRAMES
+                    && DEBRIS_FRAMES <= POP_FRAMES
+                    && POP_DEBRIS.at_frame < POP_FRAMES,
+                "every other strip shares the sheet's width with the pop, which is its widest"
+            );
+        }
         // ... and every cell the board can draw claims one of them
         let strips = animations();
         assert_eq!(strips.len(), PuyoColor::N + 1);

@@ -231,7 +231,7 @@ impl DestroyAnimation {
     pub fn is_flashed_off(&self) -> bool {
         match (&self.style, &self.state) {
             (DestroyStyle::Flash, Some(state)) => {
-                (state.duration.as_millis() / FLASH_DURATION.as_millis()) % 2 == 0
+                (state.duration.as_millis() / FLASH_DURATION.as_millis()).is_multiple_of(2)
             }
             _ => false,
         }

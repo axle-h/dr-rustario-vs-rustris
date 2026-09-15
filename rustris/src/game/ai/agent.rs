@@ -1,6 +1,5 @@
 use crate::game::ai::action_evaluator::ActionEvaluator;
 use crate::game::ai::board_features::{BoardFeatures, StackStats};
-use crate::game::ai::headless_game::DEFAULT_LOOKAHEAD;
 use crate::game::ai::input_search::{InputSearch, InputSequenceResult};
 use crate::game::ai::input_sequence::{InputSequence, Translation};
 use crate::game::ai::linear::LinearCoefficients;
@@ -9,7 +8,6 @@ use crate::game::ai::recording::{GamePlayback, GameRecording};
 use crate::game::board::Board;
 use crate::game::tetromino::TetrominoShape;
 use crate::game::{Game, GameState};
-use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -18,7 +16,6 @@ use std::time::Duration;
 pub struct AiAgent {
     action_evaluate: ActionEvaluator,
     wait_sate: Option<AgentWaitState>,
-    look_ahead: usize,
     /// Optional recording of agent decisions
     recording: Option<GameRecording>,
     /// Optional playback for replaying recorded decisions
@@ -39,11 +36,10 @@ enum AgentWaitState {
 }
 
 impl AiAgent {
-    pub fn new(action_evaluate: ActionEvaluator, look_ahead: usize) -> Self {
+    pub fn new(action_evaluate: ActionEvaluator) -> Self {
         Self {
             action_evaluate,
             wait_sate: None,
-            look_ahead,
             recording: None,
             playback: None,
             key_delay: Duration::ZERO,
@@ -59,10 +55,7 @@ impl AiAgent {
     }
 
     pub fn default_linear() -> Self {
-        Self::new(
-            ActionEvaluator::Linear(LinearCoefficients::default()),
-            DEFAULT_LOOKAHEAD,
-        )
+        Self::new(ActionEvaluator::Linear(LinearCoefficients::default()))
     }
 
     pub fn default_neural() -> Self {
@@ -71,7 +64,7 @@ impl AiAgent {
 
     /// An agent playing the given trained network
     pub fn neural(network: TetrisNeuralNetwork) -> Self {
-        Self::new(ActionEvaluator::NeuralNetwork(network), DEFAULT_LOOKAHEAD)
+        Self::new(ActionEvaluator::NeuralNetwork(network))
     }
 
     /// Queue the inputs to be pressed, then press as many as the key delay allows
@@ -203,18 +196,14 @@ impl AiAgent {
                 }
             } else {
                 // Normal AI decision-making when not in playback mode
-                let best_result = self.best_move(game, shape, &game.random.peek_buffer());
+                let best_result = self.best_move(game, shape);
 
-                let (alt_next_shape, alt_next_peek) = game
+                let alt_next_shape = game
                     .hold
-                    .map(|state| (state.piece, 0..))
-                    .unwrap_or_else(|| (game.random.peek(), 1..));
+                    .map(|state| state.piece)
+                    .unwrap_or_else(|| game.random.peek());
 
-                let alt_best_move = self.best_move(
-                    game,
-                    alt_next_shape,
-                    &game.random.peek_buffer()[alt_next_peek],
-                );
+                let alt_best_move = self.best_move(game, alt_next_shape);
                 let Some((best_inputs, is_alt)) = Self::choose(best_result, alt_best_move) else {
                     // Record a null decision if no moves are possible
                     if let Some(recording) = &mut self.recording {
@@ -271,12 +260,7 @@ impl AiAgent {
         }
     }
 
-    fn best_move(
-        &self,
-        game: &Game,
-        shape: TetrominoShape,
-        peek: &[TetrominoShape],
-    ) -> Option<(InputSequence, f64)> {
+    fn best_move(&self, game: &Game, shape: TetrominoShape) -> Option<(InputSequence, f64)> {
         // Normal AI decision-making (playback is now handled at the act level)
         self.best_single_move(game.board, game.board.stack_stats(), shape)
             .map(|(result, cost)| (result.inputs().clone(), cost))
@@ -310,7 +294,7 @@ impl AiAgent {
         // if multiple moves have teh same score then we must order them to deterministically choose
         cost1
             .total_cmp(cost2)
-            .then_with(|| result1.inputs().cmp(&result2.inputs()))
+            .then_with(|| result1.inputs().cmp(result2.inputs()))
     }
 
     /// Start recording agent decisions

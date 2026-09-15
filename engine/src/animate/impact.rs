@@ -46,6 +46,12 @@ pub struct ImpactAnimation {
     state: State,
 }
 
+impl Default for ImpactAnimation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ImpactAnimation {
     pub fn new() -> Self {
         Self {

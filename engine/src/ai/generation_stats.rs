@@ -27,6 +27,7 @@ impl<const GENOME: usize> Display for GenerationStatistics<GENOME> {
 }
 
 impl<const GENOME: usize> GenerationStatistics<GENOME> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: usize,
         objective: Objective,

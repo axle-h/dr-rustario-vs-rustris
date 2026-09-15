@@ -135,12 +135,18 @@ pub fn inputs(candidates: &[BottleFeatures]) -> Vec<[f64; BOTTLE_FEATURE_INPUTS]
 /// How a candidate placement is scored. The linear scorer is a hand written baseline: it is
 /// what the features say if you just weight them by hand, and it is the yardstick a trained
 /// model has to beat.
+///
+/// Only the `ga dr` modules score with it, and they are not built under `cfg(test)`.
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, allow(dead_code))]
+// the network is the whole point of the enum and is scored by value, a pill at a time
+#[allow(clippy::large_enum_variant)]
 pub enum Scorer {
     Linear,
     Network(DrNeuralNetwork),
 }
 
+#[cfg_attr(test, allow(dead_code))]
 impl Scorer {
     /// Score every placement of one pill at once, which is the only way the network can be
     /// shown what separates them. The scores are comparable within the call and nowhere else.
@@ -160,6 +166,7 @@ impl Scorer {
 /// is the worst, and a half left one block from a clear is what a placement is for. Nothing here
 /// says a virus actually *died*: the selection left that input out, because the work counts
 /// already say it.
+#[cfg_attr(test, allow(dead_code))]
 fn linear(features: &BottleFeatures) -> f64 {
     let delta = features.delta();
     let placement = features.placement();

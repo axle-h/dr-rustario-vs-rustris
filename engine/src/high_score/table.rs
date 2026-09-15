@@ -2,6 +2,7 @@ use crate::config::config_path;
 use crate::high_score::HighScoreKey;
 use confy::ConfyError;
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 const MAX_HIGH_SCORES: usize = 5;
@@ -162,8 +163,8 @@ impl HighScoreTable {
 
     fn sorted(&mut self) {
         match self.ranking {
-            Ranking::HighestScore => self.scores.sort_by(|x, y| y.score.cmp(&x.score)),
-            Ranking::LowestTime => self.scores.sort_by(|x, y| x.score.cmp(&y.score)),
+            Ranking::HighestScore => self.scores.sort_by_key(|x| Reverse(x.score)),
+            Ranking::LowestTime => self.scores.sort_by_key(|x| x.score),
         }
     }
 

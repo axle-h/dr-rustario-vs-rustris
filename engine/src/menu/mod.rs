@@ -137,12 +137,7 @@ impl<'a> MenuRow<'a> {
         background_color: Option<Color>,
     ) -> Result<Texture<'a>, String> {
         let name_text = FontTexture::from_string(font, texture_creator, name, text_color)?;
-        let rect = Rect::new(
-            0,
-            0,
-            name_text.width + font.height() as u32,
-            font.height() as u32 + 10,
-        );
+        let rect = Rect::new(0, 0, name_text.width + font.height(), font.height() + 10);
         let mut texture =
             texture_creator.create_texture_target_blended(rect.width(), rect.height())?;
         canvas

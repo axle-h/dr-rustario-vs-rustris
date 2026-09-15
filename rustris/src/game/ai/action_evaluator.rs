@@ -6,6 +6,8 @@ use engine::ai::Tensor;
 use std::fmt::Debug;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+// an agent holds one for its whole life, and it is `Copy`, which a boxed network is not
+#[allow(clippy::large_enum_variant)]
 pub enum ActionEvaluator {
     Linear(LinearCoefficients),
     NeuralNetwork(TetrisNeuralNetwork),

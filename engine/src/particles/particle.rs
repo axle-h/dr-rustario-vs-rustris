@@ -199,6 +199,7 @@ pub struct Particle {
 }
 
 impl Particle {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         position: Vec2D,
         velocity: Vec2D,
@@ -212,7 +213,7 @@ impl Particle {
         size: f64,
         angular_velocity: f64,
     ) -> Self {
-        let animation = sprite.animation().map(|pa| ParticleAnimation::new(pa));
+        let animation = sprite.animation().map(ParticleAnimation::new);
         Self {
             position,
             velocity,

@@ -343,6 +343,7 @@ impl Game {
     }
 
     /// the bottle the AI reads and simulates placements on
+    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn bottle(&self) -> &Bottle {
         &self.bottle
     }
@@ -374,6 +375,7 @@ impl Game {
     /// play has landed. This is what an agent weighing the held pill against the one in front of
     /// it has to search, and it is the game's answer rather than the agent's guess because only
     /// the game knows which of the two cases it is in.
+    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn holdable(&self) -> Option<PillShape> {
         // hold unlocks when the pill in play locks, so this is also "there is a pill to swap"
         // as far as anything asking is concerned; `hold` itself no-ops on an empty bottle
@@ -416,6 +418,7 @@ impl Game {
     /// of a tuck ([`crate::game::ai::input_sequence::Translation::Rest`]). Nothing in play calls
     /// this - there it is gravity, and the agent only waits for it - but a harness that presses
     /// a whole plan in one frame has to ask for the fall it would otherwise have waited out.
+    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn rest(&mut self) {
         if let Some((dropped_rows, _)) = self.bottle.hard_drop() {
             if dropped_rows > 0 {
@@ -530,7 +533,7 @@ impl Game {
                 is_hold,
             });
             self.total_pills += 1;
-            if self.total_pills % PILLS_PER_SPEED_LEVEL == 0 {
+            if self.total_pills.is_multiple_of(PILLS_PER_SPEED_LEVEL) {
                 self.events.push(GameEvent::SpeedUp);
             }
             GameState::NEW_FALL

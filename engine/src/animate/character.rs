@@ -1472,7 +1472,7 @@ mod tests {
             c.update(Duration::from_millis(100));
         }
         assert!(c.particles().is_empty(), "it sweated on a healthy board");
-        let mut count = |danger: f64| {
+        let count = |danger: f64| {
             let mut c = with_extras_dealt();
             for _ in 0..10 {
                 c.danger(danger, false);

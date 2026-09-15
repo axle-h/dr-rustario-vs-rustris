@@ -193,7 +193,7 @@ fn main() -> Result<(), String> {
         // every routine, then the stand it rests on, and stop the moment it has run out -
         // which is what `character_resting` is for. The cap is a routine that never ends.
         while tick < 60 * 10 {
-            if tick % 2 == 0 {
+            if tick.is_multiple_of(2) {
                 shoot(
                     &mut canvas,
                     &mut themes,
@@ -211,7 +211,7 @@ fn main() -> Result<(), String> {
             tick += 1;
             // a dozen frames of the stand it settles on, and then out - the rest between
             // routines is two seconds and none of that is the routine
-            if themes.character_resting(0) && tick % 2 == 0 && shot > 4 {
+            if themes.character_resting(0) && tick.is_multiple_of(2) && shot > 4 {
                 for _ in 0..6 {
                     shoot(
                         &mut canvas,

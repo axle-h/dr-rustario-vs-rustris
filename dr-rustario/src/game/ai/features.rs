@@ -19,7 +19,6 @@
 //! bottle out or finishing one, and as the change the placement made to it, which is the only
 //! part that can rank one candidate against another.
 
-use crate::game::block::Block;
 use crate::game::bottle::{Bottle, BOTTLE_HEIGHT, BOTTLE_WIDTH};
 use crate::game::geometry::BottlePoint;
 use crate::game::pill::VirusColor;
@@ -38,6 +37,7 @@ pub const BURIED: u8 = u8::MAX;
 /// The N64's own `BadLineRate`, in the bottle's coordinates: it is steeply weighted towards the
 /// middle, because that is where a pill has to come in. Nothing in the model reads it, and it
 /// is here for [`crate::game::ai::probe`]'s control group.
+#[cfg_attr(test, allow(dead_code))]
 pub const TOP_ROW_RATE: [[i32; BOTTLE_WIDTH as usize]; 3] = [
     [6, 7, 8, 9, 9, 8, 7, 6],
     [2, 2, 4, 7, 7, 4, 2, 2],
@@ -397,6 +397,7 @@ impl Grid {
         self.viruses[index(x, y)]
     }
 
+    #[cfg_attr(test, allow(dead_code))]
     pub fn heights(&self) -> &[i32; BOTTLE_WIDTH as usize] {
         &self.heights
     }

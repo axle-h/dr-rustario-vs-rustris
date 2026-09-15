@@ -416,7 +416,7 @@ impl Bottle {
     pub fn send_garbage(&mut self, garbage: SendGarbage) -> Vec<Garbage> {
         let mut available_x = self
             .row(0)
-            .into_iter()
+            .iter()
             .enumerate()
             .filter(|(_, b)| b.is_empty())
             .map(|(x, _)| x as u32)
@@ -963,7 +963,7 @@ mod tests {
         bottle.having_garbage(5, 10, VirusColor::Red);
         bottle.having_garbage(1, 11, VirusColor::Yellow);
         let (pattern, patterns) = bottle.pattern();
-        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern.into_iter());
+        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern);
         assert_eq!(
             observed,
             HashSet::from_iter([
@@ -992,7 +992,7 @@ mod tests {
         bottle.having_garbage(5, 14, VirusColor::Red);
         bottle.having_garbage(4, 10, VirusColor::Yellow);
         let (pattern, patterns) = bottle.pattern();
-        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern.into_iter());
+        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern);
         assert_eq!(
             observed,
             HashSet::from_iter([
@@ -1020,7 +1020,7 @@ mod tests {
         bottle.having_garbage(4, 10, VirusColor::Yellow);
         bottle.having_garbage(5, 10, VirusColor::Yellow);
         let (pattern, patterns) = bottle.pattern();
-        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern.into_iter());
+        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern);
         assert_eq!(
             observed,
             HashSet::from_iter([
@@ -1067,7 +1067,7 @@ mod tests {
         bottle.having_garbage(4, 13, VirusColor::Yellow);
 
         let (pattern, patterns) = bottle.pattern();
-        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern.into_iter());
+        let observed: HashSet<ColoredBlock, RandomState> = HashSet::from_iter(pattern);
         assert_eq!(
             observed,
             HashSet::from_iter([
@@ -1266,7 +1266,7 @@ mod tests {
             2
         );
         let mut garbage = HashSet::new();
-        for block in bottle.row(0).into_iter() {
+        for block in bottle.row(0).iter() {
             if let Block::Garbage(color) = block {
                 garbage.insert(*color);
             }

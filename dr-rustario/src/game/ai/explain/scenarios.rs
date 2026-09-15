@@ -238,14 +238,6 @@ const FULL: [&str; 5] = [
     "ryybyRyb", //
 ];
 const EMPTY: [&str; 1] = ["...R...."];
-/// the same as `FULL` with the stack lifted off the floor, so it has holes under it
-const HOLED: [&str; 5] = [
-    "..b.....", //
-    "R.b..By.", //
-    "y.b.rBy.", //
-    "rrY.rRyb", //
-    "r.y.y.y.", //
-];
 
 /// which bottle or bottles one input is drawn in
 struct Scene {

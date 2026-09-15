@@ -12,7 +12,7 @@ use rand_chacha::ChaChaRng;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, Deref, DerefMut};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Seed(<ChaChaRng as SeedableRng>::Seed);
 
 impl Deref for Seed {
@@ -71,12 +71,6 @@ impl AddAssign for Seed {
     }
 }
 
-impl Default for Seed {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
 impl Distribution<Seed> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Seed {
         Seed(rng.random())
@@ -102,9 +96,9 @@ impl From<BigUint> for Seed {
     }
 }
 
-impl Into<BigUint> for Seed {
-    fn into(self) -> BigUint {
-        BigUint::from_bytes_be(&*self)
+impl From<Seed> for BigUint {
+    fn from(seed: Seed) -> Self {
+        BigUint::from_bytes_be(&*seed)
     }
 }
 
@@ -124,9 +118,9 @@ impl From<String> for Seed {
     }
 }
 
-impl Into<ChaChaRng> for Seed {
-    fn into(self) -> ChaChaRng {
-        ChaChaRng::from_seed(self.0)
+impl From<Seed> for ChaChaRng {
+    fn from(seed: Seed) -> Self {
+        ChaChaRng::from_seed(seed.0)
     }
 }
 

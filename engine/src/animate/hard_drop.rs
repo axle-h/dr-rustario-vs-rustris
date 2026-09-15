@@ -35,7 +35,7 @@ impl State {
         for j in 1..=trail_frames {
             let alpha_mod =
                 MAX_ALPHA - (MAX_ALPHA as f64 * j as f64 / trail_frames as f64).round() as u8;
-            let offset_y = -1.0 * self.step * j as f64;
+            let offset_y = -self.step * j as f64;
             result.push(HardDropAnimationFrame::new(offset_y, alpha_mod));
         }
 

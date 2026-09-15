@@ -54,6 +54,17 @@ pub struct ParticleProperties {
     angular_velocity: VariableQuantity<f64>,
 }
 
+impl Default for ParticleProperties {
+    fn default() -> Self {
+        Self::new(
+            &[ParticleSprite::Circle05],
+            ParticleColor::WHITE,
+            (1.0, 0.0),
+            0.0,
+        )
+    }
+}
+
 impl ParticleProperties {
     pub fn new<C, S, R>(sprites: &[ParticleSprite], color: C, size: S, angular_velocity: R) -> Self
     where
@@ -82,15 +93,6 @@ impl ParticleProperties {
     pub fn angular_velocity<R: Into<VariableQuantity<f64>>>(mut self, value: R) -> Self {
         self.angular_velocity = value.into();
         self
-    }
-
-    pub fn default() -> Self {
-        Self::new(
-            &[ParticleSprite::Circle05],
-            ParticleColor::WHITE,
-            (1.0, 0.0),
-            0.0,
-        )
     }
 
     pub fn next_sprite(&mut self) -> &ParticleSprite {

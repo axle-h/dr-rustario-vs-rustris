@@ -121,8 +121,7 @@ fn main() -> Result<(), String> {
 
     let per_shot = (every * 1000 / TICK.as_micros() as u64).max(1);
     println!(
-        "{} on {} ({scene}): {shots} shots, one every {every}ms ({per_shot} ticks)",
-        "puyo",
+        "puyo on {} ({scene}): {shots} shots, one every {every}ms ({per_shot} ticks)",
         all[index].name()
     );
     let mut tick = 0usize;
@@ -160,7 +159,7 @@ fn step(themes: &mut ThemeContext, games: &mut [puyo_rusto::game::Game], tick: u
         }
         // a hand on the controls: walk to a column and drop, so the shot keeps producing
         // the things it is here to look at rather than watching one pair fall for a second
-        if tick % 24 == 0 {
+        if tick.is_multiple_of(24) {
             let column = (tick / 24 + index * 2) % puyo_rusto::game::board::COLUMNS as usize;
             for _ in 0..puyo_rusto::game::board::COLUMNS {
                 game.left();

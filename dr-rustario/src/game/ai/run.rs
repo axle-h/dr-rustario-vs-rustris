@@ -15,6 +15,7 @@ use engine::ai::GameResult;
 /// apart. The bottles above it are not more of the same, either - level 19 and up confine their
 /// viruses to the top three rows, and level 24 up carries the game's maximum of 99 - so the
 /// measure keeps discriminating all the way here.
+#[cfg_attr(test, allow(dead_code))]
 pub const TOP_TRAINING_LEVEL: u32 = 30;
 
 /// **The clock.** How many pills a training game is given to destroy as many viruses as it can.

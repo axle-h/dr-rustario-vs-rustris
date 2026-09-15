@@ -110,6 +110,7 @@ fn main() -> Result<(), String> {
                 puyo_game,
             )
         }
+        #[cfg(feature = "rustle-fighter")]
         "rustle-fighter" => {
             let themes = leak(rustle_fighter::theme::all_themes(
                 &mut canvas,
@@ -129,7 +130,8 @@ fn main() -> Result<(), String> {
             )
         }
         other => Err(format!(
-            "unknown game '{other}', expected rustris, dr-rustario, puyo or rustle-fighter"
+            "unknown game '{other}', expected rustris, dr-rustario, puyo or rustle-fighter \
+             (with the rustle-fighter feature)"
         )),
     }
 }
@@ -286,6 +288,7 @@ fn rustris_game(_player: usize) -> rustris::game::Game {
 /// A board stacked up without being tidied, so the shot shows what this game is *about*: gems
 /// of a colour beside each other, crash gems among them, and - once a rectangle turns up - a
 /// power gem drawn joined across its own cells.
+#[cfg(feature = "rustle-fighter")]
 fn rustle_fighter_game(_player: usize) -> rustle_fighter::game::Game {
     use engine::game::Game as _;
     static SEED: std::sync::OnceLock<rustle_fighter::game::random::Seed> =

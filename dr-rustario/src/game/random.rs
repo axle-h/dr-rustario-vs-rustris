@@ -54,6 +54,12 @@ pub struct BottleSeed {
     count: u32,
 }
 
+impl Default for BottleSeed {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BottleSeed {
     pub fn new() -> Self {
         Self {
@@ -286,9 +292,8 @@ mod tests {
         // validate 3 in a row rule
         for color in [VirusColor::Yellow, VirusColor::Red, VirusColor::Blue] {
             // horizontal
-            let mut count = 0;
             for y in 0..BOTTLE_HEIGHT as i32 {
-                count = 0;
+                let mut count = 0;
                 for x in 0..BOTTLE_WIDTH as i32 {
                     if result.get(x, y) == Some(color) {
                         count += 1;
@@ -300,9 +305,8 @@ mod tests {
             }
 
             // vertical
-            let mut count = 0;
             for x in 0..BOTTLE_WIDTH as i32 {
-                count = 0;
+                let mut count = 0;
                 for y in 0..BOTTLE_HEIGHT as i32 {
                     if result.get(x, y) == Some(color) {
                         count += 1;

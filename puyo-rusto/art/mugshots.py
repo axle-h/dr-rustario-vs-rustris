@@ -1135,12 +1135,21 @@ def _rust_layers(name, layer_origins):
     return chr(10).join(lines)
 
 
+def _rust_component(v):
+    # a diagonal is printed as the Rust module's `DIAG`, which is `FRAC_1_SQRT_2`: clippy denies
+    # the four digit literal as an approximation of that constant
+    if abs(v) == DIAG:
+        return "-DIAG" if v < 0 else "DIAG"
+    return "%.4f" % v
+
+
 def _rust_sources(sources):
     out = []
     for at, dirs in sources:
         out.append(
             "                        EmitterSource { at: (%.1f, %.1f), directions: &[%s] },"
-            % (at[0], at[1], ", ".join("(%.4f, %.4f)" % d for d in dirs))
+            % (at[0], at[1], ", ".join(
+                "(%s, %s)" % (_rust_component(x), _rust_component(y)) for x, y in dirs))
         )
     return chr(10).join(out)
 

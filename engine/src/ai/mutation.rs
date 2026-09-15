@@ -215,7 +215,7 @@ impl<const N: usize> GenomeMutation<N> {
         count: usize,
         objective: Objective,
     ) -> Vec<[Genome<N>; 2]> {
-        let scaled_population = scale_fitness(&population, objective);
+        let scaled_population = scale_fitness(population, objective);
         let mut parents: Vec<[Genome<N>; 2]> = vec![];
         for _ in 0..count {
             let mut next_parent = || {
@@ -273,7 +273,7 @@ fn scale_fitness<const N: usize>(
     }
 
     population
-        .into_iter()
+        .iter()
         .map(|result| (result.genome(), result.fitness(objective) / sum_fitness))
         .collect()
 }
@@ -329,7 +329,7 @@ mod tests {
             .map(|i| {
                 let fitness = 0.5f64.powi(i); // 1.0, 0.5, 0.25, 0.125 etc
                 let mut member = Organism::new(genome(i + 1));
-                let mut result = GameResult::new(
+                let result = GameResult::new(
                     (fitness * 1_000_000.0) as u32,
                     10,
                     1,

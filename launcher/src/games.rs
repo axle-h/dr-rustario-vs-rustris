@@ -14,6 +14,9 @@ pub enum GameKind {
     DrRustario,
     Rustris,
     Puyo,
+    /// only in a build with the `rustle-fighter` feature, which is off by default: without it
+    /// the game is not in the binary at all
+    #[cfg(feature = "rustle-fighter")]
     RustleFighter,
 }
 
@@ -21,20 +24,22 @@ impl GameKind {
     /// every game the launcher can run, in the order they are numbered. This is the key of
     /// every per-game collection - see [`PerGame`] - and the order the themes are built in,
     /// so a game's themes keep one place in the shared list.
-    pub const ALL: [GameKind; 4] = [
+    pub const ALL: [GameKind; Self::COUNT] = [
         GameKind::DrRustario,
         GameKind::Rustris,
         GameKind::Puyo,
+        #[cfg(feature = "rustle-fighter")]
         GameKind::RustleFighter,
     ];
 
     /// the order the games are billed in: the pre-menu's list, and the turns a fixed versus
     /// playlist takes. Rustris opens, which is a decision about presentation rather than
     /// about how the games are numbered, so it is its own list.
-    pub const RUNNING_ORDER: [GameKind; 4] = [
+    pub const RUNNING_ORDER: [GameKind; Self::COUNT] = [
         GameKind::Rustris,
         GameKind::DrRustario,
         GameKind::Puyo,
+        #[cfg(feature = "rustle-fighter")]
         GameKind::RustleFighter,
     ];
 
@@ -57,7 +62,12 @@ impl GameKind {
     pub const PLAYLIST_ORDER: &'static [GameKind] =
         &[GameKind::Rustris, GameKind::DrRustario, GameKind::Puyo];
 
-    pub const COUNT: usize = Self::ALL.len();
+    /// how many games this build carries: Super Rustle Fighter is behind a feature
+    pub const COUNT: usize = if cfg!(feature = "rustle-fighter") {
+        4
+    } else {
+        3
+    };
 
     /// what this game is called on the pre-menu
     pub fn name(self) -> &'static str {
@@ -65,6 +75,7 @@ impl GameKind {
             GameKind::DrRustario => "dr. rustario",
             GameKind::Rustris => "rustris",
             GameKind::Puyo => "puyo rusto",
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => "super rustle fighter",
         }
     }
@@ -80,7 +91,11 @@ impl GameKind {
     /// assuming, which is what stops a game without one being offered an opponent that does
     /// not exist.
     pub fn fields_an_ai(self) -> bool {
-        !matches!(self, GameKind::RustleFighter)
+        #[cfg(feature = "rustle-fighter")]
+        if self == GameKind::RustleFighter {
+            return false;
+        }
+        true
     }
 
     /// this game's slot in a [`PerGame`]
@@ -139,10 +154,13 @@ impl<T> PerGame<T> {
     }
 }
 
+// one per player for the length of a match, and every call goes through it: not worth a box
+#[allow(clippy::large_enum_variant)]
 pub enum AnyGame {
     DrRustario(dr_rustario::game::Game),
     Rustris(rustris::game::Game),
     Puyo(puyo_rusto::game::Game),
+    #[cfg(feature = "rustle-fighter")]
     RustleFighter(rustle_fighter::game::Game),
 }
 
@@ -152,6 +170,7 @@ macro_rules! delegate {
             AnyGame::DrRustario($game) => $body,
             AnyGame::Rustris($game) => $body,
             AnyGame::Puyo($game) => $body,
+            #[cfg(feature = "rustle-fighter")]
             AnyGame::RustleFighter($game) => $body,
         }
     };
@@ -165,6 +184,7 @@ impl AnyGame {
             AnyGame::DrRustario(_) => GameKind::DrRustario,
             AnyGame::Rustris(_) => GameKind::Rustris,
             AnyGame::Puyo(_) => GameKind::Puyo,
+            #[cfg(feature = "rustle-fighter")]
             AnyGame::RustleFighter(_) => GameKind::RustleFighter,
         }
     }
@@ -469,6 +489,7 @@ mod tests {
             GameKind::DrRustario => engine::game::ids::DR_RUSTARIO,
             GameKind::Rustris => engine::game::ids::RUSTRIS,
             GameKind::Puyo => engine::game::ids::PUYO,
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => engine::game::ids::RUSTLE_FIGHTER,
         };
         match sender {
@@ -484,6 +505,7 @@ mod tests {
             GameKind::Puyo => puyo_rusto::game::foreign_attack(id(receiver), 60),
             // it has no `foreign_attack` because it cannot yet be dealt into a playlist, and
             // so has no crossing to price - see `PLAYLIST_ORDER`
+            #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => 0,
         }
     }
