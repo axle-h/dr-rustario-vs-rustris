@@ -5,7 +5,7 @@ use crate::animate::event::{AnimationEvent, AnimationType};
 use crate::app::{App, MatchSettings, PostGameAction, StageChange, ThemeMode};
 use crate::frame_rate::FrameRate;
 use crate::game::geometry::Point as CellPoint;
-use crate::game::{Cell, Game, GameEvent, MetricKind, StageState, StageTransition};
+use crate::game::{Cell, Game, GameEvent, MetricKind, StageState, StageTransition, ids};
 use crate::game_input::{GameInputContext, GameInputKey};
 use crate::particles::field::context::{PlayerRegion, SceneContext};
 use crate::particles::field::reaction::FieldEvent;
@@ -739,13 +739,16 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         // and the field wants both ends of the comet
         for route in fixture.drain_attack_routes() {
             // one ball per route, which is one per attack: it leaves the group that paid for
-            // it and shatters over the board it lands on
-            themes.send_attack_ball(
-                route.from,
-                route.to,
-                trays_before[route.to as usize],
-                route.strength,
-            );
+            // it and shatters over the board it lands on. This only renders if at least one game is puyo.
+            let puyo = |player: u32| fixture.player(player).game().game_id() == ids::PUYO;
+            if puyo(route.from) || puyo(route.to) {
+                themes.send_attack_ball(
+                    route.from,
+                    route.to,
+                    trays_before[route.to as usize],
+                    route.strength,
+                );
+            }
             field_events.push(FieldEvent::Attack {
                 from: route.from,
                 to: route.to,
