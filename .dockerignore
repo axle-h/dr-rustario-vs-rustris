@@ -7,3 +7,8 @@ README.md
 build-portmaster.sh
 portmaster/
 media/
+build-android.sh
+android/.gradle/
+android/build/
+android/app/build/
+android/*.keystore

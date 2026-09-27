@@ -352,6 +352,11 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         return Ok(Some(PostGameAction::ReturnToMenu));
                     }
                 }
+                GameInputKey::Suspend => {
+                    if fixture.state() == MatchState::Normal && fixture.toggle_paused().is_some() {
+                        events.push((None, GameEvent::Paused));
+                    }
+                }
                 GameInputKey::ReturnToMenu => return Ok(Some(PostGameAction::ReturnToMenu)),
                 GameInputKey::Quit => return Ok(Some(PostGameAction::Quit)),
                 GameInputKey::NextTheme => {

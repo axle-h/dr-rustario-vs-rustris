@@ -231,14 +231,15 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             video: VideoConfig {
-                #[cfg(not(feature = "portmaster"))]
+                #[cfg(not(any(feature = "portmaster", feature = "android")))]
                 mode: VideoMode::Window {
                     width: 1280,
                     height: 720,
                 },
                 // handhelds: fill whatever the panel is (PortMaster runs ports under sway or
-                // KMSDRM, where a mode switch is the fragile option) and let the scaler fit it
-                #[cfg(feature = "portmaster")]
+                // KMSDRM, where a mode switch is the fragile option) and let the scaler fit it.
+                // Android has no windows at all.
+                #[cfg(any(feature = "portmaster", feature = "android"))]
                 mode: VideoMode::FullScreenDesktop,
                 vsync: true,
                 disable_screensaver: true,
@@ -281,6 +282,11 @@ impl Default for Config {
                 next_theme: GameKey::RShift,
                 #[cfg(not(feature = "portmaster"))]
                 next_theme: GameKey::F2,
+                // Android's system back button, which SDL only passes on as a key because
+                // `App::new` asks it to - left alone it closes the app from any screen
+                #[cfg(feature = "android")]
+                quit: GameKey::AcBack,
+                #[cfg(not(feature = "android"))]
                 quit: GameKey::Escape,
             },
         }
@@ -300,7 +306,42 @@ pub fn config_path(name: &str) -> Result<PathBuf, String> {
     Ok(PathBuf::from(format!("/data/{}.yml", name)))
 }
 
-#[cfg(not(any(feature = "portmaster", feature = "browser")))]
+/// The app's own folder on shared storage, `Android/data/<package>/files`, which a file
+/// manager or a USB cable can reach so that the config can be edited; internal storage, which
+/// only the app can see, if shared storage is not mounted. Both go when the app is uninstalled.
+#[cfg(feature = "android")]
+pub fn config_path(name: &str) -> Result<PathBuf, String> {
+    use std::ffi::{c_char, c_int, CStr};
+    // SDL_system.h declares these only under __ANDROID__, so sdl2-sys's pregenerated
+    // bindings do not carry them
+    const SDL_ANDROID_EXTERNAL_STORAGE_WRITE: c_int = 0x02;
+    extern "C" {
+        fn SDL_AndroidGetExternalStorageState() -> c_int;
+        fn SDL_AndroidGetExternalStoragePath() -> *const c_char;
+        fn SDL_AndroidGetInternalStoragePath() -> *const c_char;
+    }
+    let dir = unsafe {
+        let external =
+            SDL_AndroidGetExternalStorageState() & SDL_ANDROID_EXTERNAL_STORAGE_WRITE != 0;
+        let path = if external {
+            SDL_AndroidGetExternalStoragePath()
+        } else {
+            std::ptr::null()
+        };
+        let path = if path.is_null() {
+            SDL_AndroidGetInternalStoragePath()
+        } else {
+            path
+        };
+        if path.is_null() {
+            return Err(sdl2::get_error());
+        }
+        CStr::from_ptr(path).to_string_lossy().into_owned()
+    };
+    Ok(PathBuf::from(dir).join(format!("{}.yml", name)))
+}
+
+#[cfg(not(any(feature = "portmaster", feature = "browser", feature = "android")))]
 pub fn config_path(name: &str) -> Result<PathBuf, String> {
     confy::get_configuration_file_path(crate::app_info::get().name, name).map_err(|e| e.to_string())
 }

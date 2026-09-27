@@ -2,24 +2,25 @@
 //! placements with, and the genetic algorithm that trains one. Both games extract their own
 //! board features into a [FeatureNetwork] and supply their own [genetic::Fitness].
 //!
-//! The training half is not compiled for the browser; the network itself always is.
+//! The training half is not compiled for the browser or Android, which have nowhere to run it;
+//! the network itself always is.
 
 mod coefficient;
 mod end_game;
 mod game_result;
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 mod generation_record;
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 mod generation_stats;
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 mod genetic;
 mod genome;
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 mod mutation;
 mod neural;
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 mod objective;
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 mod organism;
 mod pacer;
 mod seed;
@@ -36,13 +37,13 @@ pub use neural::{
 pub use pacer::KeyPacer;
 pub use seed::Seed;
 
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 pub use generation_stats::GenerationStatistics;
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 pub use genetic::{Fitness, GeneticAlgorithm, HyperParameters};
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 pub use mutation::{GenomeMutation, RateLimits};
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 pub use objective::{Objective, Phase};
-#[cfg(not(target_os = "emscripten"))]
+#[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 pub use organism::Organism;

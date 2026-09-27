@@ -1,0 +1,111 @@
+# Builds the Android APK - see build-android.sh, which signs what this leaves.
+#
+# ABI is arm64-v8a, which is every handheld; x86_64 is there for the emulator, which cannot
+# run arm64 code on an x86 host. build-android.sh passes the Rust TARGET that goes with it.
+#
+# Two stages, so that build-android.sh can use the first on its own for keytool:
+#   toolchain - JDK, Android SDK and NDK, Gradle, Rust, and SDL built for Android
+#   build     - the game as a shared library, and the unsigned APK around it
+#
+# SDL is built here rather than taken from sdl2-sys's `bundled` feature because the Java half
+# of it (SDLActivity and friends) has to come from the very same release as libSDL2.so: the
+# two call each other over JNI by name, and a mismatch fails at runtime, not at link time.
+FROM ubuntu:24.04 AS toolchain
+
+ARG ABI=arm64-v8a
+ARG TARGET=aarch64-linux-android
+ARG SDL_VERSION=2.32.10
+ARG NDK_VERSION=29.0.14206865
+ARG CMDLINE_TOOLS=commandlinetools-linux-16111833_latest.zip
+ARG PLATFORM=android-36
+ARG BUILD_TOOLS=36.1.0
+ARG GRADLE_VERSION=9.8.0
+# the oldest Android the native libraries are linked against; match minSdk in app/build.gradle.kts
+ARG API=26
+ENV DEBIAN_FRONTEND=noninteractive
+# on into the build stage, which has to build the same ABI
+ENV ABI=$ABI TARGET=$TARGET
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       openjdk-21-jdk-headless curl unzip ca-certificates cmake ninja-build gcc libc6-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV ANDROID_HOME=/opt/android-sdk
+RUN mkdir -p $ANDROID_HOME/cmdline-tools \
+  && curl -fsSL https://dl.google.com/android/repository/$CMDLINE_TOOLS -o /tmp/tools.zip \
+  && unzip -q /tmp/tools.zip -d $ANDROID_HOME/cmdline-tools \
+  && mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest \
+  && rm /tmp/tools.zip \
+  && yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null \
+  && $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+       "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" "ndk;$NDK_VERSION" > /dev/null
+ENV ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION
+# apksigner, for build-android.sh
+ENV PATH="$ANDROID_HOME/build-tools/$BUILD_TOOLS:$PATH"
+
+RUN curl -fsSL https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip -o /tmp/gradle.zip \
+  && unzip -q /tmp/gradle.zip -d /opt \
+  && rm /tmp/gradle.zip
+ENV PATH="/opt/gradle-$GRADLE_VERSION/bin:$PATH"
+
+# libSDL2.so into /jniLibs, where the game's library joins it, and the Java half kept at
+# /sdl/android-project. HIDAPI is compiled into libSDL2.so by the CMake build, which is why
+# there is no libhidapi.so beside it as there is under ndk-build.
+WORKDIR /sdl
+RUN curl -fsSL https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-${SDL_VERSION}.tar.gz \
+     | tar xz --strip-components=1 \
+  && cmake -S . -B build -G Ninja \
+       -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+       -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-$API \
+       -DCMAKE_BUILD_TYPE=Release -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF \
+  && cmake --build build \
+  && mkdir -p /jniLibs/$ABI \
+  && cp build/libSDL2.so /jniLibs/$ABI/ \
+  && rm -rf build
+
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --profile minimal \
+  && /root/.cargo/bin/rustup target add $TARGET
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# sdl2-sys links `-lSDL2` and nothing else when it is neither bundled nor pkg-config'd, so the
+# one thing to add is where libSDL2.so is
+ENV NDK_BIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+ENV CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK_BIN/aarch64-linux-android${API}-clang \
+    CC_aarch64_linux_android=$NDK_BIN/aarch64-linux-android${API}-clang \
+    AR_aarch64_linux_android=$NDK_BIN/llvm-ar \
+    CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-L native=/jniLibs/arm64-v8a" \
+    CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$NDK_BIN/x86_64-linux-android${API}-clang \
+    CC_x86_64_linux_android=$NDK_BIN/x86_64-linux-android${API}-clang \
+    AR_x86_64_linux_android=$NDK_BIN/llvm-ar \
+    CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-L native=/jniLibs/x86_64"
+
+# fetch the Android Gradle plugin into its own layer, so that a source change does not
+# download it again
+WORKDIR /app/android
+COPY android/settings.gradle.kts android/build.gradle.kts android/gradle.properties ./
+COPY android/app/build.gradle.kts app/
+RUN gradle --no-daemon -q help \
+      -PsdlJavaDir=/sdl/android-project/app/src/main/java -PjniLibsDir=/jniLibs \
+      -PversionCode=1 -PversionName=0
+
+FROM toolchain AS build
+ARG VERSION_CODE
+ARG VERSION_NAME
+
+WORKDIR /app
+COPY . .
+
+# The game as liblauncher.so. `cargo rustc` is the only way to ask for a cdylib without
+# declaring one in launcher/Cargo.toml, where every desktop build would link it too.
+RUN cargo rustc --release -p dr-rustario-vs-rustris --lib --crate-type cdylib \
+      --target $TARGET --no-default-features --features android \
+  && cp target/$TARGET/release/liblauncher.so /jniLibs/$ABI/ \
+  && $NDK_BIN/llvm-readelf -d /jniLibs/$ABI/liblauncher.so | grep NEEDED
+
+WORKDIR /app/android
+RUN gradle --no-daemon assembleRelease \
+      -PsdlJavaDir=/sdl/android-project/app/src/main/java -PjniLibsDir=/jniLibs \
+      -PversionCode=$VERSION_CODE -PversionName=$VERSION_NAME
+
+CMD ["true"]

@@ -19,6 +19,16 @@ x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md" }
 [lints]
 workspace = true
 
+# The whole game is the library and the binary is one call into it, because Android has no
+# binary to run: SDL's Java activity loads a shared library and calls its `SDL_main`. The
+# library stays an rlib here - a cdylib would be linked on every desktop build for nothing -
+# and build-android.sh asks for the .so with `cargo rustc --crate-type cdylib`. It is not named
+# after the package because a lib and a bin of one name collide in `cargo doc` and in the
+# Windows .pdb.
+[lib]
+name = "launcher"
+path = "src/lib.rs"
+
 [[bin]]
 name = "dr-rustario-vs-rustris"
 path = "src/main.rs"
@@ -34,6 +44,8 @@ vcpkg = ["engine/vcpkg"]
 pkgconfig = ["engine/pkgconfig"]
 portmaster = ["engine/portmaster", "dr-rustario/portmaster"]
 browser = ["engine/browser", "dr-rustario/browser"]
+# the Android shared library - see build-android.sh, which is the only way to build it
+android = ["engine/android", "dr-rustario/android"]
 # Super Rustle Fighter is off until it has an ai and a playlist turn: without this the binary
 # carries none of its code or assets and nothing in it knows the game exists. Everything it
 # shares with the others lives in `engine` and is built either way.

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- engine/src/app/loading.rs's BACKGROUND -->
+    <color name="icon_background">#08080C</color>
+</resources>

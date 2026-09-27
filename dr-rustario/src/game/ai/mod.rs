@@ -10,19 +10,19 @@ mod placement;
 // so they are compiled out of it; the launcher links the real thing
 #[cfg(not(test))]
 pub mod agent;
-#[cfg(all(not(test), not(target_os = "emscripten")))]
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod explain;
-#[cfg(all(not(test), not(target_os = "emscripten")))]
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod genetic;
-#[cfg(all(not(test), not(target_os = "emscripten")))]
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod harness;
-#[cfg(all(not(test), not(target_os = "emscripten")))]
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 mod headless_game;
-#[cfg(all(not(test), not(target_os = "emscripten")))]
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod imitation;
 pub mod input_sequence;
 pub mod models;
-#[cfg(all(not(test), not(target_os = "emscripten")))]
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod probe;
 mod run;
 

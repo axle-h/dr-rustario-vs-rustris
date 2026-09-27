@@ -18,6 +18,9 @@ pub enum GameInputKey {
     RotateAnticlockwise { player: u32 },
     Hold { player: u32 },
     Pause,
+    // the app has gone into the background (Android's home button, or another app taking the
+    // screen): pause if playing, and unlike `Pause` never unpause
+    Suspend,
     ReturnToMenu,
     Quit,
     NextTheme,
@@ -162,6 +165,8 @@ impl GameInputContext {
     fn map_from_sdl_event(&self, event: Event) -> MaybeKey {
         match event {
             Event::Quit { .. } => MaybeKey::Down(GameInputKey::Quit),
+            // only a mobile SDL ever sends this
+            Event::AppWillEnterBackground { .. } => MaybeKey::Down(GameInputKey::Suspend),
             Event::KeyDown {
                 keycode: Some(keycode),
                 repeat: false,

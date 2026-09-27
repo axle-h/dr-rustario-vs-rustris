@@ -119,6 +119,34 @@ where config and high scores persist across reloads.
 The `ga` training subcommand is not part of the browser build, but the
 AI opponent and demo mode are. The wasm embeds all game assets, so serve it compressed.
 
+### Android (game controller handhelds)
+
+An arm64 APK for Android handhelds with a built in pad - the Retroid Pocket 5 and the like -
+behind the `android` feature. **There are no touch controls**: it is played with the pad, or
+with any controller Android sees. It is landscape only and needs Android 8.0 or later.
+
+```shell
+./build-android.sh            # -> dist/dr-rustario-vs-rustris.apk
+DEPLOY=1 ./build-android.sh   # ... and `adb install` it on the device adb sees
+```
+
+This builds in Docker (`Dockerfile.android`: the Android SDK and NDK, Gradle, and SDL built
+for Android from source). The game is the launcher crate built as a shared library, which
+SDL's own Java activity loads - the Gradle project in [android/](android) is little more than
+that activity and a manifest.
+
+The first build makes a signing key, `android/release.keystore`. **Keep it**: Android only
+installs an update signed with the key it was installed with, and uninstalling to change it
+deletes the config and high scores. Without adb, copy the APK to the device and open it from a
+file manager, allowing installs from unknown sources when it asks.
+
+The pad plays as it does everywhere else (see [Controls](#controls)). Android's own back
+button is Escape - back in a menu, return to menu in a match - and a match pauses itself when
+the app goes into the background. As in the browser, the ai plays but the `ga` training
+subcommand is not built. Config and high scores are in
+`Android/data/com.ax_h.drrustariovsrustris/files/` on the device's shared storage, where a
+file manager or a USB cable can reach them.
+
 ## Config
 
 Config and high scores are stored in yaml:
@@ -126,6 +154,7 @@ Config and high scores are stored in yaml:
 * Windows: `$HOME\AppData\Roaming\dr-rustario-vs-rustris`
 * MacOS: `$HOME/Library/Application Support/dr-rustario-vs-rustris`
 * Linux: `$XDG_CONFIG_HOME/dr-rustario-vs-rustris` or `$HOME/.config/dr-rustario-vs-rustris`
+* Android: `Android/data/com.ax_h.drrustariovsrustris/files` on shared storage
 
 High scores all live in one `high_scores.yml`.
 

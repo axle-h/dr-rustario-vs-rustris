@@ -31,7 +31,7 @@ pub mod quiet;
 pub mod skill;
 
 pub mod agent;
-#[cfg(all(not(test), not(target_os = "emscripten")))]
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod harness;
 
 pub use skill::{Skill, SKILLS, SKILL_ORDER};

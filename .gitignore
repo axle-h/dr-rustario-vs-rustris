@@ -44,3 +44,11 @@ menu-*.png
 /puyo-rusto/art/retro/
 
 *.log
+
+# build-android.sh's signing key, which has to outlive every build - see that script - and what
+# gradle leaves behind if the project is ever opened outside the Docker build
+/android/*.keystore
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties

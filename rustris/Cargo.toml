@@ -19,8 +19,8 @@ bitflags = "2.13"
 itertools = "0.15"
 serde_json = "1.0"
 
-[target.'cfg(not(target_os = "emscripten"))'.dependencies]
-# training only (the ga subcommand); the browser build compiles neither
+[target.'cfg(not(any(target_os = "emscripten", target_os = "android")))'.dependencies]
+# training only (the ga subcommand); the browser and Android builds compile neither
 rayon = "1.12"
 
 [dev-dependencies]

@@ -1,4 +1,4 @@
-//! Halves the particle theme's Dr. for the two builds that cannot afford him at full size.
+//! Halves the particle theme's Dr. for the builds that cannot afford him at full size.
 //!
 //! The particle Dr. is 591 frames of 478 pixels square spread over four sheets, and the
 //! largest of them is 7170x7648 - 209 MiB once it is a texture. Every one is loaded whole and
@@ -7,10 +7,12 @@
 //! 1 GiB handheld has. Three of the four are also past the 4096 pixels a Mali G31 will
 //! allocate in one dimension, so they would not become textures there at all.
 //!
-//! A desktop is what 4k is drawn from and keeps the art as it was drawn. The `portmaster` and
-//! `browser` builds get it halved into `OUT_DIR` instead, which the theme includes from
-//! rather than from the source tree - see `theme/modern/mod.rs`. Neither the halving nor the
-//! `image` crate it needs is compiled for a build that has not asked for it.
+//! A desktop is what 4k is drawn from and keeps the art as it was drawn. The `portmaster`,
+//! `browser` and `android` builds get it halved into `OUT_DIR` instead, which the theme
+//! includes from rather than from the source tree - see `theme/modern/mod.rs`. An Android
+//! handheld would hold the full sheets, but its screen is 1080p at most and every byte of them
+//! is also a byte of the APK. Neither the halving nor the `image` crate it needs is compiled
+//! for a build that has not asked for it.
 
 /// where the sheets are, relative to the crate root
 const SHEET_DIR: &str = "src/theme/modern/dr";
@@ -22,11 +24,11 @@ fn main() {
     for sheet in SHEETS {
         println!("cargo:rerun-if-changed={SHEET_DIR}/{sheet}");
     }
-    #[cfg(any(feature = "portmaster", feature = "browser"))]
+    #[cfg(any(feature = "portmaster", feature = "browser", feature = "android"))]
     halved::write_all();
 }
 
-#[cfg(any(feature = "portmaster", feature = "browser"))]
+#[cfg(any(feature = "portmaster", feature = "browser", feature = "android"))]
 mod halved {
     use super::{SHEETS, SHEET_DIR};
     use image::{ExtendedColorType, ImageEncoder, Rgba, RgbaImage};

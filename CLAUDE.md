@@ -9,7 +9,8 @@
 | `rustris/` | Rustris's rules (board, SRS, scoring, garbage), its four themes and its AI |
 | `puyo-rusto/` | Puyo Rusto's rules (board, pairs, chains, nuisance), its three themes and its AI |
 | `rustle-fighter/` | Super Rustle Fighter's rules (gems, crashes, power gems, counter gems), its one arcade theme and its options. **Playable on its own; no AI and no playlist turn yet** - [docs/super-rustle-fighter-plan.md](docs/super-rustle-fighter-plan.md) is where it is up to. **Behind the launcher's `rustle-fighter` feature, off by default**: every `GameKind::RustleFighter` arm is `#[cfg]`'d, so a plain build has no code, assets or menu entry for it |
-| `launcher/` | the `dr-rustario-vs-rustris` binary: `shell.rs` (screens), `games.rs` (`AnyGame`), `modes.rs` (playlists), `cross.rs` (`ga cross`, which prices the attacks between the games) |
+| `launcher/` | the `dr-rustario-vs-rustris` binary, which is one call into the `launcher` library - Android loads that library instead, through `android.rs`'s `SDL_main`: `shell.rs` (screens), `games.rs` (`AnyGame`), `modes.rs` (playlists), `cross.rs` (`ga cross`, which prices the attacks between the games) |
+| `android/` | the Gradle project around the Android build: SDL's activity and a manifest. Only builds through `build-android.sh` |
 
 Game crates are siblings and never depend on each other; anything shared goes in `engine`.
 
@@ -22,6 +23,7 @@ cargo test                       # dr-rustario/tests/ai_agent.rs pins the AI dif
 cargo fmt --all                  # stock rustfmt, no rustfmt.toml
 ./build-portmaster.sh            # aarch64 handheld port, `portmaster` feature
 ./build-browser.sh               # wasm via emscripten, `browser` feature
+./build-android.sh               # arm64 APK, `android` feature; the launcher as a cdylib
 ```
 
 Headless render harnesses (no window needed - the way to *see* a change). On a machine with no

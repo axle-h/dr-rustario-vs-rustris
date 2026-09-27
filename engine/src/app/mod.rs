@@ -121,6 +121,20 @@ pub struct App {
 impl App {
     pub fn new(max_players: u32, icon: &[u8]) -> Result<Self, String> {
         let config = Config::load()?;
+
+        // Android's back button is the menus' back and the match's return to menu, like
+        // Escape, rather than closing the app from wherever it is pressed; a phone's
+        // accelerometer is not a player; and landscape has to be said, since SDL otherwise
+        // picks an orientation from the window's size and a desktop fullscreen window is
+        // built 1x1, which it reads as portrait
+        #[cfg(feature = "android")]
+        {
+            sdl2::hint::set("SDL_ANDROID_TRAP_BACK_BUTTON", "1");
+            sdl2::hint::set("SDL_ACCELEROMETER_AS_JOYSTICK", "0");
+            // SDL_HINT_ORIENTATIONS: named for iOS, and read by Android too
+            sdl2::hint::set("SDL_IOS_ORIENTATIONS", "LandscapeLeft LandscapeRight");
+        }
+
         let sdl = sdl2::init()?;
         let video = sdl.video()?;
 
