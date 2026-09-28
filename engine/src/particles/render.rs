@@ -31,9 +31,8 @@ use std::time::Duration;
 const SPRITES: &[u8] = include_bytes!("sprites.png");
 const BASE_SCALE: f64 = 0.05;
 
-/// the procedural streak a constellation link is drawn with: a horizontal gradient that falls
-/// off at both ends, stretched and rotated to each segment. Soft and thick, and it takes a
-/// colour mod like every other sprite - unlike `draw_line`, which is one aliased pixel.
+/// the width of the soft streak texture links are drawn with, a gradient falling off at both
+/// ends that takes a colour mod
 const LINK_TEXTURE_WIDTH: u32 = 64;
 const LINK_TEXTURE_HEIGHT: u32 = 8;
 
@@ -52,8 +51,7 @@ pub struct ParticleRender<'a> {
     field_font: Option<FontRender<'a>>,
 }
 
-/// the em height text morphs are rendered at: big enough that the outline of a letter has
-/// some shape to it, small enough to stay a cheap one-off render
+/// the em height text morphs are rendered at, big enough for a letter's outline to have shape
 const FIELD_FONT_SIZE: u32 = 192;
 
 impl<'a> ParticleRender<'a> {
@@ -112,11 +110,9 @@ impl<'a> ParticleRender<'a> {
                     c.clear();
                     let half = (LINK_TEXTURE_HEIGHT as f64 - 1.0) / 2.0;
                     for x in 0..LINK_TEXTURE_WIDTH {
-                        // fade out toward both ends so a segment has no hard cap
                         let along = x as f64 / (LINK_TEXTURE_WIDTH - 1) as f64;
                         let ends = (along * std::f64::consts::PI).sin();
                         for y in 0..LINK_TEXTURE_HEIGHT {
-                            // and out from the centre line, so it is a soft streak
                             let across = 1.0 - (y as f64 - half).abs() / (half + 0.5);
                             let alpha = (255.0 * ends * across.powi(2)).round() as u8;
                             c.set_draw_color(Color::RGBA(255, 255, 255, alpha));
@@ -151,7 +147,6 @@ impl<'a> ParticleRender<'a> {
         )));
     }
 
-    /// the retained pools, for diagnostics
     pub fn pools(&self) -> &[Box<dyn crate::particles::pool::ParticlePool>] {
         self.particles.pools()
     }
@@ -160,15 +155,13 @@ impl<'a> ParticleRender<'a> {
         !self.particles.pools().is_empty()
     }
 
-    /// stage one named feature on the field, whatever it had in mind: see
-    /// [`crate::particles::field::ParticleField::force`]
+    /// see [`crate::particles::field::ParticleField::force`]
     pub fn force_field_feature(&mut self, feature: Feature) {
         for pool in self.particles.pools_mut() {
             pool.force_feature(feature);
         }
     }
 
-    /// something happened in the match that the field should react to
     pub fn push_field_event(&mut self, event: FieldEvent) {
         self.bus.borrow_mut().events.push(event);
     }
@@ -178,8 +171,7 @@ impl<'a> ParticleRender<'a> {
         self.particles.update(delta, None)
     }
 
-    /// a match frame: build any silhouettes the themes in play still owe, then tick
-    /// everything, emitters and field alike
+    /// a match frame: build any silhouettes the themes in play still owe, then tick everything
     pub fn update_scene(
         &mut self,
         delta: Duration,
@@ -196,14 +188,13 @@ impl<'a> ParticleRender<'a> {
         Ok(())
     }
 
-    /// one caption outline per frame, so a level change never costs a hitch
+    /// one caption outline per frame, so a level change never hitches
     fn build_captions(
         &mut self,
         canvas: &mut WindowCanvas,
         scene: &SceneContext,
     ) -> Result<(), String> {
-        // the words the match may call for are outlined along with the captions, so one is
-        // ready the moment it is needed rather than a second later
+        // the words the match may call for are outlined ahead, so one is ready when called
         let wanted = scene
             .captions
             .iter()
@@ -241,7 +232,6 @@ impl<'a> ParticleRender<'a> {
             ..
         } = self;
 
-        // the emitted groups: fire and forget bursts, and everything the menus draw
         for particle in particles.group_particles() {
             Self::draw_particle(
                 canvas,
@@ -253,8 +243,7 @@ impl<'a> ParticleRender<'a> {
             )?;
         }
 
-        // then each pool, once, clipped to the area it owns. A field spanning two players is
-        // drawn once with one clip rather than once per player.
+        // then each pool once, clipped to the area it owns
         for pool in particles.pools() {
             let clip = pool.clip().map(|rect| Self::to_render_rect(scale, rect));
             canvas.set_clip_rect(clip);
@@ -298,9 +287,8 @@ impl<'a> ParticleRender<'a> {
         )
     }
 
-    /// a rotated textured quad, so a link is a soft glowing streak rather than a hairline.
-    /// Deliberately not `render_geometry`: that is SDL 2.0.18, and a PortMaster build links
-    /// the handheld firmware's own SDL, where a missing symbol is a binary that will not start
+    /// A rotated textured quad, not `render_geometry`: that needs SDL 2.0.18, and a PortMaster
+    /// build links the firmware's own SDL, where a missing symbol will not start.
     fn draw_link(
         canvas: &mut WindowCanvas,
         scale: &Scale,
@@ -336,7 +324,7 @@ impl<'a> ParticleRender<'a> {
         )
     }
 
-    /// the low density fallback: `SDL_RenderDrawLine`, one call and one physical pixel
+    /// the low density fallback
     fn draw_thin_link(
         canvas: &mut WindowCanvas,
         scale: &Scale,

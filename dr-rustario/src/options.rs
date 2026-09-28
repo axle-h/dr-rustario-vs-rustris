@@ -250,10 +250,8 @@ mod tests {
         assert_eq!(options.rules(), MatchRules::ThemeSprint);
     }
 
-    /// Whoever is playing, a match opens on the theme sprint - a stage on each theme in
-    /// turn, which is the mode that shows the game off. An ai demo is something to watch
-    /// rather than a race, so it keeps the marathon; and a single theme has no sprint to
-    /// run, so there a lone player marathons and two race a level.
+    /// A played match opens on the theme sprint and a demo on the marathon; on one theme a lone
+    /// player marathons and two race a level.
     #[test]
     fn a_match_anyone_is_playing_opens_on_a_theme_sprint_and_a_demo_marathons() {
         let mut options = Options::default();
@@ -283,7 +281,7 @@ mod tests {
 
         options.select(THEMES, "nes");
         assert!(!mode_names(&options).contains(&"theme sprint".to_string()));
-        // and asking for it by name no longer takes
+        // and asking for it by name does not take
         options.select(MODE, "theme sprint");
         assert_ne!(options.rules(), MatchRules::ThemeSprint);
 

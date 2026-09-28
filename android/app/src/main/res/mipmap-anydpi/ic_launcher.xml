@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- launcher/icon.png, copied to drawable-nodpi/icon.png. It is 32 pixels of pixel art, so it
-     is scaled without filtering, and inset to 64 of the icon's 108dp: the launcher masks
-     everything outside the middle 66 or so. The background is the loading screen's. -->
+<!-- launcher/icon.png is pixel art, so unfiltered, and inset to 64 of 108dp since launchers
+     mask outside the middle 66. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/icon_background" />
     <foreground>

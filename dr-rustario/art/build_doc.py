@@ -6,10 +6,9 @@
     python3 dr-rustario/art/crop.py work/shots work/shots-cropped
     python3 dr-rustario/art/build_doc.py work
 
-The values come from `manifest.json`, which the shot renderer writes in the same pass that
-draws the pictures, and never from the report - the two producers drifted apart once and every
-label ended up on the wrong picture. The report is read only for the influence table, keyed by
-name so no ordering can corrupt it.
+The values come from `manifest.json`, written in the same pass that draws the pictures, never
+from the report, so a label cannot land on the wrong picture. The report is read only for the
+influence table, keyed by name.
 """
 import base64, html, json, pathlib, re, sys
 

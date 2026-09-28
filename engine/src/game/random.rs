@@ -57,12 +57,12 @@ impl Display for Seed {
     strum::EnumString,
 )]
 pub enum RandomMode {
-    /// All pieces placed in a shuffled "bag" and drawn until the bag is empty, after which a new bag is shuffled
+    /// every piece shuffled into a bag and drawn until it is empty
     #[strum(serialize = "bag")]
     #[default]
     Bag = 0,
 
-    /// Uniformly random piece every time
+    /// uniformly random every time
     #[strum(serialize = "true")]
     True = 1,
 }
@@ -73,8 +73,7 @@ impl RandomMode {
     }
 }
 
-/// A piece randomiser with a look-ahead queue, drawing either from shuffled bags of `all` or
-/// uniformly at random.
+/// A piece randomiser with a look-ahead queue, drawing from shuffled bags of `all` or uniformly.
 #[derive(Clone, Debug)]
 pub struct BagRandom<T: Copy + 'static> {
     mode: RandomMode,
@@ -129,7 +128,7 @@ impl<T: Copy + 'static> BagRandom<T> {
         }
     }
 
-    /// not `Iterator::next`: this never runs out, so an `Option` would be a lie
+    /// not `Iterator::next`: this never runs out
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> T {
         match self.mode {

@@ -38,9 +38,7 @@ impl MatchThemes {
 
 pub use engine::session::MatchRules;
 
-/// How well and how fast the ai is allowed to play. Every difficulty plays Dr. Mario 64's own
-/// deterministic opponent, but on a different one of its six rows of weights - the one dial the
-/// original ai has - as well as at a different key rate.
+/// How well and how fast the ai plays: a row of the N64 port's weights and a key rate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AiDifficulty {
     /// The most speed limited, on the weakest row of weights
@@ -80,14 +78,8 @@ impl AiDifficulty {
         }
     }
 
-    /// What this difficulty thinks with: rows of the N64 ai's own weights, out of the six
-    /// ranked worst to best in [`crate::game::ai::SKILL_ORDER`], so a harder setting is a
-    /// better player as well as a faster one.
-    ///
-    /// **The ladder runs out at the top.** `hard` and `impossible` share the strongest row and
-    /// differ in the hands rather than the head - 300 ms a key against none at all - because
-    /// there is nothing above it to field. The trained network is stronger on the numbers and
-    /// is deliberately not here; see [`DrAiKind`] for why.
+    /// A row from [`crate::game::ai::SKILL_ORDER`], climbing with difficulty. `hard` and
+    /// `impossible` share the strongest row and differ only in key rate.
     pub fn brain(&self) -> DrAiKind {
         match self {
             AiDifficulty::Easy => DrAiKind::n64_nth_weakest(0),
@@ -103,8 +95,8 @@ pub enum AiMode {
     Off,
     /// Single player game played by the ai at full speed
     Demo,
-    /// Two player game played by the ai at full speed: the two best rows of the N64 ai's
-    /// weights against each other, the runner up on the first board and the best on the second
+    /// Two player game played by the ai at full speed: the runner up row on the first board and
+    /// the best on the second
     VsDemo,
     /// Two player game where player 2 is the ai
     Opponent(AiDifficulty),
@@ -171,8 +163,6 @@ impl GameConfig {
         match self.ai {
             AiMode::Off => vec![],
             AiMode::Demo => vec![(0, Duration::ZERO, DrAiKind::default())],
-            // the two best of the N64 ai's rows against each other, which is a contest of
-            // weights rather than of key rates
             AiMode::VsDemo => vec![
                 (0, Duration::ZERO, DrAiKind::n64_nth_weakest(SKILLS - 2)),
                 (1, Duration::ZERO, DrAiKind::n64_nth_weakest(SKILLS - 1)),
@@ -274,9 +264,7 @@ mod tests {
             ]
         );
 
-        // they climb the measured ranking, so a harder setting is a better player and not
-        // merely a faster one - up to the top, where the ladder runs out and the last two
-        // share the best row
+        // rows climb the ranking, the last two sharing the best
         let ranks: Vec<usize> = rows
             .iter()
             .map(|row| SKILL_ORDER.iter().position(|r| r == row).unwrap())
@@ -286,13 +274,11 @@ mod tests {
             "{:?}",
             ranks
         );
-        // ... and the two that share it are told apart by the hands instead
+        // and those two differ in key rate
         assert!(AiDifficulty::Impossible.key_delay() < AiDifficulty::Hard.key_delay());
     }
 
-    /// **Nothing fields the trained network** (Alex, 2026-09-07): it wins on the numbers and is
-    /// not good to watch, and what an ai plays here is what somebody is watching. Every
-    /// difficulty and both demos are rows of the port. See [`DrAiKind`].
+    /// Every difficulty and both demos play rows of the N64 port, never the network.
     #[test]
     fn nothing_an_ai_player_thinks_with_is_the_network() {
         for difficulty in AiDifficulty::ALL {
@@ -322,7 +308,7 @@ mod tests {
             players.iter().map(|(p, _, _)| *p).collect::<Vec<u32>>(),
             vec![0, 1]
         );
-        // both at full speed: the demo is a contest of weights, not of key rates
+        // both at full speed
         assert!(players.iter().all(|(_, delay, _)| delay.is_zero()));
         // the runner up on the first board and the best on the second
         assert_eq!(skill(players[0].2), SKILL_ORDER[SKILLS - 2]);

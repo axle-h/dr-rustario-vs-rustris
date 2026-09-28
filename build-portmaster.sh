@@ -3,8 +3,7 @@
 #
 #   ./build-portmaster.sh                       -> dist/dr-rustario-vs-rustris.zip
 #   DEPLOY_HOST=root@rocknix ./build-portmaster.sh
-#       also copies the zip into the device's PortMaster/autoinstall folder; open PortMaster
-#       on the device to install it (probes the known ROCKNIX/muOS paths, override with DEPLOY_PATH)
+#       also copies it to the device's PortMaster/autoinstall folder (or DEPLOY_PATH)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -42,7 +41,7 @@ echo "--- $DIST/$PORT.zip"
 unzip -l "$DIST/$PORT.zip"
 
 if [ -n "${DEPLOY_HOST:-}" ]; then
-  # Known PortMaster autoinstall locations (ROCKNIX, muOS); override with DEPLOY_PATH
+  # ROCKNIX, then muOS
   AUTOINSTALL_PATHS=(
     /storage/roms/ports/PortMaster/autoinstall/
     /mnt/mmc/MUOS/PortMaster/autoinstall/

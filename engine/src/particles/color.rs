@@ -75,7 +75,6 @@ impl ParticleColor {
         Self::rgb(r + m, g + m, b + m)
     }
 
-    /// rotate the hue, keeping saturation and value
     pub fn shift_hue(self, degrees: f64) -> Self {
         let (h, s, v) = self.to_hsv();
         Self::from_hsv(h + degrees, s, v)
@@ -101,8 +100,7 @@ impl ParticleColor {
         )
     }
 
-    /// the shorter way round the hue circle from self to other, so red to magenta does not
-    /// take the long trip through green
+    /// the shorter way round the hue circle, so red to magenta does not pass through green
     pub fn lerp_hue(self, other: Self, t: f64) -> Self {
         let t = t.clamp(0.0, 1.0);
         let (h1, s1, v1) = self.to_hsv();
@@ -129,7 +127,6 @@ fn to_byte(value: f64) -> u8 {
     (255.0 * value.clamp(0.0, 1.0)).round() as u8
 }
 
-/// hue into 0-360
 fn wrap_hue(hue: f64) -> f64 {
     let hue = hue % 360.0;
     if hue < 0.0 {
@@ -227,7 +224,6 @@ mod tests {
     fn hue_lerp_takes_the_short_way_round() {
         let red = ParticleColor::rgb(1.0, 0.0, 0.0);
         let magenta = ParticleColor::rgb(1.0, 0.0, 1.0);
-        // 0 -> 300 the short way is backwards through 330, not forwards through green
         let (hue, _, _) = red.lerp_hue(magenta, 0.5).to_hsv();
         assert!((hue - 330.0).abs() < 1e-6, "{hue}");
     }

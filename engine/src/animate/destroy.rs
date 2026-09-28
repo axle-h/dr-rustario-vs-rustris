@@ -7,12 +7,8 @@ const MAX_FLASHES: u32 = 3;
 const FLASH_DURATION: Duration = Duration::from_millis(250);
 const SWEEP_DURATION: Duration = Duration::from_millis(750);
 
-/// The tell before a pop: the group flashes on and off where it stands, still drawn exactly
-/// as it sits on the board, and only then starts its strip.
-///
-/// It is what Mean Bean Machine does, and it is what makes a chain readable - a step
-/// announces which group is going before it goes, so the eye is already in the right place.
-/// A theme with no blink says nothing and its strip starts at once.
+/// The tell before a pop: the group flashes on and off where it stands, then starts its strip. A
+/// theme with no blink starts its strip at once.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Blink {
     /// how long the whole blink takes, before the strip starts
@@ -41,11 +37,8 @@ pub enum DestroyStyle {
         duration: Duration,
         /// the tell before the strip, if the theme wants one
         blink: Option<Blink>,
-        /// How long the strip's **first** frame is held before the rest of it runs.
-        ///
-        /// A pop is rarely evenly paced: Mean Bean Machine's bean pulls its face and holds
-        /// it for a quarter of a second, and then goes in a hurry. Zero - the default -
-        /// divides the strip evenly, which is what every other theme wants.
+        /// how long the strip's first frame is held before the rest runs; zero divides the strip
+        /// evenly
         hold_first: Duration,
     },
     /// the cleared cells flash on and off
@@ -67,9 +60,8 @@ impl DestroyStyle {
         }
     }
 
-    /// how long the strip takes. The game does not tick while a clear plays, so a theme whose
-    /// game already waits on a clear of its own sets this under that wait and costs it
-    /// nothing; left alone it is three hundred milliseconds.
+    /// how long the strip takes, 300 ms by default. The game does not tick while a clear plays, so
+    /// keep it under any wait the game already has for a clear.
     pub fn for_duration(mut self, wanted: Duration) -> Self {
         if let DestroyStyle::Pop { duration, .. } = &mut self {
             *duration = wanted;
@@ -84,10 +76,8 @@ impl DestroyStyle {
         self
     }
 
-    /// flash the group on and off `times` before its strip starts, over `duration`
-    ///
-    /// It **adds** to the strip: a clear holds the board for both, so this lengthens a chain
-    /// step by exactly what it asks for.
+    /// flash the group on and off `times` before its strip starts, over `duration`; this adds to
+    /// the strip, lengthening each clear by `duration`
     pub fn blinking_for(mut self, duration: Duration, times: u32) -> Self {
         if let DestroyStyle::Pop { blink, .. } = &mut self {
             *blink = Some(Blink { duration, times });
@@ -185,18 +175,15 @@ impl DestroyAnimation {
         self.state.as_ref()
     }
 
-    /// Which beat a cell being destroyed is on (`Pop` style).
-    ///
-    /// The tell comes first and the strip after it, so the strip's own clock starts where the
-    /// blink's ends rather than running underneath it.
+    /// Which beat a cell being destroyed is on (`Pop` style); the strip's clock starts where the
+    /// blink's ends.
     pub fn pop_phase(&self, id: CellId) -> Option<PopPhase> {
         let state = self.state.as_ref()?;
         let mut elapsed = state.duration;
         if let Some(blink) = self.style.blink() {
             if elapsed < blink.duration {
-                // The group is **on** first: a clear that began by taking the group away
-                // reads as a cell deleted rather than as a warning that it is about to go.
-                // Out and back is one time, so each is a lit half and a dark half.
+                // the group is on first, so the clear reads as a warning; out and back is one time,
+                // a lit half and a dark half
                 let half = blink.duration / (blink.times * 2).max(1);
                 let step = elapsed.as_nanos() / half.as_nanos().max(1);
                 return Some(PopPhase::Blink { on: step % 2 == 0 });
@@ -212,10 +199,8 @@ impl DestroyAnimation {
             } => (*duration, *hold_first),
             _ => (self.style.duration(), Duration::ZERO),
         };
-        // The first frame's slot is at least its even share, and `hold_first` where that is
-        // longer; whatever is left over is shared out among the rest. Asking for a hold
-        // shorter than an even share therefore changes nothing, which is what a theme that
-        // asks for none is doing.
+        // the first frame's slot is the longer of its even share and `hold_first`, the remainder
+        // shared among the rest
         let first = hold_first.max(strip / frames as u32);
         if frames <= 1 || elapsed < first {
             return Some(PopPhase::Strip { frame: 0 });
@@ -261,7 +246,7 @@ mod test {
         destroy
     }
 
-    /// the tell runs first and the strip after it, rather than the two sharing one clock
+    /// The tell runs first and the strip after it.
     #[test]
     fn a_blink_goes_before_the_strip_and_lengthens_the_clear() {
         let strip = Duration::from_millis(400);
@@ -310,8 +295,7 @@ mod test {
         );
     }
 
-    /// the beat the original actually has: the bean pulls its face and *holds* it, and then
-    /// goes in a hurry
+    /// `hold_first` holds the first frame and hurries the rest.
     #[test]
     fn the_first_frame_of_a_strip_may_be_held() {
         let strip = Duration::from_millis(400);
@@ -332,7 +316,7 @@ mod test {
         assert_eq!(destroy.pop_phase(ID), Some(PopPhase::Strip { frame: 2 }));
     }
 
-    /// a theme that asks for no tell gets none, and its strip starts on the frame it always did
+    /// A theme with no tell starts its strip at once.
     #[test]
     fn without_a_blink_the_strip_starts_at_once() {
         let style = DestroyStyle::pop(4).for_duration(Duration::from_millis(400));

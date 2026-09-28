@@ -1,23 +1,13 @@
-//! The squash a cell plays where it lands.
-//!
-//! Decoration: it holds nothing and the board carries on underneath it, the way a popup
-//! does. It is keyed by **point** rather than by cell, because what bounces is a place on
-//! the board rather than a particular block - the moment the thing that landed there moves
-//! again (a settle, a pop, a nuisance drop) the bounce at that point is simply never looked
-//! up, and expires on its own clock.
-//!
-//! A game says *which* cells landed and *when*, through [`crate::game::GameEvent::Landed`];
-//! a theme says what a bounce looks like by declaring a strip in its
-//! `CellAnimationData::bounce`. A game that never sends the event, or a theme with no strip,
-//! costs nothing at all and draws exactly what it drew before.
+//! The squash a cell plays where it lands, keyed by board point and expiring on its own clock. Fed
+//! by [`crate::game::GameEvent::Landed`]; a theme draws it with its `CellAnimationData::bounce`
+//! strip.
 
 use crate::game::geometry::Point;
 use crate::game::PlacedCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-/// How long a landing takes. Short on purpose: it is over well before the cell could be
-/// disturbed again, so nothing has to reconcile a bounce with a pop or a settle.
+/// How long a landing takes; short enough to finish before the cell can be disturbed again.
 const BOUNCE_DURATION: Duration = Duration::from_millis(140);
 
 /// A cell that landed and has not finished bouncing.
@@ -36,10 +26,7 @@ impl BounceAnimation {
         }
     }
 
-    /// start (or restart) a bounce at each of `cells`
-    ///
-    /// Restarting rather than ignoring is deliberate: a cell that lands, is knocked loose by
-    /// a pop and lands again has bounced twice, and should be seen to.
+    /// start or restart a bounce at each of `cells`, so a cell that lands twice bounces twice
     pub fn land(&mut self, cells: &[PlacedCell]) {
         for (point, _) in cells {
             self.cells.insert(*point, Duration::ZERO);
@@ -105,7 +92,7 @@ mod test {
         );
     }
 
-    /// two halves of a pair land at different moments, so they must bounce at different ones
+    /// The two halves of a pair bounce at the moments each landed.
     #[test]
     fn every_point_keeps_its_own_clock() {
         let mut bounce = BounceAnimation::new();

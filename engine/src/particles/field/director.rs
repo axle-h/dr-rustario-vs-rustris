@@ -1,17 +1,14 @@
-//! What the field is doing and what it does next: a small state machine over a resting
-//! ambient routine and the occasional feature, with a weighted playlist that never repeats a
-//! feature twice running.
+//! A state machine over a resting ambient routine and the occasional feature, picked from a
+//! weighted playlist that never repeats a feature twice running.
 
 use crate::particles::field::{field_rng, FieldRng};
 use rand::RngExt;
 
-/// the resting state
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ambient {
-    /// the gravity well the background has always used, ported in so the current look is
-    /// never lost
+    /// a gravity well
     Orbit,
-    /// sum-of-sines advection: organic, and it allocates nothing
+    /// sum-of-sines advection; allocates nothing
     Flow,
     /// angular velocity falling off with distance: arms form and shear
     Vortex,
@@ -27,8 +24,7 @@ impl Ambient {
         Ambient::Constellation,
     ];
 
-    /// how often each comes up between features. The constellation is the one people look at,
-    /// so it comes up about as often as the other three together.
+    /// how often each comes up between features
     const PLAYLIST: [(Ambient, f64); 4] = [
         (Ambient::Constellation, 3.0),
         (Ambient::Flow, 1.2),
@@ -39,29 +35,23 @@ impl Ambient {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Feature {
-    /// the headline: gather into a silhouette, hold and drift, shatter
+    /// gather into a silhouette, hold and drift, shatter
     Sprite,
     /// snap to a rectilinear grid, breathe, then shear and collapse
     Lattice,
-    /// a waveform ribbon across the canvas
     Oscilloscope,
     /// directional rain or embers, tied to how fast the pieces are falling
     Weather,
-    /// concentric rings drifting about the canvas
     Haloes,
-    /// an arm winding out of a wandering centre
     Spiral,
-    /// a closed figure traced by two perpendicular sines: the oscilloscope's other trace
     Lissajous,
     /// the boards themselves pull the field about
     Wells,
-    /// the same machinery as the sprite morph, over a mask taken from rendered text
+    /// the sprite morph over a mask taken from rendered text
     Text,
 }
 
 impl Feature {
-    /// how often each comes up. The sprite morph is the one worth waiting for, and the
-    /// curves - waveform, rings, spiral, figure - carry most of the rest between them.
     const PLAYLIST: [(Feature, f64); 9] = [
         (Feature::Sprite, 5.0),
         (Feature::Oscilloscope, 3.0),
@@ -74,7 +64,6 @@ impl Feature {
         (Feature::Wells, 1.0),
     ];
 
-    /// how long its hold lasts. The ones that move while they hold earn a longer one.
     fn hold_secs(&self) -> f64 {
         match self {
             Feature::Sprite => 3.5,
@@ -89,7 +78,6 @@ impl Feature {
         }
     }
 
-    /// whether it wants the pool gathered onto targets at all
     pub fn is_formation(&self) -> bool {
         !matches!(self, Feature::Weather | Feature::Wells)
     }
@@ -97,9 +85,7 @@ impl Feature {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
-    /// easing into the targets
     Gather,
-    /// there, and moving
     Hold,
     /// an outward shockwave and back to ambient
     Shatter,
@@ -114,7 +100,6 @@ pub enum Stage {
     Feature {
         routine: Feature,
         phase: Phase,
-        /// since this phase began
         elapsed: f64,
         remaining: f64,
     },
@@ -124,20 +109,15 @@ pub enum Stage {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Transition {
     None,
-    /// settle into a resting routine
     Ambient(Ambient),
     /// build a formation and hand the pool over to it
     Gather(Feature),
-    /// the formation is made
     Hold(Feature),
-    /// blow it apart
     Shatter(Feature),
 }
 
 const GATHER_SECS: f64 = 1.2;
 const SHATTER_SECS: f64 = 1.0;
-/// how long the field rests between features. Short: the formations are the point, and the
-/// resting routines are what carries the field from one to the next rather than the main act.
 const AMBIENT_MIN_SECS: f64 = 2.5;
 const AMBIENT_MAX_SECS: f64 = 5.5;
 
@@ -170,7 +150,6 @@ impl Director {
         self.stage
     }
 
-    /// how far through the current phase, 0-1
     pub fn phase_progress(&self) -> f64 {
         match self.stage {
             Stage::Ambient { .. } => 1.0,
@@ -187,7 +166,7 @@ impl Director {
         }
     }
 
-    /// seconds since the current phase began, which is what the formations move against
+    /// seconds since the current phase began, which the formations move against
     pub fn phase_elapsed(&self) -> f64 {
         match self.stage {
             Stage::Ambient { .. } => 0.0,
@@ -195,7 +174,7 @@ impl Director {
         }
     }
 
-    /// `energy` shortens the wait: a match being played hard reaches for a feature sooner
+    /// `energy` shortens the wait before a feature
     pub fn update(&mut self, delta_time: f64, energy: f64) -> Transition {
         match &mut self.stage {
             Stage::Ambient { remaining, .. } => {
@@ -251,13 +230,12 @@ impl Director {
         }
     }
 
-    /// the big one: a Tetris or a four virus clear takes the field over whatever it was doing
+    /// take the field over whatever it is doing
     pub fn interrupt(&mut self, feature: Feature) -> Transition {
         self.begin_feature(feature)
     }
 
-    /// back to ambient right now, with no shatter. Used when the canvas changes under a
-    /// half-finished routine, which is never worth trying to keep.
+    /// back to ambient now, with no shatter
     pub fn abandon(&mut self) -> Transition {
         let ambient = self.last_ambient.unwrap_or(Ambient::Orbit);
         self.stage = Stage::Ambient {
@@ -343,7 +321,6 @@ mod tests {
             .filter(|t| matches!(t, Transition::Gather(_)))
             .count();
         assert!(features >= 2, "{transitions:?}");
-        // every gather is followed by a hold, a shatter and a return to ambient
         let mut iter = transitions
             .iter()
             .skip_while(|t| !matches!(t, Transition::Gather(_)));

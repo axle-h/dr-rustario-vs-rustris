@@ -1,5 +1,4 @@
-//! The agent driving a real game. This has to be an integration test: the crate's own test build
-//! swaps the bottle for a mock, so `Game` is not the real thing inside it.
+//! The agent driving a real game, which the crate's own test build replaces with a mock.
 
 use dr_rustario::game::ai::agent::{DrAiAgent, Hold};
 use dr_rustario::game::ai::models;
@@ -29,15 +28,11 @@ struct Played {
     game_over: bool,
     /// swaps the agent made
     holds: u32,
-    /// halves that locked with something above them that was not their own partner. Nothing
-    /// falling into a bottle can land there, so every one of these is a tuck the agent walked
-    /// in after the pill came to rest.
+    /// halves that locked under something other than their partner: tucks
     tucked: u32,
 }
 
-/// These exercise the agent, not the model: they run the hand written scorer, which does not
-/// change when a training run replaces the embedded weights. The model itself is checked by
-/// `the_trained_model_clears_bottles`, which needs a trained one to pass.
+/// Play with the hand weighted scorer, so these tests do not move when the embedded model does.
 fn play(level: u32, key_delay: Duration, max_pills: u32) -> Played {
     play_with(DrAiAgent::linear(), level, key_delay, max_pills)
 }
@@ -102,11 +97,8 @@ fn play_at(
     played
 }
 
-/// How many of the halves that just locked have a settled block over them that is not the
-/// other half of the same pill. A pill dropped into a bottle can only ever come to rest with
-/// open space above it, so a covered half is one that was walked in sideways under an overhang.
-/// A [`Cell::Ghost`] over it is not cover - it is the drop shadow of the pill after this one -
-/// and neither is the pill in play itself.
+/// How many of the halves that just locked have a settled block over them other than their
+/// partner; a [`Cell::Ghost`] or the pill in play is not cover.
 fn tucked_halves(game: &Game, cells: &[PlacedCell]) -> u32 {
     let own: HashSet<(i32, i32)> = cells.iter().map(|(at, _)| (at.x(), at.y())).collect();
     cells
@@ -126,7 +118,6 @@ fn tucked_halves(game: &Game, cells: &[PlacedCell]) -> u32 {
 
 #[test]
 fn the_agent_tucks_under_an_overhang() {
-    // the deterministic ai on a full bottle, which is where an overhang is worth getting under
     let played = play_with(DrAiAgent::n64(), 15, Duration::ZERO, 600);
     assert!(
         played.tucked > 0,
@@ -138,8 +129,7 @@ fn the_agent_tucks_under_an_overhang() {
 
 #[test]
 fn a_speed_limited_agent_tucks_too() {
-    // one key every 400 ms against a 500 ms lock delay: a tuck is a rest and then one move, and
-    // the move has that whole delay to happen in
+    // one key every 400 ms fits the one move a tuck needs inside the 500 ms lock delay
     let played = play_with(DrAiAgent::n64(), 15, Duration::from_millis(400), 600);
     assert!(
         played.tucked > 0,
@@ -150,9 +140,7 @@ fn a_speed_limited_agent_tucks_too() {
 
 #[test]
 fn an_agent_offered_the_held_pill_still_plays_and_does_swap() {
-    // the hand written scorer with hold on: it has no learned opinion about a swap, so what
-    // this checks is that the agent can execute one at all - press hold, wait for the swapped
-    // pill to spawn, and then play the plan it made for that pill rather than throwing it away
+    // checks the agent can press hold, wait for the swapped pill, and keep the plan for it
     let played = play_with(
         DrAiAgent::linear().with_hold(Hold::On),
         0,
@@ -179,7 +167,6 @@ fn the_agent_places_pills_across_the_bottle() {
         "the agent stopped making progress"
     );
     assert!(played.pills > 1, "the agent never got a second pill");
-    // if the agent's key presses were not reaching the game every pill would land where it spawned
     assert!(
         played.columns.len() > 2,
         "pills only ever landed in columns {:?}, so the agent is not steering them",
@@ -202,7 +189,6 @@ fn the_agent_clears_viruses() {
 
 #[test]
 fn the_agent_moves_on_to_the_next_bottle() {
-    // clearing a bottle has to hand over to the next one, which is what a training run counts
     let played = play(0, Duration::ZERO, 300);
     assert!(
         played.stages >= 1,
@@ -216,8 +202,7 @@ fn a_speed_limited_agent_still_plays() {
     assert!(played.pills > 1, "the speed limited agent stalled");
 }
 
-/// The deterministic ai is the one every difficulty and the demo actually play, so unlike the
-/// network it is worth holding to a standard here.
+/// The N64 port every difficulty and both demos play clears five bottles from level 10.
 #[test]
 fn the_deterministic_ai_clears_several_bottles() {
     let played = play_with(DrAiAgent::n64(), 10, Duration::ZERO, 3_000);
@@ -229,7 +214,7 @@ fn the_deterministic_ai_clears_several_bottles() {
 }
 
 #[test]
-#[ignore = "needs a trained model: run with --ignored after a ga dr auto run"]
+#[ignore = "needs a model trained by ga dr auto"]
 fn the_trained_model_clears_bottles() {
     let played = play_with(
         DrAiAgent::new(models::survival_trained()),
@@ -244,17 +229,7 @@ fn the_trained_model_clears_bottles() {
     );
 }
 
-/// **A tuck does not wait out gravity.**
-///
-/// The agent soft drops to its rest waypoint rather than watching the pill drift down a bottle
-/// it has already been lined up over, which is the whole of what a tuck looked like from
-/// outside. Measured on the slowest fall speed and a near empty bottle - where a pill has the
-/// length of the bottle to fall and this is at its worst - the same seed took **134 frames a
-/// pill** before the wait became a soft drop and takes **41** now, with the same 137 tucks out
-/// of 300 pills. Nothing was traded for it.
-///
-/// The bound is a wide one: gravity alone is about seventy frames a *row* at this speed, so
-/// anything under it says the agent is not sitting through the fall.
+/// A tuck soft drops to its rest waypoint, from the slowest fall speed on a near empty bottle.
 #[test]
 fn a_tuck_soft_drops_rather_than_waiting_out_gravity() {
     let played = play_at(DrAiAgent::n64(), 5, GameSpeed::Low, Duration::ZERO, 300);
@@ -272,14 +247,7 @@ fn a_tuck_soft_drops_rather_than_waiting_out_gravity() {
     );
 }
 
-/// ... and it lets go of soft drop before the tuck, which is what keeps the tuck executable.
-///
-/// Soft drop cuts the lock delay from 500 ms to 150, which is shorter than every speed limited
-/// difficulty's key delay - hold it down through the tuck and the pill locks in exactly the
-/// place the tuck was meant to move it out of. A waypoint is also refunded at the pacer, since
-/// pressing nothing costs the agent's hands nothing, so the move after it is due the moment
-/// the pill lands rather than a key delay later. This run tucks 145 times in 300 pills, both
-/// before the soft drop and after.
+/// A 400 ms agent still tucks, so soft drop is released before the tuck's move.
 #[test]
 fn a_speed_limited_agent_still_tucks_after_the_soft_drop() {
     let played = play_at(

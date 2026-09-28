@@ -149,7 +149,7 @@ impl LinearThrowArc {
     fn height(&self, x: f64) -> f64 {
         let linear = self.m * x + self.c;
         let wave = self.magnitude * (PI * (self.x_end - x) / (self.x_end - self.x_start)).sin();
-        // take the wave function away since a lower number is actually higher
+        // subtract the wave, since a lower y is higher on screen
         linear - wave
     }
 }

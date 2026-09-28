@@ -193,26 +193,16 @@ impl GameState {
     }
 }
 
-/// What a combo is worth to a player of the *other* game, in rows of garbage, since that is
-/// what an attack is over there. Most combos are two patterns - one pill finishing two lines
-/// at once - which is nowhere near the work a Rustris player puts into a row, so the first
-/// pattern of a combo buys nothing abroad and the rest buy a row each. A real chain still
-/// hurts, up to the four rows a tetris sends
+/// The most rows of garbage a combo sends abroad, as a tetris does. The first pattern of a combo
+/// buys nothing abroad and each one after it a row, since two-pattern combos are routine.
 const MAX_FOREIGN_GARBAGE_ROWS: u32 = 4;
 
-/// How many nuisance puyos one of those rows-worth is, since Puyo Rusto's board is six wide
-/// and half the height: a combo beyond its first pattern is worth half a row of nuisance
-/// there, so a three pattern combo is a full row of it.
-///
-/// **Measured with `ga cross`.** At three apiece a Dr. Rustario player fills an eighth of a
-/// visible Puyo board a minute, which is within a hair of what the same player's combos fill
-/// of a Rustris well, board for board - and it is the gentler of the two in practice, because
-/// nuisance lands in a tray where offset can cancel it and a Rustris row lands on the board.
+/// Nuisance puyos per foreign row, half a row of Puyo Rusto's six wide board. Measured with
+/// `ga cross`; re-measure it rather than tune it by hand.
 const NUISANCE_PER_FOREIGN_ROW: u32 = 3;
 
-/// what `blocks` of garbage is worth to a player of `receiver`, in that game's own units.
-/// Only the sender knows what the combo took, so only it can price the crossing; a game
-/// nothing here prices is worth nothing and the attack never leaves.
+/// What `blocks` of garbage is worth to a player of `receiver`, in that game's units. A game
+/// not priced here is worth nothing and the attack is dropped.
 pub fn foreign_attack(receiver: GameId, blocks: u32) -> u32 {
     let rows = blocks.saturating_sub(1).min(MAX_FOREIGN_GARBAGE_ROWS);
     match receiver {
@@ -348,37 +338,16 @@ impl Game {
         &self.bottle
     }
 
-    /// the shape holding, if any: what pressing hold would swap the pill in play for
-    /// What an agent with a hold to reach for would be choosing between. Nothing uses these
-    /// three today - see [`crate::game::ai::agent::DrAiAgent`] for why the scored agent does
-    /// not hold - and they are kept because putting hold back needs them. A human player's
-    /// hold goes through [`Self::hold`] and is unaffected.
-    #[allow(dead_code)]
-    pub(crate) fn held_shape(&self) -> Option<PillShape> {
-        self.hold.map(|h| h.piece)
-    }
-
-    /// the shape at the front of the queue, which is what hold takes when nothing is held
-    #[allow(dead_code)]
-    pub(crate) fn next_shape(&self) -> PillShape {
-        self.random.peek()[0]
-    }
-
     /// hold is locked until the pill in play locks
-    #[allow(dead_code)]
+    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn can_hold(&self) -> bool {
         !HoldState::is_locked(&self.hold)
     }
 
-    /// The pill pressing hold would put in play: whatever is being held, or the next one out of
-    /// the queue when nothing is yet. `None` while hold is locked, which it is until the pill in
-    /// play has landed. This is what an agent weighing the held pill against the one in front of
-    /// it has to search, and it is the game's answer rather than the agent's guess because only
-    /// the game knows which of the two cases it is in.
+    /// The pill pressing hold would put in play: the held one, or the next in the queue when
+    /// nothing is held. `None` while hold is locked until the pill in play lands.
     #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn holdable(&self) -> Option<PillShape> {
-        // hold unlocks when the pill in play locks, so this is also "there is a pill to swap"
-        // as far as anything asking is concerned; `hold` itself no-ops on an empty bottle
         if !self.can_hold() {
             return None;
         }
@@ -414,17 +383,16 @@ impl Game {
         }
     }
 
-    /// Let the pill fall to where it comes to rest without locking it, which is the first half
-    /// of a tuck ([`crate::game::ai::input_sequence::Translation::Rest`]). Nothing in play calls
-    /// this - there it is gravity, and the agent only waits for it - but a harness that presses
-    /// a whole plan in one frame has to ask for the fall it would otherwise have waited out.
+    /// Let the pill fall to its rest without locking it, the first half of a tuck
+    /// ([`crate::game::ai::input_sequence::Translation::Rest`]), for harnesses that press a
+    /// whole plan in one frame.
     #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn rest(&mut self) {
         if let Some((dropped_rows, _)) = self.bottle.hard_drop() {
             if dropped_rows > 0 {
                 self.events.push(GameEvent::Fall);
             }
-            // resting starts the lock delay, which is what makes the moves after it a tuck
+            // resting starts the lock delay the tuck's moves are made in
             self.state = GameState::NEW_LOCK;
         }
     }
@@ -1346,9 +1314,7 @@ mod tests {
         }
     }
 
-    /// The same combo crosses to both of the other games, in each one's own units: a row of
-    /// Rustris garbage per pattern past the first, and half a row of Puyo nuisance for each of
-    /// those. A crossing nobody priced is worth nothing and never leaves.
+    /// A combo prices itself for Rustris and Puyo Rusto, and for an unpriced game as nothing.
     #[test]
     fn a_combo_prices_itself_for_both_of_the_other_games() {
         for (blocks, rows) in [(0, 0), (1, 0), (2, 1), (3, 2), (5, 4), (99, 4)] {

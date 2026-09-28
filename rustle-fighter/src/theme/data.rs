@@ -10,22 +10,13 @@ use engine::render::PanelShadow;
 use sdl2::pixels::Color;
 use sdl2::rect::{Point, Rect};
 
-/// A break's grade, which is what a theme has a sound per.
-///
-/// One per pass of a chain up to the third, and then everything longer with the biggest break
-/// there is - see `clear_class` in [`crate::render`], which reserves the last for the particle
-/// field's silhouette interrupt.
+/// A break's grade, one sound each: chain passes one to three, then the long chains.
 pub const CLEAR_CLASSES: usize = 4;
 
 pub type MusicTrack = (Option<&'static [u8]>, &'static [u8]);
 
-/// Where every cell of a theme's sheet is.
-///
-/// A gem's [`CellId`] is a colour and either a power gem edge mask or a countdown digit, so a
-/// theme's sheet is a row per colour and a column per sprite - and there is no way round
-/// authoring all of them, because a power gem has to be drawn joined to the rest of its
-/// rectangle. `rustle-fighter/art/rip.py` cuts exactly the set [`GemSprite::all`] names, in
-/// exactly that order.
+/// Where every cell of a theme's sheet is: a row per colour and a column per sprite.
+/// `art/rip.py` cuts exactly the set [`GemSprite::all`] names, in that order.
 pub fn cells(block_size: u32, at: impl Fn(GemSprite) -> Point) -> Vec<(CellId, CellSpriteData)> {
     GemSprite::all()
         .into_iter()
@@ -39,13 +30,8 @@ pub fn cells(block_size: u32, at: impl Fn(GemSprite) -> Point) -> Vec<(CellId, C
         .collect()
 }
 
-/// The NEXT box's pairs, composed from the cells rather than drawn again.
-///
-/// A pair is two halves out of nine, so dedicated preview sprites would be seventy two of
-/// them - and every one would be the two cell sprites stacked, which is what
-/// [`PreviewData::Compose`] does for nothing. The pivot is the **lower** half, the way it sits
-/// on the board when the pair spawns, and both halves draw unjoined, because a gem joins a
-/// power gem only once it has landed.
+/// The NEXT box's pairs, composed from the cells with the pivot as the lower half, as it
+/// spawns; both halves draw unjoined, since a gem joins a power gem only once landed.
 pub fn previews() -> PreviewData {
     PreviewData::Compose {
         pieces: crate::game::cell::GemPair::all()
@@ -69,11 +55,8 @@ pub fn previews() -> PreviewData {
     }
 }
 
-/// What the panel casts on the brick wall behind it, which is what lifts it off one.
-///
-/// Down and to the right, which is where every shadow in this compendium falls. `margin` is
-/// the transparent air round the panel inside its own box, since none of that is art and none
-/// of it casts.
+/// The panel's shadow on the wall, down and to the right like every shadow in the app;
+/// `margin` is the transparent border inside the panel's box, which casts nothing.
 pub fn panel_shadow(margin: (u32, u32, u32, u32)) -> PanelShadow {
     PanelShadow {
         offset: (3, 3),
@@ -93,7 +76,7 @@ pub struct Sounds {
     pub lock: &'static [u8],
     pub settle: &'static [u8],
     pub hard_drop: &'static [u8],
-    /// one per [`CLEAR_CLASSES`], so a chain is heard climbing
+    /// one per [`CLEAR_CLASSES`]
     pub pop: [&'static [u8]; CLEAR_CLASSES],
     pub attack_sent: &'static [u8],
     pub receive_counter: &'static [u8],
@@ -103,13 +86,8 @@ pub struct Sounds {
     pub game_over: &'static [u8],
 }
 
-/// **This theme is levelled by its own scripts rather than here.**
-///
-/// `art/music.py` puts every track at the house baseline of -22 dBFS RMS and `art/sfx.py` puts
-/// every effect within four decibels of it, so nothing needs correcting at build time and the
-/// gain is a plain hundred. Puyo Rusto's rips needed eight decibels off because they came
-/// mastered hot and were taken as they came; these were cut here, so they were cut level.
-/// `engine/art/audio_levels.py` is what checks that claim across the whole app.
+/// Unity, because `art/music.py` and `art/sfx.py` cut the audio to the house level;
+/// `engine/art/audio_levels.py` checks it.
 pub const ARCADE_GAIN: i32 = 100;
 
 pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> {
@@ -144,8 +122,7 @@ pub fn audio(config: AudioConfig, sounds: Sounds) -> Result<AudioTheme, String> 
 mod tests {
     use super::*;
 
-    /// the sheet is `rip.py`'s and no Rust can check the script, but the theme and the script
-    /// have to agree about how many sprites there are or the board draws the wrong gem
+    /// every sprite in `GemSprite::all` is keyed exactly once
     #[test]
     fn every_sprite_the_game_can_report_is_keyed_once() {
         let keyed = cells(16, |_| Point::new(0, 0));

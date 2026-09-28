@@ -32,7 +32,6 @@ impl Timing {
         }
     }
 
-    /// cap the spawn delay instead of flooring it
     pub const fn with_spawn_delay_cap(self, cap: Duration) -> Self {
         Self {
             min_spawn_delay: None,
@@ -74,43 +73,37 @@ impl Timing {
     }
 }
 
-/// A board that tracks how many times the active piece has moved while resting on the stack.
 pub trait LockPlacements {
     fn lock_placements(&self) -> u32;
     /// record a placement and return the new count
     fn register_lock_placement(&mut self) -> u32;
 }
 
-/// What a move attempted during lock delay did to the lock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LockMove {
-    /// the move was refused: the lock delay had already elapsed or the board blocked it
+    /// refused: the lock delay had elapsed or the board blocked it
     Blocked,
-    /// the move was refused because the piece had already used all its placements; lock now
+    /// refused because the piece used all its placements; lock now
     Exhausted,
-    /// the move happened. Unless it used the last allowed placement the lock delay restarts.
+    /// moved; the lock delay restarts unless this was the last allowed placement
     Moved { last_placement: bool },
 }
 
-/// Attempt a move or rotation while the piece is in its lock delay (`lock_duration` elapsed
-/// so far). Encodes the guideline lock-delay rules: a move is refused once the delay has
-/// fully elapsed, and each successful move restarts the delay until `max_lock_placements`
-/// moves have been made, after which the piece locks immediately.
+/// Attempt a move during lock delay (`lock_duration` elapsed so far), under the guideline
+/// rules: refused once the delay has elapsed, restarting it until `max_lock_placements`.
 pub fn lock_move<B: LockPlacements>(
     timing: &Timing,
     lock_duration: Duration,
     board: &mut B,
     mut f: impl FnMut(&mut B) -> bool,
 ) -> LockMove {
-    // 1. the lock is already breached (movements are sent before a lock update)
+    // movements are sent before a lock update
     if lock_duration >= timing.lock {
         return LockMove::Blocked;
     }
-    // 2. this piece used all its lock movements for this altitude
     if board.lock_placements() >= timing.max_lock_placements {
         return LockMove::Exhausted;
     }
-    // 3. the movement was blocked by the board
     if !f(board) {
         return LockMove::Blocked;
     }

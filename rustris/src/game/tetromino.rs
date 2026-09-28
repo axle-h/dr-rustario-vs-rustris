@@ -1,6 +1,5 @@
 use super::geometry::{Point, Pose, Rotation};
-#[allow(unused_imports)]
-use bitflags::{bitflags, Flags};
+use bitflags::bitflags;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum TetrominoShape {
@@ -91,7 +90,7 @@ struct Offset(i32, i32);
 
 type TetrominoOffsets = [Offset; 5];
 
-/// https://tetris.wiki/Super_Rotation_System
+/// <https://tetris.wiki/Super_Rotation_System>
 const TETROMINO_OFFSETS_NORTH: TetrominoOffsets = [
     Offset(0, 0),
     Offset(0, 0),

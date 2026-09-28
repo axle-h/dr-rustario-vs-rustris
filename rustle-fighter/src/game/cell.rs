@@ -1,20 +1,12 @@
-//! What sits in a cell, and the four things a gem can be.
-//!
-//! The PlayStation game packs all of this into one 16 bit word per cell, plus a parallel array
-//! of the same shape carrying power gem membership; the rules doc's *Cell encoding* is that
-//! layout. Nothing here mirrors the bit packing - a Rust enum says the same thing and cannot
-//! be read wrong - but every field below is one of its fields, and the comments say which.
+//! What sits in a cell: the fields of the game's 16 bit cell word and its parallel power gem
+//! array (the rules doc's *Cell encoding*), as enums rather than bits.
 
 use engine::game::{CellId, GameId, PieceId};
 
 pub const GAME_ID: GameId = engine::game::ids::RUSTLE_FIGHTER;
 
-/// The four gem colours, numbered as the game's own tables number them.
-///
-/// The numbering is not cosmetic: the per-character drop pattern table in
-/// [`crate::game::counter`] is written in these indices, and they were decoded (2026-09-07)
-/// by reading Ryu's in-game pattern panel off the arcade sprite sheet and matching it against
-/// the extracted table. Keep the discriminants.
+/// The four gem colours, numbered as the game's own tables number them. The drop pattern
+/// table in [`crate::game::counter`] is written in these indices, so keep the discriminants.
 #[derive(
     Clone,
     Copy,
@@ -58,16 +50,11 @@ impl GemColor {
     }
 }
 
-/// Which power gem a cell belongs to, and whether it is one of that gem's four corners.
-///
-/// A power gem is a solid rectangle of one colour that behaves as a unit, and the game tracks
-/// it in a second array of the same shape as the board: the low byte is a corner code and the
-/// high byte is an id shared by every cell of the gem. Both are here.
+/// Which power gem a cell belongs to, and whether it is one of its corners: the game's
+/// parallel array, corner code in the low byte and gem id in the high.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PowerCell {
-    /// the id every cell of this gem shares, allocated by [`PowerGemIds`]
     pub id: PowerGemId,
-    /// which corner of the rectangle this is, if it is one
     pub corner: Option<Corner>,
 }
 
@@ -75,26 +62,21 @@ pub struct PowerCell {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PowerGemId(pub u8);
 
-/// The allocator behind the ids, `+0x264`: it counts up and **wraps 255 back to 1**, so zero
-/// stays free to mean nothing.
+/// The allocator behind the ids, `+0x264`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PowerGemIds(u8);
 
 impl PowerGemIds {
-    /// the next id, wrapping 255 back to 1
+    /// wraps 255 back to 1
     pub fn allocate(&mut self) -> PowerGemId {
         self.0 = if self.0 == 255 { 1 } else { self.0 + 1 };
         PowerGemId(self.0)
     }
 }
 
-/// A power gem's four corners, carrying the codes the game stamps into the corner array.
-///
-/// **The rules turn on the codes, not on which corner has which.** A rectangle's four corners
-/// always sum to `1 + 2 + 4 + 8 = 15`, and that sum is the whole of the formation acceptance
-/// rule - see [`crate::game::gems`]. Which code the game puts in which corner is not pinned by
-/// the disassembly; this follows the scan order, which starts at the bottom left and grows up
-/// and then right.
+/// A power gem's corners, with the codes the game stamps into the corner array. Formation
+/// accepts a rectangle whose corners sum to 15 ([`crate::game::gems`]); which code sits in
+/// which corner is not pinned by the disassembly, so this follows the scan order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Corner {
@@ -112,23 +94,13 @@ impl Corner {
         Corner::BottomRight,
     ];
 
-    /// the code this corner contributes to the acceptance sum
     pub fn code(self) -> u32 {
         self as u32
     }
 }
 
-/// Which orthogonal neighbours share a cell's power gem, as one bit each.
-///
-/// **Drawing information, and only that.** A power gem is a solid rectangle that has to look
-/// like one rather than like four gems in a square, so the sheet carries a sprite per colour x
-/// mask and the renderer picks by which of a cell's edges are interior. It decides nothing:
-/// the rules work off [`PowerCell`], and a stale mask would be an ugly board rather than a
-/// wrong one.
-///
-/// This is exactly the trick Puyo Rusto plays with its `LinkMask` - a joined blob drawn as
-/// per-cell snips - with a rectangle in place of a flood fill. The game's own array holds
-/// corner codes instead, which say the same thing less directly.
+/// Which orthogonal neighbours share a cell's power gem, one bit each. Drawing information
+/// only: the rules work off [`PowerCell`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub struct PowerMask(u8);
 
@@ -140,16 +112,10 @@ impl PowerMask {
     /// joined to nothing: every gem that is not in a power gem, and the pair in play
     pub const NONE: PowerMask = PowerMask(0);
 
-    /// how many distinct masks the four bits can express
     pub const COUNT: usize = 16;
 
-    /// **The nine masks a power gem can actually produce**, which is what a theme has to
+    /// The nine masks a rectangle at least two cells a side can produce, which a theme must
     /// carry art for.
-    ///
-    /// A power gem is a rectangle at least two cells on each side, so every cell of one is
-    /// (top | middle | bottom) x (left | middle | right) - nine combinations, and no others.
-    /// The other seven of the sixteen are unreachable: a cell joined on one side only would
-    /// be the end of a line, and a power gem is never a line.
     pub const REACHABLE: [PowerMask; 9] = [
         PowerMask(0b1010),
         PowerMask(0b1110),
@@ -179,10 +145,9 @@ impl PowerMask {
     }
 }
 
-/// how long a counter gem waits before it turns into an ordinary gem, when it arrived from an
-/// attack that was not defended (`0x507` - class 7, countdown 5)
+/// a counter gem's countdown from an undefended attack (`0x507`)
 pub const COUNTER_COUNTDOWN: u8 = 5;
-/// ... and when it arrived from an attack that *was* defended (`0x307`)
+/// ... and from a defended one (`0x307`)
 pub const COUNTER_COUNTDOWN_DEFENDED: u8 = 3;
 
 /// One gem. The four variants are the game's cell classes, minus the transient markers it uses
@@ -192,27 +157,17 @@ pub enum Gem {
     /// An ordinary coloured gem: classes 1-4.
     Plain {
         color: GemColor,
-        /// set while this cell belongs to a power gem - the game's `0x80` bit and its
-        /// entry in the parallel array
+        /// the game's `0x80` bit and its entry in the parallel array
         power: Option<PowerCell>,
-        /// **this gem arrived as garbage** and its counter ran out.
-        ///
-        /// The game does not track this with a flag; it falls out of the encoding, because a
-        /// counter gem keeps its colour in the cell's high byte and the high byte survives the
-        /// countdown expiring. That is what the reclaimed-garbage accumulator `+0x112` tests,
-        /// and it is why the guides tell you to wait for counter gems to ripen before breaking
-        /// them. See [`crate::game::score`].
+        /// arrived as a counter gem that ran out, which the reclaimed-garbage accumulator
+        /// `+0x112` pays for
         reclaimed: bool,
     },
-    /// A crash gem: classes 9-12, the plain colour with `0x8` set. Landing one against gems of
-    /// its own colour is what sets off a break.
+    /// A crash gem: classes 9-12, the plain colour with `0x8` set.
     Crash(GemColor),
-    /// Garbage. Class 7, with the countdown in bits 8-11 and the colour it will become in bits
-    /// 12-15. It counts down one per piece the receiver drops; at zero it becomes a
-    /// [`Gem::Plain`] of `color` with `reclaimed` set.
+    /// Garbage: class 7, countdown in bits 8-11 and colour in bits 12-15.
     Counter { color: GemColor, countdown: u8 },
-    /// The rainbow gem, class 5. Every 25th pair carries one, and it destroys every gem of
-    /// whatever colour it lands on.
+    /// The rainbow gem, class 5.
     Rainbow,
 }
 
@@ -229,11 +184,8 @@ impl Gem {
         Gem::Counter { color, countdown }
     }
 
-    /// The colour a break spreads through this cell by, which is the game's `cell & 7`.
-    ///
-    /// A plain gem and a crash gem of one colour answer the same, which is why a crash gem
-    /// takes its own colour with it; a counter gem and the rainbow answer nothing, which is
-    /// why neither is ever matched *by* colour.
+    /// The colour a break spreads through this cell by, the game's `cell & 7`; a counter gem
+    /// and the rainbow have none.
     pub fn break_color(&self) -> Option<GemColor> {
         match self {
             Gem::Plain { color, .. } | Gem::Crash(color) => Some(*color),
@@ -259,7 +211,6 @@ impl Gem {
         matches!(self, Gem::Counter { .. })
     }
 
-    /// whether this gem arrived as garbage, which is what the reclaimed-garbage bonus pays for
     pub fn is_reclaimed(&self) -> bool {
         matches!(
             self,
@@ -270,7 +221,6 @@ impl Gem {
         )
     }
 
-    /// which power gem this cell belongs to, if any. Only a plain gem can belong to one.
     pub fn power(&self) -> Option<PowerCell> {
         match self {
             Gem::Plain { power, .. } => *power,
@@ -278,16 +228,11 @@ impl Gem {
         }
     }
 
-    /// Can this cell be part of a power gem at all?
-    ///
-    /// Only plain gems: the formation scan rejects classes 5, 6 and 7 - the rainbow, the
-    /// unused class and counter gems - and a crash gem is a class of its own rather than a
-    /// colour, so a rectangle never swallows one.
+    /// Only plain gems can join a power gem; the formation scan rejects every other class.
     pub fn can_join_power_gem(&self) -> bool {
         matches!(self, Gem::Plain { .. })
     }
 
-    /// the same gem in or out of a power gem
     pub fn with_power(self, power: Option<PowerCell>) -> Gem {
         match self {
             Gem::Plain {
@@ -301,10 +246,8 @@ impl Gem {
         }
     }
 
-    /// One tick of the countdown, run on every cell each time the receiver drops a piece.
-    ///
-    /// A counter gem at zero becomes an ordinary gem of its colour, and remembers that it
-    /// arrived as garbage - see [`Gem::Plain::reclaimed`].
+    /// One tick of the countdown, per piece the receiver drops; at zero a counter gem becomes a
+    /// reclaimed plain gem.
     pub fn tick_countdown(self) -> Gem {
         match self {
             Gem::Counter { color, countdown } if countdown <= 1 => Gem::Plain {
@@ -330,7 +273,6 @@ pub enum Half {
 }
 
 impl Half {
-    /// what this half becomes once it lands
     pub fn gem(self) -> Gem {
         match self {
             Half::Plain(color) => Gem::plain(color),
@@ -339,8 +281,6 @@ impl Half {
         }
     }
 
-    /// the plain gem of the same colour, which is what the deal demotes a crash gem to when
-    /// both halves would otherwise be the same crash gem
     pub fn demoted(self) -> Half {
         match self {
             Half::Crash(color) => Half::Plain(color),
@@ -361,8 +301,8 @@ impl GemPair {
         GemPair { pivot, child }
     }
 
-    /// every pair that can be dealt, for a theme to key its previews on. The rainbow only ever
-    /// arrives as the *second* half, so the pivot is never one.
+    /// every pair that can be dealt, for a theme to key its previews on; only the child can be
+    /// a rainbow
     pub fn all() -> Vec<GemPair> {
         let halves = |rainbow: bool| {
             GemColor::ALL
@@ -393,7 +333,7 @@ impl From<GemPair> for PieceId {
     }
 }
 
-/// what a [`CellId`]'s two kind bits mean
+/// a [`CellId`]'s two kind bits
 const KIND_PLAIN: u16 = 0;
 const KIND_CRASH: u16 = 1;
 const KIND_COUNTER: u16 = 2;
@@ -402,14 +342,9 @@ const KIND_RAINBOW: u16 = 3;
 /// the countdown a counter gem is drawn with, capped at what the sheet has digits for
 pub const MAX_DRAWN_COUNTDOWN: u8 = 9;
 
-// kind in bits 0-1, colour in 2-3, and then four bits that mean different things per kind:
-// a power gem edge mask for a plain gem, the countdown digit for a counter gem
+// cell id: kind in bits 0-1, colour in 2-3, then a plain gem's mask or a counter's digit
 impl Gem {
-    /// This gem as the engine's sheet keys it, joined to `mask`.
-    ///
-    /// The mask is only ever read for a plain gem - nothing else can be part of a power gem -
-    /// so a caller with no board to hand may pass [`PowerMask::NONE`] and get the loose
-    /// sprite, which is what the pair in play and the queue want.
+    /// This gem as the engine's sheet keys it, joined to `mask`, which only a plain gem reads.
     pub fn id(self, mask: PowerMask) -> CellId {
         let (kind, color, extra) = match self {
             Gem::Plain { color, .. } => (KIND_PLAIN, color as u16, mask.bits() as u16),
@@ -421,11 +356,10 @@ impl Gem {
             ),
             Gem::Rainbow => (KIND_RAINBOW, 0, 0),
         };
-        // colours are numbered 1-4, so they fit two bits once shifted down to 0-3
         CellId(kind | (color.saturating_sub(1) & 0b11) << 2 | extra << 4)
     }
 
-    /// the loose sprite: no power gem, which is how a falling pair and a preview always draw
+    /// the loose sprite, as a falling pair and a preview draw
     pub fn loose_id(self) -> CellId {
         self.id(PowerMask::NONE)
     }
@@ -441,11 +375,7 @@ pub enum GemSprite {
 }
 
 impl GemSprite {
-    /// Every sprite a theme has to key, which is what its sheet must hold.
-    ///
-    /// The loose gem, the crash gem, the **nine** power gem masks a rectangle can produce -
-    /// see [`PowerMask::REACHABLE`], which is why it is nine and not sixteen - and the ten
-    /// counter gem digits, per colour, plus the rainbow.
+    /// Every sprite a theme's sheet must hold.
     pub fn all() -> Vec<GemSprite> {
         let mut all = vec![GemSprite::Rainbow];
         for color in GemColor::ALL {
@@ -497,8 +427,7 @@ impl From<CellId> for GemSprite {
 mod tests {
     use super::*;
 
-    /// the colour numbering is the drop pattern table's, and the table is transcribed in those
-    /// numbers - so this is load-bearing rather than cosmetic
+    /// the colours are numbered 1-4 as the drop pattern table is written
     #[test]
     fn the_colours_are_numbered_the_way_the_games_own_tables_number_them() {
         assert_eq!(GemColor::Blue as u8, 1);
@@ -512,7 +441,7 @@ mod tests {
         assert_eq!(GemColor::from_game_index(7), None, "7 is a counter gem");
     }
 
-    /// a crash gem carries its colour into the break, which is what makes it a crash gem
+    /// a crash gem breaks by the same colour as a plain gem
     #[test]
     fn a_crash_gem_breaks_by_the_same_colour_a_plain_gem_does() {
         assert_eq!(
@@ -521,8 +450,7 @@ mod tests {
         );
     }
 
-    /// counter gems and the rainbow are never matched by colour: the flood spreads through
-    /// neither
+    /// counter gems and the rainbow have no break colour
     #[test]
     fn neither_a_counter_gem_nor_the_rainbow_has_a_break_colour() {
         assert_eq!(Gem::counter(GemColor::Red, 5).break_color(), None);
@@ -554,7 +482,7 @@ mod tests {
         assert_eq!(gem.tick_countdown(), gem, "an ordinary gem does not tick");
     }
 
-    /// the allocator wraps to 1 rather than to 0, because 0 means "no power gem"
+    /// the allocator wraps 255 to 1, since 0 means no power gem
     #[test]
     fn power_gem_ids_wrap_past_zero() {
         let mut ids = PowerGemIds::default();
@@ -564,17 +492,15 @@ mod tests {
         assert_eq!(ids.allocate(), PowerGemId(1));
     }
 
-    /// nine of the sixteen masks can occur on a board, and a theme carries art for those
+    /// nine of the sixteen masks can occur, including a 2x2's four
     #[test]
     fn only_nine_masks_can_ever_be_drawn() {
         let reachable: std::collections::HashSet<u8> =
             PowerMask::REACHABLE.iter().map(|m| m.bits()).collect();
         assert_eq!(reachable.len(), 9);
         for mask in PowerMask::REACHABLE {
-            // every one is joined on at least two sides, and never on one alone
             assert!(mask.bits().count_ones() >= 2, "{mask:?}");
         }
-        // ... and a 2x2, the smallest power gem there is, produces four of them
         for corner in [
             PowerMask::DOWN.with(PowerMask::RIGHT),
             PowerMask::DOWN.with(PowerMask::LEFT),
@@ -585,14 +511,13 @@ mod tests {
         }
     }
 
-    /// the acceptance rule counts to fifteen, and it is the corners that get it there
+    /// the four corner codes sum to fifteen
     #[test]
     fn the_four_corner_codes_sum_to_fifteen() {
         assert_eq!(Corner::ALL.iter().map(|c| c.code()).sum::<u32>(), 15);
     }
 
-    /// every sprite a theme must key round-trips through its cell id, which is the only
-    /// thing the engine ever compares
+    /// every sprite round-trips through a distinct cell id
     #[test]
     fn every_sprite_round_trips_through_its_cell_id() {
         let all = GemSprite::all();
@@ -603,8 +528,7 @@ mod tests {
         }
     }
 
-    /// a power gem's mask is drawing information and nothing else: two reds joined differently
-    /// are the same gem to the rules and different sprites to the sheet
+    /// the power mask changes a plain gem's cell id and nothing else's
     #[test]
     fn the_power_mask_reaches_the_cell_id_and_nothing_else() {
         let gem = Gem::plain(GemColor::Red);

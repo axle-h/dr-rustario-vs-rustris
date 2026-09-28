@@ -16,7 +16,7 @@ pub enum FontType {
 }
 
 impl FontType {
-    /// Loads this face at `size` (em height in pixels, same semantics as SDL_ttf's point size).
+    /// `size` is the em height in pixels, as SDL_ttf's point size
     pub fn load(&self, size: u32) -> Result<Font, String> {
         Font::from_bytes(self.bytes(), size)
     }
@@ -39,7 +39,6 @@ pub struct Font {
     scaled: PxScaleFont<FontRef<'static>>,
 }
 
-/// Positioned glyphs for a line of text plus the size of the bitmap that fits them.
 struct Line {
     glyphs: Vec<Glyph>,
     width: u32,
@@ -49,8 +48,7 @@ struct Line {
 impl Font {
     pub fn from_bytes(bytes: &'static [u8], size: u32) -> Result<Self, String> {
         let font = FontRef::try_from_slice(bytes).map_err(|e| e.to_string())?;
-        // SDL_ttf treats the point size as the em height in pixels (72 dpi); ab_glyph's
-        // PxScale is the ascent-to-descent height, so convert via the face's unscaled metrics.
+        // SDL_ttf's point size is the em height in pixels, ab_glyph's PxScale is ascent to descent
         let units_per_em = font
             .units_per_em()
             .ok_or_else(|| "font has no units per em".to_string())?;
@@ -60,13 +58,13 @@ impl Font {
         })
     }
 
-    /// Line height in pixels (ascent + descent + line gap), like `TTF_FontHeight`.
+    /// line height in pixels (ascent + descent + line gap), like `TTF_FontHeight`
     pub fn height(&self) -> u32 {
         let s = &self.scaled;
         (s.ascent() - s.descent() + s.line_gap()).ceil() as u32
     }
 
-    /// Pixel size of `text` when rendered: (width, height). Empty text has zero width.
+    /// (width, height) of `text` when rendered; empty text has zero width
     pub fn size_of(&self, text: &str) -> (u32, u32) {
         let line = self.layout(text);
         (line.width, line.height)
@@ -93,7 +91,7 @@ impl Font {
             previous = Some(id);
         }
 
-        // Glyph outlines may overhang the advance box on either side; shift so nothing is clipped.
+        // glyph outlines may overhang the advance box, so shift until nothing is clipped
         let bounds: Vec<_> = glyphs
             .iter()
             .filter_map(|g| s.outline_glyph(g.clone()).map(|o| o.px_bounds()))
@@ -117,7 +115,7 @@ impl Font {
         }
     }
 
-    /// Anti-aliased render of `text` into straight-alpha RGBA bytes, like `TTF_RenderUTF8_Blended`.
+    /// anti-aliased straight-alpha RGBA, like `TTF_RenderUTF8_Blended`
     pub(crate) fn render_rgba(&self, text: &str, color: Color) -> (u32, u32, Vec<u8>) {
         let line = self.layout(text);
         let (width, height) = (line.width.max(1), line.height.max(1));
@@ -193,7 +191,7 @@ mod tests {
 
     #[test]
     fn height_matches_sdl_ttf_line_height() {
-        // Values observed from TTF_FontHeight for the same faces and sizes.
+        // matches TTF_FontHeight for the same faces and sizes
         assert_eq!(FontType::Normal.load(40).unwrap().height(), 47);
         assert_eq!(FontType::Normal.load(80).unwrap().height(), 94);
     }

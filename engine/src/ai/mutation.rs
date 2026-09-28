@@ -87,7 +87,6 @@ impl<const N: usize> GenomeMutation<N> {
         }
     }
 
-    /// change the magnitude of a mutation nudge (the default is 0.1)
     pub fn with_mutation_step(mut self, step: f64) -> Self {
         self.set_mutation_step(step);
         self
@@ -98,7 +97,7 @@ impl<const N: usize> GenomeMutation<N> {
         self.delta_range = raw_coefficient_range(step);
     }
 
-    /// reconfigure rates and mutation step, e.g. when switching training phase; forgets the trend samples
+    /// reconfigure rates and mutation step between phases; forgets the trend samples
     pub fn set_rates(
         &mut self,
         mutation_rate: RateLimits,
@@ -160,13 +159,11 @@ impl<const N: usize> GenomeMutation<N> {
             return;
         }
 
-        // Calculate trend by comparing latest half of samples to earlier half
         let mid = self.samples.len() / 2;
         let older: f64 = self.samples.iter().take(mid).sum::<f64>() / mid as f64;
         let newer: f64 =
             self.samples.iter().skip(mid).sum::<f64>() / (self.samples.len() - mid) as f64;
 
-        // Adjust rates based on trend
         if newer > older {
             self.mutation_rate.decrement();
             self.crossover_rate.decrement();
@@ -239,8 +236,6 @@ impl<const N: usize> GenomeMutation<N> {
                     let (parent2, _) = scaled_population[parent2_index];
                     if parent1 != parent2 {
                         // TODO prefer new parents but do not require
-                        // && !parents.contains(&[parent1, parent2])
-                        // && !parents.contains(&[parent2, parent1]) {
                         break;
                     }
                 }
@@ -264,7 +259,7 @@ fn scale_fitness<const N: usize>(
         .sum();
 
     if sum_fitness <= 0.0 {
-        // nobody has any fitness yet (e.g. no tetris clears): select uniformly
+        // nobody has any fitness yet: select uniformly
         let uniform = 1.0 / population.len() as f64;
         return population
             .iter()
@@ -286,10 +281,8 @@ impl<R: Rng + ?Sized> RngMutation for R {
     fn mutate(&mut self, value: Coefficient, delta_range: &RangeInclusive<i64>) -> Coefficient {
         let random_chance: f64 = self.random();
         if random_chance < 0.2 {
-            // small chance of a completely random value
             self.random()
         } else {
-            // otherwise just nudge the existing value
             let delta = Coefficient::new(self.random_range(delta_range.clone()));
             value + delta
         }
@@ -402,7 +395,6 @@ mod tests {
         let [child1, child2] =
             mutation(RateLimits::NEVER, RateLimits::ALWAYS).crossover(parent1, parent2);
 
-        // With 100% crossover rate and 0% mutation rate, children should have swapped all genes without modification
         assert_eq!(child1, parent2);
         assert_eq!(child2, parent1);
     }
@@ -415,7 +407,6 @@ mod tests {
         let [child1, child2] =
             mutation(RateLimits::NEVER, RateLimits::NEVER).crossover(parent1, parent2);
 
-        // With 0% crossover rate and 0% mutation rate, children should be identical to parents
         assert_eq!(child1, parent1);
         assert_eq!(child2, parent2);
     }
@@ -428,7 +419,6 @@ mod tests {
         let [child1, child2] =
             mutation(RateLimits::ALWAYS, RateLimits::NEVER).crossover(parent1, parent2);
 
-        // With 100% mutation rate and non-zero magnitude, all genes should be modified
         assert!(child1 != parent1 && child1 != parent2);
         assert!(child2 != parent1 && child2 != parent2);
     }
@@ -442,7 +432,6 @@ mod tests {
             .crossover(parent1, parent2);
 
         for child in children {
-            // With 50% rates, some genes should be swapped and some should be mutated
             let has_parent1_genes = child.iter().any(|&gene| gene == parent1[0]);
             let has_parent2_genes = child.iter().any(|&gene| gene == parent2[0]);
             let has_mutated_genes = child

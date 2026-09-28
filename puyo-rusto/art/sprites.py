@@ -1,29 +1,14 @@
 #!/usr/bin/env python3
-"""Draws puyo-rusto/art/procedural-sprites.png, which is no longer what the theme ships.
-
-The particle theme's puyos are now cut out of the Puyo Puyo Tetris rip beside this by
-`rip.py`, which writes `src/theme/modern/sprites.png`. This is the original art it replaced -
-kept because it owes the rip nothing, and because it is the only description in the
-repository of what the sheet has to contain.
-
-The art is original, and a Puyo `CellId` carries a four bit mask of which
-neighbours share its colour - so the sheet is keyed on `colour x 16` and there are eighty
-coloured variants before nuisance and the tray icons. Nobody draws eighty sprites by hand.
-
-Each puyo is the union of a body (a circle) and one neck per linked direction (a box running
-from the centre out past the cell edge), as a signed distance field: `sdf < 0` is the puyo,
-the band just inside it is the rim, and the necks run *past* the edge so no rim is drawn
-across a join and two linked puyos meet flush.
+"""Draws puyo-rusto/art/procedural-sprites.png, a procedural sheet the theme does not ship.
 
     python3 puyo-rusto/art/sprites.py
 
-Layout, which `rip.py` reproduces and `theme/modern/mod.rs` mirrors in arithmetic:
+It describes what `rip.py`'s shipped sheet must contain, in the layout `theme/modern/mod.rs`
+mirrors (mask bits are `LinkMask`'s: up 1, down 2, left 4, right 8):
 
     block (col, row) -> (PAD + PITCH * col, PAD + PITCH * row), BLOCK square
     rows 0-4  one colour each (red, green, blue, yellow, purple), column = link mask bits
     row 5     col 0 nuisance, cols 1-3 the tray's small, large and rock symbols
-
-The mask bits are `LinkMask` in `game/cell.rs`: up 1, down 2, left 4, right 8.
 """
 
 import os
@@ -107,7 +92,6 @@ def coverage(sdf):
 
 
 def blend(dst, color, alpha):
-    """paint `color` over the rgb planes of `dst` with `alpha` cover"""
     for channel in range(3):
         dst[:, :, channel] = dst[:, :, channel] * (1 - alpha) + color[channel] * alpha
 
@@ -119,7 +103,6 @@ def shade(sdf, base, dark, light):
 
     ramp = np.clip((GRID_Y - CENTRE * 0.35) / (SIZE * 0.8), 0.0, 1.0)[:, :, None]
     body = np.array(light) * (1 - ramp) + np.array(base) * ramp
-    # ... and a little darker again as it curves away at the edge
     curve = np.clip((sdf + RIM * 2.5) / (RIM * 2.5), 0.0, 1.0)[:, :, None]
     body = body * (1 - 0.28 * curve) + np.array(dark) * (0.28 * curve)
 
@@ -132,14 +115,12 @@ def shade(sdf, base, dark, light):
 
 
 def highlight(rgba, sdf):
-    """the specular blob every puyo carries on its upper left"""
     spot = circle_sdf(CENTRE - 0.19 * BLOCK, CENTRE - 0.20 * BLOCK, 0.115 * BLOCK)
     alpha = coverage(spot) * coverage(sdf) * 0.75
     blend(rgba, (255, 255, 255), alpha)
 
 
 def eyes(rgba, sdf, pupil_scale=1.0, spread=0.165, lift=0.03):
-    """two whites with a pupil in each, which is what makes it a puyo and not a bead"""
     for side in (-1, 1):
         ex = CENTRE + side * spread * BLOCK
         ey = CENTRE - lift * BLOCK
@@ -152,7 +133,6 @@ def eyes(rgba, sdf, pupil_scale=1.0, spread=0.165, lift=0.03):
 
 
 def scowl(rgba, sdf):
-    """nuisance is not pleased to be here"""
     mouth = box_sdf(
         CENTRE - 0.16 * BLOCK, CENTRE + 0.13 * BLOCK, CENTRE + 0.16 * BLOCK, CENTRE + 0.175 * BLOCK
     )
@@ -177,7 +157,6 @@ def nuisance_sprite(scale=1.0):
 
 
 def rock_sprite():
-    """thirty puyos at once, which the tray shows as a rock rather than five rows of icons"""
     r = BODY_RADIUS * BLOCK
     facets = [
         circle_sdf(CENTRE - 0.10 * BLOCK, CENTRE - 0.08 * BLOCK, r * 0.62),

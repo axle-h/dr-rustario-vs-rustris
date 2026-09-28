@@ -171,12 +171,10 @@ impl<'a> SnippedTexture<'a> {
     }
 }
 
-/// The body layout: where the rows sit, the texture they are drawn into, and the pill
-/// drawn behind the selected list. Recomputed whenever a row's values change, since the
-/// widest value is what the body is sized around.
+/// The body layout: row positions, the texture they are drawn into and the selection pill.
+/// Recomputed when a row's values change, since the widest value sizes the body.
 struct Body<'a> {
     row_rects: Vec<Rect>,
-    /// the rows are drawn into this, then it is drawn to the window
     target: SnippedTexture<'a>,
     select_list_background: Texture<'a>,
 }
@@ -344,9 +342,7 @@ impl<'a> Menu<'a> {
         })
     }
 
-    /// Replace the values a select list offers, keeping the selection the caller asks for.
-    /// The menu is otherwise fixed: this is for a list whose options depend on another
-    /// item, such as the modes on offer once a single theme is picked.
+    /// Replace the values a select list offers, for a list whose options depend on another item.
     pub fn set_items(
         &mut self,
         canvas: &mut WindowCanvas,
@@ -364,7 +360,6 @@ impl<'a> Menu<'a> {
             changed = true;
         }
         if changed {
-            // the widest value on offer sizes the body, so the whole layout moves with it
             self.body = Body::new(
                 &self.rows,
                 canvas,
@@ -409,7 +404,7 @@ impl<'a> Menu<'a> {
             MenuInputKey::Left => self.left(),
             MenuInputKey::Right => self.right(),
             MenuInputKey::Select => self.select(),
-            // special case for pressing "start" on an action e.g. "quit" I would expect it to quit
+            // Start on an action such as "quit" performs it
             MenuInputKey::Start if self.rows[self.current_row_id].item.action.is_select() => {
                 self.select()
             }
@@ -464,13 +459,11 @@ impl<'a> Menu<'a> {
                 {
                     let is_selected = row_id == self.current_row_id;
 
-                    // draw select list background
                     if is_selected && !row.item.action.is_select() {
                         tc.copy(&self.body.select_list_background, None, *row_rect)
                             .unwrap();
                     }
 
-                    // draw name
                     let name_rect =
                         Rect::new(row_rect.x, row_rect.y, row.name_width, row.name_height);
                     let name_texture = if is_selected {
@@ -480,11 +473,9 @@ impl<'a> Menu<'a> {
                     };
                     tc.copy(name_texture, None, name_rect).unwrap();
 
-                    // draw value
                     if let Some(current_action) = row.current_action_id() {
                         let texture = &row.action_textures[current_action];
-                        // right-aligned at its natural size (stretching to the row distorts
-                        // the text), inset half a row height for the rounded bg
+                        // right-aligned at natural size, since stretching distorts the text
                         let rect = Rect::new(
                             row_rect.right() - texture.width as i32 - row_rect.height() as i32 / 2,
                             row_rect.y() + (row_rect.height() as i32 - texture.height as i32) / 2,

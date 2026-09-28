@@ -1,19 +1,7 @@
-//! The board the ai thinks on.
-//!
-//! [`crate::game::board::Board`] is the board the *game* plays: it carries link masks and a
-//! skin so that a renderer can draw it, and its chain loop hands back `Vec`s of placed cells
-//! for the animations to consume. A search asks the same questions tens of thousands of times
-//! per pair and needs none of that, so it works on this instead: one byte a cell, no skin, no
-//! masks, no allocation anywhere in a chain.
-//!
-//! It is the same *rules*, though, and deliberately so - the chain loop below is
-//! [`crate::game::board::Board::settle`] and [`pop`](crate::game::board::Board::pop) written
-//! out flat, and it scores with the game's own [`step_score`]. A search that resolved chains
-//! its own way would rank placements the game would not play out.
-//!
-//! Coordinates are the board's: `y` grows downwards, row 0 is the hidden thirteenth and
-//! nothing there pops or counts towards a group - see
-//! [`is_ghost`](crate::game::board::is_ghost).
+//! The board the ai thinks on: one byte a cell, no skin, no link masks, no allocation in a
+//! chain. Its chain loop must match [`crate::game::board::Board`]'s rules and score with
+//! [`step_score`], or the search ranks placements the game would not play out. Coordinates are
+//! the board's: `y` grows downwards and row 0 is the ghost row.
 
 use crate::game::board::{Board, CELLS, COLUMNS, DEATH_SQUARE, HIDDEN_ROWS, ROWS, VISIBLE_ROWS};
 use crate::game::cell::{PuyoCell, PuyoColor};
@@ -34,11 +22,10 @@ pub const EMPTY: u8 = 0;
 /// nuisance: it fills a cell and clears beside a group, but it has no colour to group with
 pub const NUISANCE: u8 = PuyoColor::N as u8 + 1;
 
-/// the most groups one chain step can pop: a board of 78 cells, four to a group
+/// the most groups one chain step can pop
 const MAX_GROUPS: usize = CELLS / PUYOS_TO_POP as usize;
 
-/// a colour as this field stores it. Zero is reserved for [`EMPTY`], so a colour is its index
-/// plus one and the whole cell fits in a byte with nuisance above it.
+/// a colour as this field stores it: its index plus one, since zero is [`EMPTY`]
 pub const fn of_color(color: PuyoColor) -> u8 {
     color as u8 + 1
 }
@@ -55,29 +42,23 @@ pub fn to_color(cell: u8) -> Option<PuyoColor> {
 /// What a chain did: how many steps it ran to, what it scored and how many puyos it spent.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Chain {
-    /// steps, so 0 is "nothing popped" and 1 is a single pop rather than a chain
+    /// steps: 0 is nothing popped, 1 is a single pop
     pub count: u32,
-    /// the game's own score for it, [`step_score`] summed over the steps
+    /// the game's own score for it
     pub score: u32,
     /// every puyo it took off the board, nuisance included
     pub popped: u32,
 }
 
-/// A board, and how tall each of its columns is.
-///
-/// The heights are carried rather than counted because everything asks for them - the
-/// evaluation, the move generator, the quiescence search and the tear - and counting them is a
-/// scan of the whole board. They are kept true by the two operations that can change them:
-/// [`Field::drop_into`], which adds one to a column, and [`Field::settle`], which is where
-/// they are worked out from scratch.
+/// A board, and a cache of each column's height kept true by [`Field::drop_into`] and
+/// [`Field::settle`].
 #[derive(Clone, Copy)]
 pub struct Field {
     cells: [u8; CELLS],
     heights: [u8; WIDTH],
 }
 
-/// two fields are the same field when they hold the same puyos; the heights are a cache of
-/// exactly that and cannot disagree
+/// two fields are equal when they hold the same puyos; the heights are only a cache of that
 impl PartialEq for Field {
     fn eq(&self, other: &Self) -> bool {
         self.cells == other.cells
@@ -92,15 +73,8 @@ impl Default for Field {
     }
 }
 
-/// The up to four orthogonal neighbours of every cell, worked out once at compile time.
-///
-/// Entry zero of a row is how many there are and the rest are the cells. It is a table rather
-/// than arithmetic because the chain loop asks for it three hundred times per scan and the
-/// scan runs tens of thousands of times per pair, and because the answer never changes.
-///
-/// **The ghost row is not a neighbour of anything.** Nothing there groups, and nothing there
-/// is dragged out by a group beside it, so leaving it out of the table is the whole of the
-/// ghost rule as far as popping is concerned.
+/// The up to four orthogonal neighbours of every cell; entry zero of a row is the count. The
+/// ghost row is nobody's neighbour, which is the whole of the ghost rule for popping.
 const NEIGHBOURS: [[u8; 5]; CELLS] = {
     let mut table = [[0u8; 5]; CELLS];
     let mut index = 0;
@@ -130,7 +104,6 @@ const NEIGHBOURS: [[u8; 5]; CELLS] = {
     table
 };
 
-/// the neighbours of a cell, as a slice
 #[inline(always)]
 fn neighbours(index: usize) -> &'static [u8] {
     let row = &NEIGHBOURS[index];
@@ -145,12 +118,8 @@ impl Field {
         }
     }
 
-    /// Read a game board in.
-    ///
-    /// The link masks come off here and are not missed: a mask says what a *renderer* should
-    /// join up, and connectivity for popping is worked out from the colours themselves - see
-    /// [`crate::game::board::Board::recompute_links`]. Comparing masked cells would see
-    /// sixteen different reds and find no chains at all.
+    /// Read a game board in, dropping the link masks: grouping is by colour alone, and masked
+    /// cells would compare unequal.
     pub fn from_board(board: &Board) -> Self {
         let mut field = Self::new();
         for y in 0..HEIGHT {
@@ -163,9 +132,7 @@ impl Field {
                 };
             }
         }
-        // settling here is what makes "always settled" true whatever this was handed. A board
-        // with a pair in play is settled already, so on the path that matters it moves
-        // nothing; a board caught in the middle of a chain is read as it is about to be
+        // settling makes the field always settled whatever it was handed
         field.settle();
         field
     }
@@ -179,8 +146,7 @@ impl Field {
         self.recount_heights();
     }
 
-    /// how tall the stack in a column is, the ghost row included: 13 is a column full to the
-    /// top of the board and 12 is one that has reached the ghost row
+    /// how tall a column is, ghost row included: 13 is full and 12 has reached the ghost row
     pub fn height(&self, x: usize) -> u8 {
         self.heights[x]
     }
@@ -189,9 +155,8 @@ impl Field {
         self.heights
     }
 
-    /// A column is as tall as its topmost puyo stands, which counts a hole under the stack as
-    /// filled - that is what a height is for, since a pair dropped on the column lands on top
-    /// of the hole and not in it.
+    /// A column is as tall as its topmost puyo, counting a hole under the stack as filled,
+    /// since a dropped pair lands on top of it.
     fn recount_heights(&mut self) {
         for x in 0..WIDTH {
             self.heights[x] = 0;
@@ -216,7 +181,7 @@ impl Field {
         Some(y)
     }
 
-    /// a puyo is resting on the death square, which is the one thing that ends a game
+    /// a puyo is resting on the death square, which ends a game
     pub fn is_dead(&self) -> bool {
         self.get(DEATH_SQUARE.x as usize, DEATH_SQUARE.y as usize) != EMPTY
     }
@@ -240,7 +205,6 @@ impl Field {
         bits
     }
 
-    /// Let everything floating fall, and report whether anything moved.
     pub fn settle(&mut self) -> bool {
         let mut moved = false;
         for x in 0..WIDTH {
@@ -261,7 +225,7 @@ impl Field {
         moved
     }
 
-    /// every orthogonally connected run of one colour, whatever its size, ghost row excluded
+    /// every orthogonally connected run of one colour, ghost row excluded
     fn for_each_group(&self, mut f: impl FnMut(u8, &[u8])) {
         let mut seen = [false; CELLS];
         let mut group = [0u8; CELLS];
@@ -290,12 +254,8 @@ impl Field {
         }
     }
 
-    /// How many groups of exactly two and of exactly three there are.
-    ///
-    /// This is the chain-building material on the board: a pair wants to join something, and a
-    /// three wants one more. ama counts *connections* off its bitboard rather than groups;
-    /// counting whole groups says the same thing about the same board and says it in the units
-    /// the pop rule is written in, so a three is a three rather than three overlapping pairs.
+    /// How many groups of exactly two and of exactly three there are. Ama counts connections
+    /// instead; whole groups keep a three from reading as overlapping pairs.
     pub fn link_counts(&self) -> (u32, u32) {
         let (mut twos, mut threes) = (0, 0);
         self.for_each_group(|_, group| match group.len() {
@@ -306,13 +266,8 @@ impl Field {
         (twos, threes)
     }
 
-    /// Does the group containing `(x, y)` reach `needed` puyos?
-    ///
-    /// Asked once per key puyo of every probe the quiescence search makes, which is tens of
-    /// thousands of times a pair, so it is written to answer rather than to count: it walks
-    /// outwards and stops the moment it has seen enough, and it remembers where it has been in
-    /// a list `needed` long rather than in a map of the board. Nothing here groups in the
-    /// ghost row.
+    /// Whether the group containing `(x, y)` reaches `needed` puyos, stopping as soon as it
+    /// does. Nothing groups in the ghost row.
     pub fn has_group_of(&self, x: usize, y: usize, needed: u32) -> bool {
         debug_assert!(needed as usize <= PUYOS_TO_POP as usize);
         if y < FLOOR_OF_PLAY || needed == 0 {
@@ -349,11 +304,6 @@ impl Field {
     }
 
     /// One step of the chain loop: pop everything ready to go, nuisance beside it included.
-    ///
-    /// Written around the list of what is going rather than around a map of the board,
-    /// because a chain step takes a dozen cells off a board of seventy eight and every pass
-    /// over the other sixty six is time the quiescence search pays for a dozen times over per
-    /// placement.
     fn pop_step(&mut self, chain: u32) -> Option<(u32, u32)> {
         let mut groups = [PoppedGroup {
             color: PuyoColor::Red,
@@ -366,7 +316,6 @@ impl Field {
         self.for_each_group(|color, group| {
             if group.len() as u32 >= PUYOS_TO_POP {
                 groups[count] = PoppedGroup {
-                    // a group is one colour and it is not nuisance, so this cannot fail
                     color: to_color(color).expect("a colour group has a colour"),
                     size: group.len() as u32,
                 };
@@ -380,8 +329,7 @@ impl Field {
             return None;
         }
 
-        // nuisance touching anything that goes, goes with it - but never a ghost, which
-        // nothing clears, and never twice however many groups it is beside
+        // nuisance beside anything that goes goes too, once, but never from the ghost row
         let colored = len;
         for at in 0..colored {
             for next in neighbours(going[at] as usize) {
@@ -399,21 +347,13 @@ impl Field {
         Some((step_score(chain, &groups[..count]), len as u32))
     }
 
-    /// the cells of the board, for a test that wants to look at one
     #[cfg(test)]
     pub fn row(&self, y: usize) -> &[u8] {
         &self.cells[y * WIDTH..(y + 1) * WIDTH]
     }
 
-    /// Run the chain out: pop, settle, pop, until nothing is left to go.
-    ///
-    /// It pops before it settles, where [`crate::game::board::Board`]'s loop settles first,
-    /// because the two are handed different boards. The game's chain starts from a pair that
-    /// has just locked with one half still in the air; a [`Field`] is **always settled** - it
-    /// is built by settling and the only thing that adds to it is
-    /// [`drop_into`](Self::drop_into), which lands on top of a column - so settling to open
-    /// with would be a scan of the whole board to move nothing, a dozen times over per
-    /// placement.
+    /// Run the chain out: pop, settle, pop, until nothing is left. It pops before settling,
+    /// unlike the game's loop, because a [`Field`] is always settled.
     pub fn resolve(&mut self) -> Chain {
         let mut chain = Chain::default();
         while let Some((score, popped)) = self.pop_step(chain.count + 1) {
@@ -444,7 +384,7 @@ mod tests {
         assert_eq!(to_color(field.get(2, HEIGHT - 1)), Some(PuyoColor::Red));
     }
 
-    /// the same square of four the board pops, popped the same way and scored the same
+    /// a square of four pops and scores as the board does
     #[test]
     fn a_square_of_four_pops_for_what_the_game_would_score_it() {
         let mut field = field(&["..rr..", "..rr.."]);
@@ -464,23 +404,18 @@ mod tests {
         assert!(field.is_empty());
     }
 
-    /// nuisance has no colour of its own, so it only ever leaves beside a group that pops
+    /// nuisance only leaves beside a group that pops
     #[test]
     fn nuisance_beside_a_group_goes_with_it() {
         let mut field = field(&["o.....", "r....o", "rrr..."]);
         let chain = field.resolve();
         assert_eq!(chain.count, 1);
-        // four reds and the nuisance sitting on them; the one across the board is untouched
+        // four reds and the nuisance on them; the one across the board is untouched
         assert_eq!(chain.popped, 5);
         assert_eq!(field.nuisance_count(), 1);
     }
 
-    /// A chain is steps, and a step only happens because the one before it moved something.
-    ///
-    /// Three reds waiting on a fourth, with two greens sitting on the red that is holding
-    /// them apart from two more: the reds go, the greens fall into each other, and the greens
-    /// go. Nothing about the board before the drop is ready to pop, which is the point - a
-    /// chain is built, and then set off.
+    /// three reds and a dropped fourth set off greens that fall together: a two step chain
     #[test]
     fn a_chain_counts_its_steps() {
         let mut field = field(&[".g....", "rg....", "rrgg.."]);
@@ -491,8 +426,7 @@ mod tests {
         assert!(field.is_empty());
     }
 
-    /// the whole of the ghost rule: a group with a foot in the hidden row is held back, and
-    /// the three visible ones do **not** pop and leave it behind
+    /// a group with a foot in the ghost row does not pop, nor do its three visible puyos
     #[test]
     fn a_group_of_four_with_a_ghost_in_it_does_not_pop() {
         // a column full to the very top, so nothing settles and the fourth red is a ghost
@@ -504,7 +438,7 @@ mod tests {
         assert_eq!(field.height(0), HEIGHT as u8);
         assert_eq!(field.resolve().count, 0, "three visible reds and a ghost");
 
-        // take one cell out from under them and the ghost drops into view, and the same four go
+        // take one cell out from under them and the ghost drops into view, and all four go
         let mut dropped = Field::from_board(&board_rows(&full[..full.len() - 1]));
         assert_eq!(
             dropped.resolve().count,

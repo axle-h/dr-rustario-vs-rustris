@@ -9,8 +9,7 @@ build = "build.rs"
 workspace = true
 
 [features]
-# all three halve the particle theme's mascot sheets at build time - see build.rs, which is
-# the only thing `image` is here for
+# all three halve the particle theme's mascot sheets in build.rs, the only user of `image`
 portmaster = ["dep:image"]
 browser = ["dep:image"]
 android = ["dep:image"]

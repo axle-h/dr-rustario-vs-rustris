@@ -1,9 +1,4 @@
-//! The break: what a crash gem sets off, what the rainbow takes, and how power gems form.
-//!
-//! The verb of the game. A crash gem floods its own colour, counter gems standing beside
-//! anything that breaks are taken as collateral, and whatever survives is scanned for
-//! rectangles. The rules doc's *The break* and *Power gems* are where all of this is read
-//! from; the two places this makes a choice the disassembly does not pin are called out below.
+//! The break and power gem formation, from the rules doc's *The break* and *Power gems*.
 
 use crate::game::board::{Board, COLUMNS, NEIGHBOURS, ROWS};
 use crate::game::cell::{Gem, GemColor, PowerGemId, PowerGemIds};
@@ -18,12 +13,8 @@ pub const MIN_POWER_GEM_SIDE: i32 = 2;
 /// What one erase step took off the board.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Erased {
-    /// every cell that went, and what was in it
     pub cells: Vec<(Point, Gem)>,
-    /// A rainbow gem came to rest on the **floor**, which is the Tech Bonus.
-    ///
-    /// Ten thousand points for dropping it down an empty lane, which is why the guides tell
-    /// you not to spend a rainbow on an ordinary break.
+    /// a rainbow gem came to rest on the floor: the Tech Bonus
     pub tech_bonus: bool,
 }
 
@@ -32,7 +23,6 @@ impl Erased {
         self.cells.is_empty() && !self.tech_bonus
     }
 
-    /// how many cells went
     pub fn count(&self) -> u32 {
         self.cells.len() as u32
     }
@@ -41,24 +31,15 @@ impl Erased {
         self.cells.iter().map(|(_, gem)| *gem)
     }
 
-    /// the distinct colours a break spread by, which the colour bonus is paid on
+    /// the distinct colours a break spread by, which the colour bonus pays on
     pub fn colors(&self) -> HashSet<GemColor> {
         self.gems().filter_map(|gem| gem.break_color()).collect()
     }
 }
 
-/// Which cells this step erases.
-///
-/// Three rules, in the order the game applies them:
-///
-/// 1. **Propagation.** A four-neighbour flood from every crash gem over cells of its own
-///    colour. A crash gem that reached nothing is put back - one sitting alone is inert.
-/// 2. **The rainbow.** It takes every gem of the colour of the cell directly under it, that
-///    cell whatever it is, and itself. Over an empty lane it takes nothing and pays the Tech
-///    Bonus instead.
-/// 3. **Collateral.** Any counter gem orthogonally touching something that is going, goes.
-///    Counter gems are never matched *by* colour - they have none - so this is the only way
-///    one is ever cleared, and it is what makes them worth breaking beside.
+/// Which cells this step erases, in the game's order: each crash gem floods its own colour
+/// (alone it is inert), each rainbow takes the cell under it and that cell's colour, then every
+/// counter gem touching an erased cell goes as collateral.
 pub fn marked(board: &Board) -> Erased {
     let mut marked: HashSet<Point> = HashSet::new();
     let mut tech_bonus = false;
@@ -86,7 +67,6 @@ pub fn marked(board: &Board) -> Erased {
                             );
                         }
                     }
-                    // nothing under it at all means it came to rest on the floor
                     None if !Board::contains(below) => tech_bonus = true,
                     None => {}
                 }
@@ -95,7 +75,6 @@ pub fn marked(board: &Board) -> Erased {
         }
     }
 
-    // counter gems are taken as collateral rather than as matches
     let collateral: Vec<Point> = marked
         .iter()
         .flat_map(|point| NEIGHBOURS.map(|step| *point + step))
@@ -111,7 +90,6 @@ pub fn marked(board: &Board) -> Erased {
     Erased { cells, tech_bonus }
 }
 
-/// every cell reachable from `from` through gems of `color`, the starting cell included
 fn flood(board: &Board, from: Point, color: GemColor) -> HashSet<Point> {
     let mut seen = HashSet::from([from]);
     let mut queue = vec![from];
@@ -130,7 +108,6 @@ fn flood(board: &Board, from: Point, color: GemColor) -> HashSet<Point> {
     seen
 }
 
-/// take everything [`marked`] found off the board
 pub fn erase(board: &mut Board, erased: &Erased) {
     for (point, _) in &erased.cells {
         board.set(*point, None);
@@ -138,30 +115,13 @@ pub fn erase(board: &mut Board, erased: &Erased) {
     board.recheck_power_gems();
 }
 
-/// **Power gem formation, and merging, which are one search.**
-///
-/// The original runs six functions - three formation scans from three corners and three merge
-/// scans - but they differ only in what the corner-code sum inside the candidate rectangle is
-/// allowed to be, and that rule is the whole of it:
-///
-/// * **0** - no existing power gem inside; a fresh rectangle of plain gems.
-/// * **15** - exactly one existing gem (`1 + 2 + 4 + 8`) wholly inside it; it is absorbed.
-/// * **30** - exactly two, which is what the merge pass is.
-///
-/// Any other sum means a power gem is *partly* overlapped, and the candidate is rejected. That
-/// is why a power gem gets harder to extend as it grows: you are not adding a row to a gem,
-/// you are finding a larger rectangle that swallows it whole.
-///
-/// **[open], and read here as the largest rectangle wins.** The rules doc has the acceptance
-/// rule and the caps as certain and the column-by-column growth loop as untranscribed - about
-/// 1,700 bytes of pointer arithmetic per function. This takes the largest acceptable rectangle
-/// at each anchor and repeats to a fixed point, which is what three passes from three corners
-/// are *for*; where the original would settle on a smaller one, this will find the bigger.
+/// Power gem formation and merging, which are one search: repeatedly stamp the largest
+/// rectangle `accepts` allows until none is left. The original's growth loop is not
+/// transcribed, so where it would settle on a smaller rectangle this finds the bigger.
 pub fn form_power_gems(board: &mut Board, ids: &mut PowerGemIds) -> Vec<PowerGemId> {
     let mut formed = vec![];
     while let Some(rect) = largest_new_rectangle(board) {
         let id = ids.allocate();
-        // whatever was inside is swallowed: the region is cleared and restamped as one gem
         for point in cells_of(rect) {
             if let Some(gem) = board.get(point) {
                 board.set(point, Some(gem.with_power(None)));
@@ -178,7 +138,6 @@ fn cells_of((top_left, bottom_right): (Point, Point)) -> impl Iterator<Item = Po
         .flat_map(move |y| (top_left.x..=bottom_right.x).map(move |x| Point::new(x, y)))
 }
 
-/// the biggest rectangle anywhere on the board that would be a *new* power gem
 fn largest_new_rectangle(board: &Board) -> Option<(Point, Point)> {
     let mut best: Option<(Point, Point)> = None;
     let mut best_area = 0;
@@ -209,20 +168,9 @@ fn largest_new_rectangle(board: &Board) -> Option<(Point, Point)> {
     best
 }
 
-/// **The acceptance rule.**
-///
-/// The game states it as a sum: the power gem corner codes inside the candidate rectangle are
-/// added up in `+0x11e`, and the rectangle is accepted only when that sum is **0, 15 or 30**.
-/// A whole power gem inside contributes all four of its corners and so exactly 15, and a gem
-/// the rectangle only *partly* covers contributes some other number - so the sum is a
-/// compact way of saying **every power gem this rectangle touches is wholly inside it, and
-/// there are at most two of them**. That is what this tests, because a sum read off the
-/// corners alone would also accept a rectangle sitting entirely in the middle of a large gem,
-/// where there are no corners to count; the original's scan starts at a gem's own corner and
-/// never asks that question.
-///
-/// A rectangle that is already exactly one power gem is refused as well: it is no change, and
-/// accepting it would restamp the same gem for ever.
+/// The game accepts a rectangle whose corner-code sum (`+0x11e`) is 0, 15 or 30, meaning at
+/// most two power gems, each wholly inside. This tests that meaning rather than the sum, which
+/// would also accept a rectangle in the middle of a gem, and refuses one that already is a gem.
 fn accepts(board: &Board, rect: (Point, Point)) -> bool {
     let mut inside: Vec<PowerGemId> = cells_of(rect)
         .filter_map(|point| board.get(point).and_then(|gem| gem.power()).map(|p| p.id))
@@ -245,8 +193,7 @@ fn accepts(board: &Board, rect: (Point, Point)) -> bool {
     true
 }
 
-/// the corner-code sum the game itself tests, for the test that holds the two readings
-/// together
+/// the corner-code sum the game itself tests
 #[cfg(test)]
 fn corner_sum(board: &Board, rect: (Point, Point)) -> u32 {
     cells_of(rect)
@@ -261,7 +208,7 @@ fn contains((top_left, bottom_right): (Point, Point), point: Point) -> bool {
         && (top_left.y..=bottom_right.y).contains(&point.y)
 }
 
-/// how full the board is, as the fighter sprites read it: `+0x79`, out of the visible 78.
+/// How full the board is, as the fighter sprites read it: `+0x79`, out of the visible 78.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Pressure {
     /// below 37 cells
@@ -282,7 +229,7 @@ impl Pressure {
     }
 }
 
-/// whether the board still has room for a piece: the Drop Alley is not blocked
+/// whether the Drop Alley still has room for a piece
 pub fn drop_alley_is_clear(board: &Board) -> bool {
     (0..ROWS as i32)
         .take(2)
@@ -299,7 +246,7 @@ mod tests {
         marked(&board(rows))
     }
 
-    /// a crash gem takes the whole connected group of its own colour, itself included
+    /// a crash gem takes its connected group of its own colour
     #[test]
     fn a_crash_gem_breaks_its_own_colour() {
         let erased = broken(&["rrr", "rRr"]);
@@ -307,14 +254,14 @@ mod tests {
         assert_eq!(erased.colors(), HashSet::from([Red]));
     }
 
-    /// ... and nothing of any other
+    /// a crash gem leaves other colours alone
     #[test]
     fn a_crash_gem_leaves_every_other_colour_alone() {
         let erased = broken(&["ggg", "gRg"]);
         assert!(erased.is_empty(), "it reached nothing of its own colour");
     }
 
-    /// a crash gem alone is inert, which is what makes one worth saving
+    /// a crash gem touching nothing of its colour is inert
     #[test]
     fn a_lone_crash_gem_breaks_nothing() {
         assert!(broken(&["R....."]).is_empty());
@@ -330,10 +277,7 @@ mod tests {
         assert_eq!(broken(&["RR"]).count(), 2);
     }
 
-    /// Counter gems are collateral, never matches.
-    ///
-    /// StrategyWiki: "if a gem that touches a counter gem is destroyed, even if that gem is a
-    /// different colour, the counter gem will be shattered".
+    /// a counter gem touching a break goes with it, whatever its colour
     #[test]
     fn a_counter_gem_beside_a_break_is_shattered_whatever_colour_it_is() {
         let erased = broken(&["1r", "rR"]);
@@ -345,14 +289,14 @@ mod tests {
         );
     }
 
-    /// ... and one that touches nothing that broke stays put
+    /// a counter gem touching nothing that broke survives
     #[test]
     fn a_counter_gem_away_from_a_break_survives() {
         let erased = broken(&["1.", "..", "rR"]);
         assert_eq!(erased.count(), 2);
     }
 
-    /// a counter gem does not spread a break: it is taken, and nothing beyond it is
+    /// a break does not spread through a counter gem
     #[test]
     fn a_break_does_not_spread_through_a_counter_gem() {
         let erased = broken(&["r1r", "..R"]);
@@ -363,7 +307,6 @@ mod tests {
         );
     }
 
-    /// the rainbow takes every gem of the colour it lands on, wherever they are
     #[test]
     fn the_rainbow_takes_every_gem_of_the_colour_it_lands_on() {
         let erased = broken(&["*.", "gg", "rg"]);
@@ -374,7 +317,7 @@ mod tests {
         );
     }
 
-    /// down an empty lane it lands on the floor and pays ten thousand points instead
+    /// a rainbow on the floor pays the Tech Bonus
     #[test]
     fn a_rainbow_on_the_floor_is_the_tech_bonus() {
         let erased = broken(&["*....."]);
@@ -382,8 +325,7 @@ mod tests {
         assert!(!erased.is_empty(), "the bonus is the whole of what it did");
     }
 
-    /// a rainbow on a counter gem takes the counter gem and nothing else: a counter gem has no
-    /// break colour to spread by
+    /// a rainbow on a counter gem takes only that gem
     #[test]
     fn a_rainbow_on_a_counter_gem_takes_only_that_gem() {
         let erased = broken(&["*", "1"]);
@@ -398,7 +340,7 @@ mod tests {
         assert!(b.is_empty());
     }
 
-    /// a fresh rectangle of one colour is a power gem, corner sum zero
+    /// a solid 2x2 forms one power gem, once
     #[test]
     fn a_solid_rectangle_of_one_colour_becomes_a_power_gem() {
         let mut b = board(&["rr", "rr"]);
@@ -411,7 +353,7 @@ mod tests {
         );
     }
 
-    /// the biggest rectangle wins, so a 2x3 does not settle for the 2x2 inside it
+    /// a 2x3 forms whole rather than as the 2x2 inside it
     #[test]
     fn the_largest_rectangle_is_the_one_that_forms() {
         let mut b = board(&["rrr", "rrr"]);
@@ -420,8 +362,7 @@ mod tests {
         assert_eq!(b.power_gem_cells(PowerGemId(1)).len(), 6);
     }
 
-    /// a rectangle that swallows one whole power gem is accepted - sum 15 - and the old id
-    /// goes with it
+    /// a larger rectangle absorbs a whole power gem and its old id goes
     #[test]
     fn a_larger_rectangle_absorbs_a_power_gem_whole() {
         let mut b = board(&["rr", "rr"]);
@@ -442,13 +383,12 @@ mod tests {
         );
     }
 
-    /// two whole power gems in one rectangle sum to 30, which is the merge
+    /// a 4x4 swallowing two 2x2 power gems merges them
     #[test]
     fn two_power_gems_merge_into_one() {
         let mut b = board(&["rr..", "rr..", "..rr", "..rr"]);
         let mut ids = PowerGemIds::default();
         assert_eq!(form_power_gems(&mut b, &mut ids).len(), 2, "two of them");
-        // the two columns between them fill in, and the 4x4 swallows both
         let floor = ROWS as i32 - 1;
         for y in floor - 3..=floor {
             for x in 0..4 {
@@ -461,9 +401,7 @@ mod tests {
         assert_eq!(b.power_gem_cells(PowerGemId(3)).len(), 16);
     }
 
-    /// **The two readings of the acceptance rule agree.** Whenever a rectangle is accepted,
-    /// the corner-code sum the game itself tests is 0, 15 or 30; whenever it is refused for
-    /// overlapping a gem, it is not.
+    /// every rectangle [`accepts`] takes on a 4x4 has the game's corner sum of 0, 15 or 30
     #[test]
     fn an_accepted_rectangle_always_has_a_corner_sum_of_zero_fifteen_or_thirty() {
         let mut b = board(&["rrrr", "rrrr", "rrrr", "rrrr"]);
@@ -499,8 +437,7 @@ mod tests {
         assert!(seen > 0, "and some rectangle was accepted at all");
     }
 
-    /// a rectangle wholly inside a bigger power gem is not a new one, however few corners it
-    /// happens to cover - which is the case a plain corner-code sum reads as zero
+    /// a rectangle inside a formed 4x4 power gem forms nothing new
     #[test]
     fn a_rectangle_inside_a_power_gem_forms_nothing() {
         let mut b = board(&["rrrr", "rrrr", "rrrr", "rrrr"]);
@@ -513,7 +450,7 @@ mod tests {
         );
     }
 
-    /// a crash gem never joins a power gem: it is a class, not a colour
+    /// a crash gem never joins a power gem
     #[test]
     fn a_crash_gem_is_never_part_of_a_power_gem() {
         let mut b = board(&["rr", "rR"]);
@@ -521,7 +458,7 @@ mod tests {
         assert!(form_power_gems(&mut b, &mut ids).is_empty());
     }
 
-    /// nor does a counter gem, however it got there
+    /// nor does a counter gem
     #[test]
     fn a_counter_gem_is_never_part_of_a_power_gem() {
         let mut b = board(&["44", "44"]);

@@ -1,10 +1,7 @@
 //! The two-gem piece the player controls.
 //!
-//! Thin, and deliberately so: the movement is [`engine::game::pair`]'s, which is **Puyo
-//! Puyo's** rotation rather than this game's own. That is a decision, not an oversight - the
-//! PlayStation game has no wall kick, no quick turn and no escape at all from being wedged
-//! between two columns, and the rules doc's *Deliberate deviations* records what we traded
-//! away. What is left here is the two halves and laying them down.
+//! Movement is [`engine::game::pair`]'s Puyo rotation, which adds the wall kick and quick turn
+//! the original lacks; see the rules doc's *Deliberate deviations*.
 
 use crate::game::board::Board;
 use crate::game::cell::{GemPair, Half};
@@ -48,7 +45,7 @@ impl Pair {
         self.motion.points()
     }
 
-    /// the two halves, pivot first
+    /// pivot first
     pub fn halves(&self) -> [Half; 2] {
         [self.piece.pivot, self.piece.child]
     }
@@ -69,7 +66,6 @@ impl Pair {
         self.motion.hard_drop(board)
     }
 
-    /// where the pair would come to rest, for the ghost
     pub fn ghost(&self, board: &Board) -> Pair {
         Pair {
             motion: self.motion.ghost(board),
@@ -81,10 +77,7 @@ impl Pair {
         self.motion.rotate(board, clockwise)
     }
 
-    /// Put both halves on the board where they lie, and leave them to gravity.
-    ///
-    /// A horizontal pair over a hole drops one half further than the other, which is the
-    /// splitting every game of this shape does; settling is [`Board::settle`]'s job.
+    /// Put both halves where they lie; [`Board::settle`] splits a flat pair over a hole.
     pub fn lock(&self, board: &mut Board) {
         board.set(self.pivot(), Some(self.piece.pivot.gem()));
         board.set(self.child(), Some(self.piece.child.gem()));
@@ -113,8 +106,7 @@ mod tests {
         assert!(is_headroom(pair.child()), "with its child in the headroom");
     }
 
-    /// the rotation is the engine's, and the engine's is Puyo's - so the pair kicks off a wall
-    /// where the PlayStation game would simply refuse
+    /// rotating into the right wall kicks the pair one column left
     #[test]
     fn the_pair_kicks_off_a_wall_the_way_puyo_does() {
         let empty = Board::new();
@@ -123,7 +115,7 @@ mod tests {
         assert_eq!(pair.pivot().x, crate::game::board::COLUMNS as i32 - 2);
     }
 
-    /// ... and quick turns out of a wedge, which the PlayStation game has no escape from at all
+    /// a pair wedged between two full columns quick turns on the second press
     #[test]
     fn a_wedged_pair_quick_turns() {
         let mut wedge = Board::new();
@@ -136,8 +128,7 @@ mod tests {
         assert_eq!(pair.rotate(&wedge, true), RotateOutcome::QuickTurned);
     }
 
-    /// the headroom row is the ceiling: an upright rotation up there is refused rather than
-    /// kicked, and does not arm the quick turn either
+    /// an upright rotation in the headroom row is refused and does not arm the quick turn
     #[test]
     fn the_headroom_row_refuses_an_upright_rotation() {
         let mut full = Board::new();
@@ -154,8 +145,7 @@ mod tests {
         );
     }
 
-    /// the halves are laid down where they lie and settle independently, so a flat pair over a
-    /// hole comes apart
+    /// a flat pair over a hole splits when settled
     #[test]
     fn a_flat_pair_over_a_hole_splits() {
         let mut board = board(&[".r...."]);

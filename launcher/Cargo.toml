@@ -5,9 +5,8 @@ authors.workspace = true
 edition.workspace = true
 build = "build.rs"
 
-# cargo-vcpkg only reads `package.metadata` and only from the crate `cargo metadata` was asked
-# about, so this cannot live in the workspace manifest: run it as
-# `cargo vcpkg build --manifest-path launcher/Cargo.toml`.
+# cargo-vcpkg reads only this crate's metadata:
+# `cargo vcpkg build --manifest-path launcher/Cargo.toml`
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
 tag = "2026.07.29"
@@ -19,12 +18,8 @@ x86_64-pc-windows-msvc = { triplet = "x64-windows-static-md" }
 [lints]
 workspace = true
 
-# The whole game is the library and the binary is one call into it, because Android has no
-# binary to run: SDL's Java activity loads a shared library and calls its `SDL_main`. The
-# library stays an rlib here - a cdylib would be linked on every desktop build for nothing -
-# and build-android.sh asks for the .so with `cargo rustc --crate-type cdylib`. It is not named
-# after the package because a lib and a bin of one name collide in `cargo doc` and in the
-# Windows .pdb.
+# The game is a library so Android can load it; build-android.sh builds the cdylib, and the
+# name differs from the bin's because equal names collide in `cargo doc` and the Windows .pdb.
 [lib]
 name = "launcher"
 path = "src/lib.rs"
@@ -34,21 +29,18 @@ name = "dr-rustario-vs-rustris"
 path = "src/main.rs"
 
 [features]
-# `pkgconfig` is the default and is a no-op on the platforms that have no pkg-config, so a
-# plain `cargo build` links SDL2 the way the platform does: pkg-config on Linux and macOS,
-# vcpkg on Windows, and neither under emscripten. `vcpkg` is the override, for a macOS or
-# Linux binary that carries SDL2 - pass it with `--no-default-features`, since sdl2-sys probes
-# both routes when it is given both. See engine/Cargo.toml.
+# `pkgconfig` is the default and a no-op where there is no pkg-config. `vcpkg` is the
+# alternative and needs `--no-default-features`, since sdl2-sys probes both when given both.
 default = ["pkgconfig"]
 vcpkg = ["engine/vcpkg"]
 pkgconfig = ["engine/pkgconfig"]
+# `portmaster`, `browser` and `android` are mutually exclusive
 portmaster = ["engine/portmaster", "dr-rustario/portmaster"]
 browser = ["engine/browser", "dr-rustario/browser"]
-# the Android shared library - see build-android.sh, which is the only way to build it
+# built only through build-android.sh
 android = ["engine/android", "dr-rustario/android"]
-# Super Rustle Fighter is off until it has an ai and a playlist turn: without this the binary
-# carries none of its code or assets and nothing in it knows the game exists. Everything it
-# shares with the others lives in `engine` and is built either way.
+# every `GameKind::RustleFighter` arm is `#[cfg]`'d on this, so a plain build carries none of
+# its code, assets or menu entry
 rustle-fighter = ["dep:rustle-fighter"]
 
 [build-dependencies]
@@ -65,5 +57,4 @@ sdl2.workspace = true
 titlecase.workspace = true
 
 [dev-dependencies]
-# examples/frame_shot.rs writes a rendered frame straight to a png
 image.workspace = true

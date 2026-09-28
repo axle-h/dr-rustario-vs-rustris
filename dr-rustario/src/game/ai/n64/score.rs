@@ -2,12 +2,8 @@
 //! leans on: `aifSearchLineCore`, `aifEraseLineCore`, `aifMiniPointK3` and the two
 //! `aifMiniAloneCapNumber` counts.
 //!
-//! The shape of it is: drop the two halves into a copy of the bottle, measure the run each one
-//! lands in, take away anything that clears, measure what is left, and turn those measurements
-//! into a number with the weights [`Params`] holds. A "run" is measured twice over - once as
-//! the cells actually touching, which is what clears, and once as the cells within reach
-//! counting the gaps, which is what a line could still become - and it is the second that makes
-//! this ai build towards clears rather than only taking the ones in front of it.
+//! A run is measured both as the cells touching, which is what clears, and as the cells within
+//! reach counting fillable gaps, which is what makes the ai build towards clears.
 
 use crate::game::ai::n64::field::{
     Cell, Field, BAD_LINE_RATE, COLS, CO_EMPTY, ROWS, ST_SINGLE, ST_VIRUS,
@@ -15,21 +11,20 @@ use crate::game::ai::n64::field::{
 use crate::game::ai::n64::params::{Params, BAD_POINT, BAD_POINT2, WALL_RATE};
 use crate::game::ai::n64::Candidate;
 
-/// One pass of [`search_line_core`]: what the run through a cell looks like along the column
-/// (`hei`) and along the row (`wid`). Original names: `hei_data` and `wid_data`.
+/// One pass of [`search_line_core`] along the column (`hei`) and the row (`wid`).
+/// original names: `hei_data` and `wid_data`
 ///
-/// The entries the score reads are `[0]` how many lines this makes, `[1]` how many viruses the
-/// clear takes, `[2]` how many cells are actually touching, `[3]` how many are within reach,
-/// `[4]` how many of those are viruses, `[5]` how long the line could become, and `[9]` set
-/// when the other axis made the line instead. `[7]` and `[8]` weigh a run in the top rows, and
-/// are counted the way the original counts them even though it never spends them.
+/// Entries: `[0]` lines made, `[1]` viruses the clear takes, `[2]` cells touching, `[3]` cells
+/// within reach, `[4]` viruses among them, `[5]` how long the line could become, `[7]` and `[8]`
+/// top-row weight (counted but never spent), `[9]` set when the other axis made the line.
 #[derive(Clone, Copy, Default)]
 pub struct LineData {
     pub hei: [i32; 10],
     pub wid: [i32; 10],
 }
 
-/// The bottle's own reading of one candidate. Original name: `struct_aiFlag`.
+/// The bottle's own reading of one candidate.
+/// original name: `struct_aiFlag`
 pub struct Flag {
     pub pri: i32,
     pub tory: u8,
@@ -57,13 +52,12 @@ impl Flag {
     }
 }
 
-/// Score `flag`'s placement, which has already been written into `field`. `original` is the
-/// bottle before the pill, `(mx, my, mco)` the half that has something under it and
-/// `(sx, sy, sco)` the other one, `ec` says the two halves are the same colour and `wall` which
-/// side of the bottle is stacked up.
+/// Score `flag`'s placement, already written into `field`. `original` is the bottle before the
+/// pill, `(mx, my, mco)` the supported half, `(sx, sy, sco)` the other, `ec` whether they share
+/// a colour and `wall` the stacked side.
 ///
-/// Returns 1 if the first half made a line, 2 if the second did and 0 if neither, which is what
-/// the chain check upstream needs to know. Original name: `aifSearchLineMS`.
+/// Returns 1 if the first half made a line, 2 if the second did, else 0, for the chain check.
+/// original name: `aifSearchLineMS`
 #[allow(clippy::too_many_arguments)]
 pub fn search_line_ms(
     flag: &mut Flag,
@@ -180,7 +174,7 @@ pub fn search_line_ms(
         // stranding both halves is worse the higher up it happens
         flag.pri -= (0x11 - main_row as i32) * p.l_pri_p;
     }
-    // the original tests one table and spends the other's entry, which is what it plays like
+    // the original tests one table and spends the other's entry; kept as it plays
     if p.alone_cap_wp[flag.wonly[0]] != 0 {
         flag.pri += p.alone_cap_wp[flag.only[0]];
     }
@@ -205,8 +199,7 @@ pub fn search_line_ms(
         );
     }
 
-    // how high the stack reaches in each column, as the row above the topmost block. A column
-    // with nothing in it never gets a value in the original; 17 is what it means.
+    // the row above each column's topmost block; an empty column is 17
     let mut surface = [0x11usize; COLS];
     for (col, top) in surface.iter_mut().enumerate() {
         for row in 1..ROWS {
@@ -257,9 +250,8 @@ pub fn search_line_ms(
     }
 }
 
-/// What covering a virus is worth. The ai will happily bury one to complete a line, but hates
-/// dropping a half on top of a virus for nothing, and the tangle of cases below is it working
-/// out which of the two this is. Split out of `aifSearchLineMS`, whose locals it keeps.
+/// What covering a virus is worth: good when it completes a line, bad for nothing. Split out
+/// of `aifSearchLineMS`, whose locals it keeps.
 #[allow(clippy::too_many_arguments)]
 fn on_virus(
     flag: &mut Flag,
@@ -270,8 +262,7 @@ fn on_virus(
     ec: bool,
     made_main: bool,
 ) {
-    // does this column have a virus under the half and none above it? Only then is the half
-    // sitting *on* something worth clearing rather than in the middle of a heap.
+    // only a half with a virus under it and none above sits on something worth clearing
     let over_virus = |col: usize, row: usize| {
         for above in (4..row).rev() {
             if original.at(above, col).is_virus() {
@@ -357,11 +348,11 @@ fn on_virus(
     }
 }
 
-/// Measure the run of one colour through `(mx, my)`, up and down the column into `hei` and left
-/// and right along the row into `wid`. `skip` leaves out one of the two axes - 1 the column, 2
-/// the row - when the other half of the pill has already counted it.
+/// Measure the run of one colour through `(mx, my)` into `hei` (column) and `wid` (row). `skip`
+/// leaves out an axis the other half already counted: 1 the column, 2 the row.
 ///
-/// Returns whether that run is four long and about to go. Original name: `aifSearchLineCore`.
+/// Returns whether that run is four long and about to go.
+/// original name: `aifSearchLineCore`
 fn search_line_core(
     field: &Field,
     data: &mut LineData,
@@ -542,17 +533,16 @@ fn search_line_core(
     made
 }
 
-/// Could an upright pill still drop a half into the gap at `(col, row)`? That is what turns a
-/// row of three with a hole in it into something worth building towards.
+/// Could an upright pill still drop a half into the gap at `(col, row)`?
 fn can_fill(cands: &[Candidate], col: usize, row: usize) -> bool {
     cands
         .iter()
         .any(|c| c.tory == 0 && c.col == col && (c.row == row || c.row == row + 1))
 }
 
-/// Take the line the run at `(mx, my)` makes out of the field, counting the viruses it takes
-/// with it, so the other half is measured against what is left. Original name:
-/// `aifEraseLineCore`.
+/// Take the line through `(mx, my)` out of the field, counting its viruses, so the other half
+/// is measured against what is left.
+/// original name: `aifEraseLineCore`
 fn erase_line_core(field: &mut Field, data: &mut LineData, mx: usize, my: usize) {
     let tc = field.at(my, mx).co;
     let mut cleared = false;
@@ -601,9 +591,9 @@ fn take(field: &mut Field, viruses: &mut i32, row: usize, col: usize) {
     field.clear(row, col);
 }
 
-/// Turn one measured run into points, and say how many lines it is worth. A run that has gone
-/// is paid for what it took; one that has not is paid for what it could still become, but only
-/// if there is room in the line for it to get there. Original name: `aifMiniPointK3`.
+/// Turn one measured run into points and lines: a cleared run is paid for what it took, an
+/// uncleared one for what it could become if the line has room.
+/// original name: `aifMiniPointK3`
 fn mini_point_k3(
     tbl: &[i32; 10],
     sub: bool,
@@ -617,8 +607,7 @@ fn mini_point_k3(
 
     if tbl[0] != 0 {
         elin = tbl[0];
-        // the original zeroes [7] and [8] before summing, so a cleared line is never charged
-        // for having been near the top
+        // the original zeroes [7] and [8] first, so a cleared line is never charged for height
         for (count, point) in tbl.iter().zip(p.pri_point.iter()).take(7).skip(1) {
             ex += count * point;
         }
@@ -640,9 +629,8 @@ fn mini_point_k3(
     (ex, elin)
 }
 
-/// How badly this half is stranded: a half in a run nothing can join is dead weight, and worse
-/// again if it is sitting on a virus. `fell` says the half had to drop to get here.
-/// Original name: `aifMiniAloneCapNumber`.
+/// How badly this half is stranded, worse on a virus. `fell` says the half had to drop.
+/// original name: `aifMiniAloneCapNumber`
 fn alone_cap_number(
     field: &Field,
     data: &LineData,
@@ -667,8 +655,8 @@ fn alone_cap_number(
     }
 }
 
-/// As [`alone_cap_number`], but only asking about the row. Original name:
-/// `aifMiniAloneCapNumberW`.
+/// As [`alone_cap_number`], for the row only.
+/// original name: `aifMiniAloneCapNumberW`
 fn alone_cap_number_w(
     field: &Field,
     data: &LineData,

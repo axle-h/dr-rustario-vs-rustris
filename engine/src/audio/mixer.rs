@@ -1,5 +1,5 @@
-//! A small software mixer: N one-shot effect voices plus one streamed music track
-//! with intro→loop chaining. Pure code (no SDL) so it can be unit tested.
+//! A software mixer: N one-shot effect voices plus one streamed music track with intro-to-loop
+//! chaining. No SDL, so it can be unit tested.
 
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
@@ -8,9 +8,8 @@ use super::MAX_VOLUME;
 
 /// Anything that can produce interleaved stereo samples, e.g. a Vorbis stream.
 pub trait MusicSource: Send {
-    /// Fills `out` and returns the number of samples written; fewer than `out.len()` means end of stream.
+    /// fills `out` and returns the samples written; fewer than `out.len()` means end of stream
     fn read(&mut self, out: &mut [i16]) -> usize;
-    /// Rewinds to the start.
     fn reset(&mut self);
 }
 
@@ -19,9 +18,8 @@ pub enum Command {
         pcm: Arc<Vec<i16>>,
         volume: i32,
     },
-    /// Play `intro` once (if given) then `repeat` `loops` times (`-1` = forever, `0`/`1` = once).
-    /// `gain` is the theme's own level for this track, as a percentage of the volume the
-    /// config asks for - see [`crate::render::sound::AudioTheme::with_gain`].
+    /// Play `intro` once (if given) then `repeat` `loops` times (`-1` forever, `0`/`1` once).
+    /// `gain` is the theme's level for the track, a percentage of the config's volume.
     PlayMusic {
         intro: Option<Box<dyn MusicSource>>,
         repeat: Box<dyn MusicSource>,
@@ -37,7 +35,7 @@ struct Voice {
     pcm: Arc<Vec<i16>>,
     position: usize,
     volume: i32,
-    /// Monotonic start order, used to steal the oldest voice when all are busy.
+    /// monotonic start order, so the oldest voice is stolen when all are busy
     started: u64,
 }
 
@@ -45,9 +43,9 @@ struct Music {
     source: Box<dyn MusicSource>,
     /// the theme's level for this track, as a percentage
     gain: i32,
-    /// Plays remaining after the current one; `None` = forever.
+    /// plays remaining after the current one; `None` = forever
     remaining: Option<u32>,
-    /// Track to chain to when the current one ends (after an intro).
+    /// track to chain to when the current one ends (after an intro)
     next: Option<(Box<dyn MusicSource>, i32)>,
     paused: bool,
 }
@@ -140,7 +138,6 @@ impl Mixer {
         }
     }
 
-    /// Fills `out` with the next block of interleaved stereo samples.
     pub fn mix(&mut self, out: &mut [i16]) {
         while let Ok(command) = self.commands.try_recv() {
             self.apply(command);
@@ -182,10 +179,9 @@ impl Mixer {
         while written < accumulator.len() && !finished {
             let n = music.source.read(&mut self.scratch[written..]);
             written += n;
-            // Guard against a source that yields nothing even after a reset.
+            // guard against a source that yields nothing even after a reset
             empty_reads = if n == 0 { empty_reads + 1 } else { 0 };
             if written < accumulator.len() {
-                // End of the current track: loop, chain to the next one, or stop.
                 match music.remaining {
                     None => music.source.reset(),
                     Some(left) if left > 0 => {
@@ -206,8 +202,6 @@ impl Mixer {
                 }
             }
         }
-        // the config's volume and the theme's own gain, which is why the two are multiplied
-        // rather than one of them winning
         let volume = self.music_volume * music.gain / 100;
         for (acc, &s) in accumulator.iter_mut().zip(&self.scratch[..written]) {
             *acc += s as i32 * volume / MAX_VOLUME;
@@ -223,7 +217,7 @@ mod tests {
     use super::*;
     use std::sync::mpsc::{channel, Sender};
 
-    /// A track of `len` samples all equal to `value`.
+    /// a track of `len` samples all equal to `value`
     struct Tone {
         value: i16,
         len: usize,
@@ -303,7 +297,6 @@ mod tests {
             })
             .unwrap();
         }
-        // voices 2 and 3 survive
         assert_eq!(mix(&mut m, 4), vec![5; 4]);
     }
 
@@ -321,8 +314,7 @@ mod tests {
         assert_eq!(mix(&mut m, 8), vec![100; 8]);
     }
 
-    /// the config's dial and the theme's own level multiply, so a theme levelled against the
-    /// house is still levelled when the player moves the slider
+    /// the config's volume and the theme's gain multiply
     #[test]
     fn a_themes_music_gain_multiplies_the_configured_volume() {
         let (tx, mut m) = mixer_with_volume(1, MAX_VOLUME / 2);

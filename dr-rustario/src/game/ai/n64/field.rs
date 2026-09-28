@@ -1,10 +1,6 @@
-//! The bottle as Dr. Mario 64's own ai sees it.
-//!
-//! The N64 ai works on its own copy of the playfield - `aiFieldData` in the decompilation - a
-//! 17 by 8 grid of `(st, co)` pairs, where `co` is the colour and `st` says what the block is
-//! and, for half a pill, which way its partner lies. Row 0 is a phantom row above the bottle
-//! that is always empty; rows 1 to 16 are the bottle's own 16 rows. Every routine ported from
-//! `aiset.c` is written in those coordinates, so the translation happens once, here.
+//! The bottle as Dr. Mario 64's ai sees it (`aiFieldData`): a 17 by 8 grid of `(st, co)` pairs,
+//! `co` the colour and `st` the block kind and partner direction. Row 0 is an always-empty
+//! phantom row above the bottle, and every ported routine works in these coordinates.
 
 use crate::game::block::{block_partner_offset, Block};
 use crate::game::bottle::{Bottle, BOTTLE_HEIGHT, BOTTLE_WIDTH};
@@ -23,8 +19,7 @@ pub const ST_HORIZONTAL_LEFT: u8 = 2;
 pub const ST_HORIZONTAL_RIGHT: u8 = 3;
 /// a half whose partner has gone, which falls on its own
 pub const ST_SINGLE: u8 = 4;
-/// a virus. The original uses 5, 6 and 7 for the three virus sprites; every test is a range,
-/// so one value does for all of them
+/// a virus; the original's 5, 6 and 7 are only ever tested as a range
 pub const ST_VIRUS: u8 = 5;
 /// marked by the chain check as part of a line that is about to go
 pub const ST_CLEARING: u8 = 8;
@@ -32,8 +27,7 @@ pub const ST_EMPTY: u8 = 10;
 /// the colour of an empty cell, which is why `co == 3` reads as "nothing here"
 pub const CO_EMPTY: u8 = 3;
 
-/// how much a block in the top four rows counts against you, by row and column: the middle
-/// columns, where the pills come in, matter most. Original name: `BadLineRate`
+/// what a block in the top four rows costs, by row and column; original name: `BadLineRate`
 pub const BAD_LINE_RATE: [[i32; COLS]; 4] = [
     [6, 7, 8, 9, 9, 8, 7, 6],
     [6, 7, 8, 9, 9, 8, 7, 6],
@@ -41,7 +35,7 @@ pub const BAD_LINE_RATE: [[i32; COLS]; 4] = [
     [1, 1, 2, 4, 4, 2, 1, 1],
 ];
 
-/// where a half's partner lies, indexed by `st`. Original name: `srh_466`
+/// where a half's partner lies, indexed by `st`; original name: `srh_466`
 const PARTNER: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
 pub fn is_virus_st(st: u8) -> bool {
@@ -59,9 +53,8 @@ impl Cell {
         st: ST_EMPTY,
         co: CO_EMPTY,
     };
-    /// what the routines read when they run off the bottom of the bottle: the original indexes
-    /// one row past the end and picks up whatever follows in memory, but every such read is
-    /// asking "is there something under this?", and under the last row there is the floor
+    /// what a read below the bottom row returns: every such read asks whether something is
+    /// underneath, and the floor is
     pub const FLOOR: Cell = Cell {
         st: ST_SINGLE,
         co: CO_EMPTY,
@@ -116,8 +109,7 @@ impl Field {
         self.cells[row][col]
     }
 
-    /// as [Self::at], but the row below the last one reads as the floor rather than running off
-    /// the end of the grid the way the original does
+    /// as [Self::at], but the row below the last reads as the floor
     pub fn below(&self, row: usize, col: usize) -> Cell {
         if row + 1 < ROWS {
             self.cells[row + 1][col]
@@ -130,8 +122,7 @@ impl Field {
         self.cells[row][col] = cell;
     }
 
-    /// mark a cell as gone the way the chain check does: it leaves the colour behind, and
-    /// every test that follows asks about `st`
+    /// mark a cell as gone as the chain check does, leaving the colour behind
     pub fn set_st(&mut self, row: usize, col: usize, st: u8) {
         self.cells[row][col].st = st;
     }
@@ -140,8 +131,8 @@ impl Field {
         self.cells[row][col] = Cell::EMPTY;
     }
 
-    /// A half of a pill has just gone, so whatever it was joined to is on its own from now on.
-    /// Original name: `aif_MiniChangeBall`
+    /// A half of a pill has gone, so its partner becomes a single.
+    /// original name: `aif_MiniChangeBall`
     pub fn orphan_partner(&mut self, row: usize, col: usize) {
         let st = self.cells[row][col].st;
         if st as usize >= PARTNER.len() {

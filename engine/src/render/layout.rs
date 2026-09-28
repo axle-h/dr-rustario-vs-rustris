@@ -30,9 +30,8 @@ impl Margins {
     }
 }
 
-/// The biggest cell `themes` can reach with the window to themselves. A theme that renders
-/// its art at its final size is built to this, so it can match them however many players end
-/// up sharing the screen: it is drawn at its built size or smaller, but never larger.
+/// The biggest cell `themes` can reach with the window to themselves. A theme that renders at its
+/// final size is built to this and drawn at that size or smaller.
 pub fn reference_block_size(
     themes: &[&Theme],
     window_size: (u32, u32),
@@ -60,9 +59,9 @@ fn max_block_size(theme: &Theme, area: Rect, config: VideoConfig) -> u32 {
         .max(1.0) as u32
 }
 
-/// The themes one player cycles through, laid out together: they take the largest cell pitch
-/// all of them can hold and put the playfield in exactly the same place, so changing theme
-/// mid-game neither moves nor resizes the board.
+/// The themes one player cycles through, laid out together at the largest cell pitch all of them
+/// can hold, with the playfield in one place. Every source pixel of any theme's panel therefore
+/// costs every theme cell size.
 #[derive(Clone, Debug)]
 pub struct BoardLayout {
     /// cell pitch in window pixels, per theme in the order they were given
@@ -103,9 +102,8 @@ impl BoardLayout {
         }
     }
 
-    /// The cell pitch each theme takes. They aim at the biggest cell every one of them can
-    /// hold, but pixel art only looks right at a whole multiple of its own cell pitch, so a
-    /// theme drawn at a different source size takes the multiple nearest that target instead.
+    /// The cell pitch each theme takes: the biggest cell every one can hold, rounded to a whole
+    /// multiple of the theme's own source pitch so pixel art stays sharp.
     fn block_sizes(themes: &[&Theme], area: Rect, config: VideoConfig) -> Vec<u32> {
         let largest = themes
             .iter()
@@ -160,8 +158,8 @@ impl BoardLayout {
         )
     }
 
-    /// `wanted` clamped into `[min, max]`; when the themes leave no common range at all, split
-    /// the difference and let each of them clamp its own art back into the window
+    /// `wanted` clamped into `[min, max]`; when the themes share no range, split the difference and
+    /// let each clamp its own art
     fn nearest(wanted: i32, min: i32, max: i32) -> i32 {
         if min > max {
             (min + max) / 2
@@ -178,8 +176,8 @@ impl BoardLayout {
         Self::scale_of(theme, self.block_sizes[index])
     }
 
-    /// where this theme's playfield goes: the group's shared centre, at this theme's size,
-    /// nudged back inside the window in the rare case the group cannot agree on one point
+    /// where this theme's playfield goes: the group's shared centre at this theme's size, nudged
+    /// back inside the window if the group cannot agree on one point
     pub fn playfield(&self, index: usize, theme: &Theme, player: u32) -> Rect {
         let block_size = self.block_sizes[index];
         let area = self.areas[player as usize];

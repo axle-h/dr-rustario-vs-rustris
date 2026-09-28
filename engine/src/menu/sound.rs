@@ -3,14 +3,6 @@ use crate::audio::Sound;
 use crate::config::AudioConfig;
 use std::rc::Rc;
 
-// const CHIME: &[u8] = include_bytes!("retro/chime.ogg");
-// const TITLE_INTRO: &'static [u8] = include_bytes!("retro/title-intro.ogg");
-// const TITLE_REPEAT: &'static [u8] = include_bytes!("retro/title-repeat.ogg");
-// const MENU_INTRO: &'static [u8] = include_bytes!("retro/menu-intro.ogg");
-// const MENU_REPEAT: &'static [u8] = include_bytes!("retro/menu-repeat.ogg");
-// const HIGH_SCORE_INTRO: &'static [u8] = include_bytes!("retro/high-score-intro.ogg");
-// const HIGH_SCORE_REPEAT: &'static [u8] = include_bytes!("retro/high-score-repeat.ogg");
-
 const CHIME: &[u8] = include_bytes!("modern/chime.ogg");
 const SELECT: &[u8] = include_bytes!("modern/select.ogg");
 const TITLE: &[u8] = include_bytes!("modern/title.ogg");
@@ -44,13 +36,12 @@ pub struct MenuSounds {
     pub title: MenuMusic,
     pub menu: MenuMusic,
     pub high_score: MenuMusic,
-    /// this set's level against the house, as a percentage - the menu's half of
-    /// [`crate::render::sound::AudioTheme::with_gain`], and 100 for a set already there
+    /// this set's level as a percentage, the menu's half of
+    /// [`crate::render::sound::AudioTheme::with_gain`]
     pub gain: i32,
 }
 
 impl MenuSounds {
-    /// the engine's own menu sounds
     pub const MODERN: MenuSounds = MenuSounds {
         chime: CHIME,
         select: Some(SELECT),

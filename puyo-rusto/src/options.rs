@@ -13,8 +13,7 @@ use engine::menu::MenuItem;
 use std::str::FromStr;
 use std::time::Duration;
 
-/// A Puyo stage is a speed step rather than a level of its own, but the HUD row is the same
-/// `Level` every game shows, so the menu calls it what the other two call it.
+/// A Puyo stage is a speed step, but the menu calls it a level as the other games do.
 pub const STAGE_NOUN: &str = "level";
 
 const THEMES: &str = "themes";
@@ -32,13 +31,11 @@ pub struct Options {
 }
 
 impl Options {
-    /// the modes on offer: a theme sprint runs one level per theme, so it is only offered
-    /// when the match runs through every theme rather than sticking to one
+    /// the modes on offer; a theme sprint needs more than one theme
     fn modes(&self) -> Vec<MatchRules> {
         MatchRules::modes(self.theme_count())
     }
 
-    /// how many themes this match will run through
     fn theme_count(&self) -> usize {
         match self.config.themes {
             MatchThemes::All => MatchThemes::count(),
@@ -51,8 +48,7 @@ impl Options {
         self.config.rules = self.default_rules();
     }
 
-    /// the mode a fresh pick of players or themes opens on, which depends on both of them
-    /// and on whether anyone is playing
+    /// the mode a fresh pick of players or themes opens on
     fn default_rules(&self) -> MatchRules {
         MatchRules::default_for(
             self.config.players,
@@ -203,9 +199,8 @@ impl Options {
         true
     }
 
-    /// `count` games sharing one seed, so every player is dealt the same pairs - and a set of
-    /// puyos each, dealt from that same seed, so they are not dealt the same ones to look at
-    /// and no two matches look alike
+    /// `count` games sharing one seed, so every player is dealt the same pairs, each with its
+    /// own set of puyos dealt from that seed
     pub fn games(&self, count: usize) -> Vec<Game> {
         let difficulty = self.config.difficulty;
         let seed = Seed::random();
@@ -237,9 +232,8 @@ mod tests {
         options.modes().iter().map(|m| m.name(STAGE_NOUN)).collect()
     }
 
-    /// The row reads oldest hardware first with the particle theme last, which is how the
-    /// other two games order theirs - and `particle` is the name every game gives the modern
-    /// theme, so the vs. mode's particle playlist can pick it out by it.
+    /// themes read oldest hardware first with `particle` last, the name the vs. playlist picks
+    /// the modern theme out by
     #[test]
     fn the_themes_are_listed_oldest_first_and_the_modern_one_is_called_particle() {
         assert_eq!(
@@ -253,14 +247,12 @@ mod tests {
         let mut options = Options::default();
         options.set_players(2);
         assert!(mode_names(&options).contains(&"marathon".to_string()));
-        // ... though a match with anyone in it opens on the theme sprint
+        // a match with anyone in it opens on the theme sprint
         assert_eq!(options.rules(), MatchRules::ThemeSprint);
     }
 
-    /// Whoever is playing, a match opens on the theme sprint - a stage on each theme in
-    /// turn, which is the mode that shows the game off. An ai demo is something to watch
-    /// rather than a race, so it keeps the marathon; and a single theme has no sprint to
-    /// run, so there a lone player marathons and two race a level.
+    /// a match opens on the theme sprint, except an ai demo and a single theme: there one
+    /// player marathons and two race a level
     #[test]
     fn a_match_anyone_is_playing_opens_on_a_theme_sprint_and_a_demo_marathons() {
         let mut options = Options::default();
@@ -278,15 +270,12 @@ mod tests {
         assert_eq!(options.rules(), MatchRules::Marathon);
         options.select_players("2");
         assert_eq!(options.rules(), MatchRules::ONE_STAGE_SPRINT);
-        // and the demos marathon on one theme as well
+        // the demos marathon on one theme as well
         options.select_players(AI_DEMO_2P);
         assert_eq!(options.rules(), MatchRules::Marathon);
     }
 
-    /// A theme sprint runs one level per theme, so it is only offered while there is more
-    /// than one to run through. This game shipped with a single theme and the sprint was not
-    /// on the list; it came back on its own the moment a second theme was built, which is the
-    /// whole of what `Options::modes` has to get right here.
+    /// a theme sprint is only offered while there is more than one theme
     #[test]
     fn a_theme_sprint_is_offered_once_there_is_more_than_one_theme() {
         let options = Options::default();
@@ -300,12 +289,10 @@ mod tests {
         assert_eq!(options.config.difficulty, Difficulty::Normal);
         options.select(DIFFICULTY, "very hard");
         assert_eq!(options.config.difficulty, Difficulty::VeryHard);
-        // a colour count of five is what that setting means to the game itself
         assert_eq!(options.config.difficulty.colors(), 5);
     }
 
-    /// a mixed match's second game does not name the mode: the other game names it, and there
-    /// is one match
+    /// a mixed match's second game leaves the mode to the other game
     #[test]
     fn a_compact_menu_leaves_the_mode_to_the_other_game() {
         let items = Options::default().menu_items(true);

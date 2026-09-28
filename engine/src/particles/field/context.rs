@@ -1,7 +1,5 @@
-//! What the field is told about the match each frame.
-//!
-//! The field never reads game state directly and never writes it: everything it reacts to
-//! arrives here, or as a queued event.
+//! What the field is told about the match each frame; with the queued events, it is all the
+//! field ever learns.
 
 use crate::game::GameId;
 use crate::particles::color::ParticleColor;
@@ -11,7 +9,6 @@ use sdl2::pixels::Color;
 /// how much of each palette segment is spent blending into the next
 const BLEND: f64 = 0.3;
 
-/// The colours one game radiates into the field.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Palette {
     colors: Vec<ParticleColor>,
@@ -54,10 +51,8 @@ impl Palette {
         self.colors[index % self.colors.len()]
     }
 
-    /// a colour from anywhere around the ring. Most of each segment is the palette colour
-    /// itself and only the tail of it blends into the next, so the field reads as the theme's
-    /// own colours with soft transitions - rather than as every hue between them, which is
-    /// what an even blend of three or seven well spaced colours comes out as.
+    /// A colour from anywhere around the ring. Only each segment's tail blends into the next, so
+    /// the field reads as the theme's own colours rather than every hue between them.
     pub fn pick(&self, t: f64) -> ParticleColor {
         let len = self.colors.len();
         if len == 1 {
@@ -69,12 +64,11 @@ impl Palette {
         if blend <= 0.0 {
             return self.colors[index];
         }
-        // smoothstep, so a particle does not visibly step as the phase carries it across
+        // smoothstep, so a particle does not visibly step across a segment
         let blend = blend * blend * (3.0 - 2.0 * blend);
         self.colors[index].lerp_hue(self.colors[(index + 1) % len], blend)
     }
 
-    /// every colour rotated the same way round the hue circle
     pub fn shift_hue(&self, degrees: f64) -> Self {
         Self::new(self.colors.iter().map(|c| c.shift_hue(degrees)).collect())
     }
@@ -86,50 +80,40 @@ impl Default for Palette {
     }
 }
 
-/// One player as the field sees them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlayerRegion {
     pub player: u32,
     /// this player's vertical slice of the window, particle space
     pub clip: RectF,
-    /// their playfield, particle space. Known even for a player the field never draws over,
-    /// which is what makes a half-visible attack resolvable
+    /// their playfield, particle space; known even when the field never draws over it
     pub board: RectF,
     /// indexes the particle renderer's theme sprites
     pub theme: usize,
     pub game: GameId,
     pub palette: Palette,
-    /// false for a player on a retro theme: nothing is ever drawn over their half
+    /// false on a retro theme: nothing is drawn over their half
     pub in_canvas: bool,
-    /// how close to the top their stack is, 0-1. Read per frame; there is no danger event
+    /// how close to the top their stack is, 0-1
     pub danger: f64,
     pub speed_index: u32,
-    /// their board is not being played right now (a stage card, a game over)
+    /// not being played right now (a stage card, a game over)
     pub held_up: bool,
 }
 
-/// The state of the match handed to the field each frame.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SceneContext {
-    /// The union of the clips of the players on a particle scene. Because player clips are
-    /// vertical slices that tile the window this is always one contiguous rect: the whole
-    /// window, the left half or the right half.
-    ///
-    /// **Two players is what makes that true.** With three or more, a retro theme in the
-    /// middle would leave two disjoint halves and the union would cover the board between
-    /// them; every routine is authored against this rect (see [`Self::at`]), so a third board
-    /// is a redesign here and not a parameter.
+    /// The union of the particle-scene players' clips: the whole window or one half. It is one
+    /// contiguous rect only with two players, so a third board is a redesign of every routine.
     pub canvas: RectF,
     pub players: Vec<PlayerRegion>,
     /// the union of the games being played, which picks the sprite set and the palette
     pub games: Vec<GameId>,
-    /// short strings the field may morph into, e.g. "LEVEL 8". Built by the match screen,
-    /// which is the only place that knows what a game's numbers mean.
+    /// short strings the field may morph into, built by the match screen
     pub captions: Vec<String>,
 }
 
 impl SceneContext {
-    /// `None` when no player is on a particle scene, in which case there is no field at all
+    /// `None` when no player is on a particle scene
     pub fn new(players: Vec<PlayerRegion>) -> Option<Self> {
         Self::with_captions(players, vec![])
     }
@@ -154,7 +138,6 @@ impl SceneContext {
         self.players.iter()
     }
 
-    /// the players whose half the field is drawn over
     pub fn visible(&self) -> impl Iterator<Item = &PlayerRegion> {
         self.players.iter().filter(|p| p.in_canvas)
     }
@@ -163,13 +146,12 @@ impl SceneContext {
         self.players.iter().find(|p| p.player == player)
     }
 
-    /// a point given 0-1 across the canvas, in particle space. Routines are authored in
-    /// canvas-normalised coordinates so one written once fits the whole window or half of it
+    /// a point given 0-1 across the canvas, in particle space
     pub fn from_canvas<P: Into<Vec2D>>(&self, point: P) -> Vec2D {
         self.canvas.denormalise(point)
     }
 
-    /// the highest danger of any player, which is what drives the whole field's agitation
+    /// the highest danger of any player, which drives the field's agitation
     pub fn danger(&self) -> f64 {
         self.players
             .iter()
@@ -177,14 +159,11 @@ impl SceneContext {
             .fold(0.0, |a: f64, b| a.max(b))
     }
 
-    /// every player is held up (a stage card, a game over): the field idles
     pub fn all_held_up(&self) -> bool {
         self.players.iter().all(|p| p.held_up)
     }
 
-    /// the palettes of the players in the canvas, weighted by how close `point` is to each of
-    /// their boards. In two players the middle is a contested gradient that shifts as one
-    /// player pressures the other.
+    /// The palettes of the players in the canvas, weighted by how close `point` is to each board.
     pub fn radiated(&self, point: Vec2D, t: f64) -> ParticleColor {
         let mut result: Option<(ParticleColor, f64)> = None;
         for region in self.visible() {
@@ -193,9 +172,7 @@ impl SceneContext {
             let color = region.palette.pick(t);
             result = Some(match result {
                 None => (color, weight),
-                // blended round the hue circle rather than averaged in rgb: averaging one
-                // game's red with another's cyan comes out grey, and a grey particle is a
-                // dead one
+                // blended round the hue circle, since averaging red and cyan in rgb gives grey
                 Some((current, total)) => (
                     current.lerp_hue(color, weight / (total + weight)),
                     total + weight,
@@ -273,7 +250,6 @@ mod tests {
         let whole = SceneContext::new(vec![region(0, whole(), true)]).unwrap();
         let half =
             SceneContext::new(vec![region(0, left(), false), region(1, right(), true)]).unwrap();
-        // the same authored point lands in the middle of each
         assert_eq!(whole.from_canvas((0.5, 0.5)), Vec2D::new(0.5, 0.5));
         assert_eq!(half.from_canvas((0.5, 0.5)), Vec2D::new(0.75, 0.5));
     }
@@ -291,9 +267,7 @@ mod tests {
         let palette = Palette::new(vec![red, blue]);
         assert_eq!(palette.pick(0.0), red);
         assert_eq!(palette.pick(0.5), blue);
-        // and wraps back round
         assert_eq!(palette.pick(1.0), palette.pick(0.0));
-        // in between is a blend, not one or the other
         let between = palette.pick(0.5 - 0.5 * BLEND / 2.0);
         assert_ne!(between, red);
         assert_ne!(between, blue);

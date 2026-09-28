@@ -1,13 +1,6 @@
-//! Silhouettes for the sprite edge morphs.
-//!
-//! A shape is the *outline* of a sprite: the lattice points where the sprite's mask is set and
-//! a neighbour is not. Because only the outline is ever drawn the source theme's art style is
-//! irrelevant — an NES tetromino edge and a modern one are the same shape — so a retro-themed
-//! player still contributes their game's shapes without dragging their art into the field.
-//!
-//! Lattices are built lazily, a few sprites per frame, and cached: themes are all constructed
-//! at startup and an eager pass would cost a `read_pixels` per sprite per theme at load time,
-//! which matters most on wasm.
+//! Silhouettes for the sprite edge morphs: a shape is the lattice points where a sprite's mask
+//! is set and a neighbour is not, so a theme's art style never reaches the field. Outlines are
+//! built lazily a few a frame and cached, since an eager pass costs a `read_pixels` per sprite.
 
 use crate::config::ParticleDensity;
 use crate::particles::geometry::Vec2D;
@@ -21,21 +14,17 @@ use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::collections::HashMap;
 
-/// how many sprites are turned into outlines per frame, so a match never hitches on the
-/// first frame of a theme
 const BUILD_PER_FRAME: usize = 2;
-/// an outline with fewer points than this is not a shape, it is a smudge. Retro cells are a
-/// handful of source pixels square, so this has to stay low.
+/// fewer points than this is a smudge; kept low because retro cells are a few pixels square
 const MIN_POINTS: usize = 8;
-/// the grid an outline is reduced to when asking whether two shapes are the same
+/// the grid an outline is reduced to when comparing shapes
 const SIGNATURE_GRID: usize = 8;
 
-/// A sprite's outline, normalised so its longest side is 1.0 and it is centred on the origin.
-/// A morph places it with `centre + point * size`.
+/// A sprite's outline, normalised so its longest side is 1.0 and centred on the origin; a
+/// morph places it with `centre + point * size`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EdgeShape {
     points: Vec<Vec2D>,
-    /// width over height of the source sprite
     aspect: f64,
 }
 
@@ -73,7 +62,6 @@ impl EdgeShape {
         self.aspect
     }
 
-    /// a bar four times as wide as it is tall, for tests
     #[cfg(test)]
     pub fn wide_bar() -> Self {
         Self::new(
@@ -86,7 +74,6 @@ impl EdgeShape {
         )
     }
 
-    /// a plain square outline, for tests
     #[cfg(test)]
     pub fn unit_square() -> Self {
         Self::new(
@@ -105,13 +92,9 @@ impl EdgeShape {
         )
     }
 
-    /// An occupancy grid over the outline's unit box, as bits. Two sprites that differ only in
-    /// colour give outlines that are the same to the eye but not to the pixel - the modern
-    /// vitamins' anti-aliasing differs between the red, blue and yellow halves - so telling
-    /// shapes apart has to be done at the resolution a viewer sees, not the mask's. The box is
-    /// the one the shape was normalised into and not the shape's own extents, so that an I
-    /// tetromino and an O, whose outlines each fill their own extents completely, do not come
-    /// out as the same shape.
+    /// An occupancy grid over the outline's unit box, as bits, so outlines that differ only in
+    /// anti-aliasing compare equal. It covers the normalised box rather than the shape's own
+    /// extents, so an I and an O tetromino differ.
     pub fn signature(&self) -> u64 {
         let cell =
             |value: f64| -> usize { ((value + 0.5) * SIGNATURE_GRID as f64).max(0.0) as usize };
@@ -122,16 +105,14 @@ impl EdgeShape {
         })
     }
 
-    /// how far the outline reaches from the origin at all, in unit box units: the radius of
-    /// the circle it turns inside, which is what a shape that spins has to be placed by
+    /// the radius of the circle the outline turns inside, in unit box units
     pub fn radius(&self) -> f64 {
         self.points
             .iter()
             .fold(0.0f64, |radius, p| radius.max(p.magnitude()))
     }
 
-    /// how far the outline reaches from the origin either way, in unit box units. The box is
-    /// normalised on the longest side, so the larger of the two is 0.5.
+    /// the outline's reach from the origin either way; the larger of the two is 0.5
     pub fn extents(&self) -> (f64, f64) {
         self.points.iter().fold((0.0f64, 0.0f64), |(x, y), p| {
             (x.max(p.x().abs()), y.max(p.y().abs()))
@@ -139,7 +120,6 @@ impl EdgeShape {
     }
 }
 
-/// one sprite of one theme, waiting to be outlined
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ShapeSource {
     Piece(usize),
@@ -160,12 +140,9 @@ impl ShapeSource {
 /// what the bank made of one sprite, see [`ShapeBank::audit`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
-    /// outlined and kept
     Used,
-    /// the same outline as one already kept: only the outline is ever drawn, so two sprites
-    /// that differ merely in colour are one shape
+    /// the same outline as one already kept
     Duplicate,
-    /// too few points to read as anything
     TooFew,
 }
 
@@ -179,7 +156,6 @@ impl Verdict {
     }
 }
 
-/// one sprite, outlined, and what became of it
 pub struct ShapeAudit {
     pub label: String,
     pub shape: EdgeShape,
@@ -191,16 +167,14 @@ struct ThemeShapes {
     shapes: Vec<EdgeShape>,
     /// one per held shape, see [`EdgeShape::signature`]
     signatures: Vec<u64>,
-    /// what is left to build for this theme
     todo: Vec<ShapeSource>,
 }
 
-/// Every outline built so far, keyed by the theme it came from. The renderer fills it; the
-/// field reads it.
+/// Every outline built so far, keyed by theme. The renderer fills it; the field reads it.
 #[derive(Default)]
 pub struct ShapeBank {
     themes: HashMap<usize, ThemeShapes>,
-    /// outlines of rendered text, keyed by the string they spell
+    /// outlines of rendered text, keyed by the string
     text: HashMap<String, EdgeShape>,
     density: ParticleDensity,
 }
@@ -222,7 +196,6 @@ impl ShapeBank {
         }
     }
 
-    /// stand in for the renderer, which needs a canvas and a font to outline a word
     #[cfg(test)]
     pub fn insert_text(&mut self, value: &str, shape: EdgeShape) {
         self.text.insert(value.to_string(), shape);
@@ -236,8 +209,7 @@ impl ShapeBank {
         self.text.keys().collect()
     }
 
-    /// the outline of one rendered string, cached. Same machinery as a sprite: the text is
-    /// drawn into a target texture and the edges of its opaque pixels are the shape.
+    /// The cached outline of one rendered string.
     pub fn build_text(
         &mut self,
         canvas: &mut WindowCanvas,
@@ -264,8 +236,6 @@ impl ShapeBank {
         result?;
 
         let mask = BlockMask::from_texture(canvas, &mut texture, Rect::new(0, 0, width, height))?;
-        // a string is far wider than it is tall, and it is the letters that have to be
-        // legible, so it takes more steps across than a piece does
         let steps = (self.density.edge_steps() * 2).max(16);
         let spacing = (mask.width().max(mask.height()) / steps).max(2);
         let points = mask.edges(Point::new(0, 0), spacing);
@@ -274,7 +244,7 @@ impl ShapeBank {
         Ok(())
     }
 
-    /// the outlines of a theme's sprites, empty until they have been built
+    /// empty until built
     pub fn shapes(&self, theme: usize) -> &[EdgeShape] {
         match self.themes.get(&theme) {
             Some(theme) => &theme.shapes,
@@ -286,8 +256,7 @@ impl ShapeBank {
         !self.shapes(theme).is_empty()
     }
 
-    /// build a few more of the outlines these themes will want. Called once a frame with the
-    /// themes the players are actually on, so nothing is ever built for a theme nobody plays.
+    /// Build a few more outlines for `themes`, the ones the players are on. Called once a frame.
     pub fn build(
         &mut self,
         canvas: &mut WindowCanvas,
@@ -314,10 +283,7 @@ impl ShapeBank {
                 let Some(shape) = Self::build_one(canvas, sheet, source, self.density)? else {
                     continue;
                 };
-                // only the outline is ever drawn, so two sprites that differ merely in colour
-                // contribute the same shape twice. Dr. Rustario's nine pills come down to a
-                // couple of distinct capsules that way, which is what stops its mascot and
-                // viruses being crowded out of the playlist.
+                // only the outline is drawn, so outlines that differ only in colour are kept once
                 let signature = shape.signature();
                 if shape.len() < MIN_POINTS || entry.signatures.contains(&signature) {
                     continue;
@@ -329,9 +295,7 @@ impl ShapeBank {
         Ok(())
     }
 
-    /// Every sprite of one theme outlined, whether the bank would keep it or not, for the
-    /// `field_preview sheet` diagnostic: it is the only way to see what the edge detection
-    /// made of a sprite that was dropped for being a duplicate or too small.
+    /// Every sprite of one theme outlined, kept or not, for the `field_preview sheet` diagnostic.
     pub fn audit(
         canvas: &mut WindowCanvas,
         sheet: &mut FlatSpriteSheet,
@@ -402,11 +366,8 @@ impl ShapeBank {
                 None => return Ok(None),
             },
         };
-        // spacing chosen from the sprite's own size so every theme's outline comes out about
-        // the same number of points, whatever cell size it was built at. A retro sprite is a
-        // few source pixels square, so the floor has to be one: at two, an eight pixel NES
-        // cell is sampled four times across and its outline comes out as a scatter of dots
-        // rather than a tetromino
+        // spacing scales with the sprite, so every theme's outline has about the same point count;
+        // its floor is one pixel because a retro sprite is only a few pixels square
         let steps = density.edge_steps().max(4);
         let spacing = (mask.width().max(mask.height()) / steps).max(1);
         let points = mask.edges(Point::new(0, 0), spacing);

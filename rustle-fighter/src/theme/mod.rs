@@ -1,9 +1,4 @@
-//! Super Rustle Fighter's themes: data handed to the engine's theme builders.
-//!
-//! One, `arcade`, and that is a decision recorded in the plan rather than a stage of one: the
-//! arcade look is the point of the exercise. It also means this game has no version built on
-//! original art the way the other three do - see `docs/next-game-ideas.md`, which carries the
-//! standing note that a new game should be playable on its particle theme alone.
+//! Super Rustle Fighter's one theme, `arcade`: data handed to the engine's theme builders.
 
 pub mod arcade;
 pub mod data;
@@ -17,9 +12,8 @@ use engine::render::{Theme, ThemeProgress};
 use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 
-/// The menus play the arcade's **character select** tune, which is the one piece of its music
-/// that is a menu's rather than a match's. The two clicks are the engine's own: the effect
-/// rips are the PlayStation port's and none of them is a menu blip.
+/// The menus play the arcade's character select tune with the engine's own clicks, since no
+/// ripped effect is a menu blip.
 pub const MENU_SOUNDS: MenuSounds = MenuSounds {
     chime: MenuSounds::MODERN.chime,
     select: MenuSounds::MODERN.select,
@@ -29,11 +23,7 @@ pub const MENU_SOUNDS: MenuSounds = MenuSounds {
     gain: data::ARCADE_GAIN,
 };
 
-/// The gems the title screen's sprite race sends past.
-///
-/// One pair per colour rather than every combination: the race wants a handful of
-/// recognisable shapes going by, not all seventy two. A crash gem of each colour goes with
-/// them, since a crash gem is the shape this game is recognised by.
+/// The title race's gems: a plain pair and a crash pair of each colour.
 fn race_pieces() -> Vec<PieceId> {
     GemColor::ALL
         .into_iter()
@@ -54,8 +44,7 @@ pub fn race_themes(themes: &[Theme]) -> Vec<RaceTheme> {
         .iter()
         .enumerate()
         .map(|(index, theme)| {
-            // every theme's sprites are drawn at the same size in the race, whatever cell
-            // size the theme itself was built at
+            // same size in the race whatever cell size the theme was built at
             let scale =
                 RACE_REFERENCE_BLOCK_SIZE as f64 / theme.sprites().block_size() as f64 / 2.0;
             theme.race_theme(index, pieces.clone(), scale)

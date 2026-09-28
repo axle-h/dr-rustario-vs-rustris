@@ -1,14 +1,5 @@
-//! Plays every one of Kirby's routines through the real `snes` theme and writes one png a
-//! frame, so a capture can be put next to the recording it was measured off.
-//!
-//! This is the temporary harness the reimplementation was checked with, and it is deliberately
-//! dumb: it drives `ThemeContext` exactly as a match does, steps it at 60 Hz, and reads the
-//! arch out of the window every *other* tick - because the source capture is 30 fps and a
-//! comparison at two different rates is not a comparison.
-//!
-//! `character_shot` is the sibling for Mean Bean Machine's faces. That one wants a contact
-//! sheet, since a mugshot is one pose a state; this one wants every frame, since a routine is
-//! a thing that moves.
+//! Plays every one of Kirby's routines through the real `snes` theme and writes one png every
+//! other 60 Hz tick, matching the 30 fps recording it is compared against.
 //!
 //! ```text
 //! cargo run -p dr-rustario-vs-rustris --example kirby_shot -- <out> [scale]
@@ -26,34 +17,14 @@ use sdl2::rect::Rect;
 use std::time::Duration;
 
 const TICK: Duration = Duration::from_nanos(16_666_667);
-/// What the capture is cropped to, in the theme's own source pixels.
-///
-/// The **whole centre column**, not the arch (`snes::kirby::BOX` is (104, 157) 48x35). Kirby
-/// is a sprite: `takeoff` carries him seventy two pixels above the box, which is twice the
-/// arch's own height, and the game draws him over every course of stone on the way. A crop
-/// that stops at the arch shows a routine walking out of frame, and this is meant to show what
-/// every frame of one does. The top is as high as the recording itself goes.
+/// The crop, in source pixels: the whole centre column rather than the arch, since some
+/// routines carry Kirby well above it.
 const ARCH: (i32, i32, u32, u32) = (104, 84, 48, 124);
 
-/// The fifteen, in the order `kirby.rs` lists them: the row each is dealt on, which of that
-/// row's routines it is, and **where the recording had him standing** when it played that one.
-///
-/// The last of those is only for the comparison. A routine's places are relative to whatever
-/// the one before it left, so in a match he stands wherever he has walked to; here he is put
-/// back where the capture caught him, or the two panes do not line up and the eye reads a
-/// displacement that is not a difference.
-/// The pool, in the order `kirby.rs` lists it: which of `CHOICES` it is, and **where the
-/// recording had him standing** when it played that one.
-///
-/// The last of those is only for the comparison. A routine's places are relative to whatever
-/// the one before it left, so in a match he stands wherever he has walked to; here he is put
-/// back where the capture caught him, or the two panes do not line up and the eye reads a
-/// displacement that is not a difference.
-///
-/// The blink is the *filler* - played between routines rather than as one of them - and is
-/// asked for here by `usize::MAX` so it can still be put next to the recording.
+/// The pool in `kirby.rs` order: which of `CHOICES` it is, and where the recording had him
+/// standing, so each routine starts where the capture's did and the two line up.
 const ROUTINES: &[(&str, usize, i32)] = &[
-    // the filler, which is not in the pool - `usize::MAX` asks for it by name
+    // the filler between routines, not in the pool
     ("blink", usize::MAX, 3),
     ("yawn", 0, 3),
     ("walk", 1, 2),
@@ -145,20 +116,14 @@ fn main() -> Result<(), String> {
         cell.1
     );
 
-    // ... and one run of the thing as it actually plays: routines dealt, paces varied, one
-    // flowing into the next from wherever the last left him. This is the check that the parts
-    // add up - a routine that does not chain shows here and nowhere else.
+    // one run as a match plays it, which is where a routine that does not chain shows
     if let Some(seconds) = seconds {
         let dir = format!("{out}/loop");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         themes.play_character_routine(0, 0, None);
         let mut shot = 0usize;
         for tick in 0..(60 * seconds) {
-            // The board here is empty and would leave him idling on the floor for the whole
-            // clip, which shows the dealing and none of what drives it. So the match's own
-            // intensity is *swept*: a slow ramp from nothing up to a buried board and back,
-            // with a chain thrown in every fifteen seconds. Everything else - which routine,
-            // which way round, how fast, whether he blinks - is the real thing deciding.
+            // the board is empty, so danger is swept up and back with a chain every 15 s
             let through = tick as f64 / (60.0 * seconds as f64);
             themes.character_danger(0, 1.0 - (through * 2.0 - 1.0).abs(), false);
             if tick % (60 * 15) == 60 * 7 {
@@ -190,8 +155,7 @@ fn main() -> Result<(), String> {
         themes.play_character_routine(0, *routine, Some(*home));
         let mut shot = 0usize;
         let mut tick = 0usize;
-        // every routine, then the stand it rests on, and stop the moment it has run out -
-        // which is what `character_resting` is for. The cap is a routine that never ends.
+        // stop once `character_resting`; the cap catches a routine that never ends
         while tick < 60 * 10 {
             if tick.is_multiple_of(2) {
                 shoot(
@@ -209,8 +173,7 @@ fn main() -> Result<(), String> {
             }
             themes.update_animations(TICK);
             tick += 1;
-            // a dozen frames of the stand it settles on, and then out - the rest between
-            // routines is two seconds and none of that is the routine
+            // a few frames of the stand it settles on, not the whole rest
             if themes.character_resting(0) && tick.is_multiple_of(2) && shot > 4 {
                 for _ in 0..6 {
                     shoot(
@@ -232,8 +195,7 @@ fn main() -> Result<(), String> {
         }
         println!("  {name:<13} {shot:3} frames -> {dir}");
     }
-    // ... and one whole window, which is where the placement shows: Kirby standing on the
-    // course the tray's boulders sit in, and clear of everything else in the column
+    // one whole window, to check Kirby's placement in the panel
     themes.play_character_routine(0, 0, None);
     draw(&mut canvas, &mut themes, &games, &mut textures)?;
     let pixels = canvas.read_pixels(None, PixelFormatEnum::ABGR8888)?;

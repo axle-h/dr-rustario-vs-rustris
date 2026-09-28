@@ -4,17 +4,14 @@ use crate::ai::mutation::RateLimits;
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 
-/// what the genetic algorithm is optimising for
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Objective {
-    /// do not lose: a game that is not over beats any game that is, then higher score wins
+    /// a game that is not over beats any game that is, then higher score wins
     Survival,
     /// maximise the bonus counter within a fixed piece budget, then higher score wins
     Score,
-    /// Get as far through the game as you can: play it from the first board to the last and
-    /// see how much of it you clear. The ordering itself has no speed term, and does not need
-    /// one - the clock is the phase's own piece budget, which *stops* a game rather than
-    /// discounting it, so dawdling costs a candidate the boards it never reached.
+    /// Clear as much of the game as possible from the first board. The phase's piece budget stops
+    /// a game, so dawdling costs the boards never reached rather than a speed term.
     Progress,
 }
 
@@ -29,7 +26,7 @@ impl Display for Objective {
 }
 
 impl Objective {
-    /// fitness used for weighting parents during selection (must be >= 0)
+    /// parent selection weight, >= 0
     pub fn fitness(&self, result: &GameResult) -> f64 {
         match self {
             Objective::Survival => result.score() as f64,
@@ -38,7 +35,7 @@ impl Objective {
         }
     }
 
-    /// ordering of two results, `Greater` means `a` is the better result
+    /// `Greater` means `a` is the better result
     pub fn cmp(&self, a: &GameResult, b: &GameResult) -> Ordering {
         match self {
             Objective::Survival => b
@@ -49,7 +46,7 @@ impl Objective {
                 .bonus()
                 .cmp(&b.bonus())
                 .then_with(|| a.score().cmp(&b.score())),
-            // whoever got further wins, then whoever finished more boards on the way
+            // further wins, then more boards finished on the way
             Objective::Progress => a
                 .cleared()
                 .cmp(&b.cleared())
@@ -59,7 +56,7 @@ impl Objective {
     }
 }
 
-/// a phase of training: the objective plus everything about how games are evaluated and genomes mutated
+/// A phase of training: the objective and how games are evaluated and genomes mutated.
 #[derive(Clone, Debug)]
 pub struct Phase {
     pub objective: Objective,
@@ -86,7 +83,7 @@ impl Phase {
         }
     }
 
-    /// gently fine-tune an already surviving model for bonus play within `piece_cap` pieces
+    /// fine-tune an already surviving model for bonus play within `piece_cap` pieces
     pub fn score(piece_cap: u32) -> Self {
         Self {
             objective: Objective::Score,
@@ -104,20 +101,11 @@ impl Phase {
         self
     }
 
-    /// the survival phase is complete once a member has reached the line cap without losing
     pub fn is_complete(&self, best: &GameResult) -> bool {
         match self.objective {
-            // survived all the way to whichever cap the phase set
             Objective::Survival => !best.game_over() && self.end_game.reached(*best),
-            // A progress run is several whole games at once, scored on how much of the game
-            // they got through inside a fixed budget of pieces, and the result in front of us
-            // is their average. There is no finish line short of the whole game: a budget can
-            // always be spent better, so "not buried" is a floor a decent model clears in its
-            // first generation and says nothing. What is left is the real thing - every board
-            // of the game cleared on every seed, inside the budget - which nothing has ever
-            // done and which the run is nonetheless allowed to end on. Otherwise a progress
-            // phase runs for its `max_generations`. `end_game.pieces` is deliberately not read
-            // here, since reaching the budget is what every candidate does.
+            // a progress phase ends only when every board is cleared on every seed without being
+            // buried; otherwise it runs for `max_generations`
             Objective::Progress => !best.game_over() && best.cleared() >= self.end_game.cleared,
             Objective::Score => false,
         }
@@ -150,7 +138,6 @@ mod tests {
         let timid = result(5000, 100, false, 0);
         let aggressive = result(100, 8, true, 8);
         assert_eq!(Objective::Score.cmp(&aggressive, &timid), Ordering::Greater);
-        // same bonus, break tie on score
         assert_eq!(
             Objective::Score.cmp(&result(100, 8, true, 8), &result(200, 8, false, 8)),
             Ordering::Less
@@ -165,8 +152,6 @@ mod tests {
             Objective::Progress.cmp(&further, &stalled),
             Ordering::Greater
         );
-        // the ordering has no speed term of its own: what makes a progress run a race is the
-        // phase's piece budget, which ends the game rather than being scored against
         let slow = result(0, 60, true, 2).with_pieces(9000, 2);
         assert_eq!(Objective::Progress.cmp(&slow, &further), Ordering::Equal);
     }
@@ -177,12 +162,8 @@ mod tests {
         phase.objective = Objective::Progress;
         phase.end_game = EndGame::of_cleared(924);
 
-        // every board of the game, on every seed, without being buried on any of them
         assert!(phase.is_complete(&result(0, 1166, false, 24)));
-        // buried somewhere, however far its average got
         assert!(!phase.is_complete(&result(0, 1800, true, 30)));
-        // still standing at the end of its budget, which nearly everything is: that is the
-        // floor a budgeted run starts from rather than the line it ends on
         assert!(!phase.is_complete(&result(0, 700, false, 17)));
     }
 

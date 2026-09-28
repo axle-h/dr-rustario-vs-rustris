@@ -1,46 +1,16 @@
 #!/usr/bin/env python3
 """Cuts puyo-rusto/src/theme/modern/sprites.png out of the Puyo Puyo Tetris rip.
 
-The particle theme used to draw its own puyos (see `sprites.py`, kept beside this as the
-procedural original); it now takes them from the sprite sheet in this directory, which is
-the one thing in the repository that looks like the game it is a clone of.
+    python3 puyo-rusto/art/rip.py            # cut sprites.png and popup.png
+    python3 puyo-rusto/art/rip.py check      # ... then write alignment.png, every join drawn
 
-The rip is sixteen skins laid out four by four, every one of them on the same 72 pixel grid,
-and fifteen of them are whole skins: the last (row 3, column 3) is a grab bag of odds and
-ends on no grid at all and is skipped. `SKINS` says which of the fifteen are cut - seven of
-them - and each contributes the cells this game can draw; the theme deals one skin per
-player, see `theme/modern/mod.rs`.
-
-    rows 0-4    a colour each, sixteen link variants along the row
-    (1, 18)     the nuisance puyo, which is also what the tray shows for six
-    (1, 20)     the same puyo small, which is what the tray shows for one
-    (11, 14)    a bigger nuisance again, which stands in for the rock at thirty - the rip
-                carries the star, the moon and the crown but no rock of its own
-
-The rip's link index is *not* this game's: it counts down 1, up 2, right 4, left 8, where
-`LinkMask` in `game/cell.rs` counts up 1, down 2, left 4, right 8. `sheet_index` is that
-swap, and it is one of the two reasons this is a script rather than a crop. The other is
-`repair`.
-
-    python3 puyo-rusto/art/rip.py            # cut both sheets
-    python3 puyo-rusto/art/rip.py check      # ... and check every join in the puyos
-
-It writes a second, much smaller sheet beside that one: `popup.png`, the caption a chain
-step says over the puyos it just took. See `POPUP_ROWS`.
-
-The output layout is `sprites.py`'s a band at a time, so `theme/modern/mod.rs` addresses
-either the same way:
+The rip (`SHEET`, unversioned, beside this script) is sixteen skins on a 72 pixel grid. The
+output layout, which `theme/modern/mod.rs` addresses:
 
     block (col, row) -> (PAD + PITCH * col, PAD + PITCH * row), BLOCK square
     skin s occupies the band at `band(s)`, COLUMNS wide and SKIN_ROWS tall
     rows 0-4  one colour each (red, green, blue, yellow, purple), column = link mask bits
     row 5     col 0 nuisance, cols 1-3 the tray's small, large and rock symbols
-
-The bands run BANDS_ACROSS at a time rather than all in one column, because the whole sheet
-is loaded as a single texture: stacked, the fourteen skins cut before any were dropped stood
-6720 pixels tall - past the 4096 a handheld's driver will allocate in a dimension, which is
-the same ceiling `MAX_ATLAS_WIDTH` keeps the built atlas under. Seven of them would fit
-either way; the layout is kept because it is the same pixels and one fewer thing to agree on.
 """
 
 import os
@@ -60,58 +30,31 @@ POPUP_OUT = os.path.normpath(
     os.path.join(HERE, "..", "src", "theme", "modern", "popup.png")
 )
 
-# the rip's grid. A neck runs exactly to its cell's edge, so two linked puyos meet flush
-# only if the cut is on these lines and nowhere near them
+# the rip's grid; linked puyos meet flush only if the cut is exactly on it
 SRC_BLOCK = 72
 
-# where the first skin's grid starts, and how far apart the skins are. The pitch is not a
-# whole number of blocks: each skin was laid out on its own, and only its top left corner
-# lines up with anything
+# where the first skin's grid starts, and the skins' pitch, not a whole number of blocks
 SKIN_ORIGIN = (-2, 53)
 SKIN_PITCH = (2048, 1024)
 SKIN_COLUMNS = 4
 
-# The skins this theme draws, in the rip's own reading order. Skin 0 is the glossy Tsu one,
-# which is what the theme showed when it was the only one cut out.
-#
-# Fifteen of the sixteen are whole - the sixteenth (row 3, column 3) is a grab bag on no grid.
-# Skin 7 is left out as well: its sixteen link variants are only eight, paired so that a puyo
-# joined below draws exactly like one joined to nothing. It has no downward neck to cut, so
-# nothing can make it meet the puyo underneath - see `check`, which is what found it.
-#
-# Skins 8, 10 and 11 are left out for how they *look* joined rather than for a missing neck.
-# The point of a set is that four in a row read as one mass: 10 is a television with antennae
-# whose necks are stubs, so a run of them stays a row of televisions with the antennae poking
-# between; 8 is a stick figure that joins into an elongated humanoid; 11 is a small round face
-# that merges but leaves a gappy mesh. `check` is how to see it - a whole board of one skin,
-# which is the only way any of this reads.
-#
-# The last four are left out for what they *are* rather than for how they cut. Skin 5 is a
-# pixel art face and 14 a bevelled gem brick: this game already has two retro themes cut from
-# the consoles that drew them, and a retro set here is one of those without the console. Skin
-# 13 is the Sonic cast (Knuckles, Shadow, Sonic, Tails, Amy), which belongs to Mean Bean
-# Machine's side of the game and not to this one. And skin 9 spells its colours out as the
-# letters R, G, B, Y, P, which is a legend rather than a puyo - four in a row read as a word.
-#
-# Skin 2 is a brick as well and is **kept**, which is the line being drawn by eye rather than
-# by rule: it was cut with the other two and put back. What is left is seven sets that are all
-# the same five colours and all drawn as pieces of one board.
+# The skins this theme draws, by the rip's reading order. Skin 15 is on no grid, skin 7 has no
+# downward neck, and the rest left out are chosen by eye on `check`'s board.
 SKINS = [0, 1, 2, 3, 4, 6, 12]
 
-# the sheet's own eighty coloured cells are in the order this game numbers its colours
 COLOR_ROWS = [0, 1, 2, 3, 4]  # red, green, blue, yellow, purple
 
-# where the rest of it is, as (row, col) of the same grid
+# (row, col) of the same grid
 NUISANCE = (1, 18)
-TRAY = [(1, 20), (1, 18), (11, 14)]  # small (1 puyo), large (6), "rock" (30)
+TRAY = [(1, 20), (1, 18), (11, 14)]  # small (1 puyo), large (6), a stand-in for the rock (30)
 
-# the output sheet, which is `sprites.py`'s layout at the rip's block size, once per skin
+# the output sheet, `sprites.py`'s layout at the rip's block size, once per skin
 BLOCK = SRC_BLOCK
 PAD = 4
 PITCH = BLOCK + 2 * PAD
 COLUMNS = 16
 SKIN_ROWS = 6
-# how many skin bands lie side by side; see the layout note at the top
+# bands side by side, keeping the one-texture sheet under a handheld's 4096 pixel limit
 BANDS_ACROSS = 2
 
 # LinkMask's bits: up 1, down 2, left 4, right 8
@@ -119,7 +62,7 @@ UP, DOWN, LEFT, RIGHT = 1, 2, 4, 8
 
 
 def sheet_index(links):
-    """the rip's column for one of this game's link masks"""
+    """the rip's column for a `LinkMask`: the rip counts down 1, up 2, right 4, left 8"""
     return (
         (1 if links & DOWN else 0)
         | (2 if links & UP else 0)
@@ -144,13 +87,10 @@ def cut(source, skin, row, col):
     return np.array(source.crop((x, y, x + SRC_BLOCK, y + SRC_BLOCK)))
 
 
-# how many pixels of a line have to be neck before it counts as one, rather than a stray
-# pixel of shading that happens to differ from the unlinked puyo
+# how many pixels of a line have to be neck before it counts as one
 MIN_NECK = 8
 
-# the alpha a pixel needs before it is the puyo rather than the antialiasing around it. A
-# neck is run out to its cell's edge by repeating its last line, and repeating a half
-# transparent one only draws the seam a shade lighter than leaving it there
+# the alpha a pixel needs to be the puyo rather than its antialiasing
 SOLID = 200
 
 
@@ -193,18 +133,9 @@ def corner(box, vertical, horizontal):
 
 
 def neck(tile, plain, box, direction):
-    """the neck one link added to `tile`, and which of its lines are wide enough to be one
+    """the neck one link added to `tile`, and its lines wide enough to be one
 
-    By *difference*, the linked tile against the same puyo unlinked - one skin wears
-    antennae on the same line as its upward neck, and repeating those paints a band of
-    antenna up the cell - and only within the margin that side's neck can be in. That
-    second half is the part this used to get wrong: a tile joined on three sides carries
-    three necks, and reading the outermost line of all of them at once hands one direction
-    another's line. Skin 2's brick joined up, down and right was drawn with no downward neck
-    at all, so running what it found - the *upward* one - down the cell flooded the tile.
-
-    The mask is every pixel of the neck including the soft edge it stops at, so that edge is
-    carried out with the rest of the line; which line to carry is read off the solid part.
+    Read against the unlinked puyo and only within this side's margin, so no side takes another's.
     """
     solid = (tile[:, :, 3] >= SOLID) & ~(plain[:, :, 3] >= SOLID)
     counts = solid.sum(axis=1) if direction in (UP, DOWN) else solid.sum(axis=0)
@@ -213,14 +144,9 @@ def neck(tile, plain, box, direction):
 
 
 def trim(tile, plain, box, links):
-    """put every side this puyo is not joined on back to the unlinked puyo's
+    """put every unjoined side back to the unlinked puyo's, since rip necks bleed across cells
 
-    The rip's cells are not quite its grid: an upward neck starts a pixel *above* its own
-    cell and lands in the bottom row of the one above it on the sheet, which draws a line of
-    the wrong colour under a puyo joined to nothing below. Restoring the margin rather than
-    clearing it keeps the puyo's own soft edge, which the skin with antennae has out there.
-    A corner goes back only when neither of the two sides it lies between is joined, since a
-    neck of either may reach into it.
+    A corner goes back only when neither side beside it is joined.
     """
     for direction in (UP, DOWN, LEFT, RIGHT):
         if not links & direction:
@@ -234,13 +160,7 @@ def trim(tile, plain, box, links):
 
 
 def borrow(tile, donor, box, direction):
-    """take a neck the rip drew on one variant and left off another
-
-    A neck is the same shape whatever else the puyo is joined to, so one missing from a
-    variant can be had from the variant that is joined that way and nothing else. Skin 2 is
-    the one that needs it: its brick joined up, down and right was drawn without the
-    downward neck the same brick joined up and down has.
-    """
+    """take a neck the rip left off one variant from the variant joined that way alone"""
     lines = margin(box, direction)
     if not lines:
         return
@@ -255,14 +175,9 @@ def borrow(tile, donor, box, direction):
 
 
 def graft(tile, box, direction, shape):
-    """run the puyo's own edge out where the rip drew no neck at all
+    """run the puyo's own edge out where the rip drew no neck, as wide as `shape`
 
-    The sheet has no room above its top row for an upward neck, so the first colour of every
-    skin is cut without one - and unlike skin 2's missing downward neck there is no variant
-    to borrow it from, since no red puyo on the sheet has one. The skin's other colours say
-    where the neck goes and how wide it is; what it is made of is this puyo's own outermost
-    line, which is the line a neck continues. `shape` is empty for a skin that draws no such
-    neck in any colour, and that one is left with the gap it was drawn with.
+    Red's upward neck is clipped off the sheet in every skin.
     """
     top, bottom, left, right = box
     if not shape.any():
@@ -278,13 +193,7 @@ def graft(tile, box, direction, shape):
 
 
 def stretch(tile, mask, direction, at):
-    """run one line of a neck out to the edge of its cell
-
-    A neck is a prism, so its last line is exactly what is missing between where the art
-    stops and where the cell ends - and the rip has necks stopping anywhere from one to
-    eight pixels short, because its skins were drawn on their own pitches and laid out on a
-    common 72 pixel grid.
-    """
+    """run one line of a neck out to the edge of its cell"""
     if direction == DOWN:
         tile[at + 1 :, mask[at]] = tile[at, mask[at]]
     elif direction == UP:
@@ -296,14 +205,7 @@ def stretch(tile, mask, direction, at):
 
 
 def close(tile, box, links):
-    """fill the notch where two necks meet
-
-    A neck is drawn the width of the puyo and no wider, so the little square outside both of
-    them - where a puyo is joined downward *and* to the right - is drawn by neither, and
-    shows as a speck of nothing at the point four puyos meet. It is filled from the line
-    beside it, which by now is a neck run out to the edge, and only where nothing is drawn
-    already, so a skin that does draw its corners keeps what it drew.
-    """
+    """fill the corner two necks leave undrawn, only where nothing is drawn already"""
     _, _, left, right = box
     for vertical in (UP, DOWN):
         for horizontal, edge in ((LEFT, left), (RIGHT, right)):
@@ -317,13 +219,7 @@ def close(tile, box, links):
 
 
 def neck_shapes(source, skin):
-    """where each of a skin's four necks goes, taken from whichever colour draws it
-
-    A skin's necks are one shape in five palettes, so a colour cut without one can still be
-    told where it belongs by the colours that were not. Returns each neck's cross section as
-    a line of the cell - which columns an upward one covers, which rows a leftward one does -
-    and an empty one for a direction the skin has no neck in at all.
-    """
+    """each of a skin's four necks as a cross section of the cell, from any colour that draws it"""
     shapes = {}
     for direction in (UP, DOWN, LEFT, RIGHT):
         best = np.zeros(SRC_BLOCK, dtype=bool)
@@ -343,14 +239,7 @@ def neck_shapes(source, skin):
 
 
 def repair(tile, plain, links, donors, shapes):
-    """make one cut tile meet the cells around it
-
-    Every skin has necks that stop short of the cell they were drawn in: the sheet's own top
-    row clips red's upward neck in all of them, and most skins were drawn on a pitch of their
-    own and stop short at the bottom besides. Each side the puyo is joined on is run out to
-    its edge - by the neck it has, the neck another variant has, or, failing both, its own
-    outermost line - and each side it is not joined on is put back to the unlinked puyo's.
-    """
+    """run each joined side out to the cell edge, by its own neck, a donor's, or a graft"""
     box = body(plain)
     trim(tile, plain, box, links)
     for direction in (UP, DOWN, LEFT, RIGHT):
@@ -380,13 +269,9 @@ def paste(sheet, tile, col, row):
     sheet.paste(Image.fromarray(tile, "RGBA"), (PAD + PITCH * col, PAD + PITCH * row))
 
 
-# ---------------------------------------------------------------- checking the cut
-
 CHECK_OUT = os.path.join(HERE, "alignment.png")
 
-# A board that uses all sixteen masks, so every join a game can ask for is on the page: a
-# solid block (corners, edges and interior), a plus (four arms joined one way each), a row of
-# three and a column of three (the two ends and a middle), and a puyo joined to nothing.
+# a board that uses all sixteen link masks
 CHECK_BOARD = [
     "..####...#...",
     "..####..###..",
@@ -425,13 +310,7 @@ def check_masks(rows):
 
 
 def check():
-    """Draw every skin's joins, so a neck that does not meet its neighbour is visible.
-
-    This is the only way to see the thing `repair` exists to fix. A seam is a hairline and
-    reading it off the sheet a cell at a time will not show it: two puyos have to be put
-    side by side. Reads the sheet that was written rather than the rip, so what it checks
-    is what the game will draw.
-    """
+    """Draw every skin's joins from the written sheet, so a seam between neighbours shows."""
     sheet = Image.open(OUT).convert("RGBA")
     masks = check_masks(CHECK_BOARD)
     missing = set(range(16)) - set(masks.values())
@@ -446,8 +325,7 @@ def check():
         top = (height + header) * index
         label.text((6, top + 6), f"skin {index} (rip {skin})", fill=(255, 235, 0, 255))
         for (x, y), links in masks.items():
-            # the block and the plus in one colour, the rows and the lone puyo in another,
-            # since a seam shows differently on a dark colour than a light one
+            # two colours, since a seam shows differently on dark and light
             color = 0 if y >= 5 else 1
             base_col, base_row = band(index)
             at = (
@@ -460,38 +338,24 @@ def check():
     print(f"{CHECK_OUT} {page.size[0]}x{page.size[1]} {len(SKINS)} skins, all 16 masks")
 
 
-# ---------------------------------------------------------------- the chain caption
-
-# Where the caption's face is on the rip: the digits and the word "Chain!", one size of one
-# face, laid out as two rows with a "+" between the 9 and the word that this game has no use
-# for. Each row is (top, bottom, left, right) of a window around it; `popup_row` finds the
-# glyphs inside one by their alpha, so nothing here has to name a column.
+# Windows `(top, bottom, left, right)` around the two rows of the chain caption's face on the
+# rip; `popup_row` finds the glyphs inside by alpha.
 POPUP_ROWS = [
     (4240, 4380, 2580, 3120),  # 0 1 2 3 4 5 6 7
     (4370, 4500, 2580, 2930),  # 8 9 + Chain!
 ]
-# how many glyphs each row is expected to hold, and which of them are wanted: the second row
-# is the two digits and then the word, with the "+" skipped
 POPUP_DIGITS = [8, 2]
 POPUP_WORD = (1, 3)  # (row, glyph): "Chain!"
 
-# One glyph cell of the output. Everything is drawn against the row's own baseline rather
-# than its own bounding box - the word sits above it and the round digits hang a little below
-# it - so a run of cells drawn at one y keeps exactly the relationship the rip drew.
+# one glyph cell of the output; glyphs sit on the row's baseline, not their own bounding box
 POPUP_CELL = (64, 100)  # the widest digit, and a line of the face
 POPUP_WORD_CELL = (132, 100)
-# where the baseline sits in a cell. The digits overhang it by two or three pixels, which is
-# the overshoot every round glyph of every face has
+# where the baseline sits in a cell, leaving room for round digits' overshoot
 POPUP_BASELINE = 96
 
 
 def popup_row(source, window):
-    """the glyphs of one row of the caption's face, in reading order
-
-    A row of a rip is a row of a rip: the only thing that says where one glyph stops and the
-    next starts is a column of nothing between them. Returns each glyph's own left and right
-    and the row's baseline, which is as far down as any of them reach.
-    """
+    """each glyph's `(left, right)` in one row, split at empty columns, and the row's baseline"""
     top, bottom, left, right = window
     alpha = np.array(source.crop((left, top, right, bottom)))[:, :, 3] > 20
     columns = alpha.any(axis=0)
@@ -517,13 +381,9 @@ def popup_glyph(source, glyph, baseline, cell):
 
 
 def popup(source):
-    """Cut `popup.png`: the ten digits on one row and the word "Chain!" under them.
+    """Cut `popup.png`: the ten digits on a fixed pitch, and the word "Chain!" under them.
 
-    A chain step says how far into the chain it is over the puyos it just took, and what it
-    says it in is the game's own face rather than the engine's - which is the whole of why
-    this is worth cutting. The two cell sizes are the only layout `theme/modern/mod.rs` has
-    to know: digits on a fixed pitch, because a counter that jumps about as it climbs from 9
-    to 10 reads worse than one that does not, and the word on its own wider one.
+    The two cell sizes are the only layout `theme/modern/mod.rs` has to know.
     """
     rows = [popup_row(source, window) for window in POPUP_ROWS]
     for (glyphs, _), expected in zip(rows, POPUP_DIGITS):
@@ -564,8 +424,7 @@ def main():
         shapes = neck_shapes(source, skin)
         for row, source_row in enumerate(COLOR_ROWS):
             plain = cut(source, skin, source_row, sheet_index(0))
-            # the four puyos joined one way each, which is where `repair` goes for a neck
-            # the rip drew on one variant and left off another
+            # the four puyos joined one way each, for `repair` to borrow a neck from
             donors = {
                 direction: cut(source, skin, source_row, sheet_index(direction))
                 for direction in (UP, DOWN, LEFT, RIGHT)

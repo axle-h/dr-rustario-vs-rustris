@@ -1,48 +1,36 @@
-//! Puyo Puyo Tsu's scoring, and the nuisance a score buys.
-//!
-//! Every table here is the game's own, read off Puyo Nexus rather than guessed at:
+//! Puyo Puyo Tsu's scoring, and the nuisance a score buys. From Puyo Nexus:
 //! [Scoring](https://puyonexus.com/wiki/Scoring),
 //! [List of attack powers](https://puyonexus.com/wiki/List_of_attack_powers),
 //! [Tsu (rule)](https://puyonexus.com/wiki/Tsu_(rule)) and
-//! [All clear](https://puyonexus.com/wiki/All_clear), read 2026-08-27. The unit tests at the
-//! bottom check them against the worked chain scores that page publishes, which is what makes
-//! "faithful" something the build can check rather than something this comment asserts.
+//! [All clear](https://puyonexus.com/wiki/All_clear).
 
-/// Chain power by chain length, Puyo Puyo Tsu, **multiplayer**.
-///
-/// Tsu publishes two tables: this one, and a stiffer single player curve
-/// (`4, 20, 24, 32, 48, 96, 160, ...`). This game uses the multiplayer one throughout, in one
-/// player as well as two, because the attack economy is the reason the compendium took this
-/// game on and one table is one behaviour to test. The consequence is that a solo marathon
-/// score is lower than the arcade would have shown for the same chain.
-///
-/// Index 0 is a 1-chain. A chain longer than the table stays at the last entry.
+/// Chain power by chain length, Tsu's multiplayer table, used in one player games too, so a
+/// solo score is lower than the arcade's. Index 0 is a 1-chain; longer chains take the last
+/// entry.
 pub const CHAIN_POWER: [u32; 24] = [
     0, 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 480, 512, 544,
     576, 608, 640, 672,
 ];
 
-/// Colour bonus by how many *different* colours the step cleared, classic scoring. Index 0 is
-/// one colour. Tsu also defines six colours as 48, which this game cannot reach: it deals five.
+/// Colour bonus by how many different colours the step cleared, index 0 being one colour.
 pub const COLOR_BONUS: [u32; 5] = [0, 3, 6, 12, 24];
 
-/// Group bonus by how many puyos were in the group, classic scoring. Index 0 is a group of
-/// [`PUYOS_TO_POP`]; anything bigger than the table scores the last entry.
+/// Group bonus by group size, index 0 being [`PUYOS_TO_POP`]; bigger groups take the last entry.
 pub const GROUP_BONUS: [u32; 8] = [0, 2, 3, 4, 5, 6, 7, 10];
 
 /// how many of a colour have to touch before they pop
 pub const PUYOS_TO_POP: u32 = 4;
 
-/// `(CP + CB + GB)` is held between these, so a 1-chain of one colour still scores something
+/// `(CP + CB + GB)` is held between these, so a 1-chain of one colour still scores
 pub const MIN_MULTIPLIER: u32 = 1;
 pub const MAX_MULTIPLIER: u32 = 999;
 
-/// Score per nuisance puyo under Tsu rules. Dividing a chain's score by this is what turns it
-/// into an attack; the remainder is carried rather than thrown away.
+/// Score per nuisance puyo: a chain's score divided by this is its attack, and the remainder
+/// is carried.
 pub const TARGET_POINTS: u32 = 70;
 
-/// What an all clear is worth: thirty extra nuisance - a whole rock - on the *next* chain,
-/// not on the one that emptied the board.
+/// An all clear adds a whole rock of nuisance to the next chain, not the one that emptied the
+/// board.
 pub const ALL_CLEAR_NUISANCE: u32 = 30;
 
 /// one group of one colour, popped in one step of a chain
@@ -70,10 +58,8 @@ pub fn color_bonus(colors: u32) -> u32 {
     COLOR_BONUS[index.min(COLOR_BONUS.len() - 1)]
 }
 
-/// What one step of a chain scores: `(10 * puyos) * clamp(CP + CB + GB, 1, 999)`.
-///
-/// `chain` counts from 1 for the first step. Nuisance puyos cleared alongside the groups are
-/// *not* part of `groups` and do not score - only coloured puyos count towards `PC`.
+/// What one step of a chain scores: `(10 * puyos) * clamp(CP + CB + GB, 1, 999)`, `chain`
+/// counting from 1. Nuisance cleared alongside is not in `groups` and does not score.
 pub fn step_score(chain: u32, groups: &[PoppedGroup]) -> u32 {
     if groups.is_empty() {
         return 0;
@@ -93,11 +79,7 @@ pub fn step_score(chain: u32, groups: &[PoppedGroup]) -> u32 {
     10 * puyos * bonus.clamp(MIN_MULTIPLIER, MAX_MULTIPLIER)
 }
 
-/// The running remainder of the nuisance division, carried between placements.
-///
-/// Tsu divides a chain's score by the target points and keeps the fraction: a chain worth 1.70
-/// nuisance sends one puyo now and hands 0.70 on to the next one. Kept in *points* rather than
-/// as a float so that it is exact.
+/// The remainder of the nuisance division, carried between chains, in points so it is exact.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NuisancePoints {
     leftover: u32,
@@ -132,12 +114,7 @@ mod tests {
         assert_eq!(step_score(1, &[group(PuyoColor::Red, 4)]), 40);
     }
 
-    /// Puyo Nexus's *List of Chain Scores*: the published per-step points for a chain made
-    /// entirely of four-puyo links. This is the table that makes "faithful" checkable.
-    ///
-    /// Those figures are quoted for the single player attack powers, so they are recomputed
-    /// here from the multiplayer table this game uses - the arithmetic is the thing under
-    /// test, and the shape (40, then chain power taking over) has to match.
+    /// every step of a four-link chain scores `10 * 4` times its clamped chain power
     #[test]
     fn each_step_of_a_four_link_chain_scores_its_chain_power() {
         for chain in 1..=24 {
@@ -148,7 +125,7 @@ mod tests {
                 "chain {chain}"
             );
         }
-        // the first step has no chain power at all, so the clamp is what scores it
+        // the first step has no chain power, so the clamp scores it
         assert_eq!(step_score(1, &[group(PuyoColor::Red, 4)]), 40);
         // ... and the second is the first with a chain power of 8
         assert_eq!(step_score(2, &[group(PuyoColor::Red, 4)]), 320);
@@ -193,14 +170,7 @@ mod tests {
         assert_eq!(group_bonus(10), 7);
     }
 
-    /// The floor is what does the work here. A 1-chain of one colour has a chain power of 0,
-    /// no colour bonus and no group bonus, so without the floor it would score nothing at all;
-    /// clamping to 1 is what makes it worth 40.
-    ///
-    /// The ceiling, on the other hand, cannot be reached in this game. The biggest step a
-    /// 6x13 board can hold is five colours in groups of eleven - 672 + 24 + 50 = 746 - and
-    /// the multiplayer chain power tops out at 672, so `MAX_MULTIPLIER` is carried for
-    /// fidelity to the formula rather than because a match will ever meet it.
+    /// the multiplier's floor of one is what makes a 1-chain of one colour worth 40
     #[test]
     fn the_multiplier_floors_at_one_so_a_first_link_still_scores() {
         assert_eq!(chain_power(1) + color_bonus(1) + group_bonus(4), 0);
@@ -255,7 +225,6 @@ mod tests {
         assert_eq!(points.leftover(), 10);
     }
 
-    /// a two chain of four-links is 360 points, which is five nuisance and a carry
     #[test]
     fn a_two_chain_sends_five_nuisance() {
         let mut points = NuisancePoints::default();
@@ -266,19 +235,8 @@ mod tests {
         assert_eq!(points.leftover(), 10);
     }
 
-    /// Puyo Nexus's *List of Chain Scores*, every row of it.
-    ///
-    /// The published table runs to a nineteen chain - which is also the longest chain the game
-    /// can be made to produce - and gives the running total in points and the nuisance it
-    /// buys, for a chain made entirely of four-puyo links. Reproducing all nineteen from the
-    /// tables in this module is the strongest check there is that the chain power curve, the
-    /// clamp, the target points and the carry are all the game's own and not something that
-    /// merely agrees with it for the first few links.
-    ///
-    /// (The page says it assumes the single player attack powers. It does not: its own
-    /// figures - 40, 320, 640, 1280, 2560 - are `10 * 4 *` this module's multiplayer curve,
-    /// and the single player one would open at 160. The numbers are what is being followed
-    /// here, not the caption.)
+    /// Puyo Nexus's *List of Chain Scores*, all nineteen rows, for a chain of four-links. The
+    /// page's caption says single player powers but its figures are the multiplayer curve's.
     #[test]
     fn the_whole_published_table_of_chain_scores_comes_back_out() {
         const PUBLISHED: [(u32, u32, u32); 19] = [
@@ -317,8 +275,8 @@ mod tests {
         }
     }
 
-    /// the group bonus is per group and the colour bonus is per colour, so a step with two
-    /// unequal groups of different colours pays one of each
+    /// a step with two unequal groups of different colours pays both group bonuses and a
+    /// colour bonus
     #[test]
     fn group_bonuses_add_up_over_the_groups_of_a_step() {
         let groups = [group(PuyoColor::Red, 5), group(PuyoColor::Blue, 6)];

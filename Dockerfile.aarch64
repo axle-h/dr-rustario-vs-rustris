@@ -1,9 +1,7 @@
 # Cross-builds the PortMaster binary for aarch64 handhelds.
 #
-# Ubuntu 20.04 (glibc 2.31) is the PortMaster porters' baseline: a binary built here runs on
-# every supported CFW (ROCKNIX, ArkOS, muOS, Knulli ...). SDL2 is linked dynamically and comes
-# from the CFW at runtime - PortMaster does not ship one - so the SDL 2.28 built below is used
-# for headers and link-time symbols only (Ubuntu 20.04's own 2.0.10 is too old for the sdl2 crate).
+# Ubuntu 20.04 (glibc 2.31) is PortMaster's baseline. SDL2 comes from the device at runtime,
+# so the SDL built below is only for headers and linking; 20.04's own is too old for the crate.
 FROM ubuntu:20.04
 
 ARG SDL_VERSION=2.28.5
@@ -36,7 +34,6 @@ RUN curl -fsSL https://github.com/libsdl-org/SDL/releases/download/release-${SDL
   && cmake --build build && cmake --install build \
   && rm -rf /sdl
 
-# Rust, aarch64 target
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup target add aarch64-unknown-linux-gnu

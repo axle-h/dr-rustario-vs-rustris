@@ -1,14 +1,12 @@
-//! Native SDL game controller support. Controllers are opened as they appear and assigned a
-//! player slot by order of arrival; their buttons, d-pad and left stick are translated into a
-//! fixed, keyboard-independent set of [`PadButton`]s that the menu and game input contexts map
-//! onto their own keys. Keyboard events pass through untouched.
+//! SDL game controllers, given player slots in order of arrival and translated into a fixed
+//! set of [`PadButton`]s that menus and games map onto their own keys. Keyboard passes through.
 
 use sdl2::controller::{Axis, Button, GameController};
 use sdl2::event::Event;
 use sdl2::EventPump;
 use sdl2::GameControllerSubsystem;
 
-/// Left-stick travel (of ±1) before it registers as a d-pad press.
+/// left-stick travel (of ±1) before it registers as a d-pad press
 const STICK_DEADZONE: f32 = 0.5;
 
 /// A button on a pad in SDL's positional naming (A = south, B = east, X = west, Y = north).
@@ -55,7 +53,6 @@ impl PadButton {
 pub enum InputEvent {
     /// an untouched SDL event (keyboard, quit, window ...)
     Sdl(Event),
-    /// a pad button on player `player`'s controller changed state
     Pad {
         player: u32,
         button: PadButton,
@@ -66,7 +63,7 @@ pub enum InputEvent {
 struct Pad {
     controller: GameController,
     player: u32,
-    /// the d-pad direction the left stick is currently emulating on each axis
+    /// the d-pad direction the left stick is emulating on each axis
     stick_x: Option<PadButton>,
     stick_y: Option<PadButton>,
 }
@@ -86,7 +83,6 @@ impl Controllers {
         }
     }
 
-    /// the lowest player slot not held by an open controller
     fn free_slot(&self) -> Option<u32> {
         (0..self.max_players).find(|slot| !self.pads.iter().any(|p| p.player == *slot))
     }
@@ -127,8 +123,8 @@ impl Controllers {
             .find(|p| p.controller.instance_id() == instance_id)
     }
 
-    /// Drain the event pump, opening and closing controllers as they come and go, and
-    /// translate controller events to pad presses.
+    /// Drain the event pump, opening and closing controllers as they come and go, and translate
+    /// controller events to pad presses.
     pub fn poll(&mut self, event_pump: &mut EventPump) -> Vec<InputEvent> {
         let mut result = vec![];
         for event in event_pump.poll_iter() {

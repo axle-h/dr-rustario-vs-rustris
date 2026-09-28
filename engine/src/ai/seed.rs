@@ -1,6 +1,5 @@
-//! The seed a training run counts through. Distinct from [crate::game::random::Seed], which is
-//! the opaque 256 bit seed a game is played on: this one does big integer arithmetic so the
-//! genetic algorithm can walk whole blocks of unused seeds, and converts into the game seed.
+//! The seed a training run counts through, as a big integer so the genetic algorithm can walk
+//! blocks of unused seeds; converts into the game's [crate::game::random::Seed].
 
 use crate::game::random::Seed as GameSeed;
 use num_bigint::BigUint;
@@ -50,16 +49,13 @@ impl AddAssign for Seed {
     fn add_assign(&mut self, rhs: Self) {
         let mut carry = 0u64;
 
-        // Process 8 bytes at a time using u64
         for i in (0..32).step_by(8) {
             let a = u64::from_le_bytes(self[i..i + 8].try_into().unwrap());
             let b = u64::from_le_bytes(rhs[i..i + 8].try_into().unwrap());
 
-            // Add previous carry to first number
             let sum = a.wrapping_add(b).wrapping_add(carry);
 
-            // Calculate new carry - if sum is less than either input (or equal to when carry is 1),
-            // we wrapped around and need to carry 1
+            // a wrapped sum is below `a`, or equal to it with a carry in
             carry = if (carry == 1 && sum <= a) || (carry == 0 && sum < a) {
                 1
             } else {
@@ -88,7 +84,6 @@ impl From<u128> for Seed {
 impl From<BigUint> for Seed {
     fn from(value: BigUint) -> Self {
         let mut bytes = value.to_bytes_be();
-        // pad to 32 bytes
         while bytes.len() < 32 {
             bytes.insert(0, 0);
         }

@@ -2,7 +2,7 @@ plugins {
     id("com.android.application")
 }
 
-// build-android.sh passes all of these; see Dockerfile.android for where each comes from
+// build-android.sh passes all of these
 fun required(name: String): String =
     providers.gradleProperty(name).orNull
         ?: throw GradleException("-P$name is required: build with build-android.sh")
@@ -22,9 +22,8 @@ android {
 
     sourceSets {
         getByName("main") {
-            // SDL's Java half, from the same release as the libSDL2.so beside the game
+            // must be the same SDL release as libSDL2.so
             java.directories.add(required("sdlJavaDir"))
-            // libSDL2.so and liblauncher.so, under the ABI's own folder
             jniLibs.directories.add(required("jniLibsDir"))
         }
     }
@@ -32,7 +31,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // signed by build-android.sh with a key kept outside the image
+            // build-android.sh signs it
             signingConfig = null
         }
     }
@@ -43,7 +42,6 @@ android {
     }
 
     lint {
-        // lint has nothing to say about SDL's Java that SDL has not already heard
         checkReleaseBuilds = false
     }
 }

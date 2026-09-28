@@ -1,10 +1,6 @@
-//! Whether a placement leaves a chain behind: play the pill, let everything it clears go, let
-//! what is loose fall, and look for a line that was not there before. Ported from
-//! `aifRensaCheckCore`.
-//!
-//! Upstream runs this once for each colour the second half could have been, which is how the ai
-//! decides between a placement that only pays off if the right colour turns up and one that
-//! pays off whatever comes next.
+//! Whether a placement leaves a chain behind: clear, let what is loose fall, and look for a
+//! new line. Ported from `aifRensaCheckCore`; upstream runs it once per colour the second half
+//! could be.
 
 use crate::game::ai::n64::field::{Field, BAD_LINE_RATE, COLS, ROWS, ST_CLEARING, ST_EMPTY};
 use crate::game::ai::n64::Half;
@@ -14,7 +10,7 @@ use crate::game::ai::n64::Half;
 pub struct Chain {
     /// 0 none, 1 a chain, 2 a double clear that nothing had to fall for
     pub strength: u8,
-    /// how much weight this takes out of the top four rows. Original name: `aiHiEraseCtr`
+    /// how much weight this takes out of the top four rows; original name: `aiHiEraseCtr`
     pub relieved: i32,
 }
 
@@ -133,8 +129,7 @@ fn run_down(field: &Field, row: usize, col: usize) -> usize {
     run
 }
 
-/// Clear what was marked and drop what that left hanging. Returns whether everything stayed
-/// put, which upstream reads as "this clear was self contained".
+/// Clear what was marked and drop what that left hanging. Returns whether everything stayed put.
 fn settle(field: &mut Field) -> bool {
     let mut moved = false;
 

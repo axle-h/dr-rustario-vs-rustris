@@ -3,21 +3,10 @@
 
     python3 puyo-rusto/art/music.py [source directory]   # needs ffmpeg with libvorbis
 
-The source is a directory of OGGs and a `loops.json` naming each one's loop point, and it is
-**not in the repository** - 12 MiB of source is not worth carrying, the way the sprite rip is
-not. It defaults to `~/Downloads/pp/ogg`.
-
-Two things have to happen to a track on the way in, and both are the engine's doing:
-
-* `engine/src/audio/decode.rs` rejects anything that is not 44,100 Hz outright, and four of
-  the five tracks are 48 kHz, so every one of them is resampled.
-* the mixer has no loop marker: `StructuredMusic::new(intro, repeating)` plays one file once
-  and then loops the other forever. So a track is *split* at its loop point into
-  `<slug>-intro.ogg` and `<slug>-repeat.ogg`, which is the same pair Dr. Rustario's themes
-  already ship.
-
-The split is made on raw PCM rather than by seeking with ffmpeg's `-ss`, so the seam falls on
-the sample the loop point names and a repeat joins where the intro left off.
+The source, not in the repository, is a directory of OGGs and a `loops.json` of loop points.
+Every track is resampled to 44,100 Hz, the only rate `engine/src/audio/decode.rs` accepts, and
+split on raw PCM at its loop point into `<slug>-intro.ogg` and `<slug>-repeat.ogg`, since the
+mixer has no loop marker.
 """
 
 import json
@@ -33,9 +22,7 @@ QUALITY = "6"
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "theme"))
 DEFAULT_SOURCE = os.path.expanduser("~/Downloads/pp/ogg")
 
-# what each track in `loops.json` is called here, and which directory it belongs to. The menu
-# track is the menus' own; the other four are the game music, in a directory of their own
-# rather than the particle theme's, because the retro themes are the same game's music
+# each `loops.json` track's `(directory, slug)`
 TRACKS = {
     "Puyo Puyo Tetris - It's Main Menu!": ("menu", "menu"),
     "Puyo Puyo Tetris - Korobeiniki (2014)": ("music", "korobeiniki"),

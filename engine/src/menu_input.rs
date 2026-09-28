@@ -53,8 +53,8 @@ impl MenuInputContext {
         result
     }
 
-    /// any player's pad drives the menus: d-pad/stick navigates, A selects, B backs out,
-    /// start starts
+    /// any player's pad drives the menus: d-pad/stick navigates, A selects, B backs out, start
+    /// starts
     fn map_from_pad(button: PadButton) -> Option<MenuInputKey> {
         Some(match button {
             PadButton::DPadUp => MenuInputKey::Up,

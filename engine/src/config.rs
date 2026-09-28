@@ -138,9 +138,8 @@ impl AudioConfig {
     }
 }
 
-/// How much the modern themes' background particle field draws. Draw calls, not particle
-/// count, are what costs: every particle is its own coloured copy, and a handheld linking the
-/// firmware's SDL has far less headroom than a desktop.
+/// How much the particle themes' background field draws. Draw calls are the cost, since
+/// every particle is its own coloured copy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ParticleDensity {
     /// `High` normally, `Low` on a handheld
@@ -185,9 +184,8 @@ impl ParticleDensity {
         }
     }
 
-    /// links are soft textured quads, which take a colour mod and read well at 4k. At the
-    /// lowest density they are `SDL_RenderDrawLine` hairlines instead: one call, one physical
-    /// pixel, nearly invisible on a big screen but very cheap on a handheld.
+    /// Links are soft textured quads, except at the lowest density, where they are one-pixel
+    /// `SDL_RenderDrawLine` hairlines.
     pub fn links_are_quads(self) -> bool {
         !matches!(self.resolve(), ParticleDensity::Low)
     }
@@ -218,11 +216,9 @@ pub struct VideoConfig {
     pub mode: VideoMode,
     pub vsync: bool,
     pub disable_screensaver: bool,
-    /// scale the themes by whole pixels only. Crisper, but the board steps down to the next
-    /// whole multiple of its art, which can waste a lot of the window.
+    /// scale the themes by whole pixels only, which can waste much of the window
     pub integer_scale: bool,
-    /// how much the modern themes' particle background draws. Config file only: there is no
-    /// video options menu to hang it on
+    /// config file only
     #[serde(default)]
     pub particle_density: ParticleDensity,
 }
@@ -236,16 +232,13 @@ impl Default for Config {
                     width: 1280,
                     height: 720,
                 },
-                // handhelds: fill whatever the panel is (PortMaster runs ports under sway or
-                // KMSDRM, where a mode switch is the fragile option) and let the scaler fit it.
-                // Android has no windows at all.
+                // handhelds fill the panel and let the scaler fit it, since a mode switch
+                // is fragile under sway or KMSDRM
                 #[cfg(any(feature = "portmaster", feature = "android"))]
                 mode: VideoMode::FullScreenDesktop,
                 vsync: true,
                 disable_screensaver: true,
 
-                // smooth scaling fills the window and keeps every theme's board the same
-                // size; whole-pixel scaling looks crisper but drops a step to do it
                 integer_scale: false,
 
                 particle_density: ParticleDensity::Auto,
@@ -282,8 +275,7 @@ impl Default for Config {
                 next_theme: GameKey::RShift,
                 #[cfg(not(feature = "portmaster"))]
                 next_theme: GameKey::F2,
-                // Android's system back button, which SDL only passes on as a key because
-                // `App::new` asks it to - left alone it closes the app from any screen
+                // Android's back button, passed on as a key only because `App::new` asks SDL to
                 #[cfg(feature = "android")]
                 quit: GameKey::AcBack,
                 #[cfg(not(feature = "android"))]
@@ -306,14 +298,12 @@ pub fn config_path(name: &str) -> Result<PathBuf, String> {
     Ok(PathBuf::from(format!("/data/{}.yml", name)))
 }
 
-/// The app's own folder on shared storage, `Android/data/<package>/files`, which a file
-/// manager or a USB cable can reach so that the config can be edited; internal storage, which
-/// only the app can see, if shared storage is not mounted. Both go when the app is uninstalled.
+/// The app's folder on shared storage, `Android/data/<package>/files`, so a file manager can
+/// reach the config; internal storage if shared storage is not mounted.
 #[cfg(feature = "android")]
 pub fn config_path(name: &str) -> Result<PathBuf, String> {
     use std::ffi::{c_char, c_int, CStr};
-    // SDL_system.h declares these only under __ANDROID__, so sdl2-sys's pregenerated
-    // bindings do not carry them
+    // SDL_system.h declares these only under __ANDROID__, so sdl2-sys's bindings lack them
     const SDL_ANDROID_EXTERNAL_STORAGE_WRITE: c_int = 0x02;
     extern "C" {
         fn SDL_AndroidGetExternalStorageState() -> c_int;

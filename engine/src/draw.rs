@@ -2,15 +2,14 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::{BlendMode, Canvas, RenderTarget};
 
-/// Horizontal span `(x_offset, width)` of each row of a filled rounded rectangle.
-/// Rows are relative to the rectangle's top-left; the radius is clamped to half
-/// the smaller dimension so corners never overlap.
+/// `(x_offset, width)` of each row of a filled rounded rectangle, relative to its top-left; the
+/// radius is clamped to half the smaller side so corners never overlap.
 fn rounded_rect_rows(width: u32, height: u32, radius: u32) -> Vec<(u32, u32)> {
     let radius = radius.min(width / 2).min(height / 2) as i64;
     let (w, h) = (width as i64, height as i64);
     (0..h)
         .map(|row| {
-            // Distance of this row's centre from the corner circle's centre (in the corner bands).
+            // distance of this row's centre from the corner circle's centre, in the corner bands
             let dy = if row < radius {
                 radius - row
             } else if row >= h - radius {
@@ -25,7 +24,7 @@ fn rounded_rect_rows(width: u32, height: u32, radius: u32) -> Vec<(u32, u32)> {
 }
 
 pub trait CanvasExt {
-    /// Fills `rect` with `color`, rounding the corners by `radius` (alpha-blended).
+    /// fills `rect`, rounding the corners by `radius` (alpha-blended)
     fn fill_rounded_rect(&mut self, rect: Rect, radius: u32, color: Color) -> Result<(), String>;
 }
 

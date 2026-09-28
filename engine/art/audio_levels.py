@@ -1,37 +1,13 @@
 #!/usr/bin/env python3
-"""What every theme in the compendium actually plays at, and what it owes the house.
-
-This is the whole app's audio meter.  It decodes every embedded `.ogg` in the repository -
-music and effects, all three games, the engine's own menus - and prints each theme's level
-against the **house baseline**, so a new theme, a re-cut set of effects or a fresh rip can be
-held to the same loudness as everything already here.
-
-**Loudness is RMS, not peak.**  Peak is the single loudest sample and says nothing about how
-loud a sound is: two effects that both peak at -0.5 dBFS are ten decibels apart if one of them
-is a click and the other a chord.  Every level here is therefore RMS, in dBFS, with the peak
-carried alongside only as the headroom the file has left.  A set that is levelled on peaks -
-which is what `puyo-rusto/art/retro_audio.py` did to Mean Bean Machine's effects - comes out
-*sounding* hot while every meter says it is fine.
-
-Three numbers describe a theme:
-
-* `music` - the RMS of its music, energy-averaged over every track it may play.  This is the
-  bed the whole theme sits on and it is what the baseline pins.
-* `effects` - the RMS of its effect set, energy-averaged.
-* `balance` - `effects - music`, in dB.  It is the number that says whether a theme's effects
-  sit *in* its music or on top of it, and it is a property of the theme rather than of the app,
-  so the house holds it to a band rather than to a value.
-
-The trims the app applies on top of these (`with_gain`, `with_effects_at`) are read out of the
-Rust and reported too, so what this prints is what a player hears rather than what is in the
-file.
-
-Usage:
+"""The whole app's audio meter: every theme's level against the house baseline.
 
     python3 engine/art/audio_levels.py            # the table, and what is out of band
     python3 engine/art/audio_levels.py --files    # every file, for chasing one sound
 
-Needs `ffmpeg` on the path and `numpy`; it reads the repository and writes nothing.
+Decodes every embedded `.ogg`, applies the Rust's gains (`TRIMS`), and holds each theme's music
+RMS to `MUSIC_TARGET`, its effects-minus-music to `BALANCE_TARGET`, and every peak under
+`PEAK_CEILING`. Loudness is RMS, since peak is one sample. Needs `ffmpeg` and `numpy`;
+`AUDIO_LEVELS_CACHE=<path>` caches the scan.
 """
 
 import glob
@@ -47,27 +23,18 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 # ---------------------------------------------------------------- the baseline
 
-# The house levels, measured pre-slider: what a theme's music and effects are levelled to.
-#
-# Set from `rustris/gb`, which is Alex's reference for a balance that reads right, and rounded.
-# Every other theme of Rustris and Dr. Rustario was already within a couple of decibels of it;
-# Puyo Rusto's own assets are mastered some eight decibels hotter than the rest of the app and
-# are trimmed back to it in `puyo-rusto/src/theme/data.rs`.
+# the house levels before the volume slider, taken from `rustris/gb`
 MUSIC_TARGET = -22.0  # dBFS RMS
 BALANCE_TARGET = -2.0  # dB, effects RMS relative to that theme's music RMS
 
-# How far out of true a theme may sit before it is worth doing something about.  A decibel is
-# not audible on its own here; three is.
+# how far off either target a theme may sit before it is reported
 MUSIC_TOLERANCE = 2.0
 BALANCE_TOLERANCE = 4.0
 
-# No file may peak above this: Vorbis hands back a sample or two above the encoder's own
-# ceiling, and a file already at 0 dBFS clips as soon as it is mixed with anything.
+# no file may peak above this, leaving room for Vorbis overshoot and the mixer's sum
 PEAK_CEILING = -0.5  # dBFS
 
-# A theme's music and its effects, by the folder they are embedded from.  A theme that shares
-# another's folder (`puyo-rusto`'s particle theme plays `theme/sfx` over `theme/music`) names
-# both.
+# each theme's `(music folder, effects folder)`, as embedded
 THEMES = {
     "dr-rustario/nes": ("dr-rustario/src/theme/nes",) * 2,
     "dr-rustario/snes": ("dr-rustario/src/theme/snes",) * 2,
@@ -80,8 +47,6 @@ THEMES = {
     "puyo/genesis": ("puyo-rusto/src/theme/genesis",) * 2,
     "puyo/snes": ("puyo-rusto/src/theme/snes",) * 2,
     "puyo/particle": ("puyo-rusto/src/theme/music", "puyo-rusto/src/theme/sfx"),
-    # one folder holds this theme's music, its effects and its menu tune alike - it has one
-    # theme and cut all of it in one place
     "rustle-fighter/arcade": ("rustle-fighter/src/theme/arcade",) * 2,
     "menu/engine-modern": ("engine/src/menu/modern",) * 2,
     "menu/engine-retro": ("engine/src/menu/retro",) * 2,
@@ -89,10 +54,8 @@ THEMES = {
     "menu/rustris": ("rustris/src/theme/menu",) * 2,
 }
 
-# What the Rust does to each theme on top of the files: the gain it plays the whole theme at,
-# and the trim it plays that theme's effects at on top of it, each named by the constant that
-# holds it.  Read out of the sources rather than written down here, so this table cannot say one
-# thing while the build does another.
+# The Rust constants that hold each theme's whole-theme gain and effects-only trim, read out
+# of the sources so this cannot disagree with the build.
 TRIMS = [
     # theme, source, whole-theme gain, effects-only trim
     ("puyo/genesis", "puyo-rusto/src/theme/data.rs", "GENESIS_GAIN", "EFFECTS_TRIM"),
@@ -100,20 +63,14 @@ TRIMS = [
     ("puyo/particle", "puyo-rusto/src/theme/data.rs", "PARTICLE_GAIN", "EFFECTS_TRIM"),
     ("menu/puyo", "puyo-rusto/src/theme/data.rs", "MENU_GAIN", None),
     ("rustris/particle", "rustris/src/theme/data.rs", None, "PARTICLE_EFFECTS"),
-    # levelled by its own scripts rather than at build time, so the gain is a plain hundred
-    # and there is no effects trim - see `rustle-fighter/src/theme/data.rs`
     ("rustle-fighter/arcade", "rustle-fighter/src/theme/data.rs", "ARCADE_GAIN", None),
 ]
 
 
-# A file in a theme folder is music if its name says so; everything else there is an effect.
-#
-# A menu folder is the other way round - its two clicks are named and everything else it holds
-# is a track - because a menu's tunes are called `title` and `menu`, which in `rustris/nes` are
-# the names of two blips. The same word is an effect in one folder and a track in the next, so
-# the folder decides and not the name.
+# In a theme folder a file is music if its name matches; in a menu folder everything but the
+# two clicks is music, since `title` and `menu` are effect names in `rustris/nes`.
 MUSIC_NAMES = re.compile(
-    r"(^|-)(music|music_crit|music-critical|music-menu)$|"
+    r"(^|-)music$|"
     r"-(intro|repeat)$|jingle$|^stages?-|^(korobeiniki|decisive|magical|tetro)"
 )
 MENU_EFFECTS = {"chime", "select"}
@@ -139,13 +96,7 @@ def db(x):
 
 
 def measure(path):
-    """`(peak, rms, loudest 400 ms, seconds)` of one file, all linear
-
-    The 400 ms window is what a momentary loudness meter reads and is the honest number for a
-    sound with a long tail: a settle that rings for two seconds is not quiet because most of
-    it is decay.  Whole-file RMS is reported as `rms` and is what the theme tables average,
-    since an effect that rings *is* quieter over its length and a set of them mixes that way.
-    """
+    """`(peak, rms, loudest 400 ms, seconds)` of one file, linear; themes average `rms`"""
     x = decode(path)
     if x.size == 0:
         return None
@@ -153,8 +104,7 @@ def measure(path):
     rms = float(np.sqrt(np.mean(x * x)))
     window = int(0.4 * 44100)
     if x.size > window:
-        # a sliding mean of x^2 through one cumulative sum, rather than a convolution: the
-        # music tracks are minutes long and the naive form takes hours over the whole repo
+        # a sliding mean of x^2 through one cumulative sum
         acc = np.concatenate([[0.0], np.cumsum(x * x)])
         best = float(np.max((acc[window:] - acc[:-window]) / window))
         momentary = float(np.sqrt(best))
@@ -186,10 +136,7 @@ def energy_mean(values):
 
 
 def rust_trims():
-    """the gains the Rust applies, as `{theme: (music percent, effects percent)}`
-
-    A theme not named in [`TRIMS`] plays its files as they are, at 100/100.
-    """
+    """the gains the Rust applies, as `{theme: (music percent, effects percent)}`"""
 
     def constant(source, name):
         text = open(os.path.join(REPO, source)).read()

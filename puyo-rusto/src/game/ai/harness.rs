@@ -1,19 +1,8 @@
-//! `ga puyo play`, `ga puyo rank` and `ga puyo duel`: run a brain headless and see what it can
-//! do.
+//! `ga puyo play`, `ga puyo rank` and `ga puyo duel`: run a brain headless.
 //!
-//! `play` is the diagnostic - one seed, one brain, reporting as it goes. `rank` is what
-//! [`SKILL_ORDER`](crate::game::ai::SKILL_ORDER) is *made of*: every row plays the same seeds
-//! from the same start, and the order that comes out is pasted back into
-//! [`crate::game::ai::skill`]. Nothing about the ladder is asserted anywhere; it is measured
-//! here and then written down.
-//!
-//! **`rank` is a solo marathon, and a solo marathon takes no nuisance.** Nothing ever lands on
-//! the board, so it measures what a row *builds* and can say nothing whatever about what a row
-//! does with what is thrown at it - which is half of what a row is for. That is `duel`: two
-//! rows on the same seed, each sending the other what its chains buy, routed the way the match
-//! screen routes it. It is what
-//! [`SearchConfig::answer_at`](crate::game::ai::beam::SearchConfig::answer_at) was set from,
-//! and it is also the Puyo end of the protocol the cross-game attack prices are measured on.
+//! `play` follows one seed and brain. `rank` plays every row on the same seeds as a solo
+//! marathon, which takes no nuisance, and prints [`SKILL_ORDER`](crate::game::ai::SKILL_ORDER).
+//! `duel` plays two rows on one seed, each sending the other what its chains buy.
 
 use crate::game::ai::agent::PuyoAiAgent;
 use crate::game::ai::beam::SearchConfig;
@@ -25,12 +14,10 @@ use engine::game::random::Seed;
 use engine::game::{Attack, Game as _, GameEvent, StageState};
 use std::time::{Duration, Instant};
 
-/// the frame the headless game is stepped at; the agent is speed limited by its own key
-/// pacer and not by this
+/// the frame the headless game is stepped at; the agent's own key pacer limits its speed
 const STEP: Duration = Duration::from_millis(8);
 
-/// a headless game cannot run forever if a brain refuses to lock anything, so every run has a
-/// ceiling in frames as well as in pairs
+/// a ceiling in frames, so a brain that never locks anything cannot run forever
 const MAX_FRAMES: u64 = 40_000_000;
 
 #[derive(Default)]
@@ -40,25 +27,20 @@ struct Run {
     chains: u64,
     best_chain: u32,
     nuisance_sent: u64,
-    /// what an opponent put in this board's tray. Always zero in a solo run
+    /// what an opponent put in this board's tray, zero in a solo run
     nuisance_received: u64,
-    /// pairs this board committed to a chain that cancels its tray - see
-    /// [`PuyoAiAgent::answers`]
+    /// see [`PuyoAiAgent::answers`]
     answers: u32,
-    /// pairs it decided with anything at all waiting - see [`PuyoAiAgent::trays`]
+    /// see [`PuyoAiAgent::trays`]
     trays: u32,
-    /// pairs it fired on because the tray was about to bury it - see [`PuyoAiAgent::crowded`]
+    /// see [`PuyoAiAgent::crowded`]
     crowded: u32,
     buried: bool,
 }
 
-/// A brain to play a board with: one of the rows, and optionally one of its dials moved.
-///
-/// The override is spelled `sharp@12` on the command line and means *that row, answering a
-/// tray twelve puyos deep*. It is a measurement seam and nothing else - a difficulty is
-/// always a whole row - and it is what a sweep of
-/// [`answer_at`](crate::game::ai::beam::SearchConfig::answer_at) is made of, since the
-/// alternative is editing a const and rebuilding for every point of it.
+/// A brain to play a board with: a row, optionally with its
+/// [`answer_at`](crate::game::ai::beam::SearchConfig::answer_at) overridden, spelled `sharp@12`
+/// on the command line.
 #[derive(Clone, Copy)]
 struct Brain {
     kind: PuyoAiKind,
@@ -131,10 +113,6 @@ fn kind_of(name: &str) -> Result<PuyoAiKind, String> {
 }
 
 /// One side of a match: its board, the brain playing it, and what it has managed so far.
-///
-/// A solo run is one of these stepped on its own; a duel is two, stepped and only then
-/// delivered to each other. Both go through the same frame, so the only difference between
-/// what `rank` measures and what `duel` measures is that in a duel something arrives.
 struct Player {
     game: Game,
     agent: PuyoAiAgent,
@@ -162,12 +140,8 @@ impl Player {
         }
     }
 
-    /// Play one frame, and report what this board fired off in it.
-    ///
-    /// What comes back is the strength to hand the *opponent*, which is why it is returned
-    /// rather than delivered: the match screen collects a frame's events from every player
-    /// before it routes any of them, so two chains that finish together cross rather than one
-    /// of them cancelling the other.
+    /// Play one frame, and return the strength to send the opponent. It is returned rather than
+    /// delivered so that, as on the match screen, two chains finishing together cross.
     fn frame(&mut self, report: &mut impl FnMut(&Run)) -> u32 {
         let mut fired = 0;
         self.agent.act(&mut self.game, STEP);
@@ -233,11 +207,8 @@ fn play(
     player.run
 }
 
-/// Two rows, one seed, each sending the other what its chains buy.
-///
-/// Both boards are dealt the same pairs, which is what makes it a paired comparison: the
-/// difference between the two sides is the two brains and nothing else. It runs until one of
-/// them is buried or both have placed `pair_cap` pairs, and what comes back is a run apiece.
+/// Two rows dealt the same pairs, each sending the other what its chains buy, until one is
+/// buried or both have placed `pair_cap` pairs.
 fn duel(
     brains: [Brain; 2],
     seed: u64,
@@ -321,10 +292,8 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// `args` are the arguments after `ga puyo rank`: `[seeds] [pair cap] [difficulty]`.
-///
-/// Every row plays every seed. What it prints is the table to paste into
-/// [`crate::game::ai::skill::SKILL_ORDER`], worst first.
+/// `args` are the arguments after `ga puyo rank`: `[seeds] [pair cap] [difficulty]`. Prints the
+/// rows worst first, for [`crate::game::ai::skill::SKILL_ORDER`].
 pub fn rank_main(args: &[String]) -> Result<(), String> {
     let seeds: u64 = args.first().and_then(|s| s.parse().ok()).unwrap_or(8);
     let pair_cap: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(400);
@@ -365,9 +334,7 @@ pub fn rank_main(args: &[String]) -> Result<(), String> {
             best = best.max(run.best_chain);
             sent += run.nuisance_sent;
         }
-        // the search is stepped once a frame, so what a frame costs on this machine is the
-        // whole think divided by the steps a search takes - which is the number to look at on
-        // a handheld, not the one per pair
+        // a search is stepped once a frame, so a frame costs the think divided by its steps
         let steps = skill::ROWS[row].search.steps();
         let per_pair = started.elapsed().as_secs_f64() * 1000.0 / pairs.max(1) as f64;
         println!(
@@ -400,7 +367,6 @@ fn winner(runs: &[Run; 2]) -> Option<usize> {
     }
 }
 
-/// one line of a duel table
 fn print_side(tag: &str, name: &str, run: &Run) {
     println!(
         "{tag}\t{name}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
@@ -421,14 +387,8 @@ const DUEL_COLUMNS: &str =
 
 /// `args` are the arguments after `ga puyo duel`:
 /// `[seeds] [pair cap] [difficulty] [key delay ms] [a] [b]`.
-///
-/// With two brains named it is a head to head, one line a seed. With neither, it is every row
-/// against every other - which is the ladder measured under fire rather than in a marathon,
-/// and the table to read when [`answer_at`](crate::game::ai::beam::SearchConfig::answer_at) or
-/// a [`trigger`](crate::game::ai::beam::SearchConfig::trigger) has been touched.
-///
-/// **A duel ends when someone is buried**, so the pair cap is a ceiling rather than a length:
-/// a pairing that reaches it was a stalemate and counts as one.
+/// With two brains named it is a head to head; with neither, a round robin of every row. A
+/// pairing that reaches the pair cap is a stalemate.
 pub fn duel_main(args: &[String]) -> Result<(), String> {
     let seeds: u64 = args.first().and_then(|s| s.parse().ok()).unwrap_or(6);
     let pair_cap: u64 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(400);
@@ -585,8 +545,7 @@ fn round_robin(seeds: u64, pair_cap: u64, difficulty: Difficulty, key_delay: Dur
         );
     }
 
-    // worst first, the way SKILL_ORDER reads. Wins decide it and what a row sent breaks the
-    // ties, which are common between rows that never bury each other
+    // worst first; wins decide it and nuisance sent breaks ties
     let mut order: Vec<usize> = (0..SKILLS).collect();
     order.sort_by_key(|row| (wins[*row], sent[*row]));
     let order: Vec<String> = order.iter().map(|row| row.to_string()).collect();

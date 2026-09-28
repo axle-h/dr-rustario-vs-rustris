@@ -1,9 +1,7 @@
-//! Dr. Mario 64's scoring weights, lifted from `ai_param_org` in `aiset.c`.
+//! Dr. Mario 64's scoring weights (`ai_param_org` in `aiset.c`) and [`SKILL_ORDER`].
 //!
-//! The original picks a row by *skill* - `aiSelCom`, which a character's `ai_char_data` looks up
-//! per situation - and a column by *situation*, which [`super::Situation`] works out from the
-//! bottle. The pair names one row of 28 numbers, which `aiSetCharacter` fans out over a dozen
-//! global tables. [`Params`] is that fanning out, done once per pill.
+//! A skill row and a [`super::Situation`] name 28 numbers, which [`Params`] fans out once per
+//! pill as `aiSetCharacter` does.
 
 use crate::game::ai::n64::Situation;
 
@@ -11,37 +9,16 @@ pub const SKILLS: usize = 6;
 const SITUATIONS: usize = 8;
 const FIELDS: usize = 28;
 
-/// The six rows worst to best, which is what a difficulty picks from, and which the strongest
-/// of - `DEFAULT_SKILL` - is the teacher [`crate::game::ai::imitation`] gathers its corpus
-/// from, the winning side of the 2-player demo, and what both `hard` and `impossible` play:
-/// nothing here fields the trained network, so the ladder runs out at this row and the top two
-/// difficulties differ in their key rate rather than in their weights.
-///
-/// The rows are personalities rather than a ladder - the original picks one per character, not
-/// per skill setting - so the order is measured. **It is measured in the same currency the
-/// training fitness uses**: viruses destroyed inside a budget of
-/// [`crate::game::ai::run::PILL_BUDGET`] pills, over twenty seeds at each of virus levels 0, 5,
-/// 10, 15 and 20 (`ga dr play <seed> <level> 2500 100000 n64:<row>`), which is six hundred
-/// whole games. That was not always so - it used to be bottles cleared less four per burial at
-/// a 1200 pill cap - and the two disagree at the top, because the old rule charges four bottles
-/// for a burial and row 4 buries itself more than twice as often as row 1 while clearing far
-/// more than it. Which of those is the better player is exactly the question the pill budget
-/// was introduced to answer, so it answers this one too.
-///
-/// | row | viruses | bottles | burials |
-/// |--|--|--|--|
-/// | 4 | 68834 | 1138 | 43 |
-/// | 1 | 58404 |  990 | 18 |
-/// | 2 | 56284 |  959 | 18 |
-/// | 0 | 50750 |  920 | 46 |
-/// | 5 | 36544 |  701 | 48 |
-/// | 3 | 33829 |  656 | 33 |
+/// The six rows worst to best, ranked on viruses destroyed within
+/// `PILL_BUDGET` pills (`ga dr play <seed> <level> 2500 100000 n64:<row>`).
+/// Every difficulty and both demos play these rows, so `hard` and `impossible` share the last
+/// and differ only in key rate; the last is also [`crate::game::ai::imitation`]'s teacher.
 pub const SKILL_ORDER: [u8; SKILLS] = [3, 5, 0, 2, 1, 4];
 
 /// The row an ai plays when nothing picks one: the best of them.
 pub const DEFAULT_SKILL: u8 = SKILL_ORDER[SKILLS - 1];
 
-/// Original name: `ai_param_org`
+/// original name: `ai_param_org`
 #[rustfmt::skip]
 const AI_PARAM: [[[i32; FIELDS]; SITUATIONS]; SKILLS] = [
     [
@@ -106,8 +83,8 @@ const AI_PARAM: [[[i32; FIELDS]; SITUATIONS]; SKILLS] = [
     ],
 ];
 
-/// how much of the priority survives when the bottle is lopsided, by column. Original name:
-/// `WallRate`, indexed by which side of the bottle is stacked up
+/// how much of the priority survives when the bottle is lopsided, by stacked side then column;
+/// original name: `WallRate`
 pub const WALL_RATE: [[i32; 8]; 4] = [
     [10, 10, 10, 10, 10, 10, 10, 10],
     [64, 64, 32, 16, 8, 4, 2, 1],
@@ -115,36 +92,35 @@ pub const WALL_RATE: [[i32; 8]; 4] = [
     [64, 64, 16, 4, 4, 16, 64, 64],
 ];
 
-/// what it costs to leave a block this high up, by column. Original names: `bad_point` and
-/// `bad_point2`, the second being what it costs to do it with both halves at once
+/// what it costs to leave a block this high up, by column, and with both halves at once;
+/// original names: `bad_point` and `bad_point2`
 pub const BAD_POINT: [i32; 8] = [-90, -270, -360, -900, -900, -360, -270, -90];
 pub const BAD_POINT2: [i32; 8] = [-90, -270, -360, -9000, -9000, -360, -270, -90];
 
 /// The tables `aiSetCharacter` fills in for the pill about to be played.
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
-    /// what each entry of a `hei`/`wid` row is worth once a line has been made. Original name:
+    /// what each entry of a `hei`/`wid` row is worth once a line is made; original name:
     /// `pri_point`
     pub pri_point: [i32; 9],
-    /// what clearing this many lines at once is worth. Original name: `EraseLinP`
+    /// what clearing this many lines at once is worth; original name: `EraseLinP`
     pub erase_lin_p: [i32; 9],
     pub hei_erase_lin_rate: f32,
     pub wid_erase_lin_rate: f32,
-    /// what a run of this length that has not gone yet is worth, vertically and horizontally.
-    /// Original names: `HeiLinesAllp` and `WidLinesAllp`
+    /// what an uncleared run of this length is worth, vertically and horizontally; original
+    /// names: `HeiLinesAllp` and `WidLinesAllp`
     pub hei_lines_allp: [i32; 9],
     pub wid_lines_allp: [i32; 9],
-    /// what it costs to strand a half where nothing can join it. Original names: `AloneCapP`
+    /// what it costs to strand a half where nothing can join it; original names: `AloneCapP`
     /// and `AloneCapWP`
     pub alone_cap_p: [i32; 6],
     pub alone_cap_wp: [i32; 6],
-    /// what it costs to strand both halves at once, scaled by how high they are. Original
-    /// name: `LPriP`
+    /// what it costs to strand both halves at once, scaled by height; original name: `LPriP`
     pub l_pri_p: i32,
-    /// what covering a virus is worth, or costs. Original name: `OnVirusP`
+    /// what covering a virus is worth, or costs; original name: `OnVirusP`
     pub on_virus_p: i32,
-    /// what a placement that sets up a chain is worth, and what one that only sets up a chain
-    /// for a colour that is not coming is worth. Original names: `RensaP` and `RensaMP`
+    /// what setting up a chain is worth, and one only for a colour not coming; original names:
+    /// `RensaP` and `RensaMP`
     pub rensa_p: i32,
     pub rensa_mp: i32,
     /// whether the lopsided-bottle multiplier applies at all
@@ -177,8 +153,8 @@ impl Params {
         }
 
         Self {
-            // [2] is never given a value by `aiSetCharacter`, so it keeps the one `pri_point`
-            // is declared with; the rest of the untouched entries are zero
+            // `aiSetCharacter` never sets [2], so it keeps its declared 9; other unset entries
+            // are 0
             pri_point: [0, row[1], 9, 0, row[0], 0, 0, row[19], row[20]],
             erase_lin_p,
             hei_erase_lin_rate: row[4] as f32 * 0.01,
@@ -206,9 +182,7 @@ mod tests {
         let mut rows = SKILL_ORDER;
         rows.sort();
         assert_eq!(rows, [0, 1, 2, 3, 4, 5], "a row is missing or ranked twice");
-        // worst to best, so the last is the strongest - which is the row every one-row decision
-        // in the crate takes: the ai a difficulty tops out at, the demo's defender, and the
-        // teacher `imitation::lessons` gathers its corpus from
+        // worst to best, so the last is the strongest
         assert_eq!(DEFAULT_SKILL, SKILL_ORDER[SKILLS - 1]);
     }
 }

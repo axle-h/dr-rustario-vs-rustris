@@ -26,7 +26,7 @@ pub fn all_themes<'a>(
     all_themes_with_progress(canvas, texture_creator, config, &mut |_| Ok(()))
 }
 
-/// ... reporting each one as it is built, which is what the loading bar counts
+/// [`all_themes`], reporting each one to the loading bar as it is built
 pub fn all_themes_with_progress<'a>(
     canvas: &mut WindowCanvas,
     texture_creator: &'a TextureCreator<WindowContext>,
@@ -64,8 +64,7 @@ pub fn race_themes(themes: &[Theme]) -> Vec<RaceTheme> {
         .iter()
         .enumerate()
         .map(|(index, theme)| {
-            // every theme's sprites are drawn at the same size in the race, whatever cell
-            // size the theme itself was built at
+            // every theme races at the same size, whatever cell size it was built at
             let scale = modern::SRC_BLOCK_SIZE as f64 / theme.sprites().block_size() as f64 / 2.0;
             theme.race_theme(index, pieces.clone(), scale)
         })

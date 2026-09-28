@@ -105,9 +105,8 @@ pub struct Bottle {
 }
 
 impl Bottle {
-    /// An empty bottle, for something that means to fill it in itself: the tests, and the
-    /// pictures [`crate::game::ai::explain`] draws each of the network's inputs with. A bottle
-    /// a *game* deals comes from [`Bottle::from_seed`] with its viruses already in it.
+    /// An empty bottle, for tests and [`crate::game::ai::explain`]'s pictures; a game deals
+    /// with [`Bottle::from_seed`].
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {

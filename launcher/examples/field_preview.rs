@@ -1,5 +1,7 @@
-//! renders the modern themes' background particle field to a png, for eyeballing it without
-//! playing a match. `cargo run --example field_preview -- <seconds> <out.png> [players]`
+//! Renders the modern themes' background particle field to a png without playing a match.
+//!
+//! `cargo run --example field_preview -- <seconds,...|shapes|sheet|features> [prefix]
+//! [both_modern] [events] [dr|rustris|puyo|mixed]`
 
 use engine::config::{Config, ParticleDensity};
 use engine::font::FontType;
@@ -38,8 +40,7 @@ fn main() -> Result<(), String> {
         .collect();
     let prefix = args.get(2).cloned().unwrap_or("field".to_string());
     let diagnostic = shapes_only || sheet || features;
-    // the features mode takes it too: a half-window canvas is where a routine authored in
-    // canvas coordinates goes wrong
+    // features takes it too, since a half-window canvas is where canvas coordinates go wrong
     let both_modern: bool = args
         .get(3)
         .filter(|_| !shapes_only && !sheet)
@@ -100,10 +101,8 @@ fn main() -> Result<(), String> {
     };
 
     if sheet {
-        // every sprite of every theme, outlined and labelled with what the bank made of it:
-        // the only way to eyeball the edge detection itself. One png per theme, since Puyo
-        // Rusto's fifteen sets of puyos are 375 previews on their own and every theme on one
-        // page runs past what a texture may be
+        // every sprite of every theme, outlined and labelled with what the bank made of it;
+        // one png per theme, since all of them on one page exceed the texture size limit
         let out = args.get(2).cloned().unwrap_or("sheet.png".to_string());
         let page_path = |title: &str| {
             let slug: String = title
@@ -255,8 +254,7 @@ fn main() -> Result<(), String> {
         ParticleDensity::High,
     )?;
 
-    // one game named puts both players on it; anything else deals them the first two, which
-    // is what "mixed" means whatever the compendium grows to
+    // one game named puts both players on it; anything else deals them the first two
     let named = games_built.iter().find(|g| g.name == games);
     let left = named.unwrap_or(&games_built[0]);
     let right = named.unwrap_or(&games_built[1 % games_built.len()]);
@@ -292,8 +290,7 @@ fn main() -> Result<(), String> {
     let frame = Duration::from_micros(16_667);
 
     if features {
-        // every feature routine in turn: settle, stage it, and snapshot part way through its
-        // hold, which is the only way to see one that comes up once a minute
+        // every feature routine in turn: settle, force it, and snapshot part way through its hold
         for feature in [
             Feature::Sprite,
             Feature::Lattice,
@@ -329,7 +326,7 @@ fn main() -> Result<(), String> {
             snapshot(&mut canvas, &texture_creator, &mut particles, &out)?;
             println!("wrote {out}");
         }
-        // and the words the match calls for, which no amount of waiting would produce
+        // and the words the match calls for
         for word in words::ALL {
             for _ in 0..90 {
                 particles.update_scene(frame, &mut canvas, &scene)?;
@@ -492,8 +489,8 @@ fn region(
 
 type PreviewEntry = (&'static str, GameId, fn() -> Palette);
 
-/// Every game a preview can put a player on: its short name (what the `games` argument
-/// takes), its [`GameId`] and the colours it radiates into the field. One entry per game.
+/// Every game a preview can put a player on: the `games` argument's name, its [`GameId`] and
+/// the colours it radiates into the field.
 const PREVIEW_GAMES: [PreviewEntry; 3] = [
     ("dr", engine::game::ids::DR_RUSTARIO, dr_palette),
     ("rustris", engine::game::ids::RUSTRIS, rustris_palette),

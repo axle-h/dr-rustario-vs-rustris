@@ -45,9 +45,7 @@ impl StructuredMusic {
         Rc::new(self)
     }
 
-    /// Levels this track against the house. A `Cell` because a theme is built once and lived
-    /// on as a `&'static`, so the gain is set through the `Rc` the theme already holds rather
-    /// than by rebuilding every track.
+    /// A `Cell` because a built theme lives on as a `&'static` and is levelled through its `Rc`.
     pub fn set_gain(&self, percent: i32) {
         self.gain.set(percent);
     }
@@ -56,8 +54,7 @@ impl StructuredMusic {
         audio::play_music(music.intro, music.repeating, music.loops, music.gain.get())
     }
 
-    /// Plays, unless an endless loop of this same music is already playing, which is left
-    /// alone: menus that share a tune switch without restarting it.
+    /// Plays, unless an endless loop of this same music is already playing.
     pub fn play_unless_current(music: &Rc<StructuredMusic>) -> Result<(), String> {
         audio::play_music_unless_current(
             music.intro,

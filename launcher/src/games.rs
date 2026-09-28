@@ -14,16 +14,14 @@ pub enum GameKind {
     DrRustario,
     Rustris,
     Puyo,
-    /// only in a build with the `rustle-fighter` feature, which is off by default: without it
-    /// the game is not in the binary at all
+    /// only with the `rustle-fighter` feature; without it the game is not in the binary
     #[cfg(feature = "rustle-fighter")]
     RustleFighter,
 }
 
 impl GameKind {
-    /// every game the launcher can run, in the order they are numbered. This is the key of
-    /// every per-game collection - see [`PerGame`] - and the order the themes are built in,
-    /// so a game's themes keep one place in the shared list.
+    /// every game in the order they are numbered: the key of every [`PerGame`] and the order
+    /// the themes are built in
     pub const ALL: [GameKind; Self::COUNT] = [
         GameKind::DrRustario,
         GameKind::Rustris,
@@ -32,9 +30,7 @@ impl GameKind {
         GameKind::RustleFighter,
     ];
 
-    /// the order the games are billed in: the pre-menu's list, and the turns a fixed versus
-    /// playlist takes. Rustris opens, which is a decision about presentation rather than
-    /// about how the games are numbered, so it is its own list.
+    /// the order the games are billed in on the pre-menu
     pub const RUNNING_ORDER: [GameKind; Self::COUNT] = [
         GameKind::Rustris,
         GameKind::DrRustario,
@@ -43,22 +39,11 @@ impl GameKind {
         GameKind::RustleFighter,
     ];
 
-    /// The games a versus playlist *can* deal, in the order it deals them.
+    /// The games a versus playlist can deal: the turn order and default selection, not what a
+    /// match deals, which is `VersusMode`'s ticked subset (`modes::Dealt`).
     ///
-    /// A third list because it is a third thing: a game is on the pre-menu as soon as it can
-    /// be played, and joins the playlists once it has the themes and the ai to hold up its
-    /// end of one.
-    ///
-    /// **This is the turn order and the default selection, not what a playlist deals.** The
-    /// vs. playlist menu ticks a row per game and a match deals only the ticked ones, in this
-    /// order - so everything that deals a stage reads `VersusMode`'s selection (see
-    /// `modes::Dealt`) rather than this list. Anyone who wants the old two-game compendium
-    /// unticks Puyo Rusto.
-    ///
-    /// **Super Rustle Fighter is not on it yet.** It has its theme and its rules and is
-    /// playable on its own; what it does not have is an ai to take a turn against, or the six
-    /// measured crossings a fourth game adds - and `ga cross` cannot measure those until the
-    /// ai exists, since it prices a game by playing it. Phases 3 and 5 of its plan.
+    /// A game joins once it has an ai and its crossings are priced, so Super Rustle Fighter is
+    /// not on it.
     pub const PLAYLIST_ORDER: &'static [GameKind] =
         &[GameKind::Rustris, GameKind::DrRustario, GameKind::Puyo];
 
@@ -80,16 +65,8 @@ impl GameKind {
         }
     }
 
-    /// Does this game field an ai at all?
-    ///
-    /// Every one of them does except Super Rustle Fighter, which is phase 3 of its plan. It
-    /// is the same fact that keeps that game off [`Self::PLAYLIST_ORDER`] - a playlist turn
-    /// is taken against an ai - but it is said separately because they are two claims and the
-    /// first will stop being true before the second does.
-    ///
-    /// Everything that offers ai opponents, demos or difficulties asks this rather than
-    /// assuming, which is what stops a game without one being offered an opponent that does
-    /// not exist.
+    /// Whether this game has an ai; everything offering ai opponents, demos or difficulties
+    /// asks this.
     pub fn fields_an_ai(self) -> bool {
         #[cfg(feature = "rustle-fighter")]
         if self == GameKind::RustleFighter {
@@ -108,17 +85,11 @@ impl GameKind {
 }
 
 /// One value per game, keyed by [`GameKind`].
-///
-/// This is the shape everything that used to name the two games by hand takes instead - the
-/// themes each game contributes, the slots a playlist deals it, the brains an ai player thinks
-/// with - so that a third game is an *entry* in a collection rather than another field, and
-/// the compiler cannot be satisfied by leaving it out.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PerGame<T>(Vec<T>);
 
-/// an empty value for every game, not an empty collection: everything that indexes one
-/// indexes it by [`GameKind::index`], so a `PerGame` with no slots is not a smaller
-/// collection, it is a broken one
+/// a default value for every game, not an empty collection, since every access indexes by
+/// [`GameKind::index`]
 impl<T: Default> Default for PerGame<T> {
     fn default() -> Self {
         Self::new(|_| T::default())
@@ -154,7 +125,8 @@ impl<T> PerGame<T> {
     }
 }
 
-// one per player for the length of a match, and every call goes through it: not worth a box
+/// Every match runs through this; a defaulted `Game` or `GameRender` method it does not
+/// delegate is silently never asked of the game, and only the tests below catch it.
 #[allow(clippy::large_enum_variant)]
 pub enum AnyGame {
     DrRustario(dr_rustario::game::Game),
@@ -177,8 +149,6 @@ macro_rules! delegate {
 }
 
 impl AnyGame {
-    /// which game this is, which is what a versus playlist deals and what an ai controller
-    /// has to dispatch on
     pub fn kind(&self) -> GameKind {
         match self {
             AnyGame::DrRustario(_) => GameKind::DrRustario,
@@ -190,13 +160,7 @@ impl AnyGame {
     }
 }
 
-/// One game's ai, playing through [`AnyGame`].
-///
-/// A versus playlist deals every game, so an ai player is a brain *per game* - each of them
-/// whatever that game would field on its own. Behind this trait that is a list with one entry
-/// per game rather than a tuple that grows a field every time the compendium does: a brain
-/// handed a board that is not its game simply does nothing, and the one whose game it is
-/// plays it.
+/// One game's ai, playing through [`AnyGame`]; handed another game's board it does nothing.
 pub trait AiBrain {
     /// play one frame, if the board in front of it is the game this brain knows
     fn act(&mut self, game: &mut AnyGame, delta: Duration);
@@ -248,9 +212,6 @@ pub fn rustris_brain(
 }
 
 /// a Puyo Rusto brain, playing only Puyo boards
-///
-/// The brain behind it is a beam search and stays one - there is no neural model for that game
-/// and none is coming, see [`puyo_rusto::game::ai`].
 pub fn puyo_brain(
     brain: puyo_rusto::game::ai::PuyoAiKind,
     key_delay: Duration,
@@ -324,9 +285,7 @@ impl Game for AnyGame {
         delegate!(self, g => Game::cell(g, point))
     }
 
-    /// Forwarded like everything else, and easy to miss because it is the one method on
-    /// [`Game`] with a default: a wrapper that does not name it silently answers 0.0 for every
-    /// game, whatever the game underneath would have said.
+    /// defaulted on [`Game`], so a wrapper that omits it answers 0.0 for every game
     fn fall_progress(&self) -> f64 {
         delegate!(self, g => Game::fall_progress(g))
     }
@@ -438,12 +397,7 @@ mod tests {
         ))
     }
 
-    /// Every defaulted method of [`Game`] and [`GameRender`] that a game actually answers has
-    /// to be named here, and forgetting one costs nothing at compile time: the wrapper simply
-    /// answers the default and the game is never asked. Puyo is the game that answers all
-    /// three of these, and all three are invisible when they go missing - a piece drawn on the
-    /// grid instead of sliding, a tray that draws no icons, an attack that appears instead of
-    /// falling in - so each one is pinned by a test rather than by the compiler.
+    /// The wrapper forwards `fall_progress`, which a falling Puyo pair answers non-zero.
     #[test]
     fn a_wrapped_game_is_asked_how_far_it_has_fallen() {
         let mut game = puyo();
@@ -481,9 +435,7 @@ mod tests {
         );
     }
 
-    /// The best a game's ai manages, in that game's own units, as `ga cross` measured it:
-    /// a three pattern Dr. Rustario combo, a Rustris tetris, and a Puyo chain worth two rocks.
-    /// Anything at least this big has to be felt in every other game.
+    /// a big attack in the sender's own units, which every other game must feel
     fn a_real_attack(sender: GameKind, receiver: GameKind) -> u32 {
         let id = |game| match game {
             GameKind::DrRustario => engine::game::ids::DR_RUSTARIO,
@@ -503,25 +455,14 @@ mod tests {
                 },
             ),
             GameKind::Puyo => puyo_rusto::game::foreign_attack(id(receiver), 60),
-            // it has no `foreign_attack` because it cannot yet be dealt into a playlist, and
-            // so has no crossing to price - see `PLAYLIST_ORDER`
+            // not in `PLAYLIST_ORDER`, so it has no crossings
             #[cfg(feature = "rustle-fighter")]
             GameKind::RustleFighter => 0,
         }
     }
 
-    /// **Every crossing two games can actually make is priced.**
-    ///
-    /// An unpriced pair is worth nothing and the attack is dropped at the border - which is
-    /// the safe default and is also completely silent, since nothing arriving looks exactly
-    /// like nothing being sent. The game crates are siblings and none of them can see this
-    /// table, so this is the only place the whole of it can be checked at once.
-    ///
-    /// It walks [`GameKind::PLAYLIST_ORDER`] rather than `ALL`, and the difference is the
-    /// point: a crossing only exists between two games a playlist can deal into the same
-    /// match, and a game that no playlist deals can neither send an attack abroad nor receive
-    /// one. Super Rustle Fighter is playable on its own and is not on that list, so it has no
-    /// crossings to price - and the moment it joins, this test asks for all six of them.
+    /// Every pair in [`GameKind::PLAYLIST_ORDER`] prices a big attack above zero, since an
+    /// unpriced crossing drops silently.
     #[test]
     fn every_crossing_between_two_games_is_priced() {
         for sender in GameKind::PLAYLIST_ORDER.iter().copied() {
@@ -538,8 +479,7 @@ mod tests {
         }
     }
 
-    /// the two lists are the same games in different orders: one game left out of either
-    /// would go missing from the menus or from a per-game collection
+    /// `ALL` and `RUNNING_ORDER` hold every game exactly once
     #[test]
     fn every_game_is_numbered_and_billed_exactly_once() {
         for (i, game) in GameKind::ALL.iter().enumerate() {
@@ -556,8 +496,7 @@ mod tests {
         assert_eq!(GameKind::RUNNING_ORDER.len(), GameKind::COUNT);
     }
 
-    /// the playlist deals a subset of the games - a game joins it once it has the themes and
-    /// the ai to take a turn - but never a game that is not one of them
+    /// `PLAYLIST_ORDER` is a subset of `ALL` with no repeats
     #[test]
     fn every_game_a_playlist_deals_is_a_game() {
         for game in GameKind::PLAYLIST_ORDER {
@@ -580,8 +519,7 @@ mod tests {
             assert_eq!(*names.get(game), game.name());
         }
         assert_eq!(names.values().count(), GameKind::COUNT);
-        // ... and in the order they are numbered, which is what anything zipping ALL against
-        // the values relies on
+        // in `ALL` order, which zipping against the values relies on
         assert_eq!(
             names.values().copied().collect::<Vec<&str>>(),
             GameKind::ALL.map(|game| game.name()).to_vec()

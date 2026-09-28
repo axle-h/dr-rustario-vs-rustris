@@ -5,14 +5,12 @@ const PLAYER_BUFFER_PCT: f64 = 0.002;
 /// How a theme's art may be resized to the window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScaleMode {
-    /// pixel art drawn at a source resolution: it scales up, by whole pixels when the config
-    /// asks for integer scaling
+    /// pixel art at a source resolution: scales up, by whole pixels when the config asks
     Source,
-    /// art already rendered at its final size: it only ever scales down, and smoothly
+    /// art at its final size: only ever scales down, smoothly
     Native,
 }
 
-/// The area of the window one player's theme is drawn into.
 pub fn player_area(player: u32, players: u32, (window_width, window_height): (u32, u32)) -> Rect {
     let inset_x = (PLAYER_BUFFER_PCT * window_width as f64).round() as i32;
     let inset_y = (PLAYER_BUFFER_PCT * window_height as f64).round() as i32;
@@ -26,8 +24,7 @@ pub fn player_area(player: u32, players: u32, (window_width, window_height): (u3
 }
 
 /// The largest scale at which art of `size` source pixels fits `area`. The top `top_slack`
-/// source pixels are empty in every theme that has them, so they are allowed to fall outside
-/// the area rather than hold the whole board back.
+/// source pixels are empty in every theme, so they may fall outside the area.
 pub fn fit(
     area: Rect,
     (width, height): (u32, u32),
@@ -40,7 +37,6 @@ pub fn fit(
     let by_height = area.height() as f64 / required_height as f64;
     let scale = by_width.min(by_height);
     match mode {
-        // native art is already the right size: it may shrink to share the window, never grow
         ScaleMode::Native => scale.min(1.0),
         ScaleMode::Source if integer => (scale.floor()).max(1.0),
         ScaleMode::Source => scale,
@@ -79,8 +75,8 @@ impl Scale {
         }
     }
 
-    /// the exact vertical strip of the window belonging to a player, with no buffer offset.
-    /// used to clip full-window drawing (scene backdrop, fades) to one player's side.
+    /// the exact vertical strip of the window belonging to a player, for clipping full-window
+    /// drawing to one side
     pub fn player_clip(&self, player: u32) -> Rect {
         let x = (self.window_width as u64 * player as u64 / self.players as u64) as i32;
         let next_x = (self.window_width as u64 * (player as u64 + 1) / self.players as u64) as i32;
@@ -122,8 +118,7 @@ impl Scale {
         )
     }
 
-    /// how much the theme's art is being scaled by, for something drawn on the window rather
-    /// than into a theme's own textures and so scaled by hand
+    /// the art's scale factor, for things drawn on the window and scaled by hand
     pub fn factor(&self) -> f64 {
         self.scale
     }
@@ -155,8 +150,7 @@ mod tests {
 
     #[test]
     fn the_player_buffer_is_window_pixels_not_source_pixels() {
-        // two 210x183 backgrounds fit side by side at 3x in 1280 wide: 1260 of art and 12 of
-        // buffer. Charging the buffer at 3x each would cost a whole step.
+        // two 210x183 backgrounds fit side by side at 3x in 1280; the buffer must not cost a step
         let area = player_area(1, 2, (1280, 720));
         assert_eq!(area.width(), 634);
         assert_eq!(area.left(), 643);
@@ -166,7 +160,6 @@ mod tests {
     #[test]
     fn the_empty_gap_above_a_board_may_fall_off_the_top() {
         let area = player_area(0, 1, (1280, 720));
-        // 183 * 4 is taller than the window, but 183 - 16 of it is not
         assert_eq!(fit(area, (210, 183), 0, ScaleMode::Source, true), 3.0);
         assert_eq!(fit(area, (210, 183), 16, ScaleMode::Source, true), 4.0);
     }
@@ -174,7 +167,6 @@ mod tests {
     #[test]
     fn smooth_scaling_fills_more_of_the_window_than_the_integer_step_below() {
         let area = player_area(0, 1, (1280, 720));
-        // the tallest rustris theme, which nothing may be clipped off
         let smooth = fit(area, (209, 190), 0, ScaleMode::Source, false);
         let integer = fit(area, (209, 190), 0, ScaleMode::Source, true);
         assert_eq!(integer, 3.0);

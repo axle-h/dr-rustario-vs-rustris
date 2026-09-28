@@ -47,8 +47,7 @@ impl IntoIterator for InputSequence {
     }
 }
 
-/// shorter sequences first, so a tie between two placements goes to the simpler one, and
-/// identical lengths still order deterministically
+/// shorter sequences first, so a tie between two placements goes to the simpler one
 impl Ord for InputSequence {
     fn cmp(&self, other: &Self) -> Ordering {
         self.0

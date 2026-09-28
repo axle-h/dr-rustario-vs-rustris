@@ -50,7 +50,7 @@ impl From<ParticleColor> for VariableQuantity<ParticleColor> {
 }
 
 impl VariableQuantity<f64> {
-    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    /// not `Iterator::next`: a quantity is sampled, not used up
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> f64 {
         self.quantity + self.variance * self.rand_signed_f64()
@@ -58,7 +58,7 @@ impl VariableQuantity<f64> {
 }
 
 impl VariableQuantity<Vec2D> {
-    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    /// not `Iterator::next`: a quantity is sampled, not used up
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Vec2D {
         self.quantity
@@ -70,7 +70,7 @@ impl VariableQuantity<Vec2D> {
 }
 
 impl VariableQuantity<ParticleColor> {
-    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    /// not `Iterator::next`: a quantity is sampled, not used up
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> ParticleColor {
         self.quantity
@@ -80,7 +80,7 @@ impl VariableQuantity<ParticleColor> {
 }
 
 impl VariableQuantity<ParticleWave> {
-    /// not `Iterator::next`: a quantity is sampled, not used up, so an `Option` would be a lie
+    /// not `Iterator::next`: a quantity is sampled, not used up
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> ParticleWave {
         let magnitude =

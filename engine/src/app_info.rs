@@ -10,8 +10,8 @@ pub struct AppInfo {
 
 static APP_INFO: OnceLock<AppInfo> = OnceLock::new();
 
-/// Register the host application's identity. Must be called once before any config, high
-/// score or menu code runs; later calls are ignored.
+/// Register the host application's identity before any config, high score or menu code runs;
+/// later calls are ignored.
 pub fn init(info: AppInfo) {
     let _ = APP_INFO.set(info);
 }

@@ -3,30 +3,12 @@
 
     python3 puyo-rusto/art/sfx.py [source directory]   # needs ffmpeg with libvorbis
 
-The source is the sound effect rip as it is distributed - a directory of `<name>.acb (What
-It Is)` folders of WAVs - and it is **not in the repository**: 33 MiB of source is not worth
-carrying, the way neither the sprite sheet `rip.py` cuts nor the tracks `music.py` splits
-are. It defaults to sitting next to this script.
+The source is the rip as distributed, a directory of `<name>.acb (What It Is)` folders of WAVs,
+and is not in the repository; it defaults to sitting next to this script.
 
-This used to be `audio.py`, a chiptune synthesiser: the theme's art was procedural then too.
-Both are the rip now, and a game's sound effects are the one place a synthesiser has nothing
-to say - the sound of a chain climbing is the sound Puyo is *known* for, and an approximation
-of it is just wrong.
-
-Two things happen to a sound on the way in:
-
-* `engine/src/audio/decode.rs` rejects anything that is not 44,100 Hz outright and the rip
-  is a mixture of 44.1 and 48 kHz, so every one of them is resampled. Mono and stereo both
-  decode, so whichever the rip made a sound is what it stays.
-* the silence is trimmed off both ends, with a short fade over the last of it. The rip pads
-  a sound out to a whole number of somebody's frames - a quarter of a second of nothing after
-  a chain step that has to land again before the next one does - and the head it trims is
-  latency on a key press.
-
-What is *not* done to them is normalising. The levels are the original's mix and they are
-meant to be uneven: a puyo settling is a fifth the height of a nuisance drop because it is
-supposed to go unnoticed, and levelling them would put a landing thud on top of the win
-fanfare.
+Every sound is resampled to 44,100 Hz, the only rate `engine/src/audio/decode.rs` accepts, and
+its padding is trimmed off both ends with a short fade. Nothing is normalised: the levels are
+the original's mix and are meant to be uneven.
 """
 
 import os
@@ -47,58 +29,35 @@ DEFAULT_SOURCE = os.path.join(
     "Nintendo Switch - Puyo Puyo Tetris 2 - Sound Effects - Sound Effects",
 )
 
-# how quiet, against a sound's own peak, still counts as the silence the rip padded it with
+# how quiet, against a sound's own peak, still counts as the rip's padding
 SILENCE = 0.005
-# how much of the head to keep once the trim has found where the sound starts, and how long
-# to fade the tail, in seconds
+# seconds of head kept before the sound, and of fade over the tail
 LEAD_IN = 0.004
 FADE_OUT = 0.008
 
-# Which of the rip's sounds each of the theme's is, by the name it has in the rip rather than
-# by its number, since the numbering is the archive's and not the game's. The bank the sound
-# comes from is the first word of the folder, so `main` is `main.acb (General Sounds)`.
-#
-# `puy` is Puyo's own half of the game and `tet` is Tetris's; where this game borrows a
-# mechanic from Tetris it borrows that half's sound with it, which is why the hard drop is a
-# `tet`. Everything a Puyo player hears every second - move, rotate, land, and the seven
-# steps of a chain - is Puyo's own.
+# `(bank, name)` of each slot's sound, by name since the rip's numbering is the archive's. The
+# bank is the first word of the folder, so `main` is `main.acb (General Sounds)`.
 SOUNDS = {
     "sfx/move.ogg": ("main", "se_puy07_move"),
     "sfx/rotate.ogg": ("main", "se_puy08_rotate"),
-    # the pair coming to rest. `down` is the only landing Puyo's half of the rip has, and it
-    # is this rather than the hard drop: a puyo pair falls of its own accord and the sound is
-    # the arrival, not the descent
     "sfx/lock.ogg": ("main", "se_puy09_down"),
-    # what the puyos left standing over a group do once it has gone. Deliberately the
-    # quietest thing in the theme - it fires once per chain step, under a `ren` that is four
-    # times its height, and a chain that clatters is a chain you cannot hear climbing
+    # the quietest sound in the theme, since it fires under every chain step
     "sfx/settle.ogg": ("main", "se_tet01_fall"),
-    # Tsu has no hard drop; this game does, so it takes Tetris's whoosh and then `lock`
-    # lands on top of it the way it does after any other fall
+    # Tsu has no hard drop, so this is Tetris's, with `lock` landing on top of it
     "sfx/hard-drop.ogg": ("main", "se_tet04_hdrop"),
-    # The chain. `ren` is 連 - the rip carries seven of them, one per step, each a fixed
-    # interval over the last, and they are the reason to have ripped anything at all.
-    # `clear_class` in `puyo-rusto/src/render.rs` grades a step 0..3 - chain 1, 2, 3, then
-    # everything from 4 up - so it is the first four that are wanted and `ren4` is what the
-    # original plays on the step this game stops counting at
+    # only four chain steps, since `clear_class` in `puyo-rusto/src/render.rs` grades them 0..3
     "sfx/pop-1.ogg": ("main", "se_puy00_ren1"),
     "sfx/pop-2.ogg": ("main", "se_puy01_ren2"),
     "sfx/pop-3.ogg": ("main", "se_puy02_ren3"),
     "sfx/pop-4.ogg": ("main", "se_puy03_ren4"),
-    # 送り, sending: nuisance leaving for the other board. The rip grades it in four sizes
-    # and the engine has one key for it, so it is the smallest of them - it goes off on top
-    # of the `ren` that earned it and must not bury it
+    # the smallest send size, so it does not bury the chain step that earned it
     "sfx/attack.ogg": ("main", "se_puy14_oj_okuri1"),
-    # おじゃま, the nuisance itself, landing on this board
     "sfx/garbage.ogg": ("main", "se_puy12_ojama1"),
     "sfx/speed-up.ogg": ("main", "se_puy24_levelup"),
     "sfx/pause.ogg": ("se_sys", "se_sys04_pause"),
     "sfx/victory.ogg": ("main", "se_puy19_win"),
     "sfx/game-over.ogg": ("main", "se_puy20_lose"),
-    # The menus'. Puyo Rusto already plays its own menu music where the other games play
-    # the engine's, and these are the two clicks that go with it; they land beside that music
-    # in `theme/menu/` rather than in the particle theme, because a menu is not a theme and
-    # the retro themes walk the same one.
+    # the menu's clicks, in `theme/menu/` since every theme walks the same menu
     "menu/chime.ogg": ("se_sys", "se_sys05_cursor"),
     "menu/select.ogg": ("se_sys", "se_sys02_decide"),
 }
@@ -114,13 +73,7 @@ def banks(source):
 
 
 def find(directory, sound):
-    """the one file in `directory` the game calls `sound`
-
-    The rip numbers its files in the order the archive held them and that number is not the
-    game's, so it is stripped and the name behind it is what is matched. A couple of files
-    carry two names separated by a comma - one slot the game fills twice over, and `se_tet01_fall`
-    is one of them - so either name finds the file.
-    """
+    """the one file in `directory` named `sound`, past its number prefix or after a comma"""
     matches = [
         f
         for f in sorted(os.listdir(directory))
@@ -143,7 +96,6 @@ def probe_channels(path):
 
 
 def decode(path, channels):
-    """the whole file as interleaved i16 at the mixer's rate"""
     pcm = subprocess.run(
         ["ffmpeg", "-loglevel", "error", "-i", path, "-ar", str(RATE), "-ac", str(channels),
          "-f", "s16le", "-"],

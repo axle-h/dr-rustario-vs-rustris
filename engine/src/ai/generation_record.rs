@@ -20,7 +20,6 @@ impl GenerationRecord {
         let file = File::create(&path)?;
         let mut record = Self { file, path };
 
-        // Write CSV header
         writeln!(record.file, "Generation,Phase,Fitness,Score,Cleared,Bonus,Pieces,Fitness P95,Score P95,Cleared P95,Bonus P95,Fitness P50,Score P50,Cleared P50,Bonus P50,Seed,Genome")?;
         Ok(record)
     }
@@ -30,8 +29,7 @@ impl GenerationRecord {
     }
 
     pub fn add<const N: usize>(&mut self, stats: &GenerationStatistics<N>) -> io::Result<()> {
-        // the weights the network is built from rather than the raw coefficients the algorithm
-        // works in, so the column is the model and not a step on the way to it
+        // the network's weights rather than the raw coefficients, so the column is the model
         let genome: Vec<String> = stats
             .max()
             .genome()

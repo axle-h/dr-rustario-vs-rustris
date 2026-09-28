@@ -49,20 +49,16 @@ pub trait GameRender {
         0
     }
 
-    /// A word for the background field to spell out when this happens, if it deserves one:
-    /// a Rustris tetris, a Dr. Rustario combo. The words themselves are the engine's, see
-    /// [`crate::particles::field::reaction::words`]; a game only says when.
+    /// A word for the background field to spell out when this happens, if it deserves one. The
+    /// words are the engine's, see [`crate::particles::field::reaction::words`]; a game only says
+    /// when.
     fn clear_word(&self, event: &GameEvent) -> Option<&'static str> {
         let _ = event;
         None
     }
 
-    /// A short caption to draw over the cells this event cleared, if it deserves one.
-    ///
-    /// Unlike [`Self::clear_word`], which writes across the whole window in particles and is
-    /// for the once-a-match moments, this is small, local and may fire on every clear - a Puyo
-    /// chain counting itself up step by step. The game owns the words: they are drawn as text
-    /// rather than picked from a list the field knows how to spell.
+    /// A short caption to draw over the cells this event cleared, if it deserves one. Unlike
+    /// [`Self::clear_word`] it is local and may fire on every clear, and the game owns the text.
     fn clear_popup(&self, event: &GameEvent) -> Option<String> {
         let _ = event;
         None
@@ -76,13 +72,8 @@ pub trait GameRender {
         vec![]
     }
 
-    /// How an attack falls in from over the top of the board.
-    ///
-    /// A game that answers holds its play while it lands, which is what a game whose garbage
-    /// *waits* wants: a tray full of nuisance dropping in all at once is the moment the player
-    /// has been watching for, and it should be seen arriving. `None` - the default, and what
-    /// both the games that take their hits the instant they are sent say - draws the cells
-    /// where they land and carries straight on.
+    /// How an attack falls in from over the top of the board. A game that answers holds its play
+    /// while it lands; `None` draws the cells where they land and carries on.
     fn attack_fall(&self) -> Option<NuisanceFall> {
         None
     }
@@ -96,15 +87,15 @@ pub struct MascotLayout {
     pub spawn_point: Point,
     pub game_over_point: Point,
     pub victory_point: Point,
-    /// draw the mascot before the piece in its hand (so the piece overlaps it)
+    /// draw the mascot before the piece in its hand, so the piece overlaps it
     pub draw_first: bool,
 }
 
 /// Where queued pieces are drawn.
 #[derive(Clone, Debug)]
 pub enum PeekLayout {
-    /// a column of pieces starting at `point`, each `offset` further down. With a mascot the
-    /// first queued piece is in its hand and the column shows the rest.
+    /// a column of pieces starting at `point`, each `offset` further down; with a mascot the first
+    /// is in its hand
     Column {
         point: Point,
         offset: i32,
@@ -121,15 +112,8 @@ pub enum HoldLayout {
     Slot { slot: Rect, max_scale: f64 },
 }
 
-/// Where the attacks queued against a player are drawn: the strip a game with an answerable
-/// attack needs, so a player can see what is hanging over them and decide whether to chain
-/// back at it or take it.
-///
-/// The game says *what* is queued, through [`crate::game::Game::pending_attacks`], as its own
-/// [`CellId`]s; the theme says where the icons go and how big, in its background's own source
-/// pixels, and they are drawn from that theme's own cell sprites - so a theme owes the strip
-/// no art it does not already have. A theme with no `pending` layout draws no strip, which is
-/// every theme of a game that takes its hits immediately.
+/// Where the attacks queued against a player are drawn, in background source pixels, using the
+/// theme's own cell sprites. A theme with no `pending` layout draws no strip.
 #[derive(Clone, Debug)]
 pub struct PendingLayout {
     /// the top left of the icon nearest the front of the queue
@@ -157,12 +141,8 @@ impl PendingLayout {
             .collect()
     }
 
-    /// Where an arriving attack belongs: the middle of the strip, in this theme's own
-    /// background pixels.
-    ///
-    /// It is the one point on the strip that means something rather than merely being on it -
-    /// [`crate::render::Theme::draw_pending`] slides *every* new icon out of exactly here, so
-    /// a ball that bursts on it is the icons' own source and they spread from where it went.
+    /// Where an arriving attack belongs: the middle of the strip, in background pixels.
+    /// `Theme::draw_pending` slides every new icon out of here, so the ball bursts here.
     pub fn origin(&self) -> Point {
         let middle = self.max as f64 / 2.0;
         Point::new(
@@ -172,12 +152,8 @@ impl PendingLayout {
     }
 }
 
-/// The art an attack crosses the window as.
-///
-/// Mean Bean Machine draws this as a sprite of its own - a white core inside a coloured rim -
-/// and **not** as one of the puyos that paid for it: the ball is bigger than a cell, and its
-/// colour is the *sending player's* palette rather than the popped group's. A theme with no
-/// art here falls back to the popped cell's own sprite, which every theme has.
+/// The art an attack crosses the window as: a sprite of its own in the sending player's colour,
+/// bigger than a cell. A theme with none falls back to the popped cell's sprite.
 #[derive(Clone, Debug)]
 pub struct AttackBallData {
     pub sheet: AnimationSpriteSheetData,
@@ -202,11 +178,8 @@ impl<'a> AttackBallSprites<'a> {
         }
     }
 
-    /// The frame for an attack of `strength` sent by `player`.
-    ///
-    /// The strip is laid out player-major with the big one first - player one big, player
-    /// one small, player two big, player two small - and wraps, so a theme that cut one pair
-    /// serves every player and a third player borrows the first's colour.
+    /// The frame for an attack of `strength` sent by `player`. The strip is player-major, big
+    /// first, and wraps, so one cut pair serves every player.
     fn frame(&self, player: u32, strength: u32) -> usize {
         let pairs = (self.sheet.frame_count() / 2).max(1);
         let small = usize::from(strength < self.big_attack);
@@ -242,8 +215,8 @@ impl<'a> MatchEndSprites<'a> {
     }
 }
 
-/// Which family a theme belongs to: the retro themes rebuild a console's look, the
-/// particle themes are the engine's own modern look with a background particle field.
+/// Which family a theme belongs to: a retro console rebuild, or the engine's own modern look with
+/// a particle field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeFamily {
     Retro,
@@ -253,12 +226,8 @@ pub enum ThemeFamily {
 /// how much of the board's width a popup may take, in sixteenths
 const POPUP_MAX_BOARD_WIDTH: u32 = 15;
 
-/// Called as each of a game's themes finishes building, so a caller can show progress.
-///
-/// It is handed the canvas because drawing is the only useful thing it can do - see
-/// [`crate::app::loading`], which is the one implementation. `all_themes` is the only place a
-/// game builds more than one theme, so it is the only seam a progress bar can learn anything
-/// from, and the games each offer an `all_themes_with_progress` that takes one of these.
+/// Called as each of a game's themes finishes building, so a caller can draw progress; see
+/// [`crate::app::loading`].
 pub type ThemeProgress<'a> = dyn FnMut(&mut WindowCanvas) -> Result<(), String> + 'a;
 
 pub struct Theme<'a> {
@@ -269,10 +238,8 @@ pub struct Theme<'a> {
     pub(crate) geometry: BoardGeometry,
     pub(crate) audio: AudioTheme,
     pub(crate) font: FontTheme<'a>,
-    /// draws [`crate::animate::popup::Popup`]s over the board. Every theme has one, sized to
-    /// its own cell, because whether there are any popups at all is the *game*'s decision -
-    /// see [`GameRender::clear_popup`] - and a theme should not have to opt into a game's
-    /// feedback
+    /// draws [`crate::animate::popup::Popup`]s over the board; every theme has one, since whether
+    /// there are popups is the game's decision
     pub(crate) popup_font: PopupFont<'a>,
     /// the board frame per speed band, drawn under the cells
     pub(crate) board_texture: Texture<'a>,
@@ -298,58 +265,37 @@ pub struct Theme<'a> {
     pub(crate) ghost_style: GhostStyle,
     /// themes that emit particles do so in this colour
     pub(crate) particle_color: Option<Color>,
-    /// the colours this theme radiates into the background particle field. Empty for a theme
-    /// with no field of its own, which then falls back to another theme of the same game
+    /// the colours this theme radiates into the background particle field; empty falls back to
+    /// another theme of the same game
     pub(crate) particle_palette: Vec<Color>,
     /// how this theme's art may be resized to the window
     pub(crate) scale_mode: ScaleMode,
-    /// source pixels at the top of the background that nothing is ever drawn into, so they
-    /// may fall outside the window rather than cost the board a whole step
+    /// source pixels at the top of the background that nothing is ever drawn into, so they may fall
+    /// outside the window rather than cost the board a whole step
     pub(crate) top_slack: u32,
     /// what the panel casts on the scene behind it, for a theme that wants lifting off one
     pub(crate) shadow: Option<PanelShadow>,
 }
 
-/// A shadow under a theme's panel, drawn on the scene behind it at composite time.
-///
-/// **Not painted into the panel art**, which is where it would naturally go. A panel is
-/// measured in source pixels and every theme of a game is drawn at the largest cell all of
-/// them can hold, so a margin painted round the art comes straight off the board: in a two
-/// player game, where the panels are sized by the width they have rather than the height,
-/// eight pixels of it costs about a twentieth of the board. Drawn here it costs the layout
-/// nothing, and it may fall outside the player's own area - which is what a shadow should do.
+/// A shadow under a theme's panel, drawn on the scene behind it at composite time. Painting it into
+/// the panel art would shrink the board, since cell size is set by the panel's source pixels.
 #[derive(Clone, Copy, Debug)]
 pub struct PanelShadow {
     /// how far down and to the right of the panel it falls, in source pixels
     pub offset: (i32, i32),
-    /// how far past the panel it fades out, in source pixels - down and to the right only
+    /// how far past the panel it fades out, in source pixels, down and to the right only
     pub spread: u32,
     pub color: Color,
-    /// how dark it is against the panel's own edge, fading to nothing at the spread
+    /// how dark it is at the panel's edge, fading to nothing at the spread
     pub alpha: u8,
-    /// Source pixels round the edge of the background that the panel's art does not fill,
-    /// and which therefore cast nothing: `(left, top, right, bottom)`.
-    ///
-    /// A theme's background is a *box* rather than its art: `top_padding` is the band a piece
-    /// spawns in, and a panel may be cut narrower than its box and padded back so the air
-    /// round it costs the board nothing. A shadow cast from the whole box puts a dark
-    /// rectangle behind the spawning row and hangs the rest of it out in the scene, away from
-    /// the edge that is meant to be casting it.
+    /// Source pixels round the edge of the background that the panel's art does not fill, and which
+    /// therefore cast nothing: `(left, top, right, bottom)`.
     pub margin: (u32, u32, u32, u32),
 }
 
 impl PanelShadow {
-    /// Draw it under `panel`, which is where the panel goes in the window.
-    ///
-    /// The light is over the panel's top left shoulder, so the shadow only ever grows down
-    /// and to the right: every ring keeps the body's own top left corner, which is inside the
-    /// panel and so never drawn. A ring centred on the body instead would put a band of it
-    /// over the panel's top edge, where a spawning piece is the only thing on the scene.
-    ///
-    /// The body is one fill and the fade is one 1-pixel outline per *window* pixel rather
-    /// than per source pixel: a spread of six source pixels is thirty on a 4k screen, and six
-    /// steps across thirty pixels is a stack of bands rather than a shadow. Outlines rather
-    /// than filled rects because everything inside the first one is already painted.
+    /// Draw it under `panel`, which is where the panel goes in the window. It only grows down and
+    /// to the right, and fades in one outline per window pixel so it is smooth at any scale.
     pub fn draw(
         &self,
         canvas: &mut WindowCanvas,
@@ -520,17 +466,9 @@ impl<'a> Theme<'a> {
         }
     }
 
-    /// The player's character, in the box its own game drew one in.
-    ///
-    /// Furniture: it is drawn into the panel texture with the tray and the queue, because it
-    /// never leaves its box. Nothing is drawn until a character has been dealt, so a theme
-    /// with no cast pays one `Option` check.
-    ///
-    /// Two art models meet here. A mugshot fills the box, so its frame is drawn at
-    /// `layout.rect` outright. A **routine** names a pose and a place, so the pose is drawn at
-    /// its own size at that place - and a routine frame may name no pose at all, which is a
-    /// character who has left the box and draws nothing. Either way the panel texture clips
-    /// it, which is what stands in for the arch's own edge.
+    /// The player's character, drawn into the panel texture, which clips it to its box. A mugshot
+    /// fills `layout.rect`; a routine pose is drawn on the window by
+    /// `ThemeContext::draw_placed_characters`.
     fn draw_character(
         &self,
         canvas: &mut WindowCanvas,
@@ -552,18 +490,16 @@ impl<'a> Theme<'a> {
                 CharacterFrame::Whole(frame) => {
                     sprites.draw(canvas, layout.rect, character.state(), frame, mirrored)?;
                 }
-                // drawn on the window instead, by `ThemeContext::draw_placed_characters`:
-                // the game draws Kirby over the stone above the arch rather than behind it,
-                // so a pose is a sprite over the panel and not furniture inside it
+                // drawn on the window by `ThemeContext::draw_placed_characters`, over the stone
+                // above the arch
                 CharacterFrame::Placed(..) => {}
             }
-            // ... and everything drawn over it, in the order the theme declared them
+            // ... and every layer over it, in the order the theme declared them
             for (layer, frame, anchor) in character.layers() {
                 let Some((width, height)) = set.layer_size(index, layer) else {
                     continue;
                 };
-                // a mirrored anchor is measured from the other edge of the box, or a
-                // character's eyes drift off his face the moment he turns round
+                // a mirrored anchor is measured from the other edge of the box
                 let x = if mirrored {
                     box_width - anchor.0 - width as i32
                 } else {
@@ -582,13 +518,7 @@ impl<'a> Theme<'a> {
         Ok(())
     }
 
-    /// The character's current pose on the **window**, at a rect the caller worked out - so
-    /// nothing clips it.
-    ///
-    /// For `kirby_shot` and nothing else. A routine carries Kirby out through the top of the
-    /// arch and the panel texture hides him there, which is right in a match and useless in a
-    /// capture meant to show what every frame of a routine does. `at` is where the box lands
-    /// in the window, and the pose is drawn inside it at the window's scale.
+    /// The character's current pose on the window at `at`, unclipped, for `kirby_shot`.
     pub(crate) fn draw_character_unclipped(
         &self,
         canvas: &mut WindowCanvas,
@@ -627,12 +557,8 @@ impl<'a> Theme<'a> {
         Ok(())
     }
 
-    /// The particles a character has thrown, on the **window** rather than into the panel.
-    ///
-    /// They are not clipped to the box and never were: on the Genesis a spark crosses the
-    /// stone of the centre column and goes on over the playfield. `origin` is the panel's own
-    /// top left, since the box is panel furniture - which is the one thing that differs from
-    /// [`Self::draw_debris`], whose pieces are anchored on the board.
+    /// The particles a character has thrown, on the window and unclipped. `origin` is the panel's
+    /// top left, since the box is panel furniture.
     pub(crate) fn draw_character_particles(
         &self,
         canvas: &mut WindowCanvas,
@@ -684,12 +610,9 @@ impl<'a> Theme<'a> {
         Ok(())
     }
 
-    /// The strip of attacks waiting to land, drawn from this theme's own cell sprites.
-    ///
-    /// An icon whose attack is still crossing the window is not drawn at all, and one that
-    /// has just landed slides into its slot from over the middle of the strip - see
-    /// [`crate::animate::tray`]. A game whose attacks land the instant they are sent has no
-    /// ball and no tray, and every icon is simply where it belongs.
+    /// The strip of attacks waiting to land. An icon whose attack is still crossing the window is
+    /// not drawn, and one that has just landed slides in from the middle; see
+    /// [`crate::animate::tray`].
     fn draw_pending<G: Game>(
         &self,
         canvas: &mut WindowCanvas,
@@ -847,18 +770,9 @@ impl<'a> Theme<'a> {
         self.font.render_all(canvas, game)
     }
 
-    /// The captions a game asked for over the cells they are about, drifting up off them.
-    ///
-    /// Drawn straight onto the window rather than into the board texture, **after** the
-    /// foreground particles - a caption that a clear's own particle burst is drawn over is a
-    /// caption nobody reads, and the burst is exactly what is happening when one appears. That
-    /// costs the clipping the board texture used to give it for free, so the caption is held
-    /// inside the board's own width here instead.
-    ///
-    /// `origin` is where the board texture sits in the window and `scale` is what it is drawn
-    /// at, so everything below is worked out in the theme's own source pixels and mapped out
-    /// at the end. Nothing is drawn at all unless a game returned a caption from
-    /// [`GameRender::clear_popup`], which neither Dr. Rustario nor Rustris does.
+    /// The captions a game asked for, drawn on the window after the foreground particles so a
+    /// clear's burst does not cover them. `origin` and `scale` are where and how big the board
+    /// texture is drawn.
     pub(crate) fn draw_popups(
         &self,
         canvas: &mut WindowCanvas,
@@ -872,8 +786,7 @@ impl<'a> Theme<'a> {
             .geometry
             .point(crate::game::geometry::Point::new(0, 0))
             .x();
-        // a caption wider than the board would run over the HUD, or over the other player,
-        // so however long a game's words are they are held to the board
+        // a caption is held to the board's width so it cannot run over the HUD or the other player
         let widest = self.geometry.width() * POPUP_MAX_BOARD_WIDTH / 16;
         for popup in animations.popup().active() {
             let (column, row) = popup.at();
@@ -885,15 +798,14 @@ impl<'a> Theme<'a> {
             if natural > widest {
                 size *= widest as f64 / natural as f64;
             }
-            // ... and held inside it, so a caption over the first column is not half cut off
+            // ... and inside it, so a caption over the first column is not cut off
             let width = self.popup_font.width(popup.text(), size) as i32;
             let x = (left + (column * block).round() as i32 + half).clamp(
                 left + width / 2,
                 left + self.geometry.width() as i32 - width / 2,
             );
             let center = Point::new(x, anchor.y() + half - (popup.rise() * block).round() as i32);
-            // the colour this theme draws the cells that popped in, so the caption belongs to
-            // the burst rather than floating over it
+            // the colour of the cells that popped
             let color = popup
                 .cell()
                 .and_then(|id| self.sprites.cell_color(id))
@@ -909,8 +821,7 @@ impl<'a> Theme<'a> {
         Ok(())
     }
 
-    /// one of this theme's cells at whatever size and wherever, for something drawn off the
-    /// board entirely
+    /// one of this theme's cells at any size and place, for something drawn off the board
     pub(crate) fn draw_loose_cell(
         &self,
         canvas: &mut WindowCanvas,
@@ -920,23 +831,14 @@ impl<'a> Theme<'a> {
         self.sprites.draw_cell(canvas, id, false, dest, 0.0, None)
     }
 
-    /// Where an attack arriving at this theme bursts, in its own background pixels: the
-    /// middle of the tray it is landing in - see [`PendingLayout::origin`].
-    ///
-    /// `None` on a theme with no tray, which is every game that takes its hits the moment
-    /// they are sent and so has nowhere in particular for a ball to go.
+    /// Where an attack arriving at this theme bursts, in background pixels; see
+    /// [`PendingLayout::origin`]. `None` on a theme with no tray.
     pub(crate) fn pending_origin(&self) -> Option<Point> {
         self.pending.as_ref().map(PendingLayout::origin)
     }
 
-    /// Where an arriving attack shatters, in this board's own **cells** - which is the unit
-    /// [`crate::animate::debris`] is measured in, where [`Theme::pending_origin`] is in
-    /// background pixels.
-    ///
-    /// The same point in the other unit rather than a second opinion about where a hit
-    /// lands: the ball flies to the tray, so its shards have to burst there too. A theme with
-    /// no tray bursts over the middle of its own top row, which is what every one of them did
-    /// before any had a tray.
+    /// [`Theme::pending_origin`] in this board's cells, the unit [`crate::animate::debris`] uses. A
+    /// theme with no tray bursts over the middle of its top row.
     pub(crate) fn attack_arrival_cell(&self) -> (f64, f64) {
         let hidden = self.geometry.hidden_rows() as f64;
         let Some(at) = self.pending_origin() else {
@@ -952,15 +854,13 @@ impl<'a> Theme<'a> {
         )
     }
 
-    /// how many blocks across an attack ball is drawn, which is over a cell where a theme has
-    /// its own art and one cell where it does not
+    /// how many blocks across an attack ball is drawn: the theme's own scale, or one cell
     pub(crate) fn attack_ball_scale(&self) -> f64 {
         self.attack_ball.as_ref().map_or(1.0, |b| b.scale)
     }
 
-    /// An attack crossing the window, in this theme's own art where it has some.
-    ///
-    /// Returns `false` when it has none, so the caller can fall back to the popped cell.
+    /// An attack crossing the window in this theme's art; `false` when it has none, so the caller
+    /// can fall back to the popped cell.
     pub(crate) fn draw_attack_ball(
         &self,
         canvas: &mut WindowCanvas,
@@ -976,13 +876,8 @@ impl<'a> Theme<'a> {
         Ok(true)
     }
 
-    /// Every piece one player has in the air, on the window over the board.
-    ///
-    /// Drawn here rather than into the board texture for the same reason a caption is: a
-    /// droplet leaves the cell it came from and often the board with it, and the board
-    /// texture would clip it at the edge. `origin` is where that texture sits in the window
-    /// and `scale` what it is drawn at, so everything below is worked out in the theme's own
-    /// source pixels and mapped out at the end - the arithmetic `draw_popups` already does.
+    /// Every piece one player has in the air, on the window so it is not clipped at the board's
+    /// edge. `origin` and `scale` are as for `draw_popups`.
     pub(crate) fn draw_debris(
         &self,
         canvas: &mut WindowCanvas,
@@ -1034,8 +929,7 @@ impl<'a> Theme<'a> {
                 }
             }
         } else {
-            // a draining board leaves the well: clipped to it, so the puyos slide under the
-            // frame and are cut off mid sprite rather than crossing the panel's stonework
+            // a draining board is clipped to the well, so the puyos slide under the frame
             let draining = animations.game_over().drain().is_some();
             let clip = canvas.clip_rect();
             if draining {
@@ -1055,8 +949,8 @@ impl<'a> Theme<'a> {
             animations.game_over().curtain_height(),
         ) {
             if let Some(cell) = self.curtain_cell {
-                // the curtain closes over the board itself, from its floor up: a board
-                // drawn with a buffer zone showing above the skyline keeps it clear
+                // the curtain closes from the board's floor up, leaving any buffer zone above the
+                // skyline clear
                 let floor = self.geometry.rows().saturating_sub(height);
                 for j in rows {
                     for i in 0..self.geometry.columns() {
@@ -1124,16 +1018,13 @@ mod tests {
         );
     }
 
-    /// a queue longer than the strip draws what it has room for rather than running off the
-    /// side of the background
+    /// A queue longer than the strip draws only what it has room for.
     #[test]
     fn the_pending_strip_stops_when_it_runs_out_of_room() {
         assert_eq!(strip().slots(99).len(), 4);
     }
 
-    /// The ball flies to `origin` and the icons slide out of it, so the two have to be the
-    /// same point: `draw_pending` puts every arriving icon at slot `max / 2` on the frame it
-    /// lands, whatever slot it is bound for.
+    /// Every arriving icon starts at `origin`, where the ball bursts.
     #[test]
     fn an_arriving_icon_starts_where_the_ball_burst() {
         for layout in [
@@ -1161,7 +1052,7 @@ mod tests {
         }
     }
 
-    /// ... and a negative step fills the other way, for a theme whose room is to the left
+    /// A negative step fills the other way.
     #[test]
     fn a_pending_strip_may_fill_backwards() {
         let layout = PendingLayout {

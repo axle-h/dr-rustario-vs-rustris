@@ -51,11 +51,6 @@ impl Scale {
         )
     }
 
-    #[allow(dead_code)]
-    pub fn static_source<P: Into<Point>>(&self, point: P) -> ParticlePositionSource {
-        ParticlePositionSource::Static(self.point_to_particle_space(point.into()))
-    }
-
     pub fn rect_source<R: Into<Rect>>(&self, rect: R) -> ParticlePositionSource {
         ParticlePositionSource::Rect(self.rect_to_particle_space(rect.into()))
     }

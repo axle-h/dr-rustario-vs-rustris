@@ -1,21 +1,6 @@
-//! The ball an attack crosses the window as.
-//!
-//! Mean Bean Machine draws one of these for every attack sent: a ball in the popped group's
-//! own colour appears over the group, its core flashes white, and it arcs up and across the
-//! whole screen to the opponent's **tray**, where it bursts and leaves a refugee bean behind.
-//! Where that is depends on the theme they are on and is resolved at draw time, like both
-//! ends of everything here; a theme with no tray takes the ball just above the top of its
-//! board, which is where every one of them took it before any had one.
-//!
-//! It is the one thing here that belongs to **no player**, which is why it lives on
-//! [`crate::render::context::ThemeContext`] rather than on a `PlayerAnimations`: every
-//! offset a player owns is applied inside that player's own panel, and this crosses between
-//! two of them.
-//!
-//! A flight is held in **cells and player numbers, never pixels**, and resolved through
-//! whichever theme is on when it is drawn - so a theme change mid-flight moves both ends
-//! rather than leaving the ball flying to where the board used to be. It is decoration: it
-//! holds nothing, and a single player match routes no attacks and so never sees one.
+//! The ball an attack arcs across the window as, from the sender's last clear to the receiver's
+//! tray. Fed by `ThemeContext::send_attack_ball`; it lives on the context, not a player, because it
+//! crosses between players, and is held in cells so both ends follow a mid-flight theme change.
 
 use crate::game::CellId;
 use std::f64::consts::TAU;
@@ -24,8 +9,8 @@ use std::time::Duration;
 /// how long a ball takes to cross, whatever it is crossing
 const FLIGHT: Duration = Duration::from_millis(350);
 
-/// how high above the straight line between the two ends the arc is thrown, as a fraction of
-/// the window height
+/// how high above the straight line between the two ends the arc is thrown, as a fraction of the
+/// window height
 const ARC: f64 = 0.35;
 
 /// the fraction of the flight the ball spends growing to its full size
@@ -44,11 +29,10 @@ pub struct Flight {
     /// where it left, in the sender's own board cells
     pub from_cell: (f64, f64),
     pub to_player: u32,
-    /// the popped group's own colour, which is what a theme with no ball art of its own
-    /// draws instead
+    /// the popped group's own colour, which a theme with no ball art draws instead
     pub cell: CellId,
-    /// how big the attack is, in the receiver's own units - a theme whose ball comes in two
-    /// sizes picks between them on this
+    /// how big the attack is, in the receiver's own units; a theme with two ball sizes picks on
+    /// this
     pub strength: u32,
     elapsed: Duration,
 }
@@ -65,21 +49,16 @@ impl Flight {
         START_SCALE + (1.0 - START_SCALE) * through
     }
 
-    /// How bright the white core still is, 0..=1.
-    ///
-    /// It **strobes** rather than fading: in the original the ball alternates between mostly
-    /// its own colour and a white blowout about three times as it forms, and is its own
-    /// colour by the time it is properly under way.
+    /// How bright the white core still is, 0..=1; it strobes a few times while the ball grows
+    /// rather than fading.
     pub fn core(&self) -> f64 {
         let left = (1.0 - self.progress() / GROW).clamp(0.0, 1.0);
         let phase = (self.progress() / GROW).min(1.0) * CORE_FLARES * TAU;
         left * (0.5 - 0.5 * phase.cos())
     }
 
-    /// where it is, given the two ends in window pixels and how tall the window is
-    ///
-    /// A quadratic bezier with its control point lifted above the midpoint, so the ball
-    /// leaves the board upward rather than sliding sideways across it.
+    /// where it is, given the two ends in window pixels and how tall the window is: a quadratic
+    /// bezier with its control point lifted above the midpoint
     pub fn at(&self, from: (f64, f64), to: (f64, f64), window_height: u32) -> (f64, f64) {
         let t = self.progress();
         let lift = window_height as f64 * ARC;
@@ -181,8 +160,7 @@ mod test {
         assert!(balls.arrived().is_empty(), "and only says so once");
     }
 
-    /// the arc leaves the board upward rather than sliding across it, so the ball is above
-    /// the straight line between the two ends the whole way
+    /// The ball stays above the straight line between its two ends the whole way.
     #[test]
     fn a_ball_arcs_over_the_line_between_the_two_boards() {
         let mut balls = sent();

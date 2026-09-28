@@ -1,17 +1,6 @@
-//! A character beside the board whose face answers how that player's match is going.
-//!
-//! This is the state machine and its clocks; the art is [`crate::render::character`] and the
-//! per-game cast is a theme's business. Nothing here knows what game is being played: a
-//! character is entered into a state by engine [`crate::game::GameEvent`]s and by two numbers
-//! the match screen reads every frame, and all four states mean the same thing in any game.
-//!
-//! It is close to [`crate::animate::mascot`] and deliberately not part of it. A mascot's strip
-//! is chosen by the *animation phase* - a piece is spawning, the match is over - and there is
-//! no seam there that reads how the board is going. This reads exactly that, and nothing else.
-//!
-//! Mean Bean Machine draws the opponent in this box, reacting to you. A panel here belongs to
-//! one player and there may be only one of them, so the face is that **player's own** and every
-//! state below is read off that player's board.
+//! A character beside the board whose face answers how its own player's match is going.
+//! Fed by engine [`crate::game::GameEvent`]s and the match screen's per-frame danger reading; the
+//! art is [`crate::render::character`] and the cast is a theme's.
 
 use crate::animate::frames::{FrameAnimation, FrameAnimationType};
 use std::time::Duration;
@@ -43,49 +32,28 @@ impl CharacterState {
     }
 }
 
-/// Once entered, a state holds this long whatever else happens short of a game over.
-///
-/// Without it a face can be entered and left inside one animation cycle, which reads as a
-/// glitch rather than as a reaction.
+/// Once entered, a state holds this long short of a game over, so a face is never entered and left
+/// inside one animation cycle.
 pub const MIN_DWELL: Duration = Duration::from_millis(700);
 
-/// How long `winning` outlives its last clear, and `losing` the last thing that caused it.
-///
-/// A chain fires one clear per *step*, so this is refreshed by each one: a nine chain holds the
-/// face for nine steps and a bit rather than restarting it. And a chain that cancels the tray
-/// outright must not snap the face back mid-pop.
+/// How long `winning` outlives its last clear, and `losing` its last cause. Each step of a chain
+/// refreshes it, so a long chain holds the face rather than restarting it.
 pub const LINGER: Duration = Duration::from_millis(1200);
 
-/// Enter `losing` above this much of the board filled, and leave it only below the other.
-///
-/// Two numbers rather than one, with a real gap: a stack sitting exactly on a single threshold
-/// strobes as each piece locks. The dial is the highest column as a fraction of the visible
-/// height, which is [`crate::app::screens::match_screen`]'s `stack_danger`.
+/// Enter `losing` above this much of the board filled, and leave it only below the other. The gap
+/// stops a stack sitting on one threshold from strobing as each piece locks.
 pub const DANGER_ENTER: f64 = 0.60;
 pub const DANGER_LEAVE: f64 = 0.45;
 
-/// A small sprite drawn **over** the portrait, in the box, on a clock of its own.
-///
-/// The one idea that collapsed two kinds into one. The reading found what looked like two
-/// separate things - an *overlay* (Humpty's arc crackling between his antennae, his wrung
-/// hands, Sir Ffuzzy-Logik's eyes) and a *palette cycle* (Arms' rim lights pulsing, Coconuts'
-/// coin flaring, Ffuzzy's eye yellow) - and they are the same thing: a small sprite, at an
-/// anchor in box coordinates, on its own clock. A cycle's variants merely happen to be
-/// recolours, and the ripper bakes each step as a frame. So palette cycling stays out of the
-/// renderer, which is what three sprites wanting it never justified.
-///
-/// A layer has to be its own clock and cannot be baked into the portrait: measured across
-/// three characters, a row's cycle and its pose animation never divide - Coconuts' winning row
-/// is a 1.36 s wink over a 0.60 s flare - so one strip carrying both would need the product of
-/// the two.
+/// A small sprite drawn over the portrait, at an anchor in box coordinates, on its own clock.
+/// Palette cycles are ripped as frames of one of these. A layer's cycle never divides its row's
+/// pose animation, so it cannot be baked into the portrait strip.
 #[derive(Clone, Debug)]
 pub struct LayerMeta {
-    /// (frames, how it plays) per [`CharacterState`]; **zero frames means it is not drawn in
-    /// that state at all**, which is Coconuts' coin on idle and Ffuzzy's eyes off his losing row
+    /// (frames, how it plays) per [`CharacterState`]; zero frames means it is not drawn in that
+    /// state
     pub states: [(usize, FrameAnimationType); 4],
-    /// where it goes in the box. More than one and it *jumps* between them, which is what
-    /// Humpty's arc and his wrung hands do - they do not travel, they appear at one of a
-    /// handful of slots, flash, and go.
+    /// where it goes in the box; with more than one it jumps between them rather than travelling
     pub anchors: &'static [(i32, i32)],
     /// how often it moves to another anchor; `None` pins it to the first
     pub wander: Option<Duration>,
@@ -94,22 +62,16 @@ pub struct LayerMeta {
 /// What makes an emitter fire.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EmitterTrigger {
-    /// a burst on a clock, for as long as the state is up - Frankly's sparks
+    /// a burst on a clock, for as long as the state is up
     Every(Duration),
-    /// a burst the moment the portrait reaches one of these frames of its strip, which is how
-    /// Humpty fires from his antenna tips exactly as they are drawn in. A slice rather than one
-    /// frame because a strip may run its gesture more than once - his runs it twice.
+    /// a burst the moment the portrait reaches one of these frames of its strip; a slice because a
+    /// strip may run its gesture more than once
     OnFrame(&'static [usize]),
-    /// one particle at a time, at a rate scaling with how badly the board is going - the
-    /// sweat, and the only trigger that is not the character's own
+    /// one particle at a time, at a rate that scales with the danger dial
     Danger { above: f64, per_second: f64 },
 }
 
-/// Where an emitter throws from, and which ways.
-///
-/// A source carries its own directions because Frankly's two antenna balls do not throw the
-/// same way: each omits the diagonal that would go into his body, so the left ball throws
-/// up-left, up-right and down-left and the right ball up-right, up-left and down-right.
+/// Where an emitter throws from, and which ways; each source carries its own directions.
 #[derive(Clone, Copy, Debug)]
 pub struct EmitterSource {
     /// in box coordinates
@@ -118,28 +80,24 @@ pub struct EmitterSource {
     pub directions: &'static [(f64, f64)],
 }
 
-/// Particles thrown off a character, which **leave the box** and are not clipped to it.
-///
-/// On the Genesis these cross the stone of the centre column and go on over the playfield, so
-/// they are drawn on the window rather than into the panel - the same seam
-/// [`crate::animate::debris`] uses, and for the same reason.
+/// Particles thrown off a character, which leave the box and are drawn on the window rather than
+/// clipped to the panel.
 #[derive(Clone, Debug)]
 pub struct EmitterMeta {
     /// what fires it per [`CharacterState`]; `None` and it is silent in that state
     pub triggers: [Option<EmitterTrigger>; 4],
     pub sources: &'static [EmitterSource],
-    /// box pixels per axis per 60 Hz frame, which is how the captures were measured
+    /// box pixels per axis per 60 Hz frame
     pub speed: f64,
     pub life: Duration,
     /// the fraction of its life a particle spends fading out
     pub fade_last: f64,
-    /// the particle's own strip: four bolts for Frankly, which each spark cycles through as
-    /// it flies rather than one bolt per spark
+    /// frames in the particle's own strip, which each particle cycles through as it flies
     pub frames: usize,
     pub fps: u32,
 }
 
-/// One particle in the air, in **box coordinates** - so a mirror is one flip at draw time.
+/// One particle in the air, in box coordinates, so a mirror is one flip at draw time.
 #[derive(Clone, Copy, Debug)]
 pub struct CharacterParticle {
     pub x: f64,
@@ -148,7 +106,7 @@ pub struct CharacterParticle {
     elapsed: Duration,
     life: Duration,
     fade_last: f64,
-    /// which emitter of the character's owns it, and so whose art it is drawn in
+    /// which of the character's emitters owns it, and so whose art it is drawn in
     pub emitter: usize,
     pub frame: usize,
     frames: usize,
@@ -156,7 +114,7 @@ pub struct CharacterParticle {
 }
 
 impl CharacterParticle {
-    /// 0..=255, for `set_alpha_mod`. They are last seen fading rather than stopping.
+    /// 0..=255, for `set_alpha_mod`.
     pub fn alpha(&self) -> u8 {
         let through = self.elapsed.as_secs_f64() / self.life.as_secs_f64().max(f64::EPSILON);
         if self.fade_last <= 0.0 || through < 1.0 - self.fade_last {
@@ -167,158 +125,106 @@ impl CharacterParticle {
     }
 }
 
-/// One 60 Hz tick, which is the unit a [`RoutineFrame`]'s hold is measured in - the same unit
-/// an emitter's speed is in, and for the same reason: it is what the captures were read at.
+/// One 60 Hz tick, the unit a [`RoutineFrame`]'s hold is measured in.
 const TICK: Duration = Duration::from_nanos(16_666_667);
 
-/// How many particles one character may have in the air.
-///
-/// A burst is six and they live a fifth of a second, so this is never approached by a
-/// character's own emitters; it is the sweat, which fires on a dial that a buried board holds
-/// wide open, that needs a ceiling at all.
+/// How many particles one character may have in the air; only the danger trickle comes near it.
 const MAX_PARTICLES: usize = 64;
 
-/// Where a routine has to start from for the whole of it to stay in the box.
-///
-/// A routine carries its travel - the spin that goes twenty pixels left is the same table as
-/// the one that goes twenty right, played backwards - so a character standing against the left
-/// post and dealt the left-hand spin would walk out of the arch. Fitting it at the deal is
-/// invisible: he simply starts a little further in. Clamping every *frame* instead would stall
-/// him against the wall in the middle of a spin, which is not what the game does.
-/// Whether a routine may be played from here.
-///
-/// The whole of it: a routine is started from exactly where the last one left the character,
-/// and if its own window does not contain that, it is not dealt. **Nothing is shifted.**
-/// Shifting a routine to make it fit is what put a jump between the end of one and the start
-/// of the next, which is the one thing a run of animations must not do.
+/// Whether a routine may be started from exactly where the last one left the character. Nothing
+/// is shifted to fit, since a shift is a visible jump between routines.
 fn fits(home: i32, way: &RoutineWay) -> bool {
     home >= way.origins.0 && home <= way.origins.1
 }
 
-/// A well spread deterministic sequence, the golden ratio walk the nuisance stagger uses.
-///
-/// Deterministic rather than random on purpose: this is on the render path, and the same
-/// character in the same state should look the same twice. It only has to *spread*, and a
-/// low-discrepancy sequence spreads better than an RNG does over a handful of draws.
+/// A deterministic low-discrepancy sequence, so the same character in the same state looks the
+/// same twice on the render path.
 fn hashed(n: u64) -> f64 {
     (n as f64 * 0.618_033_988_749_894_9).fract()
 }
 
 /// One frame of a [`Routine`]: which pose, how long it is held, and where it goes in the box.
-///
-/// A pose of `None` draws nothing at all, which is a character who has **left the box** - Kirby
-/// inflates and floats clean out of the arch for a second and a half in one routine, and for
-/// two thirds of one in four others. A strip cannot say that and does not have to: a mugshot
-/// never leaves its box.
+/// A pose of `None` draws nothing, which is a character who has left the box.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RoutineFrame {
     pub pose: Option<usize>,
-    /// held for this many 60 Hz ticks. A capture is 30 fps against the game's 60, so these are
-    /// measured to two ticks and no better - which is why every one of Kirby's is even.
+    /// held for this many 60 Hz ticks
     pub ticks: u32,
-    /// the pose's top left, **relative to the frame the routine opens on** rather than to the
-    /// box: the order routines are dealt in is not the order a capture happened to play them,
-    /// so a routine that walks nineteen pixels right has to start where the last one finished.
+    /// the pose's top left relative to the frame the routine opens on, not to the box, so a routine
+    /// can start wherever the last one finished
     pub at: (i32, i32),
 }
 
 /// A run a character plays through once and then rests on.
 pub type Routine = &'static [RoutineFrame];
 
-/// One way round a routine may be played.
-///
-/// A move with a direction has two of these and the direction is chosen from where the
-/// character is standing, which is the whole point: a Kirby against the right post walks *left*
-/// rather than sliding left and walking back.
+/// One way round a routine may be played; a move with a direction has two, chosen from where the
+/// character is standing.
 #[derive(Clone, Copy, Debug)]
 pub struct RoutineWay {
     pub frames: Routine,
-    /// the inclusive range of origins this way may be started from with its **whole drawn
-    /// path** staying inside the box, computed by the cutter from its own poses' widths
+    /// the inclusive range of origins from which this way's whole drawn path stays inside the box
     pub origins: (i32, i32),
-    /// when the character may be translated into position, as (tick it starts, ticks it takes).
-    ///
-    /// The cutter puts it on the routine's **first airborne stretch** wherever there is one, so
-    /// a routine that opens by hopping is walked into *in the air*. Sliding along the floor to
-    /// get somewhere is the one thing that reads as a glitch, and `ricochet` opens by lying
-    /// down for two thirds of a second - exactly where a translation from tick zero would land.
+    /// when the character may be translated into position, as (tick it starts, ticks it takes); the
+    /// cutter puts it on the first airborne stretch so the character never slides along the floor
     pub glide: (u32, u32),
 }
 
-/// One routine a character may be dealt: a **kind**, and how much of a thing it is.
+/// One routine a character may be dealt: a kind, and how much of a thing it is.
 #[derive(Clone, Copy, Debug)]
 pub struct RoutineChoice {
-    /// 0 for a kind that never leaves the floor, 1 for the one that goes furthest up.
-    ///
-    /// **Vertical reach**, because that is what reads as effort. It decides the order a bag
-    /// comes out in and never whether something may come out at all.
+    /// 0 for a kind that never leaves the floor, 1 for the one that goes furthest up. It orders a
+    /// bag and never excludes anything from it.
     pub intensity: f64,
     /// the ways round it may be played, in no particular order
     pub ways: &'static [RoutineWay],
 }
 
-/// A character whose rows are **routines** rather than one strip apiece.
-///
-/// The two art models sit side by side because they are answers to different games. Mean Bean
-/// Machine draws a face in a fixed box at a constant rate, which is a strip; Kirby's Avalanche
-/// stands a whole little character in the arch who walks about it, changes size from frame to
-/// frame - 14x14 standing, 14x7 in the pancake he lands in, 6x14 when he squashes thin against
-/// a wall - holds one pose for half a second and the next for two ticks, and climbs the centre
-/// column right up past `STAGE`. None of that is a strip at an fps.
-///
-/// **And it is not chosen by state.** A mugshot has four rows and pulls one face when you chain
-/// and another when you are nearly buried. This has one pool, and which of it gets dealt is
-/// decided by how much is *happening* - a high stack and a big chain are both intense, and the
-/// character does bigger things either way. Only being buried is a state, because that one is
-/// terminal.
+/// A character whose rows are routines of variably held, placed poses rather than one strip apiece.
+/// Routines are dealt from one pool by how intense the match is, not by state; only `Defeat` picks
+/// its own.
 #[derive(Clone, Copy, Debug)]
 pub struct RoutineMeta {
     /// everything the character may be dealt, and how much each moves
     pub choices: &'static [RoutineChoice],
-    /// played *between* routines rather than as one of them, half the time: the blink, which is
-    /// a tic rather than a thing he does, and reads as a loop if it is dealt like one
+    /// played between routines rather than as one of them, half the time
     pub filler: Option<RoutineWay>,
-    /// what a buried character does, held - the one routine a state still picks
+    /// what a buried character does, held
     pub defeat: Routine,
     /// how long the last frame is held before another routine is dealt
     pub rest: Duration,
-    /// where a routine's opening frame goes in the box, which every routine shares because
-    /// every one of them opens on the character standing
+    /// where a routine's opening frame goes in the box; every routine opens on the character
+    /// standing
     pub home: (i32, i32),
-    /// how far either way `home.0` may be walked, since routines carry a net displacement and
-    /// the character would otherwise walk out of the box over a match
+    /// how far either way `home.0` may be walked, since routines carry a net displacement
     pub wander: (i32, i32),
-    /// how much a routine's pace is varied when it is dealt, as a fraction either way - so the
-    /// same spin is not the same spin twice. Zero plays every routine at its measured pace.
+    /// how much a routine's pace is varied when it is dealt, as a fraction either way; zero plays
+    /// each at its measured pace
     pub speed_spread: f64,
-    /// whether a routine may be walked into at all. With this off, a character not standing in
-    /// a way's window plays it from where he is and the arch clips whatever hangs out.
+    /// whether a routine may be walked into; with this off it plays from where he is and the arch
+    /// clips what hangs out
     pub approach: bool,
 }
 
 /// What a character is drawing this tick.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CharacterFrame {
-    /// a frame of a strip, filling the box - the mugshot path
+    /// a frame of a strip, filling the box
     Whole(usize),
-    /// a pose at its own size, at a place in the box - the routine path
+    /// a pose at its own size, at a place in the box
     Placed(usize, (i32, i32)),
-    /// nothing: a routine frame with no pose, which is a character out of the box
+    /// nothing: a routine frame with no pose
     Hidden,
 }
 
-/// Everything a theme declares about one character: how each of its four rows plays.
-///
-/// Frame counts are the strip's own, in play order - a row is cut action first and rest last so
-/// that [`FrameAnimationType::LinearWithPause`], which holds the *last* frame, holds the pose
-/// the character rests in.
+/// Everything a theme declares about one character. A row is cut action first and rest last, since
+/// [`FrameAnimationType::LinearWithPause`] holds the last frame.
 #[derive(Clone, Debug)]
 pub struct CharacterMeta {
-    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order.
-    /// Ignored while `routines` is set, which plays its own frames.
+    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order; ignored while
+    /// `routines` is set
     pub states: [(usize, FrameAnimationType); 4],
-    /// routines instead of strips: `None` on a mugshot cast, which is every character here
-    /// but Kirby
+    /// routines instead of strips; `None` on a mugshot cast
     pub routines: Option<RoutineMeta>,
     /// what is drawn over the portrait, in the box
     pub layers: Vec<LayerMeta>,
@@ -327,7 +233,7 @@ pub struct CharacterMeta {
 }
 
 impl CharacterMeta {
-    /// a cast with no extras at all, which is nine of Mean Bean Machine's thirteen
+    /// a cast with no layers, emitters or routines
     pub fn plain(states: [(usize, FrameAnimationType); 4]) -> Self {
         Self {
             states,
@@ -343,35 +249,28 @@ impl CharacterMeta {
     }
 }
 
-/// Where a routine has got to.
-///
-/// `rested` is `None` while the routine is playing and `Some` once it has run out, which is
-/// what makes the character stand for a moment before another is dealt rather than snapping
-/// straight into it - measured at two seconds, and the whole of what a state's playlist looks
-/// like when nothing on the board interrupts it.
+/// Where a routine has got to. `rested` is `Some` once it has run out, and the character stands
+/// for `RoutineMeta::rest` before another is dealt.
 #[derive(Clone, Copy, Debug)]
 struct RoutineRun {
-    /// an index into `RoutineMeta::choices`, or `usize::MAX` for the filler and the defeat
-    /// routine, which are not dealt from the pool
+    /// an index into `RoutineMeta::choices`, or `usize::MAX` for the filler and the defeat routine
     routine: usize,
     frames: Routine,
     frame: usize,
     elapsed: Duration,
     rested: Option<Duration>,
-    /// where this routine's frame 0 *ends up*, which is what its places are relative to once
-    /// the character has walked into it. Explicit rather than read off `home`, because the filler replaces the run
-    /// and used to take the routine's displacement with it - a walk that carried him twenty
-    /// pixels put him back where he started the moment he blinked.
+    /// where this routine's frame 0 ends up; explicit so the filler keeps the displacement of the
+    /// run it replaces
     origin: i32,
     /// what the routine carries him by, kept here so a filler cannot lose it
     net: i32,
-    /// where the character was standing when this was dealt, and the stretch of the routine
-    /// he is translated to `origin` over. Equal for one he was already in position for.
+    /// where the character was standing when this was dealt; equal to `origin` if he was in
+    /// position
     from: i32,
     glide: (Duration, Duration),
     /// how long this run has been going, for the glide
     age: Duration,
-    /// what this dealing plays at, around 1.0 - see `RoutineMeta::speed_spread`
+    /// this dealing's pace, around 1.0
     speed: f64,
     /// the filler goes back to resting when it ends rather than dealing another
     filler: bool,
@@ -380,8 +279,8 @@ struct RoutineRun {
 }
 
 impl RoutineRun {
-    /// Where this run's frame 0 sits *now* - which is the origin once the character has walked
-    /// into it, and a point on the way there before that.
+    /// Where this run's frame 0 sits now: the origin once walked into, a point on the way before
+    /// that.
     fn place(&self) -> i32 {
         let (at, span) = self.glide;
         if self.age <= at || span.is_zero() {
@@ -425,11 +324,9 @@ pub struct CharacterAnimation {
     latched: bool,
     /// where the dealt routine has got to; `None` on a character with strips
     run: Option<RoutineRun>,
-    /// how far along the box the character has walked, since a routine carries a net
-    /// displacement and the next one starts wherever this one finished
+    /// how far along the box the character has walked; the next routine starts from here
     home: i32,
-    /// what has not been dealt yet this cycle, so a game shows most of what there is rather
-    /// than the same three things - the seven bag's idea, and for the same reason
+    /// what has not been dealt yet this cycle, so a game shows most of what there is
     bag: Vec<usize>,
     /// how much a chain has just excited the character, which decays away
     excitement: f64,
@@ -482,8 +379,7 @@ impl CharacterAnimation {
         }
     }
 
-    /// Deal this player a character. Until this is called nothing is drawn at all, which is
-    /// what a theme with no cast wants.
+    /// Deal this player a character. Until this is called nothing is drawn.
     pub fn deal(&mut self, meta: CharacterMeta, character: usize, mirrored: bool) {
         self.frames = Some(meta.animation(CharacterState::Idle));
         self.home = meta.routines.map(|r| r.home.0).unwrap_or(0);
@@ -539,9 +435,8 @@ impl CharacterAnimation {
             return CharacterFrame::Hidden;
         };
         match frame.pose {
-            // the **run's** own place and not `home`: they are the same once a routine is
-            // under way and they are not while he is walking into it, nor for the filler,
-            // which stands where the routine before it finished rather than where it started.
+            // the run's own place, not `home`: they differ while he walks into a routine and for
+            // the filler
             Some(pose) => CharacterFrame::Placed(
                 pose,
                 (
@@ -560,9 +455,8 @@ impl CharacterAnimation {
             .copied()
     }
 
-    /// Every layer that is drawn in this state, in the [`LayerMeta`] order, as
-    /// (which layer, which frame, where in the box). A layer absent from the state is simply
-    /// not in the list.
+    /// Every layer drawn in this state, in [`LayerMeta`] order, as (which layer, which frame, where
+    /// in the box).
     pub fn layers(&self) -> Vec<(usize, usize, (i32, i32))> {
         let Some(meta) = self.meta.as_ref() else {
             return vec![];
@@ -590,17 +484,12 @@ impl CharacterAnimation {
         self.linger = self.linger.saturating_sub(delta);
         self.update_routine(delta);
         self.update_layers(delta);
-        // the particles already in the air move first, so one born this tick starts where it
-        // was thrown rather than a tick down its flight
+        // particles already in the air move first, so one born this tick starts where it was thrown
         self.update_particles(delta);
         self.update_emitters(delta);
     }
 
-    /// One tick of the dealt routine, which is nothing at all on a character with strips.
-    ///
-    /// A frame is held for its own count of ticks rather than a shared fps, so this walks the
-    /// remainder forward: a routine whose first frame is held ten ticks and whose next is held
-    /// two is one line of a table here and would be ten frames of a strip.
+    /// One tick of the dealt routine; each frame is held for its own count of ticks.
     fn update_routine(&mut self, delta: Duration) {
         let Some(routines) = self.meta.as_ref().and_then(|m| m.routines) else {
             return;
@@ -613,8 +502,7 @@ impl CharacterAnimation {
         };
         if let Some(rested) = run.rested.as_mut() {
             *rested += delta;
-            // half way through the rest, half the time, he blinks - which is a tic between
-            // routines and not one of them
+            // half way through the rest, half the time, the filler plays
             if !run.blinked && *rested >= routines.rest / 2 {
                 run.blinked = true;
                 self.tick = self.tick.wrapping_add(1);
@@ -623,7 +511,7 @@ impl CharacterAnimation {
                     routines.filler.filter(|f| fits(at, f)),
                     hashed(self.tick) < 0.5,
                 ) {
-                    // the blink stands where the routine left him, not where it started
+                    // the filler stands where the routine left him
                     self.run = Some(RoutineRun {
                         routine: usize::MAX,
                         frames: filler.frames,
@@ -676,23 +564,13 @@ impl CharacterAnimation {
         self.run = Some(run);
     }
 
-    /// How much is happening to this player, 0 to 1.
-    ///
-    /// A high stack and a big chain are both intense, and there is no face here that says which
-    /// - the character just does bigger things when more is going on.
+    /// How much is happening to this player, 0 to 1: the higher of danger and chain excitement.
     fn intensity(&self) -> f64 {
         self.danger.max(self.excitement).clamp(0.0, 1.0)
     }
 
-    /// Deal a routine, and start it from its first frame.
-    ///
-    /// `prefer` is a pick a caller has already made - `kirby_shot` walking them all. With
-    /// `None` it is dealt out of a **bag**: a shuffled run of every routine there is, drawn
-    /// from without replacement, so a game shows most of what the character has rather than
-    /// the same three things. Two things filter what may come out of it - how intense the match
-    /// is, against the routine's own [`RoutineChoice::intensity`], and whether the routine
-    /// **fits from where he is standing**, which is what stops a spin that travels right being
-    /// dealt to a character against the right post.
+    /// Deal a routine and start it from its first frame. `prefer` is a caller's pick; `None` deals
+    /// from the bag, ordered by intensity and filtered by what fits from where he stands.
     fn start_routine(&mut self, prefer: Option<usize>) {
         let Some(routines) = self.meta.as_ref().and_then(|m| m.routines) else {
             self.run = None;
@@ -713,8 +591,7 @@ impl CharacterAnimation {
             return;
         }
         if let Some(index) = prefer {
-            // `usize::MAX` is the filler, which is not in the pool and still has to be looked
-            // at next to the recording
+            // `usize::MAX` is the filler, which is not in the pool
             let (index, way) = match routines.filler {
                 Some(filler) if index == usize::MAX => (usize::MAX, filler),
                 _ => {
@@ -730,11 +607,8 @@ impl CharacterAnimation {
         if self.bag.is_empty() {
             self.refill(choices.len());
         }
-        // A **bag**, drained strictly: every routine plays once before any plays twice, which
-        // is the seven bag's bargain and is why nothing here is rare. What the intensity does
-        // is decide the *order* within a cycle - the entry closest to how much is happening
-        // comes out next - rather than shutting anything out, because a band that shuts things
-        // out is what made the quiet ones repeat and the big ones never turn up.
+        // The bag drains strictly, so every routine plays once before any plays twice. Intensity
+        // only picks the order within a cycle: the entry closest to it comes out next.
         let mut at = 0usize;
         let mut best = f64::MAX;
         for (index, choice) in self.bag.iter().enumerate() {
@@ -760,13 +634,8 @@ impl CharacterAnimation {
         }
     }
 
-    /// Which way round to play a kind, from where the character is standing.
-    ///
-    /// **This is what makes a run of routines read as a character rather than a shuffle.** A
-    /// way whose window already holds him is played from exactly where he is; among those, the
-    /// one that leaves him nearest the middle wins, so he turns round at the walls instead of
-    /// sliding back to do the same thing again. Only when neither way holds him is one walked
-    /// into, and then it is the nearer.
+    /// Which way round to play a kind. A way whose window holds him is played from where he is,
+    /// preferring the one that ends nearest the middle; otherwise the nearer way is walked into.
     fn choose_way(&self, ways: &'static [RoutineWay], routines: RoutineMeta) -> RoutineWay {
         let middle = (routines.wander.0 + routines.wander.1) / 2;
         let here: Vec<&RoutineWay> = ways.iter().filter(|w| fits(self.home, w)).collect();
@@ -792,11 +661,8 @@ impl CharacterAnimation {
         routines: RoutineMeta,
         vary: bool,
     ) -> RoutineRun {
-        // He is never *moved* into position: the origin is the nearest point of the way's own
-        // window, and he is translated there over the stretch the cutter marked - the first
-        // time the routine takes him off the ground, wherever it does. A jump between routines
-        // is the one thing a run of them must not have, and a slide along the floor is the
-        // next thing.
+        // He is never moved into position: the origin is the nearest point of the way's window,
+        // reached over the glide stretch the cutter marked.
         let frames = way.frames;
         let origin = if routines.approach {
             self.home.clamp(way.origins.0, way.origins.1)
@@ -809,9 +675,7 @@ impl CharacterAnimation {
         } else {
             (tick(way.glide.0), tick(way.glide.1.max(1)))
         };
-        // no two dealings of one routine run at quite the same pace. A routine a caller asked
-        // for by name runs at its measured one, since that is what `kirby_shot` puts next to
-        // the recording.
+        // vary the pace per dealing; a routine asked for by name runs at its measured one
         let speed = if vary {
             self.tick = self.tick.wrapping_add(1);
             let spread = routines.speed_spread.clamp(0.0, 0.9);
@@ -854,7 +718,7 @@ impl CharacterAnimation {
                 run.since_move = Duration::ZERO;
                 self.tick = self.tick.wrapping_add(1);
                 let next = (hashed(self.tick) * layer.anchors.len() as f64) as usize;
-                // never twice in the same slot: a flicker that does not move is not a flicker
+                // never twice in the same slot, since a flicker that does not move reads as none
                 run.anchor = if next == run.anchor {
                     (next + 1) % layer.anchors.len()
                 } else {
@@ -875,8 +739,7 @@ impl CharacterAnimation {
         let mut trickle: Vec<usize> = vec![];
         for (index, emitter) in meta.emitters.iter().enumerate() {
             let Some(trigger) = emitter.triggers[state] else {
-                // a state it is silent in resets its clock, so entering the state again
-                // starts a whole period rather than firing at once
+                // a state it is silent in resets its clock, so re-entering starts a whole period
                 self.fired[index] = Duration::ZERO;
                 self.last_frame[index] = usize::MAX;
                 continue;
@@ -890,7 +753,7 @@ impl CharacterAnimation {
                     }
                 }
                 EmitterTrigger::OnFrame(frames) => {
-                    // edge triggered: a strip that holds the frame fires once, not every tick
+                    // edge triggered: a strip that holds the frame fires once
                     if frames.contains(&portrait) && self.last_frame[index] != portrait {
                         fire.push(index);
                     }
@@ -929,8 +792,7 @@ impl CharacterAnimation {
         self.push(born);
     }
 
-    /// One particle, from a source and direction spread over the whole set - which is what a
-    /// rate rather than a burst means, and what keeps one or two drops in the air at a time.
+    /// One particle, from a source and direction spread over the whole set.
     fn trickle(&mut self, index: usize) {
         let Some(meta) = self.meta.as_ref() else {
             return;
@@ -955,7 +817,7 @@ impl CharacterAnimation {
     fn push(&mut self, born: Vec<CharacterParticle>) {
         self.particles.extend(born);
         if self.particles.len() > MAX_PARTICLES {
-            // the oldest are the faintest, which is the right end to lose from
+            // the oldest are the faintest
             self.particles.drain(..self.particles.len() - MAX_PARTICLES);
         }
     }
@@ -992,13 +854,7 @@ impl CharacterAnimation {
     }
 
     /// Put the character in a state and start one named routine of it, from its first frame.
-    ///
-    /// For tests and for `kirby_shot`, which walks the fifteen: a deal cannot be asked for a
-    /// particular routine, and every one of them has to be looked at.
-    ///
-    /// `home` stands the character somewhere other than the middle of the box, which is what
-    /// puts a capture of a routine next to the recording it was measured off - the recording
-    /// caught it wherever the routine before it had left him.
+    /// `home` stands the character somewhere other than the middle of the box.
     pub fn play(&mut self, routine: usize, home: Option<i32>) {
         self.latched = false;
         self.state = CharacterState::Idle;
@@ -1013,8 +869,8 @@ impl CharacterAnimation {
         self.start_routine(Some(routine));
     }
 
-    /// Which routine is playing, as an index into `RoutineMeta::choices`; `None` for the
-    /// filler, the defeat routine, or a character with strips.
+    /// Which routine is playing, as an index into `RoutineMeta::choices`; `None` for the filler,
+    /// the defeat routine, or a character with strips.
     pub fn routine(&self) -> Option<usize> {
         self.run
             .as_ref()
@@ -1022,12 +878,12 @@ impl CharacterAnimation {
             .filter(|i| *i != usize::MAX)
     }
 
-    /// How many routines have been dealt, so a test can tell one dealing from the next.
+    /// How many routines have been dealt.
     pub fn deals(&self) -> u64 {
         self.deals
     }
 
-    /// How many routines there are, so a caller can walk them.
+    /// How many routines there are.
     pub fn routines(&self) -> usize {
         self.meta
             .as_ref()
@@ -1041,37 +897,31 @@ impl CharacterAnimation {
         self.run.map(|r| r.rested.is_some()).unwrap_or(true)
     }
 
-    /// A clear that chained. One pop is not a reaction worth pulling a face for - it is most
-    /// clears, several a minute, and it sends no attack either - so this is only called for a
-    /// clear the game itself called a combo.
+    /// A clear the game called a combo; a single pop is not worth a face.
     pub fn chained(&mut self) {
         self.linger = LINGER;
-        // ... and on the routine path it is the *intensity* that answers, not a face: a chain
-        // excites the character and the next routine dealt is a bigger one
+        // on the routine path a chain also excites the character, so the next routine is bigger
         self.excitement = (self.excitement + 0.6).min(1.0);
         self.enter(CharacterState::Winning);
     }
 
-    /// The match was won. Terminal: the face is held for the rest of it rather than lingering.
+    /// The match was won: the face is held for the rest of it.
     pub fn victory(&mut self) {
         self.enter(CharacterState::Winning);
         self.latched = true;
     }
 
-    /// Buried. Terminal, and nothing leaves it.
+    /// Buried. Terminal.
     pub fn game_over(&mut self) {
         self.enter(CharacterState::Defeat);
     }
 
-    /// The two per-frame numbers, which have no event between them: how high this player's
-    /// stack is, and whether anything is waiting in their tray.
-    ///
-    /// `winning` beats `losing` while a match is running - a player who chains while buried is
-    /// answering the nuisance, and cancelling it outright, and the face that says so is the
-    /// right one. `losing` resumes when the hold runs out if its cause is still true.
+    /// The two per-frame numbers: how high this player's stack is, and whether their tray holds
+    /// anything. `winning` beats `losing`; `losing` resumes after the hold if its cause is still
+    /// true.
     pub fn danger(&mut self, danger: f64, pending: bool) {
-        // the dial is kept whatever the state, since the sweat is graded and is not the
-        // `losing` face - measured: Grounder holds `losing` for a whole clip and sweats nothing
+        // the dial is kept whatever the state, since the danger trickle is graded separately from
+        // `losing`
         self.danger = danger;
         if self.meta.is_none() || self.latched || self.state == CharacterState::Defeat {
             return;
@@ -1103,9 +953,7 @@ impl CharacterAnimation {
         }
     }
 
-    /// A state ends by cutting its row off wherever it has got to, on one frame and with no
-    /// blend, which is what the original does - measured on Skweel, who drops back to idle
-    /// mid-sneeze. So the new row starts from its own first frame.
+    /// Cut the current row off wherever it has got to and start the new one from its first frame.
     fn enter(&mut self, state: CharacterState) {
         let Some(meta) = self.meta.as_ref() else {
             return;
@@ -1113,15 +961,13 @@ impl CharacterAnimation {
         if self.state == state {
             return;
         }
-        // A game over is the one thing nothing refuses - not a state that has only just been
-        // entered, not a won match, and not another game over.
+        // nothing refuses a game over
         if state != CharacterState::Defeat {
             // being buried is terminal, and so is winning the match
             if self.state == CharacterState::Defeat || self.latched {
                 return;
             }
-            // ... and a state holds its minimum, so a face cannot be entered and left inside
-            // one animation cycle
+            // a state holds its minimum before it can be left
             if self.held < MIN_DWELL && self.state != CharacterState::Idle {
                 return;
             }
@@ -1131,11 +977,9 @@ impl CharacterAnimation {
         self.state = state;
         self.frames = Some(meta.animation(state));
         self.held = Duration::ZERO;
-        // a layer's clock belongs to the row, so it is cut off with it and starts again
+        // a layer's clock belongs to the row, so it starts again with it
         self.start_layers();
-        // A routine is **not** restarted by a state change, because it is not chosen by state:
-        // a chain raises the intensity and the next dealing answers it, rather than cutting
-        // whatever is playing in half. Being buried is the exception, and is terminal.
+        // a routine is not restarted by a state change, except by being buried
         if state == CharacterState::Defeat {
             self.start_routine(None);
         }
@@ -1158,8 +1002,7 @@ fn new_particle(
     source: &EmitterSource,
     direction: (f64, f64),
 ) -> CharacterParticle {
-    // the captures were measured in box pixels an axis per 60 Hz frame, so that is the unit
-    // the tables carry and this is the one place it becomes pixels a second
+    // the tables are in box pixels per 60 Hz frame; this is where that becomes pixels a second
     let speed = emitter.speed * 60.0;
     CharacterParticle {
         x: source.at.0,
@@ -1228,8 +1071,7 @@ mod tests {
         assert_eq!(c.state(), CharacterState::Losing);
     }
 
-    /// The one this is all for: a stack sitting exactly on the threshold must not strobe as
-    /// each piece locks. Between the two thresholds the state is whatever it already was.
+    /// A stack between the two thresholds keeps whatever state it already had.
     #[test]
     fn the_danger_thresholds_do_not_flip_flop() {
         let mut c = dealt();
@@ -1272,8 +1114,7 @@ mod tests {
         assert_eq!(c.state(), CharacterState::Losing);
     }
 
-    /// A player who chains while buried is answering the nuisance, and the face that says so
-    /// is the winning one.
+    /// A player who chains while buried shows the winning face.
     #[test]
     fn winning_beats_losing_and_losing_resumes_after_it() {
         let mut c = dealt();
@@ -1291,8 +1132,7 @@ mod tests {
         assert_eq!(c.state(), CharacterState::Losing);
     }
 
-    /// Every step of a chain fires its own clear, so a nine chain holds the face for nine
-    /// steps and a bit rather than restarting it.
+    /// Each step of a chain refreshes the linger rather than restarting the face.
     #[test]
     fn each_step_of_a_chain_refreshes_the_linger_rather_than_restarting_the_face() {
         let mut c = dealt();
@@ -1397,9 +1237,7 @@ mod tests {
         c
     }
 
-    /// A layer belongs to a *row*, not to the character, so a state it is absent from draws
-    /// nothing at all - which is Coconuts' coin on idle and Sir Ffuzzy-Logik's eyes off every
-    /// row but his losing one.
+    /// A layer absent from a state's row draws nothing in that state.
     #[test]
     fn a_layer_is_drawn_only_on_the_rows_that_declare_frames() {
         let mut c = with_extras_dealt();
@@ -1415,8 +1253,7 @@ mod tests {
         assert_eq!(c.layers().len(), 1, "the losing layer was not drawn");
     }
 
-    /// It does not travel: it appears at one of a handful of slots, flashes and goes. Two
-    /// flashes in the same slot read as no flash at all, so it never repeats one.
+    /// A layer with several anchors never flashes twice in the same slot.
     #[test]
     fn a_wandering_layer_moves_and_never_twice_to_the_same_slot() {
         let mut c = with_extras_dealt();
@@ -1437,8 +1274,7 @@ mod tests {
         assert!(distinct.len() >= 3, "it only ever used {distinct:?}");
     }
 
-    /// A burst is one particle down every direction of every source, and it comes round on
-    /// its own clock for as long as the row is up - Frankly's sparks, six at a time.
+    /// A burst is one particle down every direction of every source, repeated on its clock.
     #[test]
     fn a_burst_fires_on_its_clock_and_only_in_the_state_that_asks_for_it() {
         let mut c = with_extras_dealt();
@@ -1462,8 +1298,7 @@ mod tests {
         );
     }
 
-    /// The sweat is not the losing face: it is graded, and comes on later. Measured - Grounder
-    /// holds the losing face for a whole clip with a low stack and sweats nothing.
+    /// The danger trickle is graded and comes on later than the losing face.
     #[test]
     fn the_dial_throws_nothing_below_its_threshold_and_more_the_worse_it_gets() {
         let mut c = with_extras_dealt();
@@ -1489,8 +1324,7 @@ mod tests {
         );
     }
 
-    /// A particle is thrown in **box coordinates** so that one flip serves the whole spray;
-    /// it leaves the box, which is the whole reason it is drawn on the window.
+    /// Particles are thrown in box coordinates and flipped with the mirror.
     #[test]
     fn a_particle_travels_out_of_the_box_and_then_expires() {
         let mut c = with_extras_dealt();
@@ -1518,9 +1352,7 @@ mod tests {
         assert!(c.particles().len() < 2, "the first one outlived its life");
     }
 
-    /// Humpty fires from his antenna tips at the moment they are drawn in, and his winning row
-    /// runs that gesture *twice* - so the trigger is a set of frames, and each fires once
-    /// however long the strip holds it.
+    /// An `OnFrame` trigger fires once per listed frame however long the strip holds it.
     #[test]
     fn a_frame_trigger_fires_once_an_arrival_and_once_per_named_frame() {
         let mut meta = with_extras();
@@ -1542,9 +1374,7 @@ mod tests {
         assert_eq!(fired, 2, "one burst per named frame of a single pass");
     }
 
-    /// `LinearWithPause` holds the *last* frame of its strip, which is why a row is cut with
-    /// its action first and its rest last. If that ever stops being true every character in
-    /// the compendium rests on the wrong pose, so it is pinned here rather than assumed.
+    /// `LinearWithPause` holds the last frame of its strip, which every row's rest pose relies on.
     #[test]
     fn a_paused_row_rests_on_the_last_frame_of_its_strip() {
         let mut animation = FrameAnimation::new(
@@ -1569,10 +1399,7 @@ mod tests {
         assert_eq!(animation.frame(), 3, "the rest frame was not held");
     }
 
-    // ------------------------------------------------------------------ routines
-
-    /// three frames and a rest, the shape every one of Kirby's has: a stand, a pose that
-    /// travels, and a frame that draws nothing because he has left the box
+    /// a stand, a pose that travels, and a frame with no pose
     const WALK: &[RoutineFrame] = &[
         RoutineFrame {
             pose: Some(0),
@@ -1639,8 +1466,7 @@ mod tests {
         }
     }
 
-    /// A frame is held for its own count of ticks rather than a shared rate, which is the
-    /// whole reason a routine is not a strip.
+    /// A routine frame is held for its own count of ticks.
     #[test]
     fn a_routine_holds_each_frame_for_its_own_time() {
         let mut c = CharacterAnimation::new();
@@ -1657,8 +1483,7 @@ mod tests {
         assert_eq!(c.drawing(), CharacterFrame::Placed(1, (16, 20)));
     }
 
-    /// A frame with no pose draws nothing at all - a character out of the box - and the
-    /// routine goes on running underneath it.
+    /// A frame with no pose draws nothing and the routine runs on underneath it.
     #[test]
     fn a_frame_with_no_pose_draws_nothing() {
         let mut c = CharacterAnimation::new();
@@ -1670,8 +1495,7 @@ mod tests {
         assert_eq!(c.drawing(), CharacterFrame::Placed(0, (22, 20)));
     }
 
-    /// The last frame is held for the rest, and then another routine is dealt from wherever
-    /// this one left him - which is what keeps a walk from teleporting back.
+    /// The next routine is dealt from wherever the last one left him.
     #[test]
     fn a_finished_routine_rests_and_then_deals_another_from_where_it_left_him() {
         let mut c = CharacterAnimation::new();
@@ -1688,8 +1512,7 @@ mod tests {
         }
     }
 
-    /// A state change does **not** cut a routine off, because a routine is not chosen by
-    /// state: a chain raises the intensity and the next dealing answers it.
+    /// A state change does not cut a routine off.
     #[test]
     fn a_state_change_does_not_interrupt_a_routine() {
         let mut c = CharacterAnimation::new();
@@ -1707,10 +1530,7 @@ mod tests {
         );
     }
 
-    /// **A routine starts exactly where the last one left him.** It is never shifted into
-    /// place, which is what put a jump between the end of one routine and the start of the
-    /// next; if it needs him somewhere else he is translated there *inside* the routine, on
-    /// the stretch the way declares.
+    /// A routine starts exactly where the last one left him, with no jump between them.
     #[test]
     fn a_routine_starts_where_the_last_one_left_him() {
         const RIGHT: &[RoutineFrame] = &[
@@ -1779,9 +1599,7 @@ mod tests {
         }
     }
 
-    /// A routine he is not in position for is **walked into**, not jumped into and not
-    /// refused: nothing is rare. The translation rides the stretch the way declares - which the
-    /// cutter puts on the routine's first hop - so it is never a slide along the floor.
+    /// A routine he is not in position for is walked into during its glide, never slid into.
     #[test]
     fn a_routine_out_of_reach_is_walked_into_on_its_own_hop() {
         const NARROW: &[RoutineFrame] = &[
@@ -1840,8 +1658,7 @@ mod tests {
         assert_eq!(*seen.last().unwrap(), 10, "he never walked into the window");
     }
 
-    /// The intensity decides the **order** a cycle comes out in, not whether a routine may
-    /// come out at all - a band that shut things out is what made the quiet ones repeat.
+    /// Intensity decides the order a cycle comes out in, not whether a routine comes out at all.
     #[test]
     fn intensity_orders_the_bag_and_a_chain_raises_it() {
         const STILL: &[RoutineFrame] = &[RoutineFrame {
@@ -1890,7 +1707,7 @@ mod tests {
             matches!(c.drawing(), CharacterFrame::Placed(0, _)),
             "opened too big"
         );
-        // ... and both are played over a cycle, because nothing is shut out
+        // ... and both are played over a cycle
         let mut both = [false; 2];
         for _ in 0..400 {
             if let CharacterFrame::Placed(pose, _) = c.drawing() {
@@ -1969,8 +1786,7 @@ mod tests {
         assert!(blinks > 3, "the filler never played: {blinks}");
     }
 
-    /// A bag deals everything before it deals anything twice, so a game shows most of what
-    /// there is rather than the same three things.
+    /// A bag deals everything before it deals anything twice.
     #[test]
     fn the_bag_deals_everything_before_repeating() {
         const A: &[RoutineFrame] = &[RoutineFrame {
@@ -2047,8 +1863,7 @@ mod tests {
         }
     }
 
-    /// A character with strips is untouched by any of it    /// A character with strips is untouched by any of it: the mugshot path draws a frame
-    /// filling its box and never a placed pose.
+    /// A character with strips always draws a whole frame, never a placed pose.
     #[test]
     fn a_character_with_strips_still_draws_whole_frames() {
         let c = dealt();

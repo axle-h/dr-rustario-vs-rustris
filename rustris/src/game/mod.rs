@@ -24,15 +24,14 @@ pub mod rules;
 pub mod tetromino;
 
 pub const LINES_PER_LEVEL: u32 = 10;
-/// levels are 0-based: the guideline plays 15 levels with the fall speed curve ending on the
-/// 15th, so the level (and with it the score multiplier of level + 1) caps together with [STEPS]
+/// levels are 0-based and cap with `STEPS`, the guideline's fifteen fall speeds
 pub const MAX_LEVEL: u32 = STEPS.len() as u32 - 1;
 pub const MAX_SCORE: u32 = 999_999_999;
 pub const MAX_LINES: u32 = 9_999;
 /// rows shown above the skyline
 pub const VISIBLE_BUFFER: u32 = 2;
 pub const VISIBLE_HEIGHT: u32 = board::BOARD_HEIGHT + VISIBLE_BUFFER;
-/// tetrominoes slam down: the hard drop trail covers a row per frame
+/// the hard drop trail covers a row per frame
 pub const HARD_DROP_ROWS_PER_FRAME: f64 = 1.0;
 
 const TIMING: Timing = Timing::new(Duration::from_millis(500), Duration::from_millis(500 / 2))
@@ -60,36 +59,22 @@ const PERFECT_CLEAR_POINTS: [u32; 5] = [0, 800, 1_200, 1_800, 2_000];
 const PERFECT_CLEAR_BACK_TO_BACK_TETRIS_POINTS: u32 = 3_200;
 /// rows a perfect clear sends on top of the rows its lines sent
 const PERFECT_CLEAR_GARBAGE: u32 = 10;
-/// What a clear is worth to a player of the *other* game, in garbage blocks, since that is
-/// what an attack is over there. A Dr. Rustario bottle is eight wide and its blocks are only
-/// cleared by matching four of a colour, so a row of them is nothing like a row of Rustris
-/// garbage: a Rustris player who sent one row per row would bury a bottle in seconds. Only the
-/// clears worth working for cross at all - a tetris, a T-spin that took two lines or more, and
-/// a perfect clear - and a tetris crosses as two blocks, the size of the combo a Dr. Rustario
-/// player sends most often. A clear that qualifies more than one way sends the larger of them,
-/// and combos and back to back stay at home
+/// Garbage blocks a tetris sends to another game. Only a tetris, a full T-spin double or
+/// triple, and a perfect clear cross, sending the largest that applies; combos and back to
+/// back do not.
 const FOREIGN_TETRIS_GARBAGE: u32 = 2;
-/// blocks a T-spin sends abroad, by the lines it cleared: a single is routine, so it does not
+/// blocks a full T-spin sends abroad, by the lines it cleared
 const FOREIGN_T_SPIN_GARBAGE: [u32; 4] = [0, 0, 2, 3];
-/// blocks a perfect clear sends abroad, as much as a Dr. Rustario combo ever sends
+/// blocks a perfect clear sends abroad
 const FOREIGN_PERFECT_CLEAR_GARBAGE: u32 = 4;
 
-/// How many nuisance puyos one of those garbage blocks is worth, so that the same three
-/// clears cross to Puyo Rusto as cross to Dr. Rustario: **a tetris is a row of nuisance**, a
-/// T-spin triple is a row and a half, and a perfect clear two rows.
-///
-/// **Measured with `ga cross`.** The starting intuition was that a tetris is roughly the work
-/// of a Puyo four-chain, and that is refuted by the rate rather than by argument: a
-/// four-chain sends about thirty two nuisance, and a Rustris player lands a qualifying clear
-/// two and a half times a minute, which would be a board of nuisance a minute and a Puyo
-/// player buried inside a stage. At a row apiece it is fifteen a minute - a row every
-/// twenty five seconds, into a tray that offset can still cancel.
+/// Nuisance puyos per foreign garbage block, so a tetris crosses to Puyo Rusto as a row of
+/// nuisance. Priced by `ga cross`.
 const NUISANCE_PER_FOREIGN_BLOCK: u32 = 3;
 const SOFT_DROP_POINTS_PER_ROW: u32 = 1;
 const HARD_DROP_POINTS_PER_ROW: u32 = 2;
 
-// pre-calculated step durations in ms: 1000 * (0.8 - (level as f64 * 0.007)).powi(level as i32)
-// doing it like this as hashmaps cannot be constant and fp logic is not yet supported at compile time
+// step durations, 1000 ms * (0.8 - level * 0.007)^level, precomputed since const fn has no powi
 const STEPS: [Duration; 15] = [
     Duration::from_millis(1000),
     Duration::from_millis(793),
@@ -126,10 +111,8 @@ pub enum GameState {
     },
 }
 
-/// What a locked piece achieved, in the terms the guideline scores it by. It travels to the
-/// themes as the game-private `detail` of a [`GameEvent::Clear`], the way an [`Attack`] carries
-/// its own detail, so a theme can tell a perfect clear from an ordinary one without knowing
-/// anything about tetrominoes.
+/// What a locked piece achieved, in the guideline's terms. It travels to the themes as the
+/// `detail` of a [`GameEvent::Clear`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct ClearAction {
     /// lines the piece completed, 0 to 4
@@ -172,12 +155,8 @@ impl ClearAction {
     }
 }
 
-/// What a clear sends to a player of `receiver`, in that game's units: see
-/// [`FOREIGN_TETRIS_GARBAGE`]. Nothing else a Rustris player does crosses.
-///
-/// Only the sender knows what the clear took, so only it can price the crossing - and it
-/// prices each game it can reach separately, since a row, a garbage block and a nuisance puyo
-/// are not the same thing. A game nothing here prices is worth nothing and never gets hit.
+/// What a clear sends to a player of `receiver`, in that game's units (see
+/// `FOREIGN_TETRIS_GARBAGE`). An unpriced game gets nothing.
 pub fn foreign_attack(receiver: GameId, action: ClearAction) -> u32 {
     let scale = match receiver {
         ids::DR_RUSTARIO => 1,
@@ -191,7 +170,6 @@ pub fn foreign_attack(receiver: GameId, action: ClearAction) -> u32 {
         0
     };
     let spin = match action.spin {
-        // a mini is not the trick the full spin is, so it stays at home with the rest
         Some(Spin::Full) => FOREIGN_T_SPIN_GARBAGE[spin_index],
         Some(Spin::Mini) | None => 0,
     };
@@ -225,9 +203,7 @@ pub struct Game {
     /// the guideline combo counter: `None` until a piece clears a line, then counting the
     /// clears *after* the first, and broken by a piece that clears nothing
     combo: Option<u32>,
-    /// whether the last line clear was a difficult one, which is what a difficult clear has to
-    /// follow to be worth back to back. Only a line clear can change it: a piece that clears
-    /// nothing leaves it alone
+    /// whether the last line clear was difficult; a piece that clears nothing leaves it alone
     back_to_back: bool,
     state: GameState,
     soft_drop: bool,
@@ -648,8 +624,6 @@ impl Game {
             (None, _) => unreachable!(),
         };
 
-        // update the combo counter: 0 for the first clear of a chain, and one more for each
-        // clear that follows it
         let combo = self.combo.map_or(0, |count| count + 1);
         self.combo = Some(combo);
 
@@ -657,7 +631,6 @@ impl Game {
         let back_to_back = action_difficult && self.back_to_back;
         self.back_to_back = action_difficult;
 
-        // calculate score delta
         let level_multiplier = self.level + 1;
         let (difficult_score_multiplier, difficult_garbage_lines) = if back_to_back {
             (DIFFICULT_MULTIPLIER, 1)
@@ -681,7 +654,6 @@ impl Game {
                 + combo_score as f64
                 + perfect_clear_score as f64;
 
-        // update score
         self.score = (self.score + score_delta.round() as u32).min(MAX_SCORE);
 
         let combo_garbage = COMBO_GARBAGE[(combo as usize).min(COMBO_GARBAGE.len() - 1)];
@@ -879,9 +851,7 @@ mod tests {
         result
     }
 
-    /// score a locked piece that cleared n lines on a fixed level, returning the points it
-    /// earned. The level is pinned so a test may clear as much as it likes without the level
-    /// multiplier moving underneath it
+    /// score a locked piece that cleared n lines on a pinned level, returning the points earned
     fn clear_at(game: &mut Game, level: u32, n: u32) -> u32 {
         game.level = level;
         game.stage_lines = 0;
@@ -1248,10 +1218,7 @@ mod tests {
         assert_eq!(foreign_attack_sent(&mut game), FOREIGN_TETRIS_GARBAGE);
     }
 
-    /// The same three clears cross to Puyo Rusto as cross to Dr. Rustario, scaled into that
-    /// game's own units: a tetris is a row of nuisance, a T-spin triple a row and a half, a
-    /// perfect clear two rows. One arm rather than a second table, so the two crossings can
-    /// never disagree about which clears are worth working for.
+    /// The clears that cross to Dr. Rustario cross to Puyo Rusto, at a row of nuisance a block.
     #[test]
     fn the_same_clears_cross_to_puyo_rusto_at_a_row_of_nuisance_a_block() {
         for action in [
@@ -1314,7 +1281,7 @@ mod tests {
         );
     }
 
-    /// ... and a clear that crosses says so on the attack it sends, for both games at once
+    /// a tetris's attack carries its price for both other games
     #[test]
     fn a_tetris_prices_itself_for_both_of_the_other_games() {
         let mut game = game();

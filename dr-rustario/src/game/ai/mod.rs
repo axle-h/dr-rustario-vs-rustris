@@ -1,13 +1,11 @@
-//! The Dr. Rustario AI: bottle features, placement search and the agent that plays them. The
-//! generic half - the neural network and the genetic algorithm - lives in [engine::ai]. The
-//! training entry points (the `ga dr` subcommand) are not compiled for the browser; the playing
-//! agent and its trained network always are.
+//! The Dr. Rustario AI: bottle features, placement search and the agent that plays them; the
+//! network and genetic algorithm live in [engine::ai]. The `ga dr` training entry points are
+//! not compiled for the browser or Android.
 mod evaluator;
 mod features;
 mod n64;
 mod placement;
-// these drive a real [crate::game::Game], which the crate's own test build swaps for a mock,
-// so they are compiled out of it; the launcher links the real thing
+// these drive a real [crate::game::Game], which the test build swaps for a mock
 #[cfg(not(test))]
 pub mod agent;
 #[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
@@ -29,19 +27,9 @@ mod run;
 pub use models::{DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
 pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 
-/// Which brain an ai player is thinking with. **Nothing in the game fields the trained
-/// network** (Alex, 2026-09-07): every difficulty and both demos play Dr. Mario 64's own
-/// deterministic opponent, ported in [n64], whose six rows of weights are the only difficulty
-/// dial there is. The linear scorer is the hand written baseline training is measured against.
-///
-/// The network is still built, still trained by `ga dr` and still the *stronger* player on the
-/// numbers - over twenty seeds at the training budget it destroyed 20,016 viruses and finished
-/// 422 bottles against the strongest N64 row's 18,093 and 405, winning seventeen of the twenty.
-/// **It is not good to watch**, which is a different question and the one that decides what is
-/// fielded: it wins by grinding where the port plays legibly. `ga dr play`, `explain` and
-/// `probe` are where it lives now.
+/// Which brain an ai player thinks with. Every difficulty and both demos play the n64 port;
+/// the trained network is reachable only through `ga dr`, and nothing in the game fields it.
 #[derive(Clone, Copy, Debug)]
-// a player holds one of these for a whole match, and it is `Copy`, which a boxed network is not
 #[allow(clippy::large_enum_variant)]
 pub enum DrAiKind {
     N64(N64Ai),
@@ -62,8 +50,7 @@ impl DrAiKind {
 }
 
 impl Default for DrAiKind {
-    /// The strongest of the N64 ai's six rows, which is what everything that fields an ai here
-    /// plays. See the type's own comment for why it is not the network.
+    /// The strongest of the N64 ai's six rows.
     fn default() -> Self {
         Self::N64(N64Ai::new())
     }

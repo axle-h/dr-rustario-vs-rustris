@@ -1,21 +1,15 @@
-//! Where a feature routine wants its particles.
-//!
-//! Formations are authored in **canvas-normalised** coordinates — 0-1 across the canvas — and
-//! the field maps them into particle space on the way out. A routine written once therefore
-//! fits whether it owns the whole window or one half of it, with no special cases. `aspect`
-//! is the canvas's own width over height in real pixels, so a circle stays a circle and a
-//! silhouette is never stretched.
+//! Where a feature routine wants its particles, in canvas-normalised coordinates (0-1 across
+//! the canvas) so a routine fits a whole window or half of one. `aspect` is the canvas's width
+//! over height in real pixels, so a circle stays a circle.
 
 use crate::particles::field::shapes::EdgeShape;
 use crate::particles::field::FieldRng;
 use crate::particles::geometry::{RectF, Vec2D};
 use rand::RngExt;
 
-/// how many placements a formation tries before settling for the least bad one. This runs
-/// once when a feature starts, so it can afford to be thorough.
+/// placements tried before settling for the one covering least board
 const PLACEMENT_TRIES: usize = 24;
 
-/// how much of `board` a shape centred at `centre` with these half extents covers
 fn overlap(board: &RectF, centre: Vec2D, half_x: f64, half_y: f64) -> f64 {
     let width =
         (board.right().min(centre.x() + half_x) - board.x().max(centre.x() - half_x)).max(0.0);
@@ -24,60 +18,51 @@ fn overlap(board: &RectF, centre: Vec2D, half_x: f64, half_y: f64) -> f64 {
     width * height
 }
 
-/// A silhouette drifting and tumbling as it holds, plus the grids and ribbons the other
-/// feature routines snap to.
+/// The targets a feature routine snaps its particles to.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Formation {
-    /// the sprite edge morph: an outline placed in the canvas, slowly turning and breathing
+    /// an outline placed in the canvas, slowly turning and breathing
     Sprite {
         points: Vec<Vec2D>,
         centre: Vec2D,
         size: f64,
-        /// radians per second
         spin: f64,
         drift: Vec2D,
-        /// how much room the placed outline takes either side of its centre, canvas
-        /// normalised: what the drift turns round at, so a long hold never walks it off
+        /// the placed outline's half extents, canvas-normalised, which the drift turns round at
         half: Vec2D,
     },
-    /// a rectilinear grid that breathes, then shears and collapses. Structure with no masks
-    /// at all
+    /// a rectilinear grid that breathes, then shears and collapses
     Lattice {
         cols: usize,
         rows: usize,
         inset: f64,
     },
-    /// a waveform across the canvas, its amplitude driven by how energetic the field is
+    /// a waveform across the canvas, its amplitude driven by the field's energy
     Ribbon {
         amplitude: f64,
         frequency: f64,
         phase_rate: f64,
     },
-    /// concentric rings about a single centre, drifting across the canvas. One set of rings
-    /// and not one per board: a circle behind each player reads as decoration bolted to the
-    /// boards, where one that wanders reads as something the field itself is doing
+    /// concentric rings about one wandering centre, not one set per board
     Haloes {
         centre: Vec2D,
         /// canvas-normalised, outermost first
         radii: Vec<f64>,
         spin: f64,
-        /// canvas widths per second, reflected off the edges as it goes
+        /// canvas widths per second, reflected off the edges
         drift: Vec2D,
     },
-    /// arms winding out of a centre, turning as they hold
     Spiral {
         centre: Vec2D,
         arms: usize,
-        /// how many times round an arm goes
         turns: f64,
         radius: f64,
         spin: f64,
     },
-    /// the figure two perpendicular sines trace: the oscilloscope's other trace, closed
+    /// the figure two perpendicular sines trace
     Lissajous {
         centre: Vec2D,
         amplitude: Vec2D,
-        /// the two frequencies, which is what decides which figure it is
         ratio: (f64, f64),
         phase_rate: f64,
     },
@@ -86,11 +71,8 @@ pub enum Formation {
 }
 
 impl Formation {
-    /// a silhouette placed somewhere sensible in the canvas: never so big it runs off the
-    /// edges, never so small it reads as noise
-    /// `boards` are the players' playfields in canvas-normalised coordinates: a silhouette
-    /// gathers away from them where it can, so it is not drawn over the one thing the player
-    /// is reading
+    /// A silhouette sized to stay on the canvas and read as a shape, placed away from `boards`
+    /// (canvas-normalised) where it can be.
     pub fn sprite(shape: &EdgeShape, aspect: f64, rng: &mut FieldRng, boards: &[RectF]) -> Self {
         Self::sprite_sized(
             shape,
@@ -103,10 +85,8 @@ impl Formation {
         )
     }
 
-    /// text is wide and thin, so it wants a good part of the canvas, and it should sit still
-    /// enough to be read. Not the whole of it: a word stretched wall to wall is one the eye
-    /// has to track rather than take in, and its letters end up further apart than the
-    /// particles that spell them
+    /// A text outline placed wide and still, but not wall to wall, where its letters end up
+    /// further apart than the particles that spell them.
     pub fn text(shape: &EdgeShape, aspect: f64, rng: &mut FieldRng, boards: &[RectF]) -> Self {
         Self::sprite_sized(
             shape,
@@ -119,8 +99,8 @@ impl Formation {
         )
     }
 
-    /// `fill` is the fraction of the canvas the shape spans on its larger side, measured from
-    /// the outline's own extents so a wide shape is wide rather than merely tall enough
+    /// `fill` is the canvas fraction the shape spans on its larger side, from the outline's own
+    /// extents
     #[allow(clippy::too_many_arguments)]
     fn sprite_sized(
         shape: &EdgeShape,
@@ -132,16 +112,13 @@ impl Formation {
         drift: (f64, f64),
     ) -> Self {
         let aspect = aspect.max(0.01);
-        // a shape that turns as it holds is placed by the circle it turns inside, not by the
-        // box it happens to fill at the moment it is made: a tetromino lying on its side is
-        // half off the canvas by the time it has swung upright otherwise
+        // a spinning shape is placed by the circle it turns inside, or it swings off the canvas
         let (bound_x, bound_y) = if spin.0 == 0.0 && spin.1 == 0.0 {
             shape.extents()
         } else {
             (shape.radius(), shape.radius())
         };
         let fill = fill_min + (fill_max - fill_min) * rng.random::<f64>();
-        // the largest scale that keeps the outline within `fill` of the canvas either way
         let size = [
             (bound_x > 0.0).then(|| fill * aspect / (2.0 * bound_x)),
             (bound_y > 0.0).then(|| fill / (2.0 * bound_y)),
@@ -153,12 +130,10 @@ impl Formation {
 
         let half_x = bound_x * size / aspect;
         let half_y = bound_y * size;
-        // room for the drift and the breathe on top of the outline itself, so a formation
-        // that is still moving when the hold ends has not walked off the canvas by then
+        // room for the drift and breathe, so a formation still moving at the end stays on canvas
         let margin_x = (half_x * 1.05 + 0.05).min(0.49);
         let margin_y = (half_y * 1.05 + 0.05).min(0.49);
-        // a handful of candidate placements, keeping whichever covers the least board. Text
-        // spans most of the canvas and cannot avoid them, so this is a preference, not a rule
+        // keep the placement covering least board; a preference, since text cannot avoid them
         let mut best: Option<(Vec2D, f64)> = None;
         for _ in 0..PLACEMENT_TRIES {
             let centre = Vec2D::new(
@@ -209,17 +184,15 @@ impl Formation {
         }
     }
 
-    /// three or four rings about a point somewhere in the middle of the canvas, set drifting
     pub fn haloes(rng: &mut FieldRng, aspect: f64) -> Self {
         let rings = 3 + rng.random_range(0..2);
-        // the rings wander, so they are sized against the tightest they will ever be boxed in
+        // the rings wander, so they are sized for the tightest they will be boxed in
         let outer = (0.3 + 0.1 * rng.random::<f64>()).min(0.45 * aspect.max(0.01));
         Self::Haloes {
             centre: Vec2D::new(
                 0.35 + 0.3 * rng.random::<f64>(),
                 0.35 + 0.3 * rng.random::<f64>(),
             ),
-            // evenly spaced from a quarter of the outer radius out to it
             radii: (0..rings)
                 .map(|ring| outer * (0.25 + 0.75 * ring as f64 / (rings - 1).max(1) as f64))
                 .rev()
@@ -238,22 +211,19 @@ impl Formation {
             centre,
             arms: 1 + rng.random_range(0..3),
             turns: 1.5 + 1.5 * rng.random::<f64>(),
-            // as wide as it likes, up to whatever room the centre it was given leaves it
             radius: (0.34 + 0.1 * rng.random::<f64>()).min(Self::head_room(centre, aspect) / 1.07),
             spin: Self::signed(rng, 0.25, 0.6),
         }
     }
 
-    /// how far a circle about `centre` can reach before it leaves the canvas, allowing for
-    /// the canvas being wider than it is tall
+    /// how far a circle about `centre` can reach before it leaves the canvas
     fn head_room(centre: Vec2D, aspect: f64) -> f64 {
         let across = centre.x().min(1.0 - centre.x()) * aspect.max(0.01);
         across.min(centre.y().min(1.0 - centre.y())).max(0.0)
     }
 
     pub fn lissajous(rng: &mut FieldRng, aspect: f64) -> Self {
-        // the small integer ratios are the ones that close into a figure rather than a
-        // scribble; anything larger is too busy to read at this size
+        // small integer ratios close into a figure; larger ones scribble
         const RATIOS: [(f64, f64); 6] = [
             (1.0, 2.0),
             (2.0, 3.0),
@@ -263,7 +233,6 @@ impl Formation {
             (5.0, 4.0),
         ];
         let centre = Vec2D::new(0.5, 0.5);
-        // it swells with the field's energy, so it is sized for its widest
         let widest = Self::head_room(centre, aspect) / 1.16;
         Self::Lissajous {
             centre,
@@ -276,7 +245,6 @@ impl Formation {
         }
     }
 
-    /// a magnitude between `min` and `max`, either way round
     fn signed(rng: &mut FieldRng, min: f64, max: f64) -> f64 {
         let magnitude = min + (max - min) * rng.random::<f64>();
         if rng.random::<bool>() {
@@ -286,8 +254,7 @@ impl Formation {
         }
     }
 
-    /// where something drifting at `rate` from `start` has got to, reflected back off `min`
-    /// and `max` rather than sailing off the canvas
+    /// where something drifting at `rate` from `start` has got to, reflected off `min` and `max`
     fn wander(start: f64, rate: f64, elapsed: f64, min: f64, max: f64) -> f64 {
         let span = max - min;
         if span <= 0.0 {
@@ -301,7 +268,7 @@ impl Formation {
         }
     }
 
-    /// how many particles this formation can usefully hold; `None` means as many as there are
+    /// how many particles this formation can usefully hold; `None` means any number
     pub fn capacity(&self) -> Option<usize> {
         match self {
             Formation::Sprite { points, .. } => Some(points.len()),
@@ -314,8 +281,8 @@ impl Formation {
         }
     }
 
-    /// where the `index`th of `count` members belongs, canvas-normalised. `energy` swells the
-    /// routines that react to how hard the match is being played.
+    /// Where the `index`th of `count` members belongs, canvas-normalised. `energy` swells the
+    /// routines that react to the match.
     pub fn target(
         &self,
         index: usize,
@@ -338,14 +305,12 @@ impl Formation {
                 if points.is_empty() {
                     return None;
                 }
-                // a cast smaller than the outline is spread evenly over the whole of it,
-                // rather than filling a prefix and leaving the rest of the shape missing
+                // a cast smaller than the outline is spread evenly over all of it
                 let point = if count >= points.len() {
                     points[index % points.len()]
                 } else {
                     points[index * points.len() / count]
                 };
-                // it should move as it holds, not sit still
                 let breathe = 1.0 + 0.03 * (elapsed * 1.7).sin();
                 let angle = spin * elapsed;
                 let (sin, cos) = angle.sin_cos();
@@ -368,7 +333,6 @@ impl Formation {
                 let cell = index % (cols * rows);
                 let (col, row) = (cell % cols, cell / cols);
                 let span = 1.0 - 2.0 * inset;
-                // breathe, then shear over as it comes apart
                 let breathe = 1.0 + 0.05 * (elapsed * 1.3).sin();
                 let shear = (elapsed * 0.35).powi(2) * 0.25;
                 let x = inset + span * col as f64 / (cols.max(2) - 1) as f64;
@@ -387,9 +351,11 @@ impl Formation {
                 let x = index as f64 / (count - 1).max(1) as f64;
                 let amplitude = amplitude * (0.7 + 0.6 * energy);
                 let y = 0.5
-                    + amplitude * (frequency * x * std::f64::consts::TAU + elapsed * phase_rate).sin()
-                    // a slower second harmonic so it is a waveform, not a plain sine
-                    + amplitude * 0.35 * (frequency * 0.5 * x * std::f64::consts::TAU - elapsed).sin();
+                    + amplitude
+                        * (frequency * x * std::f64::consts::TAU + elapsed * phase_rate).sin()
+                    + amplitude
+                        * 0.35
+                        * (frequency * 0.5 * x * std::f64::consts::TAU - elapsed).sin();
                 Some(Vec2D::new(x, y))
             }
             Formation::Haloes {
@@ -404,9 +370,7 @@ impl Formation {
                 let radius = radii[index % radii.len()];
                 let ring_members = (count as f64 / radii.len() as f64).max(1.0);
                 let step = (index / radii.len()) as f64 / ring_members;
-                // tighter and faster as the field grows agitated
                 let radius = radius * (1.0 - 0.25 * energy);
-                // the inner rings turn faster, the way an orrery does
                 let rate = spin * (1.0 + 0.6 * (radii.len() - 1 - index % radii.len()) as f64);
                 let angle = step * std::f64::consts::TAU + elapsed * rate;
                 let (sin, cos) = angle.sin_cos();
@@ -435,7 +399,6 @@ impl Formation {
                 let angle = along * turns * std::f64::consts::TAU
                     + arm as f64 * std::f64::consts::TAU / arms as f64
                     + elapsed * spin;
-                // it winds outward as it holds, so the arms are never a still photograph
                 let radius = radius * (0.12 + 0.88 * along) * (1.0 + 0.06 * (elapsed * 0.8).sin());
                 let (sin, cos) = angle.sin_cos();
                 Some(Vec2D::new(
@@ -450,7 +413,6 @@ impl Formation {
                 phase_rate,
             } => {
                 let t = index as f64 / count as f64 * std::f64::consts::TAU;
-                // the phase creeping round is what makes the figure turn itself inside out
                 let phase = elapsed * phase_rate;
                 let swell = 1.0 + 0.15 * energy;
                 Some(Vec2D::new(
@@ -495,7 +457,6 @@ mod tests {
         }
     }
 
-    /// the widest a target ever gets from the canvas over `seconds` of holding
     fn bounds(formation: &Formation, seconds: f64, aspect: f64) -> (f64, f64) {
         let mut worst: (f64, f64) = (1.0, 0.0);
         let mut elapsed = 0.0;
@@ -516,7 +477,6 @@ mod tests {
     fn the_curves_stay_on_the_canvas_for_as_long_as_they_hold() {
         let mut rng = test_rng();
         for _ in 0..40 {
-            // a whole 16:9 window, half of one, and a square
             for aspect in [1.78, 0.89, 1.0] {
                 for formation in [
                     Formation::haloes(&mut rng, aspect),
@@ -524,7 +484,7 @@ mod tests {
                     Formation::lissajous(&mut rng, aspect),
                     Formation::ribbon(&mut rng),
                 ] {
-                    // longer than any hold, so a drifter has to have turned round by then
+                    // longer than any hold, so a drifter has turned round by then
                     let (low, high) = bounds(&formation, 12.0, aspect);
                     assert!(
                         low > -0.05 && high < 1.05,
@@ -537,8 +497,6 @@ mod tests {
 
     #[test]
     fn a_silhouette_that_spins_stays_on_the_canvas_as_it_turns() {
-        // an outline far wider than it is tall, which is the one that swings off the canvas
-        // if it is placed by the box it happens to fill rather than the circle it turns in
         let shape = EdgeShape::wide_bar();
         let mut rng = test_rng();
         for _ in 0..40 {
@@ -557,7 +515,6 @@ mod tests {
         let Formation::Haloes { radii, .. } = Formation::haloes(&mut rng, 1.78) else {
             panic!("not haloes")
         };
-        // rings about one centre: a circle bolted to each board is decoration, not a routine
         assert!((3..=4).contains(&radii.len()), "{radii:?}");
         assert!(
             radii.windows(2).all(|w| w[0] > w[1]),
@@ -571,7 +528,6 @@ mod tests {
             let value = Formation::wander(0.3, 0.4, elapsed as f64 * 0.1, 0.2, 0.8);
             assert!((0.2..=0.8).contains(&value), "{elapsed} {value}");
         }
-        // and it is going somewhere: it does not simply sit at its start
         let start = Formation::wander(0.3, 0.4, 0.0, 0.2, 0.8);
         assert!((start - Formation::wander(0.3, 0.4, 1.0, 0.2, 0.8)).abs() > 0.1);
     }
@@ -581,7 +537,6 @@ mod tests {
         assert!(Formation::Free.target(0, 10, 0.0, 1.0, 0.0).is_none());
     }
 
-    /// how much board the average placement covers, over enough tries to be stable
     fn mean_cover(boards: &[RectF]) -> f64 {
         let shape = EdgeShape::unit_square();
         let mut rng = test_rng();
@@ -608,7 +563,6 @@ mod tests {
             RectF::new(0.0, 0.0, 0.22, 1.0),
             RectF::new(0.78, 0.0, 0.22, 1.0),
         ];
-        // the same placement with nothing to avoid, as the yardstick
         let nowhere = [RectF::new(-9.0, -9.0, 0.01, 0.01)];
         let blind = {
             let shape = EdgeShape::unit_square();
@@ -657,8 +611,6 @@ mod tests {
             drift: Vec2D::ZERO,
             half: Vec2D::new(0.0, 0.0),
         };
-        // on a canvas twice as wide as it is tall, a point half a unit right is only a
-        // quarter of the canvas across, but half a unit down is half of it
         let right = shape.target(0, 2, 0.0, 2.0, 0.0).unwrap();
         let down = shape.target(1, 2, 0.0, 2.0, 0.0).unwrap();
         assert_eq!(right.x() - 0.5, 0.25);

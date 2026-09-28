@@ -1,7 +1,6 @@
-//! renders each game's main menu straight to a PNG, without opening a visible window, as
-//! the theme selection is walked: the mode list has to lose the theme sprint as soon as a
-//! single theme is picked, and get it back with `all`. One menu per game and player count
-//! is kept for the walk, refreshed by `Menu::set_items` exactly as the shell does.
+//! Renders each game's main menu to a PNG, without a visible window, while walking the theme
+//! row: the mode list loses the theme sprint when a single theme is picked and regains it with
+//! `all`. Menus are refreshed by `Menu::set_items` as the shell does.
 //!
 //! `cargo run -p dr-rustario-vs-rustris --example menu_shot -- 960 720 out/`
 
@@ -15,15 +14,13 @@ use rustris::options::Options as RustrisOptions;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::WindowCanvas;
 
-/// As much of a game's options as this example drives. The games' `Options` are separate
-/// types with no trait between them, so the walk gets one here: a game joining the compendium
-/// is an impl and an entry in [`all_games`], not another hand-written pair of menus.
+/// As much of a game's options as this example drives, since the games' `Options` share no
+/// trait.
 trait MenuOptions {
     fn set_players(&mut self, players: u32);
     fn select(&mut self, name: &str, value: &str);
     fn items(&self) -> Vec<MenuItem>;
-    /// the names of this game's own themes, `all` first - the games do not name their themes
-    /// alike, so the walk asks each one what it has rather than assuming
+    /// the names of this game's own themes, `all` first
     fn theme_names(&self) -> Vec<&'static str>;
 }
 
@@ -88,8 +85,7 @@ impl MenuOptions for RustleFighterOptions {
     }
 }
 
-/// every game whose menus are walked: the file name it is shot under, its title, and its
-/// options
+/// every game whose menus are walked: its file name, title and options
 fn all_games() -> Vec<(&'static str, &'static str, Box<dyn MenuOptions>)> {
     vec![
         (
@@ -116,14 +112,12 @@ fn all_games() -> Vec<(&'static str, &'static str, Box<dyn MenuOptions>)> {
     ]
 }
 
-/// the theme picks to walk, as *steps*: `all`, then a single theme of the game's own, then
-/// `all` again - which is what takes the theme sprint off the mode list and puts it back
+/// the theme steps walked: `all`, a single theme, then `all` again
 const THEME_STEPS: usize = 3;
 
 /// the theme this game is asked for at each step
 fn theme_step(names: &[&'static str], step: usize) -> &'static str {
-    // "all" is always the first of them; a single theme is anything after it, and a game with
-    // only one theme has nothing to switch to yet
+    // a game with only one theme stays on `all`
     match step {
         1 => names.get(1).copied().unwrap_or(names[0]),
         _ => names[0],

@@ -6,18 +6,12 @@ pub use engine::session::MatchRules;
 use std::time::Duration;
 use strum::IntoEnumIterator;
 
-/// How hard the match is, in the game's own terms.
+/// How hard the match is: how many colours are dealt and how much nuisance you start with.
+/// Puyo Nexus, [Tsu (rule)](https://puyonexus.com/wiki/Tsu_(rule)).
 ///
-/// Puyo Nexus, [Tsu (rule)](https://puyonexus.com/wiki/Tsu_(rule)): the difficulty setting is
-/// what decides "how many colors the player will receive and how many Garbage Puyos they will
-/// start out with on their field". Five colours is a much harder game than three, because a
-/// chain needs its colours to come back round.
-///
-/// The colour count is fixed for a whole match and is **never** driven by
-/// [`crate::game::Game::speed_index`]. Stages advance per player while the pair pool is dealt
-/// from one shared seed, so a colour count that changed part way through would deal the player
-/// who got there first a colour the other is not drawing yet - and from then on the two would
-/// be playing different games. `speed_index` may change how a game feels, never what it deals.
+/// The colour count is fixed for the whole match and never driven by
+/// `speed_index`: players reach stages at different times while sharing one
+/// seed, so a change part way through would deal them different games.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Difficulty {
     VeryEasy,
@@ -77,73 +71,28 @@ impl Difficulty {
     }
 }
 
-/// How many puyos have to be cleared to finish a stage.
-///
-/// Puyo has no natural level, so a stage is a speed step: play carries on seamlessly and the
-/// pairs simply start falling faster. Roughly seven or eight groups' worth, which is a
-/// comparable stretch of play to Rustris's ten lines.
+/// How many puyos have to be cleared to finish a stage, which is a speed step; about Rustris's
+/// ten lines of play.
 pub const PUYOS_PER_STAGE: u32 = 30;
 
 /// the fastest a pair falls of its own accord
 pub const MIN_FALL_DELAY: Duration = Duration::from_millis(90);
 
-/// How long a pair takes to fall one row at each speed step.
-///
-/// Past the end of the table it stays at [`MIN_FALL_DELAY`]; a stage beyond that changes
-/// nothing but the number on the HUD, which is the same shape Rustris's own curve has.
+/// How long a pair takes to fall one row at each speed step, then [`MIN_FALL_DELAY`].
 pub const FALL_DELAY_MS: [u64; 12] = [800, 700, 600, 520, 450, 380, 320, 260, 210, 170, 130, 100];
 
-/// How long a pair takes to fall one row while the player holds soft drop.
-///
-/// Puyo Nexus, [Soft Drop](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Soft_Drop): soft drop speed
-/// is *hardcoded* at half a cell per frame - two frames a row, whatever the speed step - and the
-/// original does not even read the pad once regular gravity is faster than that. So it is a
-/// constant here and not a divisor of [`fall_delay`]: dividing made soft drop run away with the
-/// speed steps, reaching four times the original's rate by the bottom of [`FALL_DELAY_MS`] and
-/// crossing the whole board inside two frames, which is a hard drop and not a soft one.
-///
-/// Five frames rather than the original's two, which is the one place here that does not take
-/// the source's number, for two reasons. The original has no hard drop, so *its* soft drop is
-/// the fast way down and is nearly one; this game has both, and a soft drop that races the hard
-/// drop leaves the hard drop nothing to be. And it slides a pair eight pixels a frame *within*
-/// its cell, so two frames a row is continuous motion - this game interpolates now
-/// ([`engine::game::Game::fall_progress`]) but the board under it is still a grid.
-///
-/// Five is not a taste: it is the other two games measured and matched, and what is matched is
-/// how long a soft drop takes to cross **the whole board**, not the rate per row. That
-/// distinction is the whole of it, because these boards are not the same height - Rustris is 20
-/// rows and Dr. Rustario's bottle 16 against this game's [`crate::game::board::VISIBLE_ROWS`]. At the speed
-/// each game starts on:
-///
-/// | game | per row | the whole board |
-/// |--|--|--|
-/// | Rustris, level 0 | 50 ms | 1.00 s |
-/// | Dr. Rustario, low | 67 ms | 1.07 s |
-/// | this, at 83 ms | 83 ms | 1.00 s |
-///
-/// Matching the per-row rate instead is what 50 ms was, and over twelve rows it crossed in
-/// 0.6s - half again as fast as either of the others, which is what it felt like.
-///
-/// The other two divide their gravity by 20 and floor it, so their soft drop quickens as the
-/// level does. This does not, because this game's gravity curve is far flatter than theirs
-/// (800 ms down to 100, against Rustris's 1000 down to 7): the same divisor here bottoms out
-/// at 5 ms, and a constant is what the original has anyway.
-///
-/// Taken as the faster of this and gravity, so holding down can only ever hurry a pair along
-/// and never hold it up.
+/// How long a pair takes to fall one row under soft drop, taken as the faster of this and
+/// gravity. A constant at every speed step as in the original (Puyo Nexus,
+/// [Soft Drop](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Soft_Drop)), but slower than its two
+/// frames so that it crosses the whole board in about a second like the other two games; pinned
+/// by `a_soft_drop_crosses_the_board_at_the_pace_the_other_games_do`.
 pub const SOFT_DROP_DELAY: Duration = Duration::from_millis(83);
 
 /// how long a resting pair may still be nudged about before it locks
 pub const LOCK_DELAY: Duration = Duration::from_millis(400);
 
-/// The rules' own pause on a popped group, which is the *floor* under a chain step rather
-/// than the whole of it.
-///
-/// A theme's destroy animation **adds** to this - the match screen skips `game.update`
-/// outright while an animation blocks the tick - so the pace of a chain is set by whichever
-/// theme is on. That is deliberate: `genesis` spends the best part of a second on a step
-/// because Mean Bean Machine does, and `snes` and the particle theme are quick because the
-/// games they are drawn from are. This is only what is left when a theme animates nothing.
+/// The rules' own pause on a popped group, the floor under a chain step: a theme's destroy
+/// animation adds to it, since the match screen skips `game.update` while one blocks.
 pub const POP_DELAY: Duration = Duration::from_millis(90);
 
 /// the pause while loose puyos fall, after a lock or between chain steps
@@ -152,21 +101,8 @@ pub const SETTLE_DELAY: Duration = Duration::from_millis(120);
 /// the pause after the queue has emptied onto the board, before the next pair
 pub const NUISANCE_DELAY: Duration = Duration::from_millis(150);
 
-/// How nuisance falls in from over the top of the board.
-///
-/// It is drawn falling rather than simply appearing (see
-/// [`engine::render::GameRender::attack_fall`]), which is the one moment of this game
-/// the player has no say in and so the one that most needs to be *seen*: a whole rock landing
-/// is five rows arriving at once, and where they land decides what is left of the chain
-/// underneath.
-///
-/// It falls under **gravity**, which is what the original does and what a constant speed
-/// never looked like: the beans appear level under the lintel, drift down, and are moving
-/// fast by the time they arrive. Each column is held back a little as well, off a hash of its
-/// own index, so the level row they start as breaks into a ragged line on the way down. The
-/// whole board - a rock landing in an empty well, the longest fall there is - takes a little
-/// over a second, and a drop onto a stack is shorter in proportion, so the pause this costs
-/// is only ever as long as the drop deserves.
+/// How nuisance falls in from over the top of the board: under gravity, with each column held
+/// back a little so the row breaks up, taking just over a second for the longest fall.
 pub const NUISANCE_FALL: NuisanceFall = NuisanceFall {
     initial_speed: 7.0,
     acceleration: 26.0,
@@ -185,7 +121,7 @@ pub fn fall_delay(speed_index: u32) -> Duration {
         .unwrap_or(MIN_FALL_DELAY)
 }
 
-/// The starting speed step the menu offers, which is what a Puyo "level" is.
+/// The starting speed step the menu offers, which is what a Puyo level is.
 pub const MAX_START_LEVEL: u32 = 9;
 
 /// the biggest speed step the HUD ever has to show, so it can size the digits
@@ -194,9 +130,8 @@ pub const MAX_LEVEL: u32 = 99;
 /// the biggest score the HUD ever has to show
 pub const MAX_SCORE: u32 = 9_999_999;
 
-/// Which themes a match runs through: `genesis`, `snes` and the particle theme, plus `all`,
-/// which runs through every one of them in the order [`crate::theme::all_themes`] builds
-/// them - oldest hardware first.
+/// Which themes a match runs through; `all` runs every one in [`crate::theme::all_themes`]'s
+/// order.
 #[derive(
     Clone,
     Copy,
@@ -226,17 +161,12 @@ impl MatchThemes {
         Self::iter().map(|e| e.into()).collect()
     }
 
-    /// how many themes there are, which is `all` less itself
     pub fn count() -> usize {
         Self::iter().filter(|i| *i as usize > 0).count()
     }
 
-    /// The theme every player starts on: an index into [`crate::theme::all_themes`], which
-    /// is in the same order this enum is less `all`.
-    ///
-    /// `options.rs::theme_mode` reads this rather than matching the variants itself, which
-    /// is a difference from the other two games - so a new theme is an arm here, an entry in
-    /// `all_themes` and nothing else.
+    /// The theme every player starts on: an index into [`crate::theme::all_themes`], which is
+    /// in this enum's order less `all`. `options.rs` reads this rather than matching variants.
     pub fn initial_index(&self) -> usize {
         match self {
             MatchThemes::All | MatchThemes::Genesis => 0,
@@ -246,11 +176,9 @@ impl MatchThemes {
     }
 }
 
-/// How well the ai plays, under the four names every game in the compendium offers.
-///
-/// The names and the key delays are the other games' exactly - see `ai_difficulties_agree` in
-/// the launcher, which holds every game to the same four. What is *behind* them is this game's
-/// own: rows of [`crate::game::ai::skill::SKILL_ORDER`], which is measured rather than assumed.
+/// How well the ai plays, under the four names and key delays every game in the compendium
+/// shares (`ai_difficulties_agree` in the launcher); each picks a row of
+/// [`crate::game::ai::skill::SKILL_ORDER`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AiDifficulty {
     Easy,
@@ -288,10 +216,8 @@ impl AiDifficulty {
         }
     }
 
-    /// The brain this difficulty thinks with: one of the six rows of
-    /// [`crate::game::ai::skill`], picked out of the *measured* ranking, so a harder setting
-    /// is a better player as well as a faster one. Dr. Rustario's four difficulties pick out
-    /// of its six N64 skill rows exactly this way.
+    /// The brain this difficulty thinks with: a row of the ranked
+    /// [`crate::game::ai::skill::SKILL_ORDER`], so a harder setting is a better player too.
     pub fn brain(&self) -> PuyoAiKind {
         match self {
             AiDifficulty::Easy => PuyoAiKind::nth_weakest(0),
@@ -327,14 +253,13 @@ impl AiMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GameConfig {
     pub players: u32,
-    /// the game's own five settings: how many colours, and how buried you start
+    /// how many colours are dealt and how buried you start
     pub difficulty: Difficulty,
     /// the speed step play opens on
     pub level: u32,
     pub rules: MatchRules,
     pub themes: MatchThemes,
-    /// which track a match is played on; `None` deals one at random, which is the default and
-    /// what the menu calls it
+    /// who the ai plays
     pub ai: AiMode,
 }
 
@@ -350,7 +275,7 @@ impl GameConfig {
         }
     }
 
-    /// how many boards the match runs, which the ai mode may decide instead of the dial
+    /// how many boards the match runs; the ai mode may decide instead of the dial
     pub fn effective_players(&self) -> u32 {
         match self.ai {
             AiMode::Off => self.players,
@@ -359,14 +284,12 @@ impl GameConfig {
         }
     }
 
-    /// the ai controlled players (0-indexed), the key delay they play at and the brain they
-    /// think with
+    /// the ai players (0-indexed), with their key delay and brain
     pub fn ai_players(&self) -> Vec<(u32, Duration, PuyoAiKind)> {
         match self.ai {
             AiMode::Off => vec![],
             AiMode::Demo => vec![(0, Duration::ZERO, PuyoAiKind::best())],
-            // the two best rows against each other, the way the other two games field their
-            // second best against their best
+            // the two best rows against each other
             AiMode::VsDemo => vec![
                 (0, Duration::ZERO, PuyoAiKind::nth_weakest(SKILLS - 2)),
                 (1, Duration::ZERO, PuyoAiKind::nth_weakest(SKILLS - 1)),
@@ -392,8 +315,8 @@ impl Default for GameConfig {
 mod tests {
     use super::*;
 
-    /// the sourced difficulty table: three colours at the bottom, five at the top, with two
-    /// rows of nuisance on the two settings that start you buried
+    /// three colours at the bottom, five at the top, and two starting nuisance rows on the two
+    /// buried settings
     #[test]
     fn difficulty_sets_the_colour_count() {
         assert_eq!(Difficulty::VeryEasy.colors(), 3);
@@ -427,7 +350,6 @@ mod tests {
         assert_eq!(Difficulty::from_name("impossible"), None);
     }
 
-    /// the colour count only ever goes up with difficulty, never down
     #[test]
     fn harder_never_means_fewer_colours() {
         for pair in Difficulty::ALL.windows(2) {
@@ -447,9 +369,7 @@ mod tests {
         assert_eq!(fall_delay(9999), MIN_FALL_DELAY);
     }
 
-    /// A soft drop crosses the whole board in about a second, which is what the other two games
-    /// take to cross theirs at the speed they start on - and is why this number is not either
-    /// of *their* per-row rates, their boards being taller. See [`SOFT_DROP_DELAY`].
+    /// a soft drop crosses the board in about a second, as the other two games' do
     #[test]
     fn a_soft_drop_crosses_the_board_at_the_pace_the_other_games_do() {
         let crossing = SOFT_DROP_DELAY * crate::game::board::VISIBLE_ROWS;
@@ -459,8 +379,7 @@ mod tests {
         );
     }
 
-    /// soft drop is one rate for the whole game and gravity is what eventually catches it up,
-    /// which is the way round the original has it - see [`SOFT_DROP_DELAY`]
+    /// soft drop is one rate at every step, and gravity eventually overtakes it
     #[test]
     fn soft_drop_is_the_same_speed_at_every_step() {
         for step in 0..FALL_DELAY_MS.len() as u32 + 2 {

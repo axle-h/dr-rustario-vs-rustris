@@ -1,25 +1,8 @@
-//! The Kirby that stands in the arch at the foot of the centre column, and his fifteen routines.
+//! The Kirby that stands in the arch at the foot of the centre column, and his routines.
 //!
-//! This is the `snes` theme's answer to [`super::super::genesis::mugshots`], and the two are
-//! shaped differently on purpose. Mean Bean Machine draws the *opponent's* face in a fixed box
-//! at a constant rate, which is a strip. Kirby's Avalanche stands a whole little character in
-//! the arch: he walks about it, he flops on his face, he spins, he inflates and floats clean
-//! out of the arch for a second and a half, and his frames are not one size - 14x14 standing,
-//! 14x7 in the pancake he lands in, 6x14 when he bobs up tall. So this declares
-//! [`engine::render::character::RoutineArt`] instead: poses addressed by rect, and routines
-//! that name a pose, how long it is held and where it goes.
-//!
-//! **Every number below is measured**, off a 115 second capture of the emulated game, and
-//! `puyo-rusto/art/kirby.py` is what measured them - it registers the capture against the
-//! game's own screen, finds Kirby by colour, matches the crop against the rip at every offset,
-//! and prints this file's tables. The one thing it cannot measure is which routine belongs on
-//! which row: nothing in the capture ties one to anything happening on the board, and the game
-//! gives no sign that anything does. So the rows are this game's reading, and within a row the
-//! routine is dealt - the way [`crate::game::cell::PuyoSkin`] is, and a track, and a face.
-//!
-//! There is a cast of one, which the deal handles already: a theme with one character hands it
-//! to everybody, and in a two player game the left one is drawn mirrored so each Kirby faces
-//! the other player's board.
+//! His frames vary in size, so he is [`engine::render::character::RoutineArt`] (poses by rect,
+//! routines of pose, hold and offset) rather than a strip. The tables are measured from a
+//! capture of the emulated game and printed by `puyo-rusto/art/kirby.py`.
 
 use engine::animate::character::{Routine, RoutineChoice, RoutineFrame, RoutineWay};
 use engine::animate::frames::FrameAnimationType;
@@ -30,12 +13,8 @@ mod sprites {
     pub const KIRBY: &[u8] = include_bytes!("kirby.png");
 }
 
-/// Every pose, as its rect in `kirby.png`. This script cuts the sheet and
-/// prints the table, so the geometry is derived from the art rather than
-/// typed out twice - the same bargain `mugshots.py` makes for the genesis cast.
-///
-/// The last few are **flipped copies**, for the routines the rip only drew one
-/// way round. They are the one piece of derived art here.
+/// Every pose, as its rect in `kirby.png`. The last few are flipped copies for
+/// the routines the rip only drew one way round.
 const POSES: &[(i32, i32, u32, u32)] = &[
     (0, 0, 14, 14),     // 0
     (17, 0, 13, 14),    // 1
@@ -186,20 +165,14 @@ const POSES: &[(i32, i32, u32, u32)] = &[
     (102, 252, 14, 16), // 146
 ];
 
-/// How long Kirby stands between routines, in 60 Hz ticks.
-///
-/// Measured over the twenty seven gaps the capture holds: the median is exactly
-/// two seconds and they run from 0.93 to 2.30, so this is the shape of it and
-/// not the spread.
+/// How long Kirby stands between routines, the median gap in the capture.
 const REST: Duration = Duration::from_millis(2000);
 
 /// How much a dealing varies a routine's pace, either way.
 const SPEED_SPREAD: f64 = 0.15;
 
-/// Whether a routine he is out of position for may be walked into.
-///
-/// Always: the narrow windows would hardly ever be seen otherwise. Where it
-/// happens the translation rides the routine's own first hop.
+/// Whether a routine he is out of position for may be walked into, riding the
+/// routine's first hop.
 const APPROACH: bool = true;
 
 /// The idle blink, twice
@@ -3006,11 +2979,8 @@ const TAKEOFF_MIRRORED: Routine = &[
     },
 ];
 
-/// The flop, with its own recovery cut off and the last pose held: a buried
-/// player's Kirby stays down rather than picking himself up every two seconds.
-///
-/// The one routine here that is **derived** and not measured - every frame is
-/// the capture's, but the game never showed a Kirby who had lost.
+/// The defeat routine: the flop with its recovery cut and the last pose held,
+/// so a buried player's Kirby stays down.
 const COLLAPSE: Routine = &[
     RoutineFrame {
         pose: Some(0),
@@ -3029,17 +2999,10 @@ const COLLAPSE: Routine = &[
     },
 ];
 
-/// Everything he may be dealt: one entry a **kind**, each with the ways round
-/// it can be played.
+/// Everything he may be dealt: one entry a kind, each with the ways round it
+/// can be played, the direction chosen from where he stands.
 ///
-/// The bag deals a *kind* and the **direction is chosen from where he is**, so
-/// a Kirby against the right post walks left rather than sliding left to walk
-/// back. `jump`, `spin` and `tumble` have both ways in the game's own art; the
-/// four that travel and were only recorded one way have a mirrored twin.
-///
-/// The intensity is **vertical reach**, scaled so the biggest is one: a blink
-/// and a spin are nothing much, a jump is something, and climbing clean out of
-/// the arch is the most he does. It decides the order a bag comes out in.
+/// The intensity is vertical reach scaled so the biggest is one, and orders the bag.
 const CHOICES: &[RoutineChoice] = &[
     RoutineChoice {
         intensity: 0.00,
@@ -3180,37 +3143,23 @@ const CHOICES: &[RoutineChoice] = &[
     },
 ];
 
-/// Played *between* routines and not as one of them, half the time.
-///
-/// The blink is a tic. Dealt like a routine it is a fraction of what he does
-/// and reads as a loop; between them it reads as a character standing there.
+/// Played between routines, half the time, rather than dealt as one.
 const FILLER: RoutineWay = RoutineWay {
     frames: BLINK,
     origins: (0, 34),
     glide: (0, 0),
 };
 
-/// Where a routine's opening frame goes in the arch, and how far either way he may end up.
-///
-/// Every routine opens on Kirby standing, so `HOME.1` is the same for all fifteen: the box's
-/// own floor less the fourteen rows a standing pose is.
-///
-/// `WANDER` is a backstop and nothing more, now that a routine carries the window it may be
-/// started from: the windows already keep him inside the arch, and this only says what a home
-/// is clamped to if one of them is ever wrong.
+/// Where a routine's opening frame goes, standing on the box's floor, and the range a home is
+/// clamped to should a routine's window be wrong.
 const HOME: (i32, i32) = (17, BOX.3 as i32 - 14);
 const WANDER: (i32, i32) = (0, BOX.2 as i32 - 14);
 
-/// The cast, which is one: Kirby's Avalanche stands the *player's own* character here, not an
-/// opponent, so there is nobody else to be dealt.
-///
-/// (The game's opponents do have a box of their own - the mugshot at the top right, whose
-/// whole cast is in the `Battle Faces` rip - and that one is a strip in a fixed box, so it is
-/// the other art model and not this one.)
+/// The cast of one: the player's own Kirby.
 pub const CAST: &[CharacterData] = &[CharacterData {
     name: "Kirby",
     file: sprites::KIRBY,
-    // unread while `routines` is set, and there is nothing truthful to put here
+    // unread while `routines` is set
     states: [(1, FrameAnimationType::Static); 4],
     routines: Some(RoutineArt {
         poses: POSES,
@@ -3227,32 +3176,16 @@ pub const CAST: &[CharacterData] = &[CharacterData {
     emitters: &[],
 }];
 
-/// The arch opening, in the panel's own pixels - which are the SNES screen's, since the panel
-/// is cut from the screen itself.
-///
-/// The top is the lintel: everything is drawn into the panel texture, so a box any taller
-/// would paint over the stone rather than be hidden by it, which is exactly what should happen
-/// to a Kirby who has jumped out of the arch.
-///
-/// The **bottom is the plank** and not the game's own floor. Measured, Kirby's feet are on
-/// y=199 - 2343 of 2775 frames of the capture put them there - which is seven rows down inside
-/// the course `rip_retro.py`'s `SNES_FLOOR` lays across the arch mouth, where the game leaves
-/// bare dark. That course is also the only run in this column as wide as the nuisance tray
-/// needs, so it stays and Kirby stands on it: his feet at 192, the tray's boulders in the wood
-/// below them, and nothing overlapping. What it costs is seven rows of headroom - he leaves
-/// the top of the arch a little sooner than the game's own does, in the five routines that
-/// take him out of it at all.
+/// The arch opening in SNES screen pixels, from the lintel down to the tray's plank, which is
+/// seven rows above the game's own floor so Kirby stands clear of the tray.
 pub const BOX: (i32, i32, u32, u32) = (104, 157, 48, 35);
 
 pub fn cast() -> CharacterSetData {
     CharacterSetData {
         characters: CAST,
-        // the routine path addresses poses by rect and never reads these two; they are the
-        // strip path's, and a cast of routines has no strip
+        // the strip path's; unread by routines
         frame_size: (BOX.2, BOX.3),
         row_pitch: BOX.3,
-        // Mean Bean Machine's sweat is Mean Bean Machine's: six of its characters throw
-        // identical drops and this game's Kirby throws nothing at all
         sweat: None,
     }
 }
@@ -3261,8 +3194,7 @@ pub fn cast() -> CharacterSetData {
 mod tests {
     use super::*;
 
-    /// Every routine there is, taken from the tables rather than listed again: the pool's own
-    /// ways, the filler and the derived defeat one.
+    /// every routine in the tables: the pool's ways, the filler and the defeat one
     fn every_routine() -> Vec<Routine> {
         let mut all: Vec<Routine> = CHOICES
             .iter()
@@ -3274,9 +3206,7 @@ mod tests {
         all
     }
 
-    /// A pose index is written by `kirby.py` and read by the engine with no bounds check on
-    /// the way, so a table that has drifted from the sheet draws the wrong Kirby rather than
-    /// failing - which is the sort of thing only a test catches.
+    /// Every routine frame names a pose in [`POSES`] and is held for some time.
     #[test]
     fn every_frame_names_a_pose_that_exists() {
         for routine in every_routine() {
@@ -3294,8 +3224,7 @@ mod tests {
         }
     }
 
-    /// Every pose is cut, so every pose should be played: one nobody names is a sprite the
-    /// cutter put in the sheet for nothing.
+    /// Every pose in [`POSES`] is played by some routine.
     #[test]
     fn every_pose_is_played() {
         let mut seen = vec![false; POSES.len()];
@@ -3315,9 +3244,7 @@ mod tests {
         assert!(idle.is_empty(), "poses nothing plays: {idle:?}");
     }
 
-    /// Every routine opens on the character standing, which is what makes a frame's place
-    /// relative to its first one mean anything - and what lets `HOME.1` be one number for all
-    /// fifteen rather than one per routine.
+    /// Every routine opens on a standing pose at its own origin, which `HOME.1` relies on.
     #[test]
     fn every_routine_opens_standing_at_its_own_origin() {
         for routine in every_routine() {
@@ -3335,8 +3262,7 @@ mod tests {
         }
     }
 
-    /// The standing pose sits on the box's floor, and a routine may not push the character
-    /// out of the far side of the arch.
+    /// Standing sits on the box's floor, and no way leaves the arch from anywhere in its window.
     #[test]
     fn the_box_holds_him() {
         assert_eq!(
@@ -3344,8 +3270,6 @@ mod tests {
             BOX.3 as i32,
             "a standing pose is not on the floor"
         );
-        // and no way may put a pose off the arch from anywhere its own window allows, which
-        // is the whole of what a window means
         for choice in CHOICES {
             for way in choice.ways {
                 for home in [way.origins.0, way.origins.1] {
@@ -3364,9 +3288,7 @@ mod tests {
         }
     }
 
-    /// Nothing is rare: the bag is drained strictly, so every routine plays once before any
-    /// plays twice. What the intensity decides is the *order* within a cycle, not whether a
-    /// routine may come out at all.
+    /// Over twelve minutes of sweeping intensity, each bag cycle deals every routine once.
     #[test]
     fn the_bag_plays_everything_once_a_cycle() {
         use engine::animate::character::CharacterAnimation;
@@ -3406,7 +3328,7 @@ mod tests {
         }
     }
 
-    /// ... and the pool spans the whole range, or the intensity is not driving anything.
+    /// The pool's intensities span nearly nought to one.
     #[test]
     fn the_pool_runs_from_still_to_the_top_of_the_arch() {
         let art = CAST[0].routines.expect("Kirby plays routines");
@@ -3416,8 +3338,7 @@ mod tests {
         assert!(high >= 0.95, "nothing in the pool leaves the arch");
     }
 
-    /// The blink is the filler and is **not** in the pool: dealt like a routine it is a
-    /// fourteenth of what he does and reads as a loop.
+    /// The blink is the filler and not in the pool.
     #[test]
     fn the_blink_is_filler_and_not_a_choice() {
         let art = CAST[0].routines.expect("Kirby plays routines");
@@ -3430,13 +3351,11 @@ mod tests {
         );
     }
 
-    /// **The game only ever plays a routine where the whole of it fits**, which is why nothing
-    /// here is shifted to make one fit: every one of the fifteen was captured being started
-    /// from an origin inside its own window. Shifting was what put a jump between the end of
-    /// one routine and the start of the next.
+    /// Every routine's captured starting point lies inside its window, so none needs shifting
+    /// to fit.
     #[test]
     fn the_recording_started_every_routine_inside_its_own_window() {
-        // where the capture had him standing when it played each one, by the routine it named
+        // where the capture had him standing when each routine started
         const CAUGHT_AT: &[(&str, i32)] = &[
             ("yawn", 3),
             ("walk", 2),
@@ -3488,7 +3407,7 @@ mod tests {
         }
     }
 
-    /// From anywhere he can stand there is always something to deal, or he stops.
+    /// Every home in [`WANDER`] can start some routine.
     #[test]
     fn there_is_always_something_to_play_from_anywhere() {
         for home in WANDER.0..=WANDER.1 {
@@ -3501,12 +3420,7 @@ mod tests {
         }
     }
 
-    /// Three minutes of a quiet board: he should use most of the arch and most of the pool.
-    ///
-    /// This is the regression test for a character who *stood still*. A routine's displacement
-    /// used to be read off whatever was playing when the rest ran out - and the blink replaces
-    /// the run, so half the time a walk that carried him twenty pixels put him straight back
-    /// where it started. He covered the middle of the arch and nothing else.
+    /// Three minutes of a quiet board cover most of the arch and deal every routine.
     #[test]
     fn a_quiet_board_still_moves_him_about_and_deals_widely() {
         use engine::animate::character::{CharacterAnimation, CharacterFrame};
@@ -3538,31 +3452,17 @@ mod tests {
             "he only used {span} of the arch's {}",
             WANDER.1 - WANDER.0
         );
-        // and **everything** should turn up, not merely the quiet ones: the bag is drained
-        // strictly, so three minutes is enough for at least one of every routine there is
         for (i, n) in counts.iter().enumerate() {
             assert!(*n >= 1, "routine {i} was never dealt in three minutes");
         }
     }
 
-    /// **Nothing moves him between routines.** Ninety seconds of the intensity sweep the
-    /// `loop` capture uses, watching every tick for a horizontal step bigger than any routine
-    /// takes on its own.
-    ///
-    /// This is the regression test for two separate ways of losing his position, both of which
-    /// looked like a character teleporting. A routine used to be *shifted* to make it fit,
-    /// which jumped him from where the last one left him to wherever the next needed to start;
-    /// and the drawn place was read off `home` rather than the run's own origin, so the blink
-    /// stood where the routine before it had *started* instead of where it finished.
-    ///
-    /// `ricochet` is exempt because its hops are the animation: it throws him wall to wall
-    /// across the arch, twenty seven pixels at a time, and the recording does the same.
+    /// Over ninety seconds of sweeping intensity he never steps more than four pixels in a
+    /// tick, except within the one routine that hops.
     #[test]
     fn nothing_moves_him_between_routines() {
         use engine::animate::character::{CharacterAnimation, CharacterFrame};
-        // whatever hops on its own is exempt: `ricochet` throws him wall to wall and the
-        // recording does the same. Found rather than named, so a routine that grows a hop
-        // later does not fail this for the wrong reason.
+        // routines whose own frames hop are exempt
         let hops: Vec<usize> = CHOICES
             .iter()
             .enumerate()

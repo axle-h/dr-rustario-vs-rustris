@@ -1,10 +1,6 @@
-//! How Puyo Rusto's puyos are described to the engine.
-//!
-//! A [`CellId`] here carries a colour *and* a four bit mask of which orthogonal neighbours
-//! share that colour, because puyos of a colour that touch are drawn joined - the signature
-//! look of the game, and what tells a player at a glance what is linked to what. That is a
-//! sprite concern rather than an engine one: the engine only compares `CellId`s, and a game
-//! may recompute them whenever it likes.
+//! How Puyo Rusto's puyos are described to the engine. A [`CellId`] carries a colour, a mask of
+//! which neighbours share it (touching puyos are drawn joined) and the skin; the engine only
+//! compares ids.
 
 use engine::game::random::Seed;
 use engine::game::{CellId, GameId, PieceId};
@@ -12,44 +8,27 @@ use rand::seq::SliceRandom;
 
 pub const GAME_ID: GameId = engine::game::ids::PUYO;
 
-/// Which set of puyos a cell is drawn from.
-///
-/// The particle theme is cut from a rip carrying seven usable sets of the same puyos (see
-/// `puyo-rusto/art/rip.py`, whose `SKINS` is which of the rip's sixteen those are), and
-/// [`PuyoSkin::deal`] hands a different one to each player at the start of every match, so a
-/// session is not two boards of the same puyos and no two matches look alike either. The
-/// theme keys every one of them, so which a board gets is a decision the *game* makes when it
-/// is built rather than one the theme makes when it is, and a theme with only one set of art
-/// may key all seven at the same sprites.
-///
-/// It rides in the [`CellId`] for the same reason [`LinkMask`] does - the engine's sheet is
-/// keyed by cell id and nothing else, and a game may put whatever drawing information it
-/// likes in one. Nothing in the rules ever reads it: [`PuyoCell`] itself carries no skin, so
-/// two puyos of a colour are equal whoever is looking at them.
+/// Which set of puyos a cell is drawn from, dealt per player each match by [`PuyoSkin::deal`].
+/// It rides in the [`CellId`] only for drawing; the rules never read it, so two puyos of a
+/// colour are equal whatever their skin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub struct PuyoSkin(u8);
 
 impl PuyoSkin {
-    /// how many sets of puyos there are, which is how many a theme's sheet has to key. The
-    /// sheet `puyo-rusto/art/rip.py` writes carries exactly this many, and a test in
-    /// [`crate::theme::modern`] holds it to that
+    /// how many sets of puyos a theme's sheet must key; `puyo-rusto/art/rip.py`'s sheet carries
+    /// exactly this many, held by a test in [`crate::theme::modern`]
     pub const COUNT: usize = 7;
 
-    /// the set a board falls back on when nobody dealt it one, which is every test's and the
-    /// title screen's
+    /// the set a board falls back on when nobody dealt it one
     pub const FIRST: PuyoSkin = PuyoSkin(0);
 
     pub fn all() -> impl Iterator<Item = PuyoSkin> {
         (0..PuyoSkin::COUNT as u8).map(PuyoSkin)
     }
 
-    /// One set each for `players`, all different, drawn from the match's own seed.
-    ///
-    /// From the seed rather than the thread's randomness so that a playlist swapping one board
-    /// over mid-match deals that player the puyos they already had - and so that replaying a
-    /// seed looks like it did. It reads nothing any player's game is reading from: a
-    /// `GameRandom`'s pool is fixed when it is built, so this cannot put two players out of
-    /// step.
+    /// One set each for `players`, all different, drawn from the match's seed so a playlist
+    /// hands a player back the puyos they had. It cannot put players out of step, since a
+    /// `GameRandom`'s pool is fixed when built.
     pub fn deal(seed: Seed, players: usize) -> Vec<PuyoSkin> {
         let mut all: Vec<PuyoSkin> = PuyoSkin::all().collect();
         all.shuffle(&mut seed.rng());
@@ -61,8 +40,7 @@ impl PuyoSkin {
     }
 }
 
-/// The colours a puyo can be. A match deals three, four or five of them - see
-/// [`crate::game::rules::Difficulty`] - but the set they are drawn from is always these five.
+/// The five colours a puyo can be; a match deals three, four or five of them.
 #[derive(
     Clone,
     Copy,
@@ -103,12 +81,8 @@ impl PuyoColor {
     }
 }
 
-/// Which orthogonal neighbours share a puyo's colour, as one bit each.
-///
-/// The mask is *drawing* information, recomputed by [`crate::game::board::Board`] after every
-/// lock, pop and settle. It never decides anything: connectivity for popping is worked out
-/// from the colours themselves, so a stale mask would be an ugly board rather than a wrong
-/// one.
+/// Which orthogonal neighbours share a puyo's colour, as one bit each. Drawing information only,
+/// recomputed by [`crate::game::board::Board`]; popping reads the colours.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub struct LinkMask(u8);
 
@@ -151,20 +125,14 @@ impl LinkMask {
 pub enum PuyoCell {
     /// a coloured puyo, drawn joined to whichever neighbours match
     Puyo { color: PuyoColor, links: LinkMask },
-    /// nuisance sent by an opponent. It never joins to anything, including other nuisance,
-    /// and it is cleared only by a coloured group popping beside it
+    /// nuisance sent by an opponent: never joins, cleared only by a coloured group popping beside it
     Nuisance,
-    /// one icon of the tray above the board, standing for [`NuisanceIcon`] puyos still to
-    /// land. Never on the board itself - see [`crate::game::nuisance`]
+    /// one icon of the tray above the board, never on the board itself
     Tray(NuisanceIcon),
 }
 
-/// One symbol of the nuisance tray, and how many puyos it stands for.
-///
-/// The sizes are the game's own (Puyo Nexus, *Nuisance queue*): a small puyo is one, a large
-/// one is a full row of six, and a rock is thirty - five rows, which is also the most that can
-/// ever fall at once. A theme with no art of its own for these may draw all three as its plain
-/// nuisance sprite; the tray still reads correctly, just without the shorthand.
+/// One symbol of the nuisance tray: a small puyo is one, a large one a row of six, a rock thirty,
+/// the most that can fall at once. Puyo Nexus, *Nuisance queue*.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum NuisanceIcon {
@@ -217,7 +185,7 @@ impl PuyoCell {
         PuyoCell::Puyo { color, links }
     }
 
-    /// a puyo joined to nothing, which is how a falling pair and a ghost are always drawn
+    /// a puyo joined to nothing, as a falling pair and a ghost are drawn
     pub fn loose(color: PuyoColor) -> Self {
         PuyoCell::puyo(color, LinkMask::NONE)
     }
@@ -248,10 +216,8 @@ impl PuyoCell {
 
 // kind in bits 0-1, colour in 2-4, link mask in 5-8, skin in 9-12
 impl PuyoCell {
-    /// this cell as the engine's sheet keys it, drawn from `skin`'s sprites
-    ///
-    /// There is no `From<PuyoCell>` because there is no answer without a skin: a cell id that
-    /// forgot which board it was for would draw player two's puyos out of player one's set.
+    /// this cell as the engine's sheet keys it, drawn from `skin`'s sprites; there is no
+    /// `From<PuyoCell>` since an id without a skin would draw another player's set
     pub fn id(self, skin: PuyoSkin) -> CellId {
         let (kind, value, links) = match self {
             PuyoCell::Puyo { color, links } => (KIND_PUYO, color as u16, links.bits() as u16),
@@ -262,7 +228,7 @@ impl PuyoCell {
     }
 }
 
-/// the slot a cell id was drawn for, which only the sheet that keyed it cares about
+/// the slot a cell id was drawn for
 impl From<CellId> for PuyoSkin {
     fn from(CellId(id): CellId) -> Self {
         PuyoSkin(((id >> 9) & 0b1111) as u8)
@@ -311,10 +277,6 @@ impl PuyoPiece {
 // pivot in bits 0-2, child in 3-5, skin in 6-9
 impl PuyoPiece {
     /// this pair as the engine's queue keys it, drawn from `skin`'s sprites
-    ///
-    /// The previews are composed from the cells rather than drawn again, so a pair carries
-    /// the slot for the same reason a cell does - otherwise a player would watch the other
-    /// player's puyos queue up over their own board.
     pub fn id(self, skin: PuyoSkin) -> PieceId {
         PieceId(self.pivot as u16 | (self.child as u16) << 3 | (skin.0 as u16) << 6)
     }
@@ -340,8 +302,7 @@ mod tests {
     use super::*;
     use strum::IntoEnumIterator;
 
-    /// every cell the game can draw has to survive the round trip, since the board stores
-    /// `CellId`s and reads them back to recompute the masks
+    /// every drawable cell survives the round trip, since the board reads masks back off ids
     #[test]
     fn every_cell_survives_the_round_trip() {
         let mut cells = vec![PuyoCell::Nuisance];
@@ -360,8 +321,7 @@ mod tests {
         }
     }
 
-    /// ... and no two of them collide, or the board would draw one thing as another - and
-    /// that has to hold across the skins as well, since both players' sets share one sheet
+    /// no two cells collide, across the skins too, since all players share one sheet
     #[test]
     fn no_two_cells_share_an_id() {
         let mut seen = std::collections::HashSet::new();
@@ -398,8 +358,7 @@ mod tests {
         assert_eq!(seen.len(), PuyoSkin::COUNT * PuyoColor::N * PuyoColor::N);
     }
 
-    /// the whole point: two players are never dealt the same puyos, and two matches rarely
-    /// the same pair
+    /// two players are never dealt the same puyos, and matches vary
     #[test]
     fn a_match_deals_every_player_a_different_set() {
         let mut seen = std::collections::HashSet::new();
@@ -410,25 +369,22 @@ mod tests {
             assert!(dealt.iter().all(|s| s.index() < PuyoSkin::COUNT));
             seen.insert(dealt);
         }
-        // the sets two at a time is `COUNT * (COUNT - 1)` ordered pairs, and two hundred
-        // seeds drawn with replacement land on about five sixths of however many that is -
-        // so half of them is a bound a shuffle that is shuffling clears comfortably at any
-        // skin count, and one that is not lands on a handful
+        // two hundred seeds cover about five sixths of the ordered pairs, so half is a safe
+        // bound for a real shuffle
         let pairs = PuyoSkin::COUNT * (PuyoSkin::COUNT - 1);
         assert!(seen.len() > pairs / 2, "{} distinct deals", seen.len());
     }
 
-    /// ... and one seed always deals the same, which is what lets a playlist hand a player
-    /// back the puyos they were already playing with
+    /// one seed always deals the same
     #[test]
     fn one_seed_deals_the_same_set_every_time() {
         let seed = Seed::from_u64(7);
         assert_eq!(PuyoSkin::deal(seed, 2), PuyoSkin::deal(seed, 2));
-        // ... and asking for one player is asking for the first of the same deal
+        // one player gets the first of the same deal
         assert_eq!(PuyoSkin::deal(seed, 1)[0], PuyoSkin::deal(seed, 2)[0]);
     }
 
-    /// more players than sets is not a thing this game can do, but wrapping beats panicking
+    /// more players than sets wraps rather than panicking
     #[test]
     fn more_players_than_sets_wraps() {
         let dealt = PuyoSkin::deal(Seed::from_u64(3), PuyoSkin::COUNT + 2);

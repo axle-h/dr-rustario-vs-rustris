@@ -1,21 +1,6 @@
-//! Learning to play from the deterministic ai, which is where a `ga dr auto` run starts.
-//!
-//! A genetic algorithm can only select between the members it is given, and from random weights
-//! it is given almost nothing to select between: most of a first generation clears no virus at
-//! all, so the fitness that is supposed to rank them is zero for most of the population. What
-//! this module does is hand it a population that is already playing.
-//!
-//! [`crate::game::ai::n64`] plays, and every pill it is dealt becomes a [`Lesson`]: the
-//! placements the agent would be choosing between, exactly as [`evaluator::inputs`] would feed
-//! them, and what the deterministic ai thought each of them was worth. A network is then
-//! trained by gradient descent to reproduce that opinion. It never plays a game while it is
-//! learning and it is never scored on one; it is being taught to rank, and the ranking is what
-//! playing is made of.
-//!
-//! What it learns is the N64's taste, not its ceiling: it is a small network reading a summary
-//! of the bottle, where the original reads the bottle itself, so it agrees with it on about
-//! half of all pills and plays at around four fifths of its strength. That is the floor the
-//! genetic algorithm starts from rather than the roof it is aiming at.
+//! Stage one of `ga dr auto`: teach a network by gradient descent to rank each pill's
+//! placements as the n64 port ranks them, so the genetic algorithm starts from a
+//! population that already clears viruses.
 
 use crate::game::ai::evaluator::{self, Scorer};
 use crate::game::ai::features::BottleAnalysis;
@@ -38,41 +23,30 @@ const STEP: Duration = Duration::from_millis(16);
 /// pills without a virus destroyed before a game is called off as going nowhere
 const STALL_PILLS: u32 = 200;
 
-/// The virus levels games are started at while the lessons are gathered. A game carries on up
-/// through the levels above it, so starting some of them high is what puts a bottle full of
-/// viruses in the corpus alongside the nearly empty ones.
+/// the virus levels lesson games start at, so full bottles are taught as well as nearly empty ones
 const LESSON_LEVELS: [u32; 5] = [0, 5, 10, 15, 20];
 
 /// how many pills are taught from by default
 pub const LESSON_PILLS: usize = 10_000;
 
-/// How many passes over the corpus a clone gets.
-///
-/// Measured with `ga dr screen`, which teaches fifty of them and reports the median: ten passes
-/// put the median at 3617 viruses and twenty at 3814, and forty and eighty are no better than
-/// twenty on either this feature set or the thirty two input one it replaced. The learning rate
-/// decays as `1 / (1 + 0.6 * epoch)`, so by then the steps are small enough that more passes
-/// buy nothing.
+/// Passes over the corpus a clone gets. The learning rate decays with the epoch, so `ga dr screen`
+/// finds more passes than this buy nothing.
 pub const EPOCHS: usize = 20;
 
-/// every tenth pill is held back, so what the report says was measured on lessons never taught
+/// every tenth pill is held back and only measured on
 const HELD_OUT: usize = 10;
 
 const LEARNING_RATE: f64 = 0.05;
 const LEARNING_DECAY: f64 = 0.6;
 
-/// One pill: every placement the agent is choosing between, and what the deterministic ai made
-/// of each of them.
-///
-/// Reaching for the held pill is not among them, and neither the teacher nor the student has a
-/// hold: see [`crate::game::ai::agent::DrAiAgent`] for the measurement that settled that.
+/// One pill: every placement of the pill in play, and the deterministic ai's priority for each.
 pub struct Lesson {
     rows: Vec<[f32; BOTTLE_FEATURE_INPUTS]>,
     /// by row: the priority, centred over the pill and brought to unit spread
     target: Vec<Option<f32>>,
     /// by row: whether the ai rated it as highly as anything else on offer
     top: Vec<bool>,
-    /// how many of the rows belong to the pill in play, which is now all of them
+    /// how many of the rows belong to the pill in play (all of them)
     own: usize,
     held_out: bool,
 }
@@ -94,15 +68,12 @@ impl Lesson {
             return None;
         }
 
-        // the ai's priorities are on a wildly different scale from one pill to the next - the
-        // weights change with the situation, and the whole total is multiplied through when the
-        // bottle is lopsided - so every pill is brought to the same spread, and clipped, since
-        // a chain worth thousands would otherwise be the only thing a fit ever looked at
+        // the priority scale varies from pill to pill, so each is brought to unit spread and
+        // clipped, or a chain worth thousands would dominate the fit
         let mean = scored.iter().sum::<f64>() / scored.len() as f64;
         let deviation =
             (scored.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / scored.len() as f64).sqrt();
         if deviation < 1e-9 {
-            // every placement is worth the same, so there is nothing here to learn
             return None;
         }
         let best = scored.iter().copied().fold(f64::MIN, f64::max);
@@ -146,17 +117,8 @@ impl Lesson {
     }
 }
 
-/// Play the deterministic ai and write down what it thought of every pill it was dealt.
-///
-/// The teacher is the **strongest** of the N64's six rows of weights, which is
-/// `n64::DEFAULT_SKILL` and so [`SKILL_ORDER`]'s last entry. The rows are personalities
-/// rather than a ladder and the order between them is measured, so which row this is moves when
-/// that measurement is run again, and it is sensitive to how a row is scored: ranked on bottles
-/// less four per burial it is row 1, and ranked the way the fitness ranks a model - viruses
-/// inside a pill budget - it is row 4, which clears 18% more of them while burying itself twice
-/// as often. Teaching from anything but the strongest would put a ceiling under the student
-/// that nothing later in training could lift, since the run only ever mutates about where the
-/// teaching left it.
+/// Play the deterministic ai and record its priorities for every pill it was dealt. The teacher
+/// is the strongest row, [`SKILL_ORDER`]'s last, since the run only mutates about what it taught.
 pub fn lessons(pills: usize) -> Vec<Lesson> {
     let ai = N64Ai::with_skill(SKILL_ORDER[SKILLS - 1]);
     let mut lessons: Vec<Lesson> = vec![];
@@ -213,17 +175,9 @@ pub fn teach(lessons: &[Lesson], epochs: usize, seed: u64) -> DrNeuralNetwork {
     teach_without(lessons, epochs, seed, &[])
 }
 
-/// The same, with `silenced` inputs held at zero **throughout** rather than only at the end.
-///
-/// This is how a feature is taken away without rebuilding the network around a smaller
-/// `BOTTLE_FEATURE_INPUTS`: the first layer's weight column for the input is zeroed after every
-/// step, so the forward pass never sees it and whatever gradient the step put there is thrown
-/// away before the next one. What the network can learn is then exactly what the remaining
-/// inputs carry.
-///
-/// It is not the same as silencing a *taught* network, which is what [`super::explain`] does -
-/// there the rest of the weights were fitted with the input present and are being asked to
-/// carry on without it. Here nothing was ever fitted to it.
+/// The same, with `silenced` inputs' first-layer weights zeroed after every step, so the
+/// network learns only what the rest carry. Unlike [`super::explain`]'s silencing, nothing is
+/// ever fitted to the input.
 pub fn teach_without(
     lessons: &[Lesson],
     epochs: usize,
@@ -242,8 +196,7 @@ pub fn teach_without(
     let mut order = taught.clone();
     for epoch in 0..epochs {
         let rate = LEARNING_RATE / (1.0 + LEARNING_DECAY * epoch as f64);
-        // the corpus is one game after another, so a pass straight down it would spend its last
-        // steps on whatever the last game happened to look like
+        // the corpus is one game after another, so a straight pass ends biased to the last game
         shuffle(&mut order, &mut rng);
         for lesson in order.iter().map(|i| &lessons[*i]) {
             for (row, target) in lesson.target.iter().enumerate() {
@@ -260,18 +213,12 @@ pub fn teach_without(
         }
     }
 
-    // Every lesson is a placement of the pill in play, so the input that says "this is the
-    // pill you are holding instead" is zero on all of them - and a weight the corpus gives no
-    // gradient for keeps whatever the initial draw left there. Left alone, a taught network
-    // comes out with a strong opinion about swapping that it learned from nothing at all,
-    // which is the whole of why hold used to be a disaster here. Silenced, it is indifferent
-    // to a swap, and the genetic algorithm is free to decide what one is worth.
+    // the held input is zero on every lesson, so its weights keep their random draw unless silenced
     network.silence_input(HELD_INPUT);
     network
 }
 
-/// which input says the candidate is a placement of the held pill, in
-/// [`evaluator::raw_inputs`]'s order: the last of them
+/// the held-pill input, last in [`evaluator::raw_inputs`]'s order
 const HELD_INPUT: usize = BOTTLE_FEATURE_INPUTS - 1;
 
 /// How well `network` reproduces the lessons it was held back from.
@@ -296,9 +243,7 @@ pub fn measure(lessons: &[Lesson], network: &DrNeuralNetwork) -> Report {
     }
 }
 
-// ---------------------------------------------------------------------------------------
-// playing a headless game, which both this and the probe need
-// ---------------------------------------------------------------------------------------
+// playing a headless game, which the probe needs too
 
 /// how a run of whole games went
 #[derive(Default)]
@@ -310,7 +255,7 @@ pub struct Played {
 }
 
 /// Play `seeds` whole games from the first bottle at `level`, choosing with `choose`, and count
-/// what happened. A game is called off if it goes [`STALL_PILLS`] without destroying a virus.
+/// what happened. A game is called off if it goes `STALL_PILLS` without destroying a virus.
 pub fn play_games(
     seeds: u128,
     level: u32,
@@ -358,19 +303,15 @@ pub fn play_games(
     played
 }
 
-/// the placement the hand written baseline likes best, which is what a trained model is
-/// measured against
+/// the placement the hand weighted baseline likes best
 pub fn linear_choice(placements: &[Placement]) -> Option<usize> {
     let features: Vec<_> = placements.iter().map(|p| p.features()).collect();
     let scores = Scorer::Linear.rank(&features);
     (0..placements.len()).max_by(|a, b| scores[*a].total_cmp(&scores[*b]))
 }
 
-/// Press the keys that reach `placement`, all in one frame.
-///
-/// A [`Translation::Rest`] is the one that is not a key: in play the agent waits for gravity to
-/// bring the pill down and then walks it sideways in the lock delay, and here the fall is asked
-/// for outright, which leaves the bottle in exactly the state the search predicted.
+/// Press the keys that reach `placement`, all in one frame; a [`Translation::Rest`] drops the
+/// pill outright.
 pub(crate) fn press(game: &mut Game, placement: &Placement) {
     for translation in placement.inputs().translations() {
         match translation {

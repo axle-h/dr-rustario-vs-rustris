@@ -1,89 +1,41 @@
-//! The search: play the pair in play and the ones behind it, keep the best few boards at each
-//! step, and see which first move the good boards came from.
+//! A beam search: play the pair in play and the pairs behind it, keep the best `width` boards
+//! at each layer, and rank each root placement by the best board reachable under it.
 //!
-//! A Puyo board is far too wide to search exhaustively - twenty two placements a pair, so five
-//! pairs is five million boards - and far too *shallow* to search greedily, because a chain
-//! is built over a dozen pairs and no single one of them looks like progress. A beam is the
-//! usual answer to both: expand every placement of the next pair from every board kept, score
-//! the results, throw all but the best `width` away, and go again.
-//!
-//! Three things about it are worth saying out loud.
-//!
-//! **The search runs past the queue.** A player sees the pair in play and
-//! [two more](crate::game::random::PEEK_SIZE), which is three pairs, and three pairs is not
-//! enough depth to tell a chain from a heap. So the search carries on past them down an
-//! invented continuation, and the continuations are not random: they are the six queues in
-//! takapt's beam search - by way of ama, which found six fixed ones as good as fifty random -
-//! that between them contain every kind of pair there is without caring which way round its
-//! colours came. Guessing that the next pair is red-yellow costs nothing when what is being
-//! asked is *whether there is room to keep building*, which is a question about the board.
-//!
-//! **What is chosen is not the best board.** Every node remembers which of the root's
-//! placements it descends from, and a placement's worth is the best board reachable under it.
-//! Separately, each root placement remembers the biggest chain found anywhere below it - so
-//! the search knows both what to build towards and what it could fire right now, and the
-//! decision between the two is [`Plan`]'s.
-//!
-//! **It is run a piece at a time, and it always has an answer.** [`Search`] is a state machine
-//! rather than a function: [`Search::new`] plays the pair in play and stops, and each
-//! [`Search::step`] after it plays a handful of boards forward and hands the frame back. That
-//! is not a performance trick, it is what makes the same search affordable on a handheld: the
-//! agent has the pair's whole fall time to think - a second or more, sixty frames - and taking
-//! it in eight-board pieces turns one stall into eight ordinary frames without giving up a
-//! single board of the search. And because the root placements are all scored and ranked
-//! before the first [`step`](Search::step), a search that is interrupted - by the pair coming
-//! to rest on a board too full to fall through - still answers, with the best board it had
-//! got to.
+//! Past the visible queue it plays six fixed invented continuations (takapt's, by way of ama).
+//! [`Search`] is stepped a few boards a frame, and every root placement is scored before the
+//! first step, so an interrupted search still has an answer.
 
 use crate::game::ai::eval::{self, Weights};
 use crate::game::ai::field::Field;
 use crate::game::ai::placement::{moves, Drop, RootMove, MAX_MOVES};
 use crate::game::cell::PuyoColor;
 
-/// How the search is run. Every one of these is a difficulty dial, and none of them is a
-/// speed limit: a wider, deeper search is a *better player*, which is the whole point of
-/// having them - see [`crate::game::ai::skill`].
+/// How the search is run. Every field is a difficulty dial, not a speed limit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SearchConfig {
     /// how many boards survive each step
     pub width: usize,
-    /// how many of the pairs the player can see behind the one in play are searched. A row
-    /// that looks at none of them is playing the pair in front of it and nothing else
+    /// how many of the visible pairs behind the one in play are searched
     pub queue_depth: usize,
     /// how many pairs to invent and search past the ones the player can see
     pub lookahead: usize,
     /// how many of the six continuations to try, each an independent search
     pub queues: usize,
-    /// the chain score at which it stops building and fires. Zero fires at the first thing it
-    /// finds, which is what a beginner does
+    /// the chain score at which it stops building and fires; zero fires at anything
     pub trigger: u32,
-    /// How deep the tray has to get - in nuisance puyos, not points - before this row looks
-    /// for a chain to answer it with. [`u32::MAX`] is a row that never does, which is right
-    /// for one whose [`trigger`](Self::trigger) is low enough that it has fired already.
-    ///
-    /// It is a rung of the ladder rather than a constant: noticing that something is about to
-    /// land on you, and spending the smallest chain that covers it, is a thing a better
-    /// player does. See [`ranking`].
+    /// How deep the tray has to get, in nuisance puyos, before this row fires a chain to answer
+    /// it; [`u32::MAX`] never does. Answering is right but rarely fires, since
+    /// [`Candidate::fires`] is usually zero when a tray is seen, and the dial measures flat.
     pub answer_at: u32,
 }
 
-/// How many boards one [`Search::step`] plays the next pair onto before handing the frame back.
-///
-/// A step costs about this many times [`MAX_MOVES`] evaluations - a couple of hundred, which is
-/// well under a millisecond on a desktop and a few on a handheld - and a whole search is
-/// somewhere between one step and a dozen depending on the row. Eight because it divides the
-/// widths the rows actually use into two or three pieces, so no row waits many more frames for
-/// an answer than the strength it is buying.
+/// How many boards one [`Search::step`] expands before handing the frame back. Eight splits the
+/// widths the rows use into two or three steps a layer.
 const PARENTS_PER_STEP: usize = 8;
 
 impl SearchConfig {
-    /// How many [`Search::step`]s a whole search takes at most: one layer per pair searched,
-    /// and one step per [`PARENTS_PER_STEP`] boards of each layer.
-    ///
-    /// An upper bound rather than a count - a beam that runs out of boards finishes early -
-    /// and the number to divide a measured think time by to get the cost of a frame. It is
-    /// also how long the agent waits before it has an answer, in frames, which is why no row
-    /// is allowed to want more of them than a pair takes to fall.
+    /// An upper bound on the [`Search::step`]s a whole search takes, which is also how many
+    /// frames the agent waits for an answer, so no row may need more than a pair takes to fall.
     pub fn steps(&self) -> usize {
         let queues = self.queues.clamp(1, CONTINUATIONS.len());
         let layers = self.queue_depth + queues * self.lookahead;
@@ -91,12 +43,8 @@ impl SearchConfig {
     }
 }
 
-/// The six continuations, as colour indices.
-///
-/// From ama, by way of takapt: searching past the queue down several invented futures is worth
-/// far more than searching one further pair of the real one, and these six between them cover
-/// every kind of pair - two colours in either order, and the pairs a doublet stands in for -
-/// without any same-coloured pair, which makes an ai overrate its chances.
+/// The six continuations, as colour indices. Between them they cover every two-colour pair in
+/// either order and never deal a same-coloured one, which makes an ai overrate its chances.
 const CONTINUATIONS: [[usize; 4]; 6] = [
     [0, 3, 1, 2],
     [0, 1, 3, 2],
@@ -110,9 +58,7 @@ const CONTINUATIONS: [[usize; 4]; 6] = [
 #[derive(Clone, Copy)]
 struct Node {
     field: Field,
-    /// the running total of what the placements along the way cost - tears and puyos spent.
-    /// Kept apart from the board's own score because it is paid once and carried, while the
-    /// board is only ever worth what it is worth now
+    /// the running total of what the placements along the way cost, tears and puyos spent
     action: i32,
     /// the board's own score, as of this layer
     eval: i32,
@@ -125,20 +71,15 @@ impl Node {
     }
 }
 
-/// What the search made of one of the root's placements.
-///
-/// Ama ranks its candidates on `chain_score` alone - the biggest chain found anywhere under
-/// each one - because its horizon is sixteen pairs deep and by then every branch worth having
-/// has found a chain. Three visible pairs and a couple of invented ones is not that horizon,
-/// and on it most placements find nothing at all, so what is ranked here is the *board* at
-/// the far end instead. The chain is not thrown away: it is what [`Plan`] decides on.
+/// What the search made of one of the root's placements. It is ranked on the board at the
+/// horizon rather than on `chain_score` as ama does, because this horizon is too short for most
+/// branches to find a chain.
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub root: RootMove,
     /// what the board is worth the moment this placement is made
     pub immediate: i32,
-    /// the best board reachable at the far end of the search - `None` when the beam cut every
-    /// branch under this placement before it got there
+    /// the best board at the far end of the search, `None` when the beam cut every branch under it
     pub horizon: Option<i32>,
     /// the biggest chain found anywhere under it, in the game's own points
     pub chain_score: u32,
@@ -161,33 +102,26 @@ enum Stage {
     Done,
 }
 
-/// A search in progress.
-///
-/// It is built with the pair in play already played out - so it can be asked for an answer
-/// from the moment it exists - and then stepped until [`finished`](Self::finished).
+/// A search in progress, built with the pair in play already played out.
 pub struct Search {
     candidates: Vec<Candidate>,
     weights: Weights,
     config: SearchConfig,
-    /// the pairs the player can see, cut to what this row bothers to read
+    /// the visible pairs, cut to what this row reads
     queue: Vec<[u8; 2]>,
     /// the boards this layer is being expanded from, and how far through them it has got
     parents: Vec<Node>,
     parent: usize,
     /// what this layer has expanded into so far
     children: Vec<Node>,
-    /// the beam as it stood when the visible queue ran out. Every continuation forks from
-    /// here, because they only differ past the pairs that are real
+    /// the beam when the visible queue ran out, which every continuation forks from
     trunk: Vec<Node>,
     stage: Stage,
 }
 
 impl Search {
-    /// Play every placement of the pair in play, score the boards, and stop.
-    ///
-    /// The root layer is done here rather than in a step because it is what makes the search
-    /// interruptible: from this point on every placement has been scored, so there is always
-    /// an answer, and every step after this only sharpens it.
+    /// Play every placement of the pair in play, score the boards, and stop. Doing the root
+    /// layer here is what makes the search interruptible.
     pub fn new(
         field: &Field,
         roots: Vec<RootMove>,
@@ -229,11 +163,8 @@ impl Search {
             });
         }
 
-        // The root layer is a beam layer like any other and is cut to the width like any
-        // other. Expanding all twenty two of the pair's placements before the first cut costs
-        // more than every layer after it put together - each of those starts from `width`
-        // boards, not from twenty two. What it costs is that the placements cut here are only
-        // ever ranked on the board they make, which is what `immediate` is for.
+        // the root layer is cut to the width like any other, so placements cut here are only
+        // ranked on `immediate`
         parents.sort_unstable_by_key(|node| std::cmp::Reverse(node.score()));
         parents.truncate(config.width);
 
@@ -276,8 +207,7 @@ impl Search {
         &self.candidates
     }
 
-    /// Play the next pair onto [`PARENTS_PER_STEP`] more of the boards being held, and report
-    /// whether that finished the search.
+    /// Expand `PARENTS_PER_STEP` more boards, and report whether that finished the search.
     pub fn step(&mut self) -> bool {
         let pair = match self.stage {
             Stage::Done => return true,
@@ -308,8 +238,7 @@ impl Search {
         self.finished()
     }
 
-    /// one layer is done: work out which pair comes next, and record the horizon whenever a
-    /// branch has reached its end
+    /// one layer is done: pick the next pair, and record the horizon when a branch has ended
     fn advance(&mut self) {
         self.stage = match self.stage {
             Stage::Done => Stage::Done,
@@ -325,7 +254,6 @@ impl Search {
             }
             Stage::Invented { queue, step } if step + 1 < self.config.lookahead => {
                 if self.parents.is_empty() {
-                    // this continuation ran out of boards; go to the next one
                     self.next_continuation(queue)
                 } else {
                     Stage::Invented {
@@ -355,17 +283,15 @@ impl Search {
         }
     }
 
-    /// The root placements, best first, and what playing the first of them would mean.
-    ///
-    /// Handing back the whole order rather than the winner is what lets the agent take the
-    /// next one down when the pair has fallen too far to reach the best.
+    /// The root placements, best first, and what playing the first would mean. The agent takes
+    /// the next one down when the pair has fallen too far to reach the best.
     pub fn ranking(&self, pressed: bool, pending: u32) -> (Vec<usize>, Plan) {
         ranking(&self.candidates, &self.config, pressed, pending)
     }
 }
 
-/// The far end of the search: the layer the placements are ranked on, and the only one where
-/// every board has had the same number of pairs played onto it.
+/// The far end of the search, the only layer where every board has had the same number of
+/// pairs played onto it.
 fn record_horizon(beam: &[Node], candidates: &mut [Candidate]) {
     for node in beam {
         let horizon = &mut candidates[node.root].horizon;
@@ -373,8 +299,7 @@ fn record_horizon(beam: &[Node], candidates: &mut [Candidate]) {
     }
 }
 
-/// the `nth` pair of an invented continuation: the colours in the order the continuation
-/// names them, two at a time, round and round
+/// the `nth` pair of an invented continuation, cycling through its colours two at a time
 fn invented(continuation: &[usize; 4], nth: usize) -> [u8; 2] {
     let first = continuation[(nth * 2) % continuation.len()];
     let second = continuation[(nth * 2 + 1) % continuation.len()];
@@ -402,14 +327,12 @@ fn expand_into(
                 continue;
             };
 
-            // what this branch could fire is the root placement's to remember, whether or not
-            // the branch itself is worth keeping
+            // the root remembers what any branch under it could fire, kept or not
             let candidate = &mut candidates[node.root];
             candidate.chain_score = candidate.chain_score.max(chain.score);
 
-            // a board that has just spent itself on a big chain has nothing left to say about
-            // how well it was built, so it leaves the beam rather than crowding out the boards
-            // that are still building
+            // a board that has just fired a big chain leaves the beam rather than crowding out
+            // boards still building
             if chain.score >= PRUNE_CHAIN_SCORE || next.is_dead() {
                 continue;
             }
@@ -426,46 +349,26 @@ fn expand_into(
     }
 }
 
-/// A chain big enough that a board which fired it is finished, and is dropped from the beam
-/// however good it looks. Ama's `PRUNE`.
+/// A chain big enough that a board which fired it is dropped from the beam. Ama's `PRUNE`.
 const PRUNE_CHAIN_SCORE: u32 = 5_000;
 
 /// What to do with a pair, once the search has been run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Plan {
-    /// keep building: this placement leads to the best board
+    /// keep building towards the best board
     Build,
-    /// fire: this placement sets off a chain worth having
+    /// fire a chain worth having
     Fire,
-    /// fire, because of what is waiting in the tray: this placement sets off the smallest
-    /// chain that cancels the whole of it
+    /// fire the smallest chain that cancels the whole tray
     Answer,
 }
 
 /// The root placements in the order this player would rather make them, and what making the
-/// first of them would mean.
+/// first would mean. It builds unless a chain reaches [`SearchConfig::trigger`], the board is
+/// `pressed`, every other placement is fatal, or `pending` reaches `answer_at`.
 ///
-/// Building is the default and firing is the exception, which is the right way round: a
-/// placement that clears nothing but leaves a bigger chain behind beats one that takes four
-/// puyos off the board now. Four things make it fire anyway - a chain at or over the
-/// difficulty's [`SearchConfig::trigger`], a board with nowhere left to build (`pressed`), a
-/// placement that has to be made because every other one is fatal, and `pending`: what is
-/// waiting in the tray to land the moment this player's next chain finishes.
-///
-/// **Answering is not firing, and is ranked the other way round.** Firing takes the biggest
-/// chain on offer, because it is being done for its own sake. Answering is done to make
-/// `pending` puyos not land, so the chain that is wanted is the *smallest* one that covers
-/// them - `skill::nuisance(pending)` in the points [`Candidate::fires`] is counted in - and
-/// what separates the ones that qualify is the board each leaves behind, since the rest of
-/// the chain is next turn's ammunition. Classic Tsu offset is why the whole of `pending` has
-/// to be covered rather than a drop's worth of it: a chain cancels against the tray and then
-/// whatever is *still* waiting falls, so a partial answer buys nothing at all. That is also
-/// why a row with nothing big enough carries on building rather than emptying itself trying:
-/// taking a partial answer is how a bot turns one hit into two.
-///
-/// It is an order and not a winner because the pair goes on falling while the search runs, and
-/// by the time there is an answer the best placement may be out of reach - see
-/// [`crate::game::ai::agent`].
+/// An answer takes the smallest chain covering all of `pending`, since Tsu offset drops whatever
+/// is still waiting and a partial answer buys nothing; with none big enough it keeps building.
 pub fn ranking(
     candidates: &[Candidate],
     config: &SearchConfig,
@@ -476,8 +379,7 @@ pub fn ranking(
         return (vec![], Plan::Build);
     }
 
-    // every placement kills: play the ones that score most on the way out rather than
-    // freezing, which would look like the ai giving up
+    // every placement kills: play the best-scoring one rather than freezing
     let survivable: Vec<usize> = (0..candidates.len())
         .filter(|i| !candidates[*i].fatal)
         .collect();
@@ -504,8 +406,7 @@ pub fn ranking(
         return (allowed, Plan::Fire);
     }
 
-    // what is queued against this player is deep enough to be worth a chain, and there is a
-    // chain here that covers the whole of it
+    // the tray is deep enough to answer and a chain here covers the whole of it
     if pending > 0 && pending >= config.answer_at {
         let wanted = crate::game::ai::skill::nuisance(pending);
         let mut answers: Vec<usize> = allowed
@@ -517,8 +418,7 @@ pub fn ranking(
             answers.sort_by(|a, b| {
                 worth(*b)
                     .cmp(&worth(*a))
-                    // between two placements that leave the board equally well off, the one
-                    // that spent less of it on the answer keeps the rest for next turn
+                    // on a tie, the one that spent less keeps the rest for next turn
                     .then_with(|| candidates[*a].fires.cmp(&candidates[*b].fires))
                     .then_with(|| candidates[*a].root.inputs.cmp(&candidates[*b].root.inputs))
             });
@@ -526,8 +426,7 @@ pub fn ranking(
         }
     }
 
-    // the beam's survivors are ranked against each other; only if it cut every branch does
-    // the board as it stands right now have to decide it
+    // rank the beam's survivors; only if every branch was cut does the board as it stands decide
     let reached: Vec<usize> = allowed
         .iter()
         .copied()
@@ -538,8 +437,7 @@ pub fn ranking(
     ranked.sort_by(|a, b| {
         worth(*b)
             .cmp(&worth(*a))
-            // a tie goes to the simpler sequence, so the agent does not walk the long way
-            // round to the same board
+            // a tie goes to the shorter input sequence
             .then_with(|| candidates[*a].root.inputs.cmp(&candidates[*b].root.inputs))
     });
     (ranked, Plan::Build)
@@ -577,7 +475,7 @@ mod tests {
         }
     }
 
-    /// run a whole search out, the way a caller with all the time in the world would
+    /// run a whole search to the end
     fn run(rows: &[&str], piece: (PuyoColor, PuyoColor)) -> (Vec<Candidate>, SearchConfig) {
         let board = board(rows);
         let pair = Pair::new(SPAWN, PuyoPiece::new(piece.0, piece.1));
@@ -597,8 +495,7 @@ mod tests {
         (search.candidates().to_vec(), config)
     }
 
-    /// the search knows what each placement would set off, even the ones it would rather not
-    /// make yet
+    /// every placement knows what it would set off, chosen or not
     #[test]
     fn a_placement_that_fires_a_chain_says_so() {
         let (candidates, _) = run(
@@ -611,8 +508,7 @@ mod tests {
         );
     }
 
-    /// and left to itself it builds instead: with the trigger set out of reach, the placement
-    /// chosen is not the one that spends the board
+    /// with the trigger out of reach it builds rather than spending the board
     #[test]
     fn it_builds_rather_than_taking_the_chain_in_front_of_it() {
         let (candidates, mut config) = run(
@@ -632,8 +528,7 @@ mod tests {
         );
     }
 
-    /// with the trigger down at nothing it takes whatever is there, which is the beginner's
-    /// game and one end of the difficulty ladder
+    /// with the trigger at zero it takes whatever is there
     #[test]
     fn a_trigger_of_nothing_fires_at_the_first_chain_it_sees() {
         let (candidates, mut config) = run(
@@ -646,9 +541,7 @@ mod tests {
         assert!(candidates[chosen].fires > 0);
     }
 
-    /// The tray is a third reason to fire, beside the trigger and being pressed. With the
-    /// trigger out of reach this board would build; with a rock hanging over it, the chain in
-    /// front of it is worth more than the one behind it.
+    /// a rock in the tray makes a board that would build fire instead
     #[test]
     fn a_chain_that_covers_the_tray_is_fired_at_a_trigger_it_could_never_reach() {
         let (candidates, mut config) = run(
@@ -676,9 +569,7 @@ mod tests {
         );
     }
 
-    /// A row only looks at the tray once it is deep enough to be worth a chain. Below that it
-    /// eats what is coming and carries on building, which is what makes answering a rung of
-    /// the ladder rather than a reflex.
+    /// a tray shallower than `answer_at` is eaten and the row keeps building
     #[test]
     fn a_tray_shallower_than_the_rows_own_depth_is_ignored() {
         let (candidates, mut config) = run(
@@ -691,9 +582,7 @@ mod tests {
         assert_eq!(plan, Plan::Build);
     }
 
-    /// Classic Tsu offset cancels first and drops what is *still* waiting, so a chain that
-    /// covers half the tray leaves the other half to land anyway - it has spent the board for
-    /// nothing. A row with no answer big enough carries on building instead.
+    /// a chain covering only half the tray is not fired; the row keeps building
     #[test]
     fn a_tray_nothing_can_cover_is_not_half_answered() {
         let (candidates, mut config) = run(
@@ -710,8 +599,7 @@ mod tests {
         );
     }
 
-    /// Firing takes the biggest chain on offer; answering takes the smallest that covers the
-    /// tray, because the rest of the chain is next turn's ammunition.
+    /// answering takes the smallest chain that covers the tray, firing the biggest
     #[test]
     fn answering_spends_less_than_firing_does() {
         let (candidates, mut config) = run(
@@ -735,8 +623,7 @@ mod tests {
         );
     }
 
-    /// a board with nowhere left to build fires the biggest thing it has whatever is in the
-    /// tray: there is no board left to leave, so there is nothing to be careful with
+    /// a pressed board fires the biggest thing it has whatever is in the tray
     #[test]
     fn being_pressed_still_fires_biggest_first() {
         let (candidates, mut config) = run(
@@ -754,8 +641,7 @@ mod tests {
     /// a placement that buries the player is never chosen while any other one exists
     #[test]
     fn a_fatal_placement_is_the_last_resort() {
-        // the spawn column stacked to one below the death square: dropping a pair standing up
-        // in it rests a puyo on the square and ends the game
+        // the spawn column stacked to one below the death square
         let rows = vec!["..o..."; 11];
         let (candidates, config) = run(&rows, (PuyoColor::Red, PuyoColor::Blue));
         let fatal = candidates.iter().filter(|c| c.fatal).count();
@@ -764,8 +650,7 @@ mod tests {
         assert!(!candidates[chosen].fatal);
     }
 
-    /// the continuations are what searching past the queue is made of, and they carry every
-    /// kind of pair without ever dealing one of a single colour
+    /// the continuations cover every kind of pair and never deal a single colour
     #[test]
     fn the_invented_pairs_are_never_a_doublet() {
         for continuation in CONTINUATIONS.iter() {
@@ -804,10 +689,7 @@ mod tests {
         let _ = of_color(PuyoColor::Red);
     }
 
-    /// A search that is stopped part way still answers, and answers sensibly: the placements
-    /// are all scored before the first step, so the worst it can do is fall back on the board
-    /// each one makes. Without that a pair coming to rest before the search finished would
-    /// have nothing to play.
+    /// a search stopped part way still answers from the scored root placements
     #[test]
     fn a_search_interrupted_at_any_point_still_has_an_answer() {
         let board = board(&[".g....", "rg....", "rrgg.."]);
@@ -832,9 +714,7 @@ mod tests {
         assert!(steps > 0, "this row was meant to take more than one step");
     }
 
-    /// every row finishes in few enough steps that a pair has time to fall through them, and
-    /// in no more than the number `steps()` promises - which is what a measured think time is
-    /// divided by to get the cost of a frame
+    /// every row finishes within `steps()`, and in few enough steps for a pair to fall through
     #[test]
     fn no_row_takes_more_steps_than_a_pair_has_frames() {
         let board = board(&["......", "rg....", "rrgg.."]);

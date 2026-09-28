@@ -1,19 +1,6 @@
-//! Fire-and-forget pieces thrown off something, in **board cells** rather than pixels.
-//!
-//! It is the particle source's idea (`particles/source.rs`: emit a group and then have no
-//! further say) at the scale of one board, and it exists because the droplets a Mean Bean
-//! Machine bean bursts into leave their own cell, cross several others and are still in the
-//! air when the next chain step starts blinking. Nothing that is drawn *into* the board
-//! texture can do that, and nothing that holds the tick can outlive the clear it came from.
-//!
-//! Positions are fractional cells and are **unbounded** - a piece may leave the board
-//! entirely, which is why this is drawn on the window and clipped to the player rather than
-//! into the board's own texture. One [`BurstSpec`] therefore fits any theme at any window
-//! size, and the same spec serves a droplet, an arriving attack shattering over a tray, and
-//! whatever a later theme wants to throw.
-//!
-//! Decoration, in the sense `popup.rs` establishes: it holds nothing, the board carries on
-//! underneath it, and a theme that asks for no burst pays nothing at all.
+//! Fire-and-forget pieces thrown off something, in fractional board cells that may leave the board,
+//! so it is drawn on the window clipped to the player. Fed by a theme's `PopDebris` on a pop and by
+//! an attack ball arriving; it holds nothing.
 
 use crate::game::CellId;
 use rand::rngs::ThreadRng;
@@ -21,10 +8,7 @@ use rand::{rng, RngExt};
 use std::f64::consts::TAU;
 use std::time::Duration;
 
-/// How many pieces may be in the air at once for one player.
-///
-/// A chain step pops ten cells and throws four droplets from each; several steps overlap.
-/// The oldest go first, which is the right end to lose from - they are the faintest.
+/// How many pieces may be in the air at once for one player; the oldest go first.
 const MAX_PIECES: usize = 256;
 
 /// Where a burst throws its pieces.
@@ -41,9 +25,8 @@ pub enum Spread {
 pub enum DebrisArt {
     /// one of the theme's own cell sprites, which every theme has - so a burst needs no art
     Cell(CellId),
-    /// the piece this cell is drawn as when it is thrown off one
-    /// ([`crate::render::sprite_sheet::CellAnimationData::debris`]), falling back to the
-    /// whole cell where a theme cut none
+    /// the piece this cell is drawn as when thrown off
+    /// ([`crate::render::sprite_sheet::CellAnimationData::debris`]), falling back to the whole cell
     Debris(CellId),
 }
 
@@ -125,8 +108,7 @@ impl Default for DebrisAnimation {
 }
 
 impl Clone for DebrisAnimation {
-    /// themes are built per player and cloned about; a clone starts empty rather than
-    /// carrying somebody else's droplets, and takes its own randomness
+    /// themes are built per player and cloned; a clone starts empty with its own randomness
     fn clone(&self) -> Self {
         Self::default()
     }
@@ -141,7 +123,7 @@ impl DebrisAnimation {
         for _ in 0..spec.count {
             let angle = match spec.spread {
                 Spread::AllDirections => self.rng.random_range(0.0..TAU),
-                // the upper half circle, measured with y downward, so this is up and out
+                // the upper half circle with y downward, so up and out
                 Spread::Upward => self.rng.random_range(0.0..TAU / 2.0) + TAU / 2.0,
             };
             let speed = self
@@ -159,7 +141,7 @@ impl DebrisAnimation {
                 art: spec.art,
             });
         }
-        // the oldest are the faintest, so they are the right end to lose from
+        // the oldest are the faintest
         if self.pieces.len() > MAX_PIECES {
             self.pieces.drain(..self.pieces.len() - MAX_PIECES);
         }
@@ -211,8 +193,7 @@ mod test {
         assert!(debris.pieces().is_empty(), "and they are gone");
     }
 
-    /// a droplet has to be able to leave the cell it came out of, and the board with it -
-    /// which is the whole reason this is not drawn into the board texture
+    /// A droplet can leave its cell and the board.
     #[test]
     fn a_piece_may_travel_off_the_board() {
         let mut debris = DebrisAnimation::new();

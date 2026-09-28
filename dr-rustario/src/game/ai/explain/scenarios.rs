@@ -1,20 +1,6 @@
-//! A bottle and two placements for every input of the network: the placement that scores
-//! *highest* on that input and the one that scores *lowest*, so the pair shows what the input
-//! is measuring rather than what the author of the picture believed it measured.
-//!
-//! They are found rather than written. Hand picking two landings per input was tried first and
-//! twenty one of the thirty two pairs turned out not to move the input they were about at all -
-//! a picture that shows nothing, and one that would go quietly stale the first time a feature
-//! changed. So the placements come out of the real placement search
-//! ([`crate::game::ai::placement`]), every legal one of several pills over a handful of hand
-//! drawn bottles, and the pair with the widest separation wins. What is drawn is then a
-//! position the agent could actually have reached, and the numbers under it are the numbers the
-//! network is really fed.
-//!
-//! They are here rather than in a test because two things need them and neither can build them:
-//! [`super::explain_main`] scores them, which needs the crate's private feature code, and
-//! `cargo run --example feature_shots` draws them, which needs a theme and a window. What they
-//! share is the [`Bottle`], which is public.
+//! A bottle and two placements for every network input: the placements that score highest and
+//! lowest on it, searched with [`crate::game::ai::placement`] rather than hand picked so the pair
+//! always moves the input. [`super::explain_main`] scores them and `feature_shots` draws them.
 //!
 //! A bottle is written as a picture, bottom rows last, in [`BOTTLE_WIDTH`] columns:
 //!
@@ -35,28 +21,18 @@ use crate::game::geometry::BottlePoint;
 use crate::game::pill::PillShape;
 use crate::game::pill::VirusColor::{Blue, Red, Yellow};
 
-/// One input, drawn: the bottle before the pill, and two placements of it, each in the two
-/// states worth seeing - the moment the halves land, and what is left once everything has
-/// cleared and fallen.
-///
-/// `[0]` is whichever placement moves the input **furthest from zero**, which is the one where
-/// the thing the input measures actually happens: the virus count is a clear taking three
-/// viruses against a placement taking none, rather than two placements that both take none.
+/// One input, drawn: the bottle before the pill and two placements, each as landed and as
+/// settled. `[0]` is the placement that moves the input furthest from zero.
 pub struct FeatureScenario {
     /// which input of [`super::INPUTS`] this shows
     pub input: usize,
     /// the bottle both placements were made into
     pub before: Bottle,
-    /// The bottle the instant the pill locks: the two halves are in it and **nothing has
-    /// cleared yet**, which is the only state in which where they landed can be seen. A
-    /// placement that clears takes its own halves with it, so in the settled bottle the cells
-    /// they were in are empty.
+    /// the bottle the instant the pill locks, before anything clears
     pub landed: [Bottle; 2],
-    /// the cells the first clear takes out of [`Self::landed`], for a renderer that can draw
-    /// them going. Empty where the placement clears nothing.
+    /// the cells the first clear takes out of [`Self::landed`]
     pub destroyed: [Vec<BottlePoint>; 2],
-    /// how many rounds of clearing each placement sets off. More than one is a cascade, and
-    /// only the first round's cells are in [`Self::destroyed`].
+    /// rounds of clearing each placement sets off; only the first is in [`Self::destroyed`]
     pub rounds: [usize; 2],
     /// the bottle each leaves behind, cleared and cascaded out
     pub after: [Bottle; 2],
@@ -64,9 +40,7 @@ pub struct FeatureScenario {
     pub placed: [[BottlePoint; 2]; 2],
     /// the input's value for each, in its own units, before any centring or scaling
     pub value: [f64; 2],
-    /// Whether this had to be found in a real game rather than drawn. A minimal bottle is
-    /// always preferred - it is the whole point of the pictures - but some inputs describe a
-    /// situation that cannot be *set up* in a few blocks, only arrived at.
+    /// whether this had to be found in a real game because no drawn bottle separated the input
     pub found: bool,
 }
 
@@ -101,23 +75,14 @@ fn bottle_of(rows: &[&str]) -> Bottle {
     bottle
 }
 
-/// What a placement leaves behind, in the states a picture wants.
-///
-/// [`Placement`] keeps only the settled bottle, because that is all the scorers read and
-/// carrying a second one per candidate would cost the search real memory. A picture needs the
-/// state *before* the clear as well - a placement that clears takes its own halves with it, so
-/// in the settled bottle the cells they landed in are empty and there is nothing to point at -
-/// so the drop is replayed here, for the thirty odd placements that end up being drawn.
+/// What a placement leaves behind, in the states a picture wants. [`Placement`] keeps only the
+/// settled bottle, so the drop is replayed here to recover the landed one.
 struct Landed {
     /// the halves in the bottle, before anything clears
     bottle: Bottle,
-    /// The cells the *first* round of clearing takes, which is the round that happens where the
-    /// pill just landed and the only one whose cells are still where a picture could ring them.
+    /// the cells the first round of clearing takes
     destroyed: Vec<BottlePoint>,
-    /// How many rounds of clearing follow. More than one is a cascade, and a cascade is why a
-    /// picture of the first round can show one virus going while the placement's virus count
-    /// says three went: the other two are taken by rounds that only happen once what the first
-    /// round unsupported has fallen, by which time those cells are somewhere else.
+    /// how many rounds of clearing follow
     rounds: usize,
 }
 
@@ -148,9 +113,7 @@ fn replay(before: &Bottle, landing: [(BottlePoint, crate::game::pill::VirusColor
     }
 }
 
-/// The pills the search is run with. Two halves of one colour and two of different ones, over
-/// all three colours, which between them reach every clear and every stranding these bottles
-/// have to offer.
+/// the pills the search is run with: every single-colour pill and every mixed pair
 const PILLS: [(crate::game::pill::VirusColor, crate::game::pill::VirusColor); 6] = [
     (Red, Red),
     (Blue, Blue),
@@ -175,54 +138,40 @@ fn all_placements(before: &Bottle) -> Vec<Placement> {
         .collect()
 }
 
-/// The bottle each input is drawn in, in [`super::INPUTS`] order, and for a context input the
-/// two bottles it is compared across.
-///
-/// **One bottle per input, built to show that input and as little else as possible.** They were
-/// snapshots of a real game to begin with, which guaranteed that every input could be separated
-/// somewhere but made the pictures unreadable: a placement worth one virus, drawn in a bottle
-/// holding thirty nine of them and a hundred loose halves, shows nothing a reader can find. A
-/// virus count is best drawn with a single virus in it.
-///
-/// The *placements* are still searched rather than written, so a bottle only has to contain the
-/// right pieces and never the right answer - `ga dr explain` says so if one of them stops
-/// separating the input it is for.
+/// The minimal bottle each input is drawn in, in [`super::INPUTS`] order, or the two bottles a
+/// context input is compared across. `ga dr explain` reports any that stop separating their input.
 const SCENARIOS: [Scene; engine::ai::BOTTLE_FEATURE_INPUTS] = [
-    // ---- how the bottle moved
-    // one virus and nothing else: a matching half lowers the work, another colour raises it
+    // how the bottle moved
+    // a lone virus: a matching half lowers the work, another colour raises it
     Scene::one(&["...R...."]),
-    // a virus with one of its colour along the floor, so the work that moves is the row's
+    // the row's work moves
     Scene::one(&["Rr......"]),
-    // the same standing up, so the work that moves is the column's
+    // the column's work moves
     Scene::one(&["r.......", "R......."]),
-    // A red virus in the corner with a blue beside it: its row is already dead and the only
-    // line it has left is the column above. Anything of another colour on top walls it in.
+    // a virus whose row is dead, so another colour on top buries it
     Scene::one(&["Rb......"]),
-    // two loose halves of a colour: a third lowers the work on all three, another colour adds
-    // its own instead
+    // two loose halves: a third lowers the work on all three
     Scene::one(&["rr......"]),
-    // A roofed pit one cell wide, with the column beside it open so a half can be walked in
-    // under the roof and nothing else can join it: the roof stops a line growing upwards and
-    // the wall two along stops one growing sideways.
+    // a roofed pit a half can be tucked into, where no line can grow
     Scene::one(&["b.b.....", "..b.....", ".bb....."]),
-    // ---- what the placement did
-    // two of a colour to land against, so a half can leave itself one short of a match
+    // what the placement did
+    // two of a colour, so a half can land one short of a match
     Scene::one(&["rr......"]),
-    // a run with a gap in it a pill could still drop into: work says one short, touching says two
+    // a gapped run: work says one short, touching says two
     Scene::one(&["r.r....."]),
     // a virus in the run a half lands in
     Scene::one(&["Rr......"]),
-    // three of a colour: a fourth half is exactly one short of them, or exactly two
+    // a half lands exactly one short, or exactly two
     Scene::one(&["rr......"]),
     Scene::one(&["r......."]),
-    // ---- what is one block from going, by axis
+    // what is one block from going, by axis
     Scene::one(&["Rr......"]),
     Scene::one(&["r.......", "R......."]),
     Scene::one(&["rr......"]),
     Scene::one(&["r.......", "r......."]),
-    // empty: a pill stood up in a column raises that column twice as far as one laid flat
+    // empty: a pill stood up raises its column twice as far as one laid flat
     Scene::one(&["........"]),
-    // ---- what kind of bottle this is: two bottles, not two placements
+    // context: two bottles, not two placements
     Scene::two(&FULL, &EMPTY),
     Scene::two(&FULL, &EMPTY),
     // hold is off, so this is zero in any bottle at all
@@ -261,9 +210,7 @@ impl Scene {
     }
 }
 
-/// The best picture of one input: over every placement of every pill in the bottle built for
-/// it, the pair the input separates most widely, drawn with whichever end is *furthest from
-/// zero* first - because that is the one where the thing the input measures actually happens.
+/// The pair of placements an input separates most widely in its bottle, furthest from zero first.
 fn scenario(input: usize, before: &Bottle, placements: &[Placement]) -> FeatureScenario {
     let values: Vec<f64> = placements
         .iter()
@@ -318,9 +265,8 @@ fn read_pair(
     }
 }
 
-/// A context input is the same for every placement of a pill by construction - that is what
-/// makes it context - so no two placements can ever separate one. What separates them is two
-/// *bottles*, so these are drawn as one placement in each.
+/// A context input is the same for every placement of a pill, so it is drawn as one placement
+/// in each of two bottles.
 fn context_scenario(input: usize, high: &Bottle, low: &Bottle) -> FeatureScenario {
     let bottles = [high, low];
     let placements: Vec<Placement> = bottles
@@ -359,12 +305,8 @@ fn context_scenario(input: usize, high: &Bottle, low: &Bottle) -> FeatureScenari
     }
 }
 
-/// How many bottles are taken out of a real game, and how far apart. Nothing uses these unless
-/// the bottle drawn for an input fails to separate it - `place.chains` is the one that does.
-/// Its situation is a bottle one half away from a clear that *cascades*, and every compact way
-/// of setting that up either clears on the spot or buries the cell the clear needs; it is far
-/// easier found than built. The seed and the level are fixed and the ai that plays them is
-/// deterministic, so the same bottles come out every time.
+/// How many bottles are taken out of a real game, and how far apart, for an input whose drawn
+/// bottle fails to separate it. The seed, level and ai are fixed, so the bottles are too.
 const SNAPSHOT_SEED: u128 = 7;
 const SNAPSHOT_LEVEL: u32 = 12;
 const SNAPSHOT_EVERY: usize = 5;
@@ -377,8 +319,7 @@ fn snapshots() -> Vec<Bottle> {
     let mut pill = 0;
     imitation::play_games(SNAPSHOT_SEED, SNAPSHOT_LEVEL, |bottle, placements| {
         if pill % SNAPSHOT_EVERY == 0 && taken.len() < SNAPSHOTS {
-            // the bottle a game hands over has the pill in play still in it, and a picture
-            // wants the stack on its own: `hold` is what takes one back out
+            // `hold` takes the pill in play back out of the bottle
             let mut snapshot = bottle.clone();
             snapshot.hold();
             taken.push(snapshot);
@@ -420,8 +361,7 @@ pub fn scenarios() -> Vec<FeatureScenario> {
                 let before = bottle_of(scene.high);
                 let placements = all_placements(&before);
                 let drawn = scenario(input, &before, &placements);
-                // the drawn bottle is always preferred; only one that cannot show its input at
-                // all gives way to a position found in real play
+                // a drawn bottle is preferred unless it cannot show its input
                 if drawn.separates() {
                     drawn
                 } else {

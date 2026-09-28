@@ -1,51 +1,34 @@
-//! The playfield: the grid, gravity, and the census that reads how buried a player is.
+//! The grid, gravity, and the power gem census.
 //!
-//! Coordinates are the engine's, so `y` grows *downwards* and row 0 is the top row simulated.
-//!
-//! **The shape is read from the code, not from a guide.** The census and gravity passes scan
-//! thirteen rows and the erase pass scans fourteen, one above the visible field, so the board
-//! is six wide and thirteen tall with a row of headroom over it. Board pressure is counted out
-//! of seventy-eight, which is 6 x 13 and confirms the same shape a second way. See the rules
-//! doc's *Board*.
+//! `y` grows downwards and row 0 is the headroom row over the six by thirteen visible field.
 
 use crate::game::cell::{Corner, Gem, GemColor, PowerCell, PowerGemId, PowerMask};
 use engine::game::geometry::Point;
 use engine::game::pair::PairBoard;
 
 pub const COLUMNS: u32 = 6;
-/// the thirteen rows a player can see
 pub const VISIBLE_ROWS: u32 = 13;
-/// the row above them, which the erase pass reaches and the census does not
+/// the headroom row, which the erase pass reaches and the census does not
 pub const HIDDEN_ROWS: u32 = 1;
 pub const ROWS: u32 = VISIBLE_ROWS + HIDDEN_ROWS;
 pub const CELLS: usize = (COLUMNS * ROWS) as usize;
 
-/// how many cells the board pressure is read out of: the visible field, 6 x 13
+/// what board pressure is read out of
 pub const VISIBLE_CELLS: u32 = COLUMNS * VISIBLE_ROWS;
 
-/// The Drop Alley: the fourth column from the left, where pieces enter.
-///
-/// It is confirmed twice in the executable - it is the column pieces spawn over, and it is
-/// **last in all eight** of the counter gem column orderings, which is the code's version of
-/// the guides' rule that the alley only fills once every other column has taken a gem. See
-/// [`crate::game::counter`].
+/// The Drop Alley, where pieces enter; every counter gem ordering fills it last.
 pub const DROP_ALLEY: i32 = 3;
 
 /// where a pair's pivot appears; its child sits in the headroom row above
 pub const SPAWN: Point = Point::new(DROP_ALLEY, HIDDEN_ROWS as i32);
 
-/// Is this the headroom row above the visible field?
-///
-/// It is not Puyo's ghost row - a gem here is perfectly ordinary and the erase pass reaches it.
-/// The one thing it does is refuse an upright rotation, which is the ceiling rule we take from
-/// Puyo along with the rest of the rotation; see the rules doc's *Deliberate deviations* and
-/// [`engine::game::pair::PairBoard::is_ceiling`].
+/// Is this the headroom row? A gem there is ordinary and breaks; the row only refuses an
+/// upright rotation, as [`engine::game::pair::PairBoard::is_ceiling`].
 pub fn is_headroom(point: Point) -> bool {
     point.y < HIDDEN_ROWS as i32
 }
 
-/// the four orthogonal neighbours, which is how a break spreads and how a counter gem is
-/// caught in one
+/// how a break spreads, and how a counter gem is caught in one
 pub const NEIGHBOURS: [Point; 4] = [
     Point::new(0, -1),
     Point::new(0, 1),
@@ -90,8 +73,7 @@ impl Board {
         }
     }
 
-    /// free *and* on the board; anything off the board counts as occupied, so a piece cannot
-    /// be moved into it
+    /// free and on the board; off the board counts as occupied
     pub fn is_free(&self, point: Point) -> bool {
         Board::index(point).is_some_and(|i| self.cells[i].is_none())
     }
@@ -100,36 +82,26 @@ impl Board {
         (0..ROWS as i32).flat_map(|y| (0..COLUMNS as i32).map(move |x| Point::new(x, y)))
     }
 
-    /// every occupied cell and what is in it, top row first
+    /// top row first
     pub fn occupied(&self) -> impl Iterator<Item = (Point, Gem)> + '_ {
         Board::points().filter_map(|point| self.get(point).map(|gem| (point, gem)))
     }
 
-    /// Is the board empty? This is what an All Clear is worth six counter gems for.
     pub fn is_empty(&self) -> bool {
         self.cells.iter().all(Option::is_none)
     }
 
-    /// How many of the visible field's seventy-eight cells are taken, `+0x13e`.
-    ///
-    /// The headroom row is not counted, which is what makes the pressure thresholds read out
-    /// of 78 rather than 84.
+    /// Taken cells of the visible field, `+0x13e`; the headroom row is not counted.
     pub fn occupied_count(&self) -> u32 {
         self.occupied()
             .filter(|(point, _)| !is_headroom(*point))
             .count() as u32
     }
 
-    /// **Gravity.** Every gem falls as far as its column allows, keeping its order.
+    /// Gravity, column by column; returns whether anything moved.
     ///
-    /// Returns whether anything moved, which is what the chain loop asks: a settle that moved
-    /// nothing cannot have created a new break.
-    ///
-    /// A power gem falls as a unit in the original because it is a solid rectangle sitting on
-    /// a solid rectangle - column-wise compaction gives the same answer while the rectangle is
-    /// intact, and a rectangle that has been partly broken is no longer a power gem. The
-    /// ordering the original settles in is [open] in the rules doc; this settles every column
-    /// independently, which cannot disagree with it about where a gem ends up.
+    /// Column-wise compaction moves an intact power gem as a unit, and a broken one is no
+    /// longer a power gem.
     pub fn settle(&mut self) -> bool {
         let mut moved = false;
         for x in 0..COLUMNS as i32 {
@@ -148,14 +120,13 @@ impl Board {
             }
         }
         if moved {
-            // a rectangle that fell past a hole is not a rectangle any more, and the array
-            // that says which cells are in which power gem has to agree with the board
+            // a rectangle that fell past a hole is no longer a power gem
             self.recheck_power_gems();
         }
         moved
     }
 
-    /// One tick of every counter gem's countdown, run when the receiver drops a piece.
+    /// Run once per piece the receiver drops.
     pub fn tick_countdowns(&mut self) {
         for point in Board::points() {
             if let Some(gem) = self.get(point) {
@@ -164,11 +135,7 @@ impl Board {
         }
     }
 
-    /// **Which of this cell's edges are interior to its power gem**, for the sheet.
-    ///
-    /// Computed on demand rather than stored, so it cannot go stale: every settle, break and
-    /// formation would otherwise have to remember to refresh it, which is a whole class of
-    /// bug the board simply does not have this way.
+    /// Which of this cell's edges are interior to its power gem; computed, so it cannot go stale.
     pub fn power_mask(&self, point: Point) -> PowerMask {
         let Some(id) = self.get(point).and_then(|gem| gem.power()).map(|p| p.id) else {
             return PowerMask::NONE;
@@ -190,7 +157,6 @@ impl Board {
             .with(joined(Point::new(1, 0), PowerMask::RIGHT))
     }
 
-    /// the cells of one power gem, wherever they have ended up
     pub fn power_gem_cells(&self, id: PowerGemId) -> Vec<Point> {
         self.occupied()
             .filter(|(_, gem)| gem.power().is_some_and(|power| power.id == id))
@@ -198,10 +164,8 @@ impl Board {
             .collect()
     }
 
-    /// Stamp `rect` as one power gem, clearing whatever membership was there before.
-    ///
-    /// `rect` is `(top_left, bottom_right)` inclusive, and every cell in it is expected to be
-    /// a plain gem of one colour - [`crate::game::gems`] is what establishes that.
+    /// Stamp `rect`, `(top_left, bottom_right)` inclusive, as one power gem; the caller checks
+    /// it is plain gems of one colour.
     pub fn stamp_power_gem(&mut self, id: PowerGemId, (top_left, bottom_right): (Point, Point)) {
         for y in top_left.y..=bottom_right.y {
             for x in top_left.x..=bottom_right.x {
@@ -222,11 +186,7 @@ impl Board {
         }
     }
 
-    /// **The census**: any power gem that is no longer a solid rectangle stops being one.
-    ///
-    /// The original does this by clearing the power gem array entry of every cell whose `0x80`
-    /// bit is not set and rebuilding from what survives; the effect is the same, and stating it
-    /// as "a power gem is a rectangle or it is nothing" is what the rest of the code relies on.
+    /// The census: a power gem that is no longer a solid one colour rectangle stops being one.
     pub fn recheck_power_gems(&mut self) {
         let mut ids: Vec<PowerGemId> = self
             .occupied()
@@ -249,7 +209,6 @@ impl Board {
         }
     }
 
-    /// is every cell of this rectangle a plain gem of one colour?
     pub fn is_solid_one_colour(&self, (top_left, bottom_right): (Point, Point)) -> bool {
         let mut color: Option<GemColor> = None;
         for y in top_left.y..=bottom_right.y {
@@ -283,10 +242,7 @@ fn rectangle(cells: &[Point]) -> Option<(Point, Point)> {
     (area as usize == cells.len()).then_some((top_left, bottom_right))
 }
 
-/// The board as the pair's movement sees it.
-///
-/// The ceiling is the headroom row, which is Puyo's current-row check standing in for the
-/// PlayStation game's own spawn-area guard - see [`is_headroom`].
+/// The ceiling is the headroom row, standing in for the original's spawn area guard.
 impl PairBoard for Board {
     fn is_free(&self, point: Point) -> bool {
         Board::is_free(self, point)
@@ -302,11 +258,10 @@ pub mod tests {
     use super::*;
     use crate::game::cell::GemColor::*;
 
-    /// A board written out as rows of characters, bottom row **last**.
+    /// A board as rows of characters laid against the floor, bottom row last.
     ///
-    /// `b y g r` are plain gems, `B Y G R` their crash gems, `1-4` a counter gem of that
-    /// colour with five on the clock, `*` the rainbow and `.` an empty cell. Rows are laid
-    /// against the *floor*, so `board(&["rrrrrr"])` is one row of red on the bottom.
+    /// `b y g r` are plain gems, `B Y G R` crash gems, `1-4` a counter gem of that colour on a
+    /// full countdown, `*` the rainbow and `.` empty.
     pub fn board(rows: &[&str]) -> Board {
         let mut board = Board::new();
         let floor = ROWS as i32 - 1;
@@ -373,8 +328,7 @@ pub mod tests {
         assert_eq!(board.occupied_count(), 1);
     }
 
-    /// a power gem is a rectangle or it is nothing: break a hole in one and the rest stops
-    /// being a power gem at all
+    /// removing one cell of a 2x2 power gem unmakes the rest
     #[test]
     fn a_power_gem_that_stops_being_a_rectangle_stops_being_a_power_gem() {
         let mut board = board(&["rr", "rr"]);
@@ -394,8 +348,7 @@ pub mod tests {
         }
     }
 
-    /// ... and the four corners of one that survives still sum to fifteen, which is the whole
-    /// of the formation acceptance rule
+    /// a stamped 3x2 power gem's corner codes sum to fifteen
     #[test]
     fn a_stamped_power_gem_carries_four_corners_summing_to_fifteen() {
         let mut board = board(&["rrr", "rrr"]);
@@ -414,8 +367,7 @@ pub mod tests {
         assert_eq!(board.power_gem_cells(PowerGemId(7)).len(), 6);
     }
 
-    /// the mask says which edges are interior, so a corner of a power gem is joined two ways
-    /// and a cell in the middle of one all four
+    /// a 3x3 power gem's middle is joined four ways and its corner two
     #[test]
     fn the_power_mask_reads_a_rectangles_own_edges() {
         let mut b = board(&["rrr", "rrr", "rrr"]);

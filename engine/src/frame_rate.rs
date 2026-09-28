@@ -1,9 +1,7 @@
 use std::time::{Duration, SystemTime};
 
-/// The longest frame Android is allowed to report. SDL stops the loop dead inside its event
-/// poll while the app is in the background, so the first frame back measures however long it
-/// was away - minutes, all of which would land on the animations and particles at once. A
-/// match has paused itself by then (`GameInputKey::Suspend`); this is for everything else.
+/// The longest frame Android may report: SDL stops the loop while backgrounded, so the first
+/// frame back would measure the whole absence.
 #[cfg(feature = "android")]
 const MAX_DELTA: Duration = Duration::from_millis(100);
 
@@ -25,7 +23,7 @@ impl FrameRate {
         }
     }
 
-    /// Registers the start of a new frame, returns the time since the last frame
+    /// registers the start of a new frame, returning the time since the last one
     pub fn update(&mut self) -> Result<Duration, String> {
         // TODO have option of limiting/recording the effective framerate
         let now = SystemTime::now();

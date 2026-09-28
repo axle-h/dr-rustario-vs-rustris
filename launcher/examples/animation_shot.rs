@@ -1,20 +1,8 @@
-//! Steps a scripted Puyo Rusto match and writes one PNG every so many milliseconds, without
-//! opening a visible window - so an animation can be *seen* rather than reasoned about.
+//! Steps a scripted Puyo Rusto match and writes one PNG every so many milliseconds, without a
+//! visible window, so animations can be seen.
 //!
-//! `frame_shot` renders one frame and replays only a clear's caption, which is enough to
-//! check where things are drawn and nothing at all about how they move. This is its sibling
-//! for the moving parts: the pop's blink and strip, the landing squash, the droplets thrown
-//! off a burst, the ball crossing to the other board, the tray sliding in and the ragged
-//! fall of a slab of nuisance.
-//!
-//! It reimplements the small part of `match_screen` that matters here - drain the events,
-//! fan them out to the animations, and **skip the game's own update while an animation holds
-//! the tick**, which is the rule the whole timing of a chain rests on.
-//!
-//! `scene` picks what it is a shot *of*: `chain` (the default) plays the match described
-//! above, and `drain` buries player one on the spot so the game over drain can be watched -
-//! the field falling off the bottom of the well, column by column, beside a board still in
-//! play.
+//! `scene` is `chain` (the default) or `drain`, which buries player one to show the game over
+//! drain beside a board still in play.
 //!
 //! ```text
 //! cargo run -p dr-rustario-vs-rustris --example animation_shot -- [width] [height] [out] [theme] [every_ms] [frames] [scene]
@@ -64,7 +52,7 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    // leaked for the life of the process, as `frame_shot` and `Shell::new` both leak theirs
+    // leaked, as `Shell::new` leaks its own
     let texture_creator = Box::leak(Box::new(canvas.texture_creator()));
 
     let mut config = Config::default();
@@ -152,13 +140,11 @@ fn step(themes: &mut ThemeContext, games: &mut [puyo_rusto::game::Game], tick: u
     let mut sent: Vec<(u32, Attack)> = vec![];
     for (index, game) in games.iter_mut().enumerate() {
         let player = index as u32;
-        // the rule the whole pace of a chain rests on: while an animation blocks, the game
-        // does not tick at all, so a theme's clear animation *adds* to the rules' own delay
+        // while an animation blocks the game does not tick, as in `match_screen`
         if themes.is_pause_required_for_animation(player) {
             continue;
         }
-        // a hand on the controls: walk to a column and drop, so the shot keeps producing
-        // the things it is here to look at rather than watching one pair fall for a second
+        // walk to a column and drop, so every pair lands quickly
         if tick.is_multiple_of(24) {
             let column = (tick / 24 + index * 2) % puyo_rusto::game::board::COLUMNS as usize;
             for _ in 0..puyo_rusto::game::board::COLUMNS {
@@ -195,8 +181,7 @@ fn step(themes: &mut ThemeContext, games: &mut [puyo_rusto::game::Game], tick: u
             }
         }
     }
-    // ... and the session's own job: route what was sent to the other board, and throw the
-    // ball that carries it
+    // route what was sent to the other board and throw its ball
     for (from, attack) in sent {
         let to = (from + 1) % games.len() as u32;
         let strength = attack.strength_for(games[to as usize].game_id());
@@ -240,18 +225,15 @@ fn draw(
             }
         })
         .map_err(|e| e.to_string())?;
-    // ... and composited onto the window, which is what actually puts a board on the screen
     themes.draw_players(canvas, &mut texture_refs, Duration::ZERO)?;
-    // then the match screen's own order, minus the particles: what the boards threw off,
-    // the attacks crossing between them, and the captions over all of it
+    // the match screen's order, minus the particles
     themes.draw_debris(canvas)?;
     themes.draw_character_particles(canvas)?;
     themes.draw_attack_balls(canvas)?;
     themes.draw_popups(canvas)
 }
 
-/// A board stacked so that the very next placement sets off a chain, so the shot opens on
-/// the moment worth watching rather than on forty frames of tidying.
+/// A board stacked so that a chain comes soon after the shot opens.
 fn about_to_chain(player: usize) -> puyo_rusto::game::Game {
     use puyo_rusto::game::{board, cell::PuyoSkin, random, rules};
     let difficulty = Difficulty::VeryEasy;
@@ -263,8 +245,7 @@ fn about_to_chain(player: usize) -> puyo_rusto::game::Game {
     let skins = PuyoSkin::deal(seed, player + 1);
     let mut game = puyo_rusto::game::Game::new(difficulty, 2, gen, skins[player]);
     let _ = rules::POP_DELAY;
-    // round the columns from the left, which stacks the board without tidying it and leaves
-    // colours landing beside each other - which is what makes a chain turn up
+    // round the columns from the left, stacking colours beside each other
     for column in (0..board::COLUMNS as i32).cycle().take(40) {
         for _ in 0..board::COLUMNS {
             game.left();

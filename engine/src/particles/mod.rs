@@ -20,8 +20,7 @@ pub mod source;
 pub struct Particles {
     particles: Vec<ParticleGroup>,
     sources: Vec<Box<dyn ParticleSource>>,
-    /// retained pools, which own their particles for as long as they live and update them in
-    /// place. The emitter machinery above is untouched, so the menus keep working unchanged.
+    /// retained pools, which own their particles and update them in place
     pools: Vec<Box<dyn ParticlePool>>,
     max_particles: usize,
 }
@@ -53,8 +52,7 @@ impl Particles {
         self.pools.push(pool);
     }
 
-    /// `scene` is what the pools update against; `None` ticks the emitters only, which is all
-    /// a menu ever has
+    /// `scene` is what the pools update against; `None` ticks the emitters only, as in a menu
     pub fn update(&mut self, delta: Duration, scene: Option<&SceneContext>) {
         let delta_time = delta.as_secs_f64();
         self.update_life(delta_time);

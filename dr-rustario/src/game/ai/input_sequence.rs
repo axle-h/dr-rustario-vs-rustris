@@ -9,15 +9,10 @@ pub enum Translation {
     RotateClockwise,
     RotateAnticlockwise,
     HardDrop,
-    /// Not a key at all: **stop pressing and let the pill fall until it comes to rest**, which
-    /// is the first half of a tuck. What follows it is a move made in the lock delay, and it is
-    /// a waypoint rather than a row so that nothing has to be timed - the pill cannot fall past
-    /// where it comes to rest, and if garbage arrives while it falls and it rests somewhere
-    /// else, the plan carries on from wherever it actually is rather than waiting for a row
-    /// that is never coming.
+    /// Not a key: let the pill fall until it comes to rest, the first half of a tuck. It is a
+    /// waypoint rather than a row, so nothing is timed and the plan goes on from wherever it rests.
     Rest,
-    /// swap the pill in play for the one being held. Everything after it in the sequence
-    /// belongs to the pill the swap brings in.
+    /// swap the pill in play for the held one; everything after it is for the swapped-in pill
     Hold,
 }
 

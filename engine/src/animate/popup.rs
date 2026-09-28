@@ -1,19 +1,10 @@
-//! Short captions drawn over the board, where the thing they are about happened.
-//!
-//! This is not the background field's `Spell` - that writes a word across the whole window in
-//! particles, and it is for the once-a-match moments. A popup is small, local and frequent: it
-//! sits on the cells that just went and is gone again in under a second. Puyo Rusto's chain
-//! count is what it was built for, since a chain announcing itself step by step *is* the
-//! game's feedback, but nothing here knows that - a game says what to say through
-//! [`crate::render::GameRender::clear_popup`] and says nothing by default.
-//!
-//! It never blocks the tick. A popup is decoration and the board carries on underneath it.
+//! Short captions drawn over the cells a clear took, drifting up and gone in under a second. Fed by
+//! [`crate::render::GameRender::clear_popup`]; decoration, never holding the tick.
 
 use crate::game::{CellId, PlacedCell};
 use std::time::Duration;
 
-/// how long a popup lives; a little longer than a chain step, so a chain leaves a trail of
-/// them climbing the board rather than replacing one with the next
+/// how long a popup lives; longer than a chain step, so a chain leaves a trail of them
 pub const POPUP_DURATION: Duration = Duration::from_millis(750);
 
 /// how far it drifts upwards over its life, in cells
@@ -32,8 +23,8 @@ pub struct Popup {
     /// the board cell it is centred on, fractional because it is the middle of a group
     column: f64,
     row: f64,
-    /// the commonest of the cells it is about, so a theme can draw the caption in the colour
-    /// it draws that cell
+    /// the commonest of the cells it is about, so a theme can draw the caption in that cell's
+    /// colour
     cell: Option<CellId>,
     elapsed: Duration,
 }
@@ -48,11 +39,8 @@ impl Popup {
         (self.column, self.row)
     }
 
-    /// The cell the caption is about, whichever of them there were most of.
-    ///
-    /// Not an average: a Puyo group that took a nuisance puyo with it would average to a
-    /// washed out version of its own colour, where the modal cell is the colour that actually
-    /// popped.
+    /// The cell the caption is about, whichever there were most of; an average would wash the
+    /// colour out when a group takes nuisance with it.
     pub fn cell(&self) -> Option<CellId> {
         self.cell
     }
@@ -67,10 +55,8 @@ impl Popup {
         self.progress() * POPUP_RISE_CELLS
     }
 
-    /// How big it is drawn, as a fraction of its full size.
-    ///
-    /// It pops in past full size and settles back, then shrinks away at the end - which is how
-    /// it disappears, since the font's texture is shared and cannot be faded per popup.
+    /// How big it is drawn, as a fraction of full size: it overshoots in, settles, and shrinks away
+    /// at the end, since the shared font texture cannot be faded per popup.
     pub fn scale(&self) -> f64 {
         let progress = self.progress();
         if progress < GROW {
@@ -146,8 +132,7 @@ mod tests {
             .collect()
     }
 
-    /// the caption is drawn in the colour of what popped, and a group that took a nuisance
-    /// puyo with it is still that group's colour
+    /// The caption takes the modal colour of what popped, ignoring nuisance.
     #[test]
     fn a_popup_is_about_the_cell_there_were_most_of() {
         let mut popups = PopupAnimation::new();
@@ -169,8 +154,7 @@ mod tests {
         assert_eq!(popups.active()[0].text(), "1 chain");
     }
 
-    /// a chain fires one step at a time, so the popups stack up rather than replacing each
-    /// other - and each one rises away on its own clock
+    /// Chain popups stack up, each rising on its own clock.
     #[test]
     fn every_step_of_a_chain_gets_its_own_popup() {
         let mut popups = PopupAnimation::new();

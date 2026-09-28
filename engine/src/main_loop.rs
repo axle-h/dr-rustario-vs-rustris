@@ -1,6 +1,5 @@
-//! Drives the per-frame tick: a plain loop on desktop, the browser's animation-frame
-//! callback under emscripten. The whole app is tick-based (no blocking loops) so both
-//! drivers run exactly the same code.
+//! Drives the per-frame tick: a plain loop on desktop, the browser's animation-frame callback
+//! under emscripten. The app never blocks, so both drivers run the same code.
 
 pub enum LoopControl {
     Continue,
@@ -20,12 +19,8 @@ pub fn run<S: 'static>(
     }
 }
 
-/// Runs `tick` against `state` once per animation frame. This function never returns:
-/// emscripten unwinds `main` (skipping the rest of it) and calls back into the leaked
-/// state, which lives for the rest of the page. [`LoopControl::Exit`] or an error cancels
-/// the callbacks and exits the runtime via `emscripten_force_exit`, which detaches the
-/// runtime's event listeners and fires the page's `Module.onExit` with the exit status,
-/// so the page can react (e.g. offer a restart) instead of freezing on the last frame.
+/// Runs `tick` once per animation frame and never returns, since emscripten unwinds `main`.
+/// Exit or an error calls `emscripten_force_exit`, which fires the page's `Module.onExit`.
 #[cfg(target_os = "emscripten")]
 pub fn run<S: 'static>(
     state: S,
@@ -64,7 +59,7 @@ pub fn run<S: 'static>(
         }
     }
 
-    // the state deliberately leaks: it must outlive `main`, which emscripten unwinds
+    // leaked, since it must outlive `main`
     let holder: *mut Holder<S> = Box::into_raw(Box::new((state, Box::new(tick))));
     unsafe {
         // fps 0 = requestAnimationFrame; simulate_infinite_loop = 1 never returns here

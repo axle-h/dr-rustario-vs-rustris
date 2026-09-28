@@ -1,15 +1,8 @@
-# Builds the Android APK - see build-android.sh, which signs what this leaves.
+# Builds the unsigned Android APK for build-android.sh, which signs it; x86_64 is for the emulator.
+# The `toolchain` stage alone is what build-android.sh runs keytool in.
 #
-# ABI is arm64-v8a, which is every handheld; x86_64 is there for the emulator, which cannot
-# run arm64 code on an x86 host. build-android.sh passes the Rust TARGET that goes with it.
-#
-# Two stages, so that build-android.sh can use the first on its own for keytool:
-#   toolchain - JDK, Android SDK and NDK, Gradle, Rust, and SDL built for Android
-#   build     - the game as a shared library, and the unsigned APK around it
-#
-# SDL is built here rather than taken from sdl2-sys's `bundled` feature because the Java half
-# of it (SDLActivity and friends) has to come from the very same release as libSDL2.so: the
-# two call each other over JNI by name, and a mismatch fails at runtime, not at link time.
+# SDL is built here because its Java half must be the same release as libSDL2.so: they call
+# each other over JNI by name, and a mismatch fails only at runtime.
 FROM ubuntu:24.04 AS toolchain
 
 ARG ABI=arm64-v8a
@@ -23,7 +16,6 @@ ARG GRADLE_VERSION=9.8.0
 # the oldest Android the native libraries are linked against; match minSdk in app/build.gradle.kts
 ARG API=26
 ENV DEBIAN_FRONTEND=noninteractive
-# on into the build stage, which has to build the same ABI
 ENV ABI=$ABI TARGET=$TARGET
 
 RUN apt-get update \
@@ -49,9 +41,8 @@ RUN curl -fsSL https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-
   && rm /tmp/gradle.zip
 ENV PATH="/opt/gradle-$GRADLE_VERSION/bin:$PATH"
 
-# libSDL2.so into /jniLibs, where the game's library joins it, and the Java half kept at
-# /sdl/android-project. HIDAPI is compiled into libSDL2.so by the CMake build, which is why
-# there is no libhidapi.so beside it as there is under ndk-build.
+# libSDL2.so into /jniLibs and the Java half at /sdl/android-project; CMake builds HIDAPI into
+# libSDL2.so, so there is no libhidapi.so
 WORKDIR /sdl
 RUN curl -fsSL https://github.com/libsdl-org/SDL/releases/download/release-${SDL_VERSION}/SDL2-${SDL_VERSION}.tar.gz \
      | tar xz --strip-components=1 \
@@ -68,8 +59,7 @@ RUN curl https://sh.rustup.rs -sSf | bash -s -- -y --profile minimal \
   && /root/.cargo/bin/rustup target add $TARGET
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# sdl2-sys links `-lSDL2` and nothing else when it is neither bundled nor pkg-config'd, so the
-# one thing to add is where libSDL2.so is
+# sdl2-sys links bare `-lSDL2` here, so it only needs to be told where libSDL2.so is
 ENV NDK_BIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
 ENV CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK_BIN/aarch64-linux-android${API}-clang \
     CC_aarch64_linux_android=$NDK_BIN/aarch64-linux-android${API}-clang \
@@ -80,8 +70,7 @@ ENV CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK_BIN/aarch64-linux-android${AP
     AR_x86_64_linux_android=$NDK_BIN/llvm-ar \
     CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-L native=/jniLibs/x86_64"
 
-# fetch the Android Gradle plugin into its own layer, so that a source change does not
-# download it again
+# the Android Gradle plugin in its own layer, so a source change does not refetch it
 WORKDIR /app/android
 COPY android/settings.gradle.kts android/build.gradle.kts android/gradle.properties ./
 COPY android/app/build.gradle.kts app/
@@ -96,8 +85,7 @@ ARG VERSION_NAME
 WORKDIR /app
 COPY . .
 
-# The game as liblauncher.so. `cargo rustc` is the only way to ask for a cdylib without
-# declaring one in launcher/Cargo.toml, where every desktop build would link it too.
+# `cargo rustc` asks for a cdylib without declaring one that every desktop build would link
 RUN cargo rustc --release -p dr-rustario-vs-rustris --lib --crate-type cdylib \
       --target $TARGET --no-default-features --features android \
   && cp target/$TARGET/release/liblauncher.so /jniLibs/$ABI/ \

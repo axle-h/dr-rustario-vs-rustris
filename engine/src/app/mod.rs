@@ -1,5 +1,5 @@
-//! The application shell: window, audio and the per-frame screens. Generic over the game
-//! being played; a launcher decides which games and themes to run and ticks the screens.
+//! The application shell: window, audio and the per-frame screens, generic over the game;
+//! a launcher picks the games and themes and ticks the screens.
 
 pub mod loading;
 pub mod screens;
@@ -24,13 +24,12 @@ use sdl2::video::WindowContext;
 use sdl2::{EventPump, Sdl};
 use std::ops::Range;
 
-/// Simultaneous sound effects per player (SDL_mixer's default channel count).
+/// simultaneous sound effects per player, SDL_mixer's default channel count
 const EFFECT_CHANNELS_PER_PLAYER: u32 = 8;
 
 pub const MAX_PARTICLES_PER_PLAYER: usize = 100000;
 pub const MAX_BACKGROUND_PARTICLES: usize = 100000;
 
-/// How a menu screen ended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuExit<R> {
     Start,
@@ -52,7 +51,6 @@ pub enum PostGameAction {
     Quit,
 }
 
-/// Which theme a player plays on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeMode {
     /// every theme in order, advancing at each stage
@@ -70,10 +68,9 @@ impl ThemeMode {
     }
 }
 
-/// One player's game setup within a match.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlayerSettings {
-    /// the player's themes: a range of indices into the match's theme list
+    /// indices into the match's theme list
     pub themes: Range<usize>,
     pub theme_mode: ThemeMode,
 }
@@ -87,8 +84,7 @@ impl PlayerSettings {
     }
 }
 
-/// What a playlist does to a player at a stage boundary: a new game, or the same game on
-/// different themes.
+/// What a playlist does to a player at a stage boundary.
 pub struct StageChange<G> {
     /// `None` carries the current game (its stack and hold) into the next stage
     pub game: Option<G>,
@@ -99,8 +95,7 @@ pub struct StageChange<G> {
 pub struct MatchSettings {
     pub rules: MatchRules,
     pub players: Vec<PlayerSettings>,
-    /// which high score table the match competes for, or `None` for a mode that does not
-    /// rank: such a match loads no table and never offers name entry
+    /// `None` for a mode that does not rank: it loads no table and never offers name entry
     pub high_score_key: Option<HighScoreKey>,
     /// stages may switch games, so every stage boundary shows the stage card
     pub playlist: bool,
@@ -122,11 +117,8 @@ impl App {
     pub fn new(max_players: u32, icon: &[u8]) -> Result<Self, String> {
         let config = Config::load()?;
 
-        // Android's back button is the menus' back and the match's return to menu, like
-        // Escape, rather than closing the app from wherever it is pressed; a phone's
-        // accelerometer is not a player; and landscape has to be said, since SDL otherwise
-        // picks an orientation from the window's size and a desktop fullscreen window is
-        // built 1x1, which it reads as portrait
+        // Android: back acts as Escape rather than closing the app, the accelerometer is not a
+        // player, and landscape is forced since a 1x1 desktop fullscreen window reads as portrait
         #[cfg(feature = "android")]
         {
             sdl2::hint::set("SDL_ANDROID_TRAP_BACK_BUTTON", "1");
@@ -177,22 +169,17 @@ impl App {
         .build()
         .map_err(|e| e.to_string())?;
 
-        // Frame zero, before a single theme is built. A Wayland toplevel is not mapped until
-        // the client commits a buffer, so until something is presented the window does not
-        // exist as far as the compositor is concerned - which is what a PortMaster session's
-        // `swaymsg [app_id=...] fullscreen enable` helper spends the whole load failing to
-        // find. See `crate::app::loading`, which draws the bar over the top of this.
+        // present frame zero: a Wayland toplevel is not mapped until the client commits a buffer
         canvas.set_draw_color(loading::BACKGROUND);
         canvas.clear();
         canvas.present();
 
-        // the window built under FullScreenDesktop (or any mode the WM adjusts) only knows
-        // its real size now: particle space is normalised to it, so it must be the real one
+        // the window mode may have resized it, and particle space is normalised to the real size
         let (window_width, window_height) = canvas.window().size();
 
         let event_pump = sdl.event_pump()?;
-        // SDL_GAMECONTROLLERCONFIG (set by e.g. PortMaster) is read by the subsystem on init;
-        // already-attached pads arrive as ControllerDeviceAdded events on the first poll
+        // SDL_GAMECONTROLLERCONFIG is read on init; attached pads arrive as ControllerDeviceAdded
+        // on the first poll
         let controllers = Controllers::new(sdl.game_controller()?, max_players);
 
         let audio = audio::Audio::open(
@@ -219,7 +206,6 @@ impl App {
         self.config
     }
 
-    /// the menu sounds and music from here on
     pub fn set_menu_sound(&mut self, sounds: MenuSounds) -> Result<(), String> {
         self.menu_sound = MenuSound::new(self.config.audio, sounds)?;
         Ok(())
@@ -229,11 +215,8 @@ impl App {
         &mut self.canvas
     }
 
-    /// The canvas and the event pump at once, for a long job that runs before the main loop.
-    ///
-    /// Building the themes draws with one and has to keep pumping the other, and it holds
-    /// both for the length of the load - which one `&mut self` at a time cannot give it. See
-    /// [`crate::app::loading`] for why a load that never pumps shows nothing.
+    /// The canvas and the event pump at once, for a load that draws with one while pumping the
+    /// other.
     pub fn canvas_and_events(&mut self) -> (&mut WindowCanvas, &mut EventPump) {
         (&mut self.canvas, &mut self.event_pump)
     }

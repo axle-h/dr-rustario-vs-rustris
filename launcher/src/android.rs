@@ -1,12 +1,10 @@
-//! The Android entry point. SDL's Java activity loads `liblauncher.so` (see
-//! `android/app/src/main/java/.../MainActivity.java`) and calls `SDL_main` on its own thread.
+//! The Android entry point: SDL's Java activity loads `liblauncher.so` and calls `SDL_main`.
 
 use std::ffi::{c_char, c_int};
 
 #[no_mangle]
 pub extern "C" fn SDL_main(_argc: c_int, _argv: *const *const c_char) -> c_int {
-    // nothing reads stdout or stderr on Android, so a panic would leave no trace; SDL_Log is
-    // logcat, under the tag "SDL/APP"
+    // stderr goes nowhere on Android; SDL_Log reaches logcat under the tag "SDL/APP"
     std::panic::set_hook(Box::new(|info| sdl2::log::log_error(&info.to_string())));
 
     let code = match crate::run() {
@@ -22,9 +20,7 @@ pub extern "C" fn SDL_main(_argc: c_int, _argv: *const *const c_char) -> c_int {
             1
         }
     };
-    // SDL's activity finishes itself when this returns but the process can live on and be
-    // handed the next launch, which would find every static already set - the audio thread's
-    // command channel among them, with nothing left on the far end. A fresh process is the
-    // only clean start.
+    // the process can outlive the activity and be handed the next launch with every static
+    // still set, including a dead audio channel, so exit for a clean start
     std::process::exit(code)
 }

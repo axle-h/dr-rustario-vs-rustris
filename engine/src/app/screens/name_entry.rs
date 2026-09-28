@@ -14,9 +14,9 @@ use sdl2::render::TextureCreator;
 use sdl2::video::WindowContext;
 
 pub enum NameEntryExit {
-    /// entry finished: save via [`NameEntryScreen::finish`]
+    /// save via [`NameEntryScreen::finish`]
     Done,
-    /// entry abandoned: nothing to save
+    /// nothing to save
     Cancelled,
 }
 
@@ -60,7 +60,7 @@ impl<'a> NameEntryScreen<'a> {
         })
     }
 
-    /// One frame; `Ok(Some(_))` when name entry is over.
+    /// one frame; `Ok(Some(_))` when name entry is over
     pub fn update(
         &mut self,
         app: &mut App,
@@ -90,7 +90,6 @@ impl<'a> NameEntryScreen<'a> {
         app.canvas.set_draw_color(Color::BLACK);
         app.canvas.clear();
 
-        // particles
         particles.update(delta);
         particles.draw(&mut app.canvas)?;
 
@@ -100,7 +99,7 @@ impl<'a> NameEntryScreen<'a> {
         Ok(None)
     }
 
-    /// saves the entered name, if any name was entered
+    /// saves the entered name, if any
     pub fn finish(mut self) -> Result<(), String> {
         if let Some(new_entry) = self.table.new_entry() {
             let mut high_scores = self.store.table(&self.key);

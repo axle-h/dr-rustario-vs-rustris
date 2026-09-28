@@ -5,7 +5,7 @@ use crate::animate::event::{AnimationEvent, AnimationType};
 use crate::app::{App, MatchSettings, PostGameAction, StageChange, ThemeMode};
 use crate::frame_rate::FrameRate;
 use crate::game::geometry::Point as CellPoint;
-use crate::game::{Cell, Game, GameEvent, MetricKind, StageState, StageTransition, ids};
+use crate::game::{ids, Cell, Game, GameEvent, MetricKind, StageState, StageTransition};
 use crate::game_input::{GameInputContext, GameInputKey};
 use crate::particles::field::context::{PlayerRegion, SceneContext};
 use crate::particles::field::reaction::FieldEvent;
@@ -32,25 +32,23 @@ pub struct MatchScreen<'a, G: Game + GameRender> {
     settings: MatchSettings,
     themes: ThemeContext<'a>,
     player_textures: Vec<PlayerTextures<'a>>,
-    /// every frame renders here, then blits to the window: the previous frame is then
-    /// always available to snapshot for theme fades without reading the backbuffer
+    /// every frame renders here first, so theme fades can snapshot the previous frame without
+    /// reading the backbuffer
     frame_buffer: Texture<'a>,
     paused_screen: PausedScreen<'a>,
     timer: Option<TimerRender<'a>>,
     /// they play for the players they name instead of the keyboard
     controllers: Vec<(u32, Controller<G>)>,
     frame_rate: FrameRate,
-    /// per player: time since they finished a playlist stage, until the switch happens
+    /// per player: time since they finished a playlist stage
     pending_switches: Vec<Option<Duration>>,
-    /// per player: games of a playlist set aside while another game is played, so each
-    /// game picks up where it left off (its stack, hold and level)
+    /// per player: games set aside during a playlist, resumed where they left off
     parked: Vec<Vec<G>>,
     completed_stages: Vec<u32>,
     players: u32,
     is_single_player: bool,
 }
 
-/// what plays a board in place of the keyboard, handed the frame's delta
 type Controller<G> = Box<dyn FnMut(&mut G, Duration) + 'static>;
 
 impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
@@ -104,7 +102,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         let mut frame_buffer = texture_creator
             .create_texture_target(RGBA8888, window_size.0, window_size.1)
             .map_err(|e| e.to_string())?;
-        // start black so a fade on the very first frame has something to fade from
+        // start black so a fade on the first frame has something to fade from
         app.canvas
             .with_texture_canvas(&mut frame_buffer, |c| {
                 c.set_draw_color(Color::BLACK);
@@ -113,7 +111,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             .map_err(|e| e.to_string())?;
 
         let paused_screen = PausedScreen::new(&mut app.canvas, texture_creator, window_size)?;
-        // sprints race the clock, so show it
         let timer = if settings.rules.is_sprint() {
             Some(TimerRender::new(
                 &mut app.canvas,
@@ -125,10 +122,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             None
         };
 
-        // Deal every player a character, once, for the whole match: a theme that has a cast
-        // draws one beside the board and reads its face off that player's own game. Dealt here
-        // rather than per stage so a playlist swapping the board to another game and back hands
-        // the player the face they already had.
+        // dealt once per match, so a playlist swapping games and back keeps each player's face
         themes.deal_characters(rand::random::<u64>(), players);
 
         for player in 0..players {
@@ -160,12 +154,8 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         })
     }
 
-    /// What the background particle field is told about the match this frame. `None` when no
-    /// player is on a particle scene, in which case there is no field at all.
-    ///
-    /// Every player is described, including one the field never draws over: their board is
-    /// what makes a half-visible attack resolvable, and their events still ripple through the
-    /// half that is visible.
+    /// What the particle field is told this frame, or `None` when no player is on a particle
+    /// scene. Every player is described, since off-field boards still resolve attacks and events.
     fn scene_context(
         themes: &ThemeContext,
         fixture: &Match<G>,
@@ -194,11 +184,8 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         )
     }
 
-    /// Short strings the field may morph into whenever it feels like it. The engine cannot
-    /// name a game or its numbers, so the match screen picks them: the game each player is
-    /// on, whatever level they are on, and `VS` when there is someone to play against. The
-    /// words it spells only when the match calls for them are the engine's own, see
-    /// [`engine::particles::field::reaction::words`].
+    /// Words the field may morph into unprompted: each player's game and level, and `VS` when
+    /// there is an opponent. The engine cannot name a game, so the match screen picks them.
     fn captions(themes: &ThemeContext, fixture: &Match<G>, players: u32) -> Vec<String> {
         let mut captions = vec![];
         for player in 0..players {
@@ -219,8 +206,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         captions
     }
 
-    /// How close a player's stack is to the top of their board, 0-1. There is no danger
-    /// `GameEvent`, so the field reads it every frame instead.
+    /// How close a player's stack is to the top of their board, 0-1.
     fn stack_danger(game: &G) -> f64 {
         let rows = game.board_height();
         let visible = game.visible_height().max(1);
@@ -239,8 +225,8 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         0.0
     }
 
-    /// One frame of the match. `next_stage` is asked for a player's next game when they
-    /// complete a stage; `None` means they carry on in the game they are playing.
+    /// One frame of the match. `next_stage` is asked for a player's next game when they complete
+    /// a stage; `None` keeps them on the one they are playing.
     pub fn update(
         &mut self,
         app: &mut App,
@@ -273,25 +259,18 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
 
         let mut to_emit_particles: Vec<PlayerTargetedParticles> = vec![];
 
-        // what the background particle field is told happened; every player's events feed it
-        // whatever theme they are on
         let mut field_events: Vec<FieldEvent> = vec![];
 
-        // a stage boundary was crossed this frame: re-evaluate which player the music follows
         let mut stage_changed = false;
-        // how full each tray is before anything is played: an attack routed this frame is
-        // already in its receiver's tray by the time the routes are drained below, and the
-        // ball carrying it has to know what was there without it
+        // read before routing, since a routed attack is already in the tray when its ball is made
         let trays_before: Vec<usize> = (0..players)
             .map(|p| fixture.player(p).game().pending_attacks().len())
             .collect();
 
-        // events tagged with the player that caused them (None for match-wide events) so
-        // sound effects are routed through that player's theme
+        // tagged with the player that caused them, `None` for match-wide events
         let mut events: Vec<(Option<u32>, GameEvent)> = vec![];
 
-        // a board played by a controller has nobody to press a key on its stage clear card, so
-        // it dismisses its own and carries on
+        // a controller dismisses its own stage clear card
         let mut players_to_advance: Vec<u32> = controllers
             .iter()
             .map(|(player, _)| *player)
@@ -319,7 +298,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     } else {
                         themes.maybe_dismiss_game_over();
                     }
-                    // animating, ignore all player game input
                     continue;
                 }
             }
@@ -374,7 +352,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
 
             let completed = game.completed_stages();
             if let Some(change) = next_stage(player, completed) {
-                // the playlist moves this player to another game
                 if let Some(next_game) = change.game {
                     fixture.player_mut(player).replace_game(next_game);
                 }
@@ -389,11 +366,9 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     themes.music_audio().play_game_music()?;
                 }
             } else if settings.players[player as usize].theme_mode == ThemeMode::All {
-                // only this player advances to their next theme
                 events.push((Some(player), GameEvent::NextTheme));
             } else if is_single_player {
-                // single player was playing next-stage music; resume game music.
-                // multiplayer game music never stopped (stage clear is a jingle).
+                // single player was playing next-stage music; multiplayer music never stopped
                 themes.music_audio().play_game_music()?;
             }
             let cells = fixture.player(player).game().stage_intro_cells();
@@ -404,12 +379,10 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             MatchState::GameOver {
                 high_score: Some(high_score),
             } if themes.is_all_post_game_animation_complete() => {
-                // start high score entry
                 return Ok(Some(PostGameAction::NewHighScore(high_score)));
             }
             MatchState::GameOver { high_score } if themes.is_any_game_over_dismissed() => {
                 return if let Some(high_score) = high_score {
-                    // start high score entry
                     Ok(Some(PostGameAction::NewHighScore(high_score)))
                 } else {
                     Ok(Some(PostGameAction::ReturnToMenu))
@@ -421,8 +394,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         fixture.mut_game(*player, |g| controller(g, delta));
                     }
                 }
-                // the race clock runs while anyone is playing: it stops only when every
-                // player is held up at once (in single player, any stage card or fade)
+                // the race clock stops only when every player is held up at once
                 let anyone_playing = (0..players).any(|player| {
                     !themes.stops_clock(player)
                         && !themes.is_fading(player)
@@ -444,7 +416,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     let game = player.game_mut();
                     let mut player_events = vec![];
                     player_events.extend(game.drain_events());
-                    // pre-update actions
                     for event in player_events.iter() {
                         if let GameEvent::HardDrop {
                             cells,
@@ -466,9 +437,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             _ => {}
         }
 
-        // The character's two triggers with no event between them, read every frame the way
-        // the particle field reads the same danger number: how high this player's stack is,
-        // and whether an attack is waiting in their tray.
         if !fixture.state().is_paused() {
             for player in 0..players {
                 let game = fixture.player(player).game();
@@ -478,7 +446,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             }
         }
 
-        // update animations
         if !fixture.state().is_paused() {
             let animation_events = themes.update_animations(delta);
             for AnimationEvent::Finished { player, animation } in animation_events {
@@ -488,18 +455,16 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             }
         }
 
-        // post-update events; a seamless stage change may queue a theme change
+        // a seamless stage change may queue a theme change
         let mut deferred_events: Vec<(Option<u32>, GameEvent)> = vec![];
         for (event_player, event) in events {
-            // an attack is routed before anything reacts to it: with nobody to attack, or
-            // when the clear is worth nothing to the player it lands on, it never happened
+            // route an attack before anything reacts to it: one that lands on nobody never happened
             if let GameEvent::AttackSent(attack) = &event {
                 if !event_player.is_some_and(|player| fixture.send_attack(player, *attack)) {
                     continue;
                 }
             }
-            // sound effects play through the theme of the player that caused them;
-            // match-wide events (pause etc.) go through the theme whose music is playing
+            // effects play through the causing player's theme, match-wide ones through the music's
             let (audio, clear_class, clear_word, clear_popup) = match event_player {
                 Some(player) => (
                     themes.theme(player).audio(),
@@ -526,8 +491,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     if fixture.next_stage_ends_match(player) {
                         fixture.complete_sprint(player);
                     } else if settings.playlist {
-                        // the finished board holds for a moment, then the next game of
-                        // the playlist fades in (see the pending switches below)
+                        // the finished board holds, then the next playlist game fades in
                         pending_switches[player as usize] = Some(Duration::ZERO);
                     } else {
                         match fixture.player(player).game().stage_transition() {
@@ -552,7 +516,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                 (Some(player), GameEvent::GameOver) => {
                     field_events.push(FieldEvent::GameOver { player });
                     if is_single_player {
-                        // single player is a simple game over
                         themes.animate_game_over(player);
                         fixture.maybe_set_game_over();
                         themes.music_audio().play_game_over_music()?;
@@ -587,16 +550,13 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         count,
                         is_combo,
                     });
-                    // ... and the player's character pulls a face at a chain. Only a chain:
-                    // one pop is most clears, several a minute, and it sends nothing either.
+                    // the character reacts only to a chain, not to every pop
                     if is_combo {
                         themes.animate_character_chain(player);
                     }
-                    // a tetris or a combo is worth spelling out
                     if let Some(word) = clear_word {
                         field_events.push(FieldEvent::Spell { word });
                     }
-                    // ... and a game may also want a caption over the cells themselves
                     if let Some(text) = clear_popup {
                         themes.animate_popup(player, text, cells);
                     }
@@ -618,9 +578,8 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                     field_events.push(FieldEvent::SpeedUp { player });
                 }
                 (Some(player), GameEvent::AttackReceived { cells }) => {
-                    // a game that holds its attacks in a tray shows them arriving: the rules
-                    // have already put them where they land, so this is only the fall, and it
-                    // holds the board until the last of them is down
+                    // the rules have already landed the tray's attacks; this is the fall,
+                    // holding the board until the last is down
                     if let Some(fall) = fixture.player(player).game().attack_fall() {
                         themes.animate_nuisance(player, &cells, fall);
                     }
@@ -641,7 +600,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             }
         }
 
-        // check for a match winner
         if let Some(winner) = fixture.check_for_winning_player() {
             if fixture.maybe_set_game_over() {
                 stage_changed = true;
@@ -659,8 +617,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         themes.animate_game_over(pid);
                     }
                 }
-                // the winner's theme music is the victory music; sync starts it if the
-                // music is moving to a new theme, otherwise start it explicitly
+                // sync starts the victory music if the music moves theme, otherwise start it here
                 if !themes.sync_music(
                     fixture.leading_player(),
                     fixture.state(),
@@ -671,14 +628,13 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             }
         }
 
-        // playlist switches that have held long enough
         if fixture.state().is_normal() {
             for player in 0..players {
                 let Some(elapsed) = pending_switches[player as usize] else {
                     continue;
                 };
                 if themes.is_pause_required_for_animation(player) {
-                    // let the clear finish first; the hold starts after it
+                    // the hold starts after the clear finishes
                     continue;
                 }
                 let elapsed = elapsed + delta;
@@ -694,7 +650,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                 if let Some(change) = next_stage(player, completed) {
                     let same_game = change.game.is_none();
                     if let Some(next_game) = change.game {
-                        // resume this game where it was parked, else start the new one
                         let wanted = next_game.game_id();
                         let resumed = match parked[index].iter().position(|g| g.game_id() == wanted)
                         {
@@ -718,7 +673,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                 } else if settings.players[player as usize].theme_mode == ThemeMode::All {
                     themes.fade_into_next_theme(player, &mut app.canvas, frame_buffer)?;
                 }
-                // a game that was mid-stage-change when parked starts its next stage now
+                // a game parked mid-stage-change starts its next stage now
                 let game = fixture.player_mut(player).game_mut();
                 if game.stage_state() == StageState::StageComplete {
                     game.next_stage()?;
@@ -740,11 +695,9 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             is_single_player,
         )?;
 
-        // the attack routes the session took this frame: the events only name the attacker,
-        // and the field wants both ends of the comet
+        // the events only name the attacker, and the field wants both ends of the comet
         for route in fixture.drain_attack_routes() {
-            // one ball per route, which is one per attack: it leaves the group that paid for
-            // it and shatters over the board it lands on. This only renders if at least one game is puyo.
+            // one ball per attack, drawn only when a Puyo game is in the match
             let puyo = |player: u32| fixture.player(player).game().game_id() == ids::PUYO;
             if puyo(route.from) || puyo(route.to) {
                 themes.send_attack_ball(
@@ -761,11 +714,9 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             });
         }
 
-        // update particles
         let scene = Self::scene_context(themes, fixture, &app.particle_scale, players);
         if let Some(scene) = scene.as_ref() {
-            // the field appears the moment anyone is on a particle scene, which may be part
-            // way through a match: F2 can switch a retro player onto a modern theme
+            // F2 can move a player onto a particle scene part way through a match
             if !bg_particles.has_field() {
                 bg_particles.add_field(scene.canvas, app.canvas.window().size());
             }
@@ -784,8 +735,7 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             fg_particles.add_source(emit.into_source(themes, &app.particle_scale));
         }
 
-        // mut refs of all textures and their render modes in one vector so we can render to
-        // texture in one loop (rebuilt per frame: it borrows the player textures)
+        // rebuilt per frame, since it borrows the player textures
         let mut texture_refs: Vec<(&mut Texture, TextureMode)> = vec![];
         for (player_index, textures) in player_textures.iter_mut().enumerate() {
             texture_refs.push((&mut textures.board, TextureMode::Board(player_index as u32)));
@@ -795,7 +745,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             ));
         }
 
-        // draw the game
         app.canvas
             .with_multiple_texture_canvas(texture_refs.iter(), |texture_canvas, texture_mode| {
                 match texture_mode {
@@ -819,8 +768,6 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
             })
             .map_err(|e| e.to_string())?;
 
-        // render the frame into the frame texture: the previous frame then stays
-        // available for theme fades to snapshot without ever reading the backbuffer
         let games = fixture
             .players
             .iter()
@@ -830,15 +777,12 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
         app.canvas
             .with_texture_canvas(frame_buffer, |c| {
                 frame_result = (|| -> Result<(), String> {
-                    // clear
-                    c.set_draw_color(Color::BLACK); // TODO
+                    c.set_draw_color(Color::BLACK);
                     c.clear();
 
-                    // draw scene
                     themes.draw_scene(c, &games)?;
 
-                    // the background field, which carries its own clip: one pass over the
-                    // players on a particle scene, not one pass each
+                    // the field carries its own clip: one pass over every particle-scene player
                     if scene.is_some() {
                         bg_particles.draw(c)?;
                     }
@@ -849,23 +793,18 @@ impl<'a, G: Game + GameRender> MatchScreen<'a, G> {
                         timer.draw(c, fixture.play_time())?;
                     }
 
-                    // fg particles
                     fg_particles.draw(c)?;
 
-                    // ... then whatever the board has thrown off itself, which travels too
-                    // far to be drawn into the board's own texture
+                    // board debris travels too far to draw into the board's own texture
                     themes.draw_debris(c)?;
 
-                    // ... and whatever the character has thrown, which leaves its box the
-                    // same way and crosses this player's own well
+                    // the character's particles leave its box and cross this player's well
                     themes.draw_character_particles(c)?;
 
-                    // ... then the attacks crossing between the players, which belong to
-                    // neither of them and so are clipped to nothing
+                    // attacks crossing between players belong to neither, so are unclipped
                     themes.draw_attack_balls(c)?;
 
-                    // ... and the captions over all of it, which is the point of drawing
-                    // them here rather than with the board they belong to
+                    // captions go over everything, so are drawn here rather than with their board
                     themes.draw_popups(c)?;
 
                     if fixture.state().is_paused() {

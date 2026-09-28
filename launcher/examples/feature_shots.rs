@@ -1,10 +1,6 @@
 //! Draws every input of the Dr. Rustario network: the bottle before the pill, and the bottles
-//! the placements that score highest and lowest on that input leave behind.
-//!
-//! The positions are [`dr_rustario::game::ai::explain::scenarios`]'s, so what is drawn and what
-//! `ga dr explain` reports are the same thing - the picture cannot drift from the number under
-//! it. Only the drawing is here, because it needs a theme and a window and the crate that owns
-//! the features has neither.
+//! the placements that score highest and lowest on that input leave behind. The positions are
+//! [`dr_rustario::game::ai::explain::scenarios`]'s, the same ones `ga dr explain` reports.
 //!
 //! `cargo run -p dr-rustario-vs-rustris --example feature_shots -- out/ [theme]`
 
@@ -21,15 +17,12 @@ use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
 
-/// big enough that one bottle is drawn at a readable size and small enough that a hundred and
-/// sixty of them are under a megabyte
+/// readable per bottle, small enough that the whole set stays under a megabyte
 const WIDTH: u32 = 640;
 const HEIGHT: u32 = 720;
 
-/// How far into the destroy animation a shot is taken. The strip runs for
-/// [`engine::animate::destroy`]'s three hundred milliseconds and the animation is *over* after
-/// that - a shot taken past the end draws the cells as if nothing had happened, which is how
-/// the first pass of this went out with no pops in it at all. Halfway is safely inside it.
+/// How far into the destroy animation a shot is taken: halfway through
+/// [`engine::animate::destroy`]'s strip, since past its end the cells draw as if untouched.
 const POP_FRAME: Duration = Duration::from_millis(150);
 
 fn main() -> Result<(), String> {
@@ -52,8 +45,7 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    // leaked for the life of the process, as `Shell::new` leaks its own: a `Theme` borrows the
-    // texture creator, and everything holding a theme has to outlive it
+    // leaked, as `Shell::new` leaks its own, since every `Theme` borrows it
     let texture_creator: &'static TextureCreator<WindowContext> =
         Box::leak(Box::new(canvas.texture_creator()));
 
@@ -84,18 +76,13 @@ fn main() -> Result<(), String> {
             )
         })?;
 
-    // Everything a document needs about a scenario, written out beside the pictures.
-    //
-    // The numbers and the pictures have to come from *one* producer or they drift: the first
-    // pass of this had the values read out of `ga dr explain` and the shots rendered here, and
-    // a change to which end is drawn first swapped every label against its own picture without
-    // anything failing. Both come from this loop now.
+    // the manifest is written from the same loop as the shots, so labels cannot drift from
+    // their pictures
     let mut manifest = vec![];
     let mut count = 0;
     for scenario in scenarios() {
         let name = INPUTS[scenario.input].name.replace('.', "-");
-        // the bottle, then each placement twice: the instant it lands - with whatever it
-        // clears shown going, in the theme's own pop frames - and what is left afterwards
+        // the bottle, then each placement as it lands (clears popping) and after it settles
         let shots = [
             ("before", &scenario.before, None, [].as_slice()),
             (
@@ -180,12 +167,8 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
-/// Draw one bottle and save the board out of it.
-///
-/// The whole scene is drawn and then cropped to the board, rather than the board texture being
-/// saved on its own, because a theme's board is not the whole of what it draws a bottle with -
-/// the NES one puts the stack on its own backdrop - and cropping is the only way to get what
-/// the player actually sees.
+/// Draw one bottle and save the board out of it, cropped from the whole scene so any backdrop a
+/// theme draws behind the stack is kept.
 #[allow(clippy::too_many_arguments)]
 fn shoot(
     canvas: &mut WindowCanvas,
@@ -206,17 +189,13 @@ fn shoot(
         config.video,
     )?;
 
-    // a bottle with no pill in it and nothing running: the picture is the stack, and anything
-    // moving over it would only be in the way
+    // no pill and nothing running, so the picture is just the stack
     let random = dr_rustario::game::random::random(1, dr_rustario::game::random::RandomMode::Bag)
         .pop()
         .expect("no random");
     let game = Game::from_bottle(0, GameSpeed::Medium, random, bottle.clone());
 
-    // Whatever this placement clears, shown *going*, in the theme's own destroy frames rather
-    // than as a gap where it used to be. The animation is queued and then wound on a little way,
-    // because its first instant is the group drawn exactly as it sits on the board - which is
-    // the tell before the pop and looks like nothing at all in a still.
+    // wound on past the destroy animation's first instant, which draws the group unchanged
     if !destroyed.is_empty() {
         let cells: Vec<engine::game::PlacedCell> = destroyed
             .iter()
@@ -256,11 +235,8 @@ fn shoot(
         .map_err(|e| e.to_string())?;
     context.draw_players(canvas, &mut texture_refs, Duration::ZERO)?;
 
-    // Two annotations, and they are annotations rather than anything the game draws: a solid
-    // ring where the pill's halves came to rest, and a dashed one round every cell the clear is
-    // taking. The pop sprites say what is happening on their own for a virus, whose face goes -
-    // but the NES draws a popping *vitamin* with very nearly the sprite it already had, so
-    // without the dashes half of a clear is invisible in a still.
+    // annotations: a solid ring on the pill's halves and a dashed one on every cleared cell,
+    // since the NES pops a vitamin with nearly its resting sprite
     let board = context.player_board_snip(0);
     let cell = (
         board.width() / dr_rustario::game::bottle::BOTTLE_WIDTH,
@@ -299,8 +275,7 @@ fn shoot(
     Ok(())
 }
 
-/// A solid ring: white outside and in, black between, so it reads against a virus of any colour
-/// and against the bare backdrop alike.
+/// A solid ring, white either side of black, so it reads against any colour.
 fn ring(canvas: &mut WindowCanvas, at: Rect) -> Result<(), String> {
     for (inset, colour) in [(0, Color::WHITE), (1, Color::BLACK), (2, Color::WHITE)] {
         canvas.set_draw_color(colour);
@@ -314,8 +289,7 @@ fn ring(canvas: &mut WindowCanvas, at: Rect) -> Result<(), String> {
     Ok(())
 }
 
-/// A dashed ring, for a cell the clear is taking. Dashes rather than another colour because a
-/// coloured outline disappears against a cell of that colour, and these sit on every colour.
+/// A dashed white ring, for a cell the clear is taking.
 fn dashed(canvas: &mut WindowCanvas, at: Rect) -> Result<(), String> {
     const DASH: i32 = 5;
     let (x, y, w, h) = (

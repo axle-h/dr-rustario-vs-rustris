@@ -40,19 +40,13 @@ pub struct RetroThemeOptions {
     pub board_alpha: u8,
     /// the board frame per speed band within `board_file`; empty for the whole file
     pub board_snips: Vec<Rect>,
-    /// transparent rows added above the board and background art, for a visible buffer
-    /// above the skyline
+    /// transparent rows added above the board and background art, for a visible buffer above the
+    /// skyline
     pub top_padding: u32,
-    /// Transparent rows added *under* the background art alone, so the panel's own bottom
-    /// edge stands clear of the window instead of running off it.
-    ///
-    /// The board is untouched: this is air below the panel rather than more panel. It is
-    /// bought out of the fit like any other source pixel - the background is that much taller
-    /// and so scales to that much less - which is the whole cost of seeing where the board
-    /// ends.
+    /// transparent rows added under the background art alone, so the panel's bottom edge stands
+    /// clear of the window; they cost the fit like any other source pixel
     pub bottom_padding: u32,
-    /// what the panel casts on the scene behind it; `None` for a theme whose panel fills the
-    /// window, or whose scene is busy enough that a shadow would only muddy it
+    /// what the panel casts on the scene behind it; `None` where a shadow has nothing to fall on
     pub shadow: Option<PanelShadow>,
     /// where the board frame sits in the background
     pub board_point: Point,
@@ -66,8 +60,7 @@ pub struct RetroThemeOptions {
     pub overlay_size: Option<(u32, u32)>,
     pub hold: Option<HoldLayout>,
     pub peek: PeekLayout,
-    /// where attacks queued against the player are drawn; `None` for a game that takes its
-    /// hits the moment they arrive and so never has any waiting
+    /// where attacks queued against the player are drawn; `None` for a game that holds none
     pub pending: Option<PendingLayout>,
     pub mascot: Option<MascotLayout>,
     pub mascot_animations: Option<MascotAnimationTypes>,
@@ -106,8 +99,8 @@ pub fn retro_theme<'a>(
         0,
     )?;
     if options.board_alpha < 0xff {
-        // written verbatim into the transparent board target (no blend) so the scene
-        // is blended through exactly once, when the board target is composited
+        // written verbatim into the transparent board target (no blend) so the scene is blended
+        // through exactly once, when the board target is composited
         board_texture.set_blend_mode(sdl2::render::BlendMode::None);
         board_texture.set_alpha_mod(options.board_alpha);
     }
@@ -187,8 +180,7 @@ pub fn retro_theme<'a>(
     assert!(!scenes.is_empty(), "a theme needs at least one scene");
 
     let popup_font = PopupFont::new(canvas, texture_creator, options.geometry.block_size())?;
-    // a theme that cut no ball art falls back to the popped cell's own sprite, which every
-    // theme has - the same rule the pending tray follows
+    // a theme that cut no ball art falls back to the popped cell's own sprite
     let attack_ball = match options.attack_ball {
         Some(data) => Some(AttackBallSprites::new(
             data.sheet.sprite_sheet(texture_creator)?,

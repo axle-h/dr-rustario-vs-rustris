@@ -155,9 +155,8 @@ impl GameRandom {
 
     pub fn new(rng: ChaChaRng, mode: RandomMode) -> Self {
         let bottle_rng = rng.clone();
-        // colours made up for another game's garbage come off a stream of their own, so being
-        // attacked cannot shift the bottles that come after it: two players on one seed are
-        // dealt the same bottles however differently the match treats them
+        // garbage colours come off their own stream so being attacked cannot shift the bottles
+        // two players on one seed are dealt
         let mut garbage_color_rng = rng.clone();
         garbage_color_rng.set_stream(1);
         Self {
@@ -240,8 +239,7 @@ impl GameRandom {
 mod tests {
     use super::*;
 
-    /// a player sent garbage by Rustris must still be dealt the bottles their seed says, so
-    /// that in a vs. match both players see the same ones
+    /// A player sent garbage by Rustris is still dealt the bottles their seed says.
     #[test]
     fn garbage_colours_do_not_shift_the_bottles() {
         let seed = Seed::from_u64(9876);

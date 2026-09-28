@@ -1,15 +1,5 @@
-//! The art behind [`crate::animate::character`]: a theme's cast, and the one that was dealt.
-//!
-//! **Built lazily, one character at a time.** A cast is thirteen faces on Mean Bean Machine and
-//! at most two of them are ever on screen, so building all of them at startup would be building
-//! eleven textures nobody looks at - and which one is dealt is not known until a match starts.
-//! The bytes are still `include_bytes!`, so nothing is read from disk and a handheld pays no
-//! file IO; what is deferred is the *texture*, which is the expensive half. This is the only
-//! lazily built theme art in the compendium, and it is why a cast can grow without costing a
-//! slow device anything.
-//!
-//! The `RefCell` behind a `&self` draw is the pattern the block atlas, the popup font's tint and
-//! the animation sheet's own alpha all use already.
+//! The art behind [`crate::animate::character`]: a theme's cast, and the one that was dealt. Each
+//! character's texture is built only when it is dealt, since at most two of a cast are on screen.
 
 use crate::animate::character::{
     CharacterMeta, CharacterState, EmitterMeta, EmitterSource, EmitterTrigger, LayerMeta, Routine,
@@ -25,20 +15,16 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Duration;
 
-/// One character: its own png, and how each of its four rows plays.
-///
-/// The png carries the four rows in **play order** with the fade dropped, one row per state,
-/// frames edge to edge - which is how the strips are cut, so nothing here has to reorder
-/// anything. See `puyo-rusto/art/mugshots.py`.
+/// One character: its own png, and how each of its four rows plays. The png carries one row per
+/// state in play order, frames edge to edge; see `puyo-rusto/art/mugshots.py`.
 #[derive(Clone, Debug)]
 pub struct CharacterData {
     pub name: &'static str,
     pub file: &'static [u8],
-    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order.
-    /// Ignored while `routines` is set.
+    /// (frames, how it plays) per [`CharacterState`], in `CharacterState::ALL` order; ignored while
+    /// `routines` is set
     pub states: [(usize, FrameAnimationType); 4],
-    /// poses addressed by rect and played as routines, rather than one strip a state:
-    /// `None` on a mugshot cast, which is every character here but Kirby
+    /// poses addressed by rect and played as routines; `None` on a mugshot cast
     pub routines: Option<RoutineArt>,
     /// what is drawn over the portrait, from strips further down the same png
     pub layers: &'static [LayerData],
@@ -46,20 +32,15 @@ pub struct CharacterData {
     pub emitters: &'static [EmitterData],
 }
 
-/// The art behind [`RoutineMeta`]: where each pose is in the character's png.
-///
-/// Rects rather than a frame size and a count, because these frames are **not one size** - the
-/// pose Kirby lands flat in is half the height of the one he stands in and a third the width of
-/// the one he bobs up tall in. Nothing can be addressed by counting frame widths from a strip's
-/// start here, so the cutter prints the table and the sheet is a readable grid rather than a
-/// strip; see `puyo-rusto/art/kirby.py`.
+/// The art behind [`RoutineMeta`]: where each pose is in the character's png, by rect, since poses
+/// differ in size; see `puyo-rusto/art/kirby.py`.
 #[derive(Clone, Copy, Debug)]
 pub struct RoutineArt {
     /// every pose in the png, as its own rect
     pub poses: &'static [(i32, i32, u32, u32)],
     /// everything the character may be dealt, and how much each moves
     pub choices: &'static [RoutineChoice],
-    /// played between routines rather than as one of them: the blink
+    /// played between routines rather than as one of them
     pub filler: Option<RoutineWay>,
     /// what a buried character does, held
     pub defeat: Routine,
@@ -90,11 +71,7 @@ impl RoutineArt {
     }
 }
 
-/// A layer's art: where its strips are in the character's png, and how big one frame is.
-///
-/// Four strips, one per state, on `row_pitch` - the same shape the portrait rows have, so a
-/// layer that is a *palette cycle* on two rows and absent on the other two is declared the
-/// same way as one that is a different sprite per row.
+/// A layer's art: four strips, one per state, on `row_pitch`, and how big one frame is.
 #[derive(Clone, Copy, Debug)]
 pub struct LayerData {
     /// top left of the first strip, in the character's png
@@ -146,15 +123,13 @@ impl EmitterData {
 }
 
 impl CharacterData {
-    /// The meta a `CharacterSet` would hand out, without a set - for a theme's own tests.
+    /// The meta a `CharacterSet` would hand out, for a theme's own tests.
     pub fn meta_for_test(&self) -> CharacterMeta {
         self.meta(None)
     }
 
-    /// The layers and emitters this character has, with the cast-wide one appended.
-    ///
-    /// The sweat is **last** in both lists so that a character's own emitters keep the indices
-    /// their table gives them, and so a cast that declares none still has it.
+    /// The layers and emitters this character has, with the cast-wide one appended last so a
+    /// character's own emitters keep their table indices.
     fn meta(&self, shared: Option<&EmitterData>) -> CharacterMeta {
         CharacterMeta {
             states: self.states,
@@ -178,9 +153,7 @@ pub struct CharacterSetData {
     pub frame_size: (u32, u32),
     /// rows of the png are spaced by this, so a person can read the sheet
     pub row_pitch: u32,
-    /// an emitter **every** character has, whose art the cutter writes into every png at the
-    /// same place - the sweat, which is not anybody's own and is measured, not drawn: the same
-    /// character sweats in one clip and not another, and no rip carries a drop at all
+    /// an emitter every character has, written by the cutter into every png at the same place
     pub sweat: Option<EmitterData>,
 }
 
@@ -191,9 +164,6 @@ pub struct CharacterLayout {
 }
 
 /// One character's frames, as one texture with a base index per state.
-///
-/// One texture rather than four: the four strips are rows of the same png, so loading it once
-/// and keeping a rect per frame costs a quarter of what four sheets would.
 pub struct CharacterSprites<'a> {
     sheet: AnimationSpriteSheet<'a>,
     base: [usize; 4],
@@ -217,8 +187,8 @@ impl<'a> CharacterSprites<'a> {
             .draw_frame_scaled_flipped(canvas, dest, index, mirrored)
     }
 
-    /// One pose, at whatever rect the caller worked out from its own size and its place in
-    /// the box - which is the routine path, and the one draw here that does not fill the box.
+    /// One pose at a rect the caller worked out; the routine path, and the one draw that does not
+    /// fill the box.
     pub fn draw_pose(
         &self,
         canvas: &mut WindowCanvas,
@@ -294,8 +264,7 @@ impl<'a> CharacterSet<'a> {
             .map(|c| c.meta(self.data.sweat.as_ref()))
     }
 
-    /// One frame of an emitter's particle, in the character's own png, so a caller can size
-    /// it - a spark is 8x16 where a sweat drop is 4x5.
+    /// One frame of an emitter's particle, so a caller can size it.
     pub fn particle_size(&self, character: usize, emitter: usize) -> Option<(u32, u32)> {
         let data = self.data.characters.get(character)?;
         data.emitters
@@ -311,7 +280,7 @@ impl<'a> CharacterSet<'a> {
         routines.poses.get(pose).map(|(_, _, w, h)| (*w, *h))
     }
 
-    /// One frame of a layer, likewise.
+    /// One frame of a layer's own size.
     pub fn layer_size(&self, character: usize, layer: usize) -> Option<(u32, u32)> {
         self.data
             .characters
@@ -325,8 +294,7 @@ impl<'a> CharacterSet<'a> {
         self.data.characters.get(character).map(|c| c.name)
     }
 
-    /// Build one character's texture if it has not been built. Called when a character is
-    /// dealt, so that the first frame of a match is not the one that pays for it.
+    /// Build one character's texture if it has not been built; called when a character is dealt.
     pub fn ensure_built(&self, character: usize) -> Result<(), String> {
         if character >= self.data.characters.len() || self.built.borrow().contains_key(&character) {
             return Ok(());
@@ -337,8 +305,8 @@ impl<'a> CharacterSet<'a> {
         let mut frames = vec![];
         let mut base = [0usize; 4];
         if let Some(routines) = data.routines {
-            // a routine names a pose outright, so every state indexes the one table and the
-            // four bases are all zero
+            // a routine names a pose outright, so every state indexes one table and the four bases
+            // are zero
             for (x, y, w, h) in routines.poses {
                 frames.push(Rect::new(*x, *y, *w, *h));
             }

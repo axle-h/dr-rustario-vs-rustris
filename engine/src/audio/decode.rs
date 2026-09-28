@@ -20,7 +20,7 @@ pub struct VorbisStream {
     track_id: u32,
     channels: usize,
     sample_buffer: Option<SampleBuffer<i16>>,
-    /// Decoded-but-unread interleaved samples, and how many of them have been consumed.
+    /// decoded but unread interleaved samples, and how many have been consumed
     pending: Vec<i16>,
     pending_pos: usize,
     finished: bool,
@@ -77,7 +77,7 @@ impl VorbisStream {
         })
     }
 
-    /// Decodes the next packet into `pending`. Returns false at end of stream.
+    /// decodes the next packet into `pending`; false at end of stream
     fn fill(&mut self) -> bool {
         loop {
             let packet = match self.format.next_packet() {
@@ -111,7 +111,6 @@ impl VorbisStream {
         }
     }
 
-    /// Decodes the whole file into interleaved stereo samples.
     pub fn decode_all(mut self) -> Vec<i16> {
         let mut out = Vec::new();
         while self.fill() {
@@ -139,7 +138,7 @@ impl MusicSource for VorbisStream {
     }
 
     fn reset(&mut self) {
-        // Re-opening is simpler and more reliable than seeking an OGG stream back to 0.
+        // re-opening is more reliable than seeking an OGG stream back to 0
         if let Ok(fresh) = VorbisStream::new(self.bytes) {
             *self = fresh;
         }

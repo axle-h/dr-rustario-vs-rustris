@@ -1,14 +1,7 @@
 //! Puyo Rusto's themes: data handed to the engine's theme builders.
 //!
-//! Three of them: `genesis`, `snes` and `modern` (the particle theme), oldest first, which is
-//! the theme sprint's order and the retro playlist's.
-//!
-//! **A fourth was built and cut**, `3ds` (Puyo Puyo Chronicle), on 2026-08-28 - `git log` has
-//! it. Modern art in a retro slot, and, the part that cost something, **its panel sized the
-//! board for every other theme**: cell size is set by the largest all of a game's themes can
-//! hold, so one theme's panel dimensions are load-bearing for the rest. `SceneType::Cover` was
-//! written for it and is kept. If the slot is ever filled again it wants something 16-bit
-//! whose sheet carries the frames a bean needs to pop.
+//! Cell size is the largest all of a game's themes can hold, so each theme's panel dimensions
+//! size the board for the rest.
 
 pub mod data;
 pub mod genesis;
@@ -29,20 +22,10 @@ use sdl2::video::WindowContext;
 /// the source block size every theme's race sprites are scaled relative to
 pub const RACE_REFERENCE_BLOCK_SIZE: u32 = modern::SRC_BLOCK_SIZE;
 
-/// Everything Puyo Rusto is played over: the sound effects and music cut out of Puyo Puyo
-/// Tetris rips by `puyo-rusto/art/sfx.py` and `art/music.py`, and the two menu clicks with
-/// them.
+/// The particle theme's and the menus' sound, cut from Puyo Puyo Tetris rips by
+/// `puyo-rusto/art/sfx.py` and `art/music.py`.
 ///
-/// All of it sits here rather than in the particle theme's own directory because it belongs to
-/// the *game* and not to that theme - a Mean Bean Machine bean settling and a Puyo Puyo Tetris
-/// puyo settling are the same event - so a retro theme plays these until a rip of its own turns
-/// up. `genesis` has one. `snes` has its own *music* and still borrows every effect here,
-/// because the dump it was cut from is a set of SPCs and an SPC carries no effects at all.
-/// `include_bytes!` of one path embeds one copy however many modules name it, so a theme
-/// borrowing the set costs nothing but the wrong period sound.
-///
-/// Every track is a *pair*: the mixer has no loop marker, so one is split at the point it
-/// loops back to and the second half is what repeats.
+/// Every track is a pair split at its loop point, since the mixer has no loop marker.
 pub(crate) mod sound {
     pub const ATTACK: &[u8] = include_bytes!("sfx/attack.ogg");
     pub const GAME_OVER: &[u8] = include_bytes!("sfx/game-over.ogg");
@@ -86,14 +69,7 @@ pub(crate) mod sound {
     );
 }
 
-/// The tracks a match on the particle theme may be dealt.
-///
-/// Nothing lets a player pick between them - the theme is dealt one at the start of a match
-/// and plays it to the end - so this is not a menu row's length. **How many there are is each
-/// theme's own business**: Puyo Puyo Tetris wrote these four, Mean Bean Machine wrote four
-/// stage tunes and Kirby's Avalanche three. A deal is made out of one theme's table and never
-/// across them, so a theme with fewer simply comes round to a tune it has played before
-/// sooner, which is how those games sound.
+/// The tracks a match on the particle theme may be dealt, one per match.
 pub const GAME_MUSIC: [MusicTrack; 4] = [
     (Some(sound::KOROBEINIKI.0), sound::KOROBEINIKI.1),
     (Some(sound::DECISIVE.0), sound::DECISIVE.1),
@@ -101,28 +77,19 @@ pub const GAME_MUSIC: [MusicTrack; 4] = [
     (Some(sound::TETRO_MIX.0), sound::TETRO_MIX.1),
 ];
 
-/// Puyo Rusto's own menu sounds: the one menu track over both menu screens, as Rustris does
-/// with its, and the same game's two clicks over the top of it. `MenuSound` plays a track
-/// that is already playing rather than restarting it, so walking the title screen into the
-/// options menu does not interrupt it. Only the high score music stays the engine's, since
-/// the rip has nothing that belongs under a table of names.
+/// Puyo Rusto's menu sounds: one track over both menu screens, which carries on unbroken
+/// between them, and the engine's high score music.
 pub const MENU_SOUNDS: MenuSounds = MenuSounds {
     chime: sound::CHIME,
     select: Some(sound::SELECT),
     title: MenuMusic::IntroLoop(sound::MENU.0, sound::MENU.1),
     menu: MenuMusic::IntroLoop(sound::MENU.0, sound::MENU.1),
     high_score: MenuSounds::MODERN.high_score,
-    // the menu rip is the particle theme's own, and is levelled with it
     gain: data::MENU_GAIN,
 };
 
-/// every theme, in the order a theme sprint plays them: oldest hardware first, with the
-/// particle theme last, the way the other two games order theirs
-///
-/// The retro themes are built first and the particle theme is sized against them, since a
-/// retro theme renders its art at a fixed size and the particle one does not. Before there
-/// were any retro themes to measure, the particle theme had to be built once to measure and
-/// once to keep - that is gone, and this reads like `dr-rustario` and `rustris` now.
+/// Every theme, oldest hardware first and the particle theme last. The particle theme is
+/// built last because it is sized against the retro themes' fixed art.
 pub fn all_themes<'a>(
     canvas: &mut WindowCanvas,
     texture_creator: &'a TextureCreator<WindowContext>,
@@ -131,7 +98,7 @@ pub fn all_themes<'a>(
     all_themes_with_progress(canvas, texture_creator, config, &mut |_| Ok(()))
 }
 
-/// ... reporting each one as it is built, which is what the loading bar counts
+/// [`all_themes`], reporting each one to the loading bar as it is built
 pub fn all_themes_with_progress<'a>(
     canvas: &mut WindowCanvas,
     texture_creator: &'a TextureCreator<WindowContext>,
@@ -148,7 +115,7 @@ pub fn all_themes_with_progress<'a>(
     Ok(vec![genesis, snes, modern])
 }
 
-/// one pair per colour of every set of puyos there is, which is what the race sends past
+/// one single-colour pair per colour of every skin
 fn race_pieces() -> Vec<PieceId> {
     PuyoSkin::all()
         .flat_map(|skin| {
@@ -160,19 +127,13 @@ fn race_pieces() -> Vec<PieceId> {
 }
 
 /// the themes' contributions to the title screen piece race
-///
-/// One pair per colour rather than all twenty five: the race wants a handful of recognisable
-/// shapes going past, not every combination of two. Every *skin* though - the race is not a
-/// board and owes no player consistency, so it is the one place all fifteen sets of puyos go
-/// by together, which is the whole sheet on show before a match picks two out of it.
 pub fn race_themes(themes: &[Theme]) -> Vec<RaceTheme> {
     let pieces = race_pieces();
     themes
         .iter()
         .enumerate()
         .map(|(index, theme)| {
-            // every theme's sprites are drawn at the same size in the race, whatever cell
-            // size the theme itself was built at
+            // every theme races at the same size, whatever cell size it was built at
             let scale =
                 RACE_REFERENCE_BLOCK_SIZE as f64 / theme.sprites().block_size() as f64 / 2.0;
             theme.race_theme(index, pieces.clone(), scale)
@@ -187,9 +148,7 @@ mod tests {
     use engine::render::sprite_sheet::PreviewData;
     use std::collections::HashSet;
 
-    /// `puyo-rusto/art/sfx.py` writes the two clicks and nothing else reads them until a
-    /// menu is opened, which no test opens - so this is where a rip that came out at the
-    /// wrong rate or was never re-cut is caught
+    /// the two menu clicks decode
     #[test]
     fn the_menus_two_clicks_decode() {
         for bytes in [sound::CHIME, sound::SELECT] {
@@ -197,9 +156,7 @@ mod tests {
         }
     }
 
-    /// the race is where the whole sheet is on show, so every set of puyos has to be in it -
-    /// and every piece it offers has to be one the theme's preview sheet keys, or it goes
-    /// past as nothing at all
+    /// the race carries every skin, and every piece it sends is keyed in the previews
     #[test]
     fn the_race_sends_every_set_of_puyos_past() {
         let pieces = race_pieces();
@@ -220,10 +177,7 @@ mod tests {
         }
     }
 
-    /// A theme is dealt out of its own table and every table has something in it, which the
-    /// arrays' own types say - so what is left to check is that no *track* is empty, which an
-    /// `include_bytes!` of a file the cutting script never wrote would be. A track with no
-    /// lead-in is fine and is what the Genesis theme's three are; a lead-in of no bytes is not.
+    /// No track or lead-in any theme deals is an empty file.
     #[test]
     fn every_track_a_theme_deals_has_something_in_it() {
         let tracks = GAME_MUSIC

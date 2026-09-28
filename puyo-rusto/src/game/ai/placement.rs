@@ -1,18 +1,7 @@
-//! Where a pair can be put, and what putting it there does.
-//!
-//! There are two move generators here and they are not the same generator, deliberately.
-//!
-//! The **root** one replays real [`Pair`] moves against the real [`Board`], so the wall kicks,
-//! the quick turn and the ghost row's rotation ban are honoured for free and the answer comes
-//! with the keys to press. It is the one the agent executes, and it runs once per pair.
-//!
-//! The **search** one works on a [`Field`] and only names the two columns each half comes to
-//! rest in. It runs tens of thousands of times per pair and cannot afford a board, a pair or a
-//! route; what it loses is the handful of placements only a kick or a quick turn can reach, in
-//! a layer of the search that is a guess about a pair nobody has been dealt yet.
-//!
-//! Both of them end in the same [`Drop`], which is what a placement actually *is* once the
-//! keys have been pressed: two halves, each falling to the bottom of its own column.
+//! Where a pair can be put, with two generators that both end in a [`Drop`]. The root one
+//! replays real [`Pair`] moves on the real [`Board`], so kicks, the quick turn and the ghost row
+//! rotation ban hold and it yields keys; the search one names only columns on a [`Field`], and
+//! misses placements only a kick or quick turn reaches.
 
 use crate::game::ai::field::{of_color, Chain, Field, WIDTH};
 use crate::game::ai::input_sequence::{InputSequence, Translation};
@@ -22,14 +11,12 @@ use crate::game::pair::Pair;
 use engine::game::geometry::Point;
 use std::collections::{HashSet, VecDeque};
 
-/// the most abstract placements one pair has: six columns standing up either way round, and
-/// five adjacent pairs of columns lying down either way round
+/// the most abstract placements one pair has: six columns standing either way round, and five
+/// adjacent column pairs lying either way round
 pub const MAX_MOVES: usize = WIDTH * 2 + (WIDTH - 1) * 2;
 
-/// A placement stripped to what it does: two halves, dropped in order.
-///
-/// The order matters only when both go into the same column - a pair standing up puts its
-/// lower half down first - and the columns differing is what a tear is.
+/// A placement stripped to two halves, dropped in order; the order matters only when both go
+/// down the same column.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Drop {
     pub columns: [usize; 2],
@@ -37,12 +24,8 @@ pub struct Drop {
 }
 
 impl Drop {
-    /// Two halves in two columns, in the order they land.
-    ///
-    /// A drop across two columns is put the same way round whichever rotation reached it -
-    /// the leftmost column first - because the order only ever means anything when both
-    /// halves go down the same column. Without that the two generators here would disagree
-    /// about whether "red at 3, blue at 4" and "blue at 4, red at 3" are one placement.
+    /// Two halves in two columns, in the order they land. Across two columns the leftmost goes
+    /// first whatever the rotation, so both generators agree on what is one placement.
     pub fn new(columns: [usize; 2], cells: [u8; 2]) -> Self {
         if columns[0] > columns[1] {
             Self {
@@ -54,9 +37,7 @@ impl Drop {
         }
     }
 
-    /// Play this drop out on `field`: put both halves down and run the chain.
-    ///
-    /// `None` when a column had no room, which is a placement that cannot be made at all.
+    /// Play this drop out on `field` and run the chain; `None` when a column had no room.
     pub fn apply(&self, field: &mut Field) -> Option<(u32, Chain)> {
         let tear = self.tear(field);
         field.drop_into(self.columns[0], self.cells[0])?;
@@ -64,11 +45,7 @@ impl Drop {
         Some((tear, field.resolve()))
     }
 
-    /// How far the two halves come apart on the way down.
-    ///
-    /// A pair lying across two columns of different heights splits, and the higher half falls
-    /// the rest of the way on its own - which costs time on the clock and, in a two player
-    /// game, time is what an attack is made of. A pair standing up cannot tear.
+    /// How far the two halves come apart on the way down, which costs time on the clock.
     pub fn tear(&self, field: &Field) -> u32 {
         if self.columns[0] == self.columns[1] {
             return 0;
@@ -79,8 +56,8 @@ impl Drop {
     }
 }
 
-/// Every abstract placement of `cells` on `field`, for the layers of the search below the
-/// root. Returns how many were written into `out`.
+/// Every abstract placement of `cells` on `field`, for the search below the root. Returns how
+/// many were written into `out`.
 pub fn moves(field: &Field, cells: [u8; 2], out: &mut [Drop; MAX_MOVES]) -> usize {
     let heights = field.heights();
     let (min, max) = quiet::reachable_columns(&heights);
@@ -121,9 +98,8 @@ const MOVES: [Translation; 4] = [
     Translation::RotateAnticlockwise,
 ];
 
-/// where a pair is, closely enough that two routes to it are the same route. The quick turn is
-/// part of it: a refused rotation leaves the pair where it was but arms the next press, and
-/// the flip that press performs reaches a placement nothing else can.
+/// where a pair is, closely enough that two routes to it are the same route; the quick turn's
+/// armed flag is part of it, since the flip it performs reaches placements nothing else can
 type Pose = (i32, i32, i32, i32, bool);
 
 fn pose(pair: &Pair, armed: bool) -> Pose {
@@ -131,7 +107,7 @@ fn pose(pair: &Pair, armed: bool) -> Pose {
     (pivot.x, pivot.y, child.x, child.y, armed)
 }
 
-/// what the pair would come to rest as, keyed so that two routes to one resting place collapse
+/// what the pair would come to rest as, so two routes to one resting place collapse
 fn landing(pair: &Pair, board: &Board) -> (Point, Point) {
     let landed = pair.ghost(board);
     let [pivot, child] = landed.points();
@@ -156,13 +132,8 @@ fn drop_of(pair: &Pair, board: &Board) -> Drop {
     )
 }
 
-/// Every placement the pair in play can be walked to, shortest route first.
-///
-/// Breadth first over the moves a player has, on a clone of the pair against the real board,
-/// so what comes back is reachable rather than merely drawable. Several poses come to rest in
-/// the same two cells - a kick can leave the pair a row lower in the same column - so
-/// placements are keyed by where they land and the first route to each one wins, which is the
-/// shortest.
+/// Every placement the pair in play can be walked to, breadth first on a clone against the real
+/// board. Placements are keyed by where they land and the first, shortest, route wins.
 pub fn root_moves(board: &Board, pair: Pair) -> Vec<RootMove> {
     let mut visited: HashSet<Pose> = HashSet::from([pose(&pair, false)]);
     let mut queue: VecDeque<(Pair, bool, InputSequence)> =
@@ -220,8 +191,7 @@ mod tests {
         Pair::new(SPAWN, PuyoPiece::new(pivot, child))
     }
 
-    /// an empty board offers every column standing up either way round and every adjacent
-    /// pair of columns lying down either way round, and nothing twice
+    /// an empty board offers every placement once
     #[test]
     fn an_open_board_offers_every_placement_once() {
         let board = board(&[]);
@@ -233,8 +203,7 @@ mod tests {
         assert_eq!(landings.len(), MAX_MOVES, "two routes to one placement");
     }
 
-    /// a pair of one colour has half as many placements, because turning it round changes
-    /// nothing about it
+    /// a one-colour pair has half as many placements
     #[test]
     fn a_doublet_has_half_as_many_placements() {
         let board = board(&[]);
@@ -245,7 +214,7 @@ mod tests {
         assert_eq!(drops.len(), MAX_MOVES / 2);
     }
 
-    /// the search on a field agrees with the real one about what is on offer
+    /// the field generator agrees with the root one about what is on offer
     #[test]
     fn the_search_generator_offers_what_the_root_does() {
         let board = board(&[]);
@@ -265,7 +234,7 @@ mod tests {
         assert_eq!(ours, theirs);
     }
 
-    /// a column stacked to the ghost row is a wall the pair cannot be carried over
+    /// a column stacked to the ghost row is a wall the pair cannot cross
     #[test]
     fn a_walled_off_column_is_not_offered() {
         let mut rows = vec!["......"; 12];
@@ -280,7 +249,6 @@ mod tests {
         );
     }
 
-    /// a pair lying across two columns of different heights comes apart on the way down
     #[test]
     fn a_pair_across_uneven_ground_tears() {
         let field = Field::from_board(&board(&["r.....", "r....."]));

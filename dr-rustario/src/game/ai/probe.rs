@@ -1,31 +1,8 @@
-//! `ga dr probe`: ask the deterministic ai what it is actually paying for.
+//! `ga dr probe`: the diagnostic for feature choice. It records the N64 ai's priority for every
+//! placement it was offered, fits linear and network scorers to it over a feature set, sends the
+//! clones to play, and ablates the N64's own terms and the inputs.
 //!
-//! [`crate::game::ai::features`] is the answer to a question this module asks: a `ga dr auto`
-//! run on the features that came before got nowhere, and rather than guess at why, this plays
-//! the N64 ai, records what it thought of *every* placement it was offered, and measures how
-//! much of that opinion a feature set can express. The features it is pointed at now are the
-//! ones it chose; re-run it after changing them and it will say whether they were an
-//! improvement.
-//!
-//! What it asks, in the order the report answers it:
-//!
-//! 1. **Does an input separate one placement from another?** Scoring only ever ranks the
-//!    placements of one pill against each other, so an input whose value hardly moves between
-//!    them cannot rank them, however important the thing it measures is. That is the `spread`
-//!    column, and it is why two inputs that differ only by a constant per pill are the same
-//!    input.
-//! 2. **How much of the N64's ranking can a feature set reproduce?** Fit the best scorer the
-//!    inputs allow - a straight line, and then the same network shape a `ga dr` run trains -
-//!    and see how often it picks what the N64 picked. That is a ceiling on what any model of
-//!    those inputs can do.
-//! 3. **Does the clone play?** Agreeing with the N64 is a means; the end is playing like it, so
-//!    every fitted scorer is sent out to play whole games and counted on viruses and bottles.
-//! 4. **Which of the N64's own terms matter?** Take one out, replay the same pills, count how
-//!    often it changes its mind. And the same for the inputs: clone the network again without
-//!    a group of them and see what the clone loses.
-//!
-//! Everything is measured on pills held back from every fit, and the report is the whole of the
-//! output: nothing here is used by the game.
+//! Every fit is measured on held-out pills, and nothing here is used by the game.
 
 use crate::game::ai::evaluator::{self, Scorer, COMPARATIVE};
 use crate::game::ai::features::{BottleAnalysis, BottleFeatures, Grid, TOP_ROW_RATE};
@@ -47,30 +24,25 @@ const STEP: Duration = Duration::from_millis(16);
 /// pills without a virus destroyed before a game is called off as going nowhere
 const STALL_PILLS: u32 = 200;
 
-/// what the N64 charges for leaving a block high up, by column. Its `bad_point`.
+/// original name: `bad_point`; what the N64 charges for a block left high up, by column
 const DEAD_POINT: [f64; 8] = [90., 270., 360., 900., 900., 360., 270., 90.];
 
-// ---------------------------------------------------------------------------------------
 // the corpus
-// ---------------------------------------------------------------------------------------
 
 /// one pill, and what the ai made of every placement it had
 struct Decision {
-    /// by candidate: every feature, already centred on the mean over the candidates of this
-    /// pill, since only what separates one placement from another can rank them
+    /// by candidate, every feature centred on the mean over this pill's candidates
     rows: Vec<Vec<f64>>,
     /// the N64's priority for each candidate, centred and scaled to unit spread
     target: Vec<f64>,
     /// which candidate the N64 played
     chosen: usize,
-    /// by candidate, whether it was worth as much as the one the N64 played: a tie is settled
-    /// by the original's own ordering, so any of them would have done
+    /// by candidate, whether it tied with the one the N64 played
     top: Vec<bool>,
     situation: Situation,
-    /// held back from every fit, so a scorer is only ever measured on pills it was not fitted to
+    /// held back from every fit
     test: bool,
-    /// what the embedded network and the hand written scorer made of this pill, before any
-    /// centring: the mean over its placements and how far they spread out around it
+    /// the embedded network's and the linear scorer's mean and spread over this pill, uncentred
     seen: [(f64, f64); 2],
 }
 
@@ -79,8 +51,7 @@ struct Corpus {
     decisions: Vec<Decision>,
     /// viruses the ai destroyed while the corpus was gathered
     killed: usize,
-    /// bottles it finished, and games it lost, which is the sanity check that the probe is
-    /// watching the ai play as it really plays
+    /// bottles it finished and games it lost
     stages: u32,
     games_over: u32,
     /// how often taking one of the ai's terms out changes its mind
@@ -164,8 +135,7 @@ fn collect(seeds: u128, level: u32, decision_cap: usize, ablate: bool) -> Corpus
         let mut game_over = false;
         let mut viruses = game.bottle().virus_count();
         while !game_over && stalled < STALL_PILLS && corpus.decisions.len() < decision_cap {
-            // the clear animation holds the bottle up for a few frames, so what a pill killed
-            // only shows up some way after it was played
+            // the clear animation delays a kill some frames past the pill that made it
             let now = game.bottle().virus_count();
             if now < viruses {
                 corpus.killed += (viruses - now) as usize;
@@ -199,8 +169,7 @@ fn collect(seeds: u128, level: u32, decision_cap: usize, ablate: bool) -> Corpus
             };
 
             if let Some(mut decision) = decision(&placements, &reading, chosen) {
-                // every fifth pill is held back, so nothing is ever measured on a pill it was
-                // fitted to
+                // every fifth pill is held back
                 decision.test = corpus.decisions.len() % 5 == 4;
                 corpus.decisions.push(decision);
             }
@@ -240,9 +209,7 @@ fn collect(seeds: u128, level: u32, decision_cap: usize, ablate: bool) -> Corpus
     corpus
 }
 
-/// Turn one pill into a row per candidate, centred on the mean over the candidates: an input
-/// that is the same for every placement of a pill cannot choose between them, whatever it is
-/// measuring, and centring is what makes that visible.
+/// Turn one pill into a row per candidate, centred on the mean over the candidates.
 fn decision(
     placements: &[Placement],
     reading: &crate::game::ai::n64::Reading,
@@ -265,8 +232,6 @@ fn decision(
     let top: Vec<bool> = target.iter().map(|value| *value == best).collect();
     let chosen = scored.iter().position(|i| *i == chosen)?;
 
-    // what a scorer of the kind being trained today actually sees when it looks at this pill:
-    // one number per placement, and how far apart those numbers are
     let seen = [Scorer::Network(models::survival_trained()), Scorer::Linear].map(|scorer| {
         let features: Vec<BottleFeatures> =
             scored_placements.iter().map(|p| p.features()).collect();
@@ -276,10 +241,8 @@ fn decision(
         (mean, variance.sqrt())
     });
 
-    // The inputs the model is fed have already been centred on this pill's candidates by
-    // `evaluator::inputs`; the columns after them have not, so they are centred here. The
-    // context block is left alone deliberately - centring it would zero it, which is exactly
-    // what it means for it to be unable to rank anything on its own.
+    // `evaluator::inputs` has centred the fed inputs; centre the later columns but leave the
+    // context block, which centring would zero
     let width = rows[0].len();
     for column in 0..width {
         if (COMPARATIVE..NOW).contains(&column) {
@@ -291,21 +254,15 @@ fn decision(
         }
     }
 
-    // the N64's priorities are on a wildly different scale from one pill to the next - the
-    // weights change with the situation and the whole thing is multiplied through when the
-    // bottle is lopsided - so every pill is brought to the same spread before they are pooled
+    // the N64's priority scale varies from pill to pill, so each is brought to unit spread
     let mean = target.iter().sum::<f64>() / target.len() as f64;
     let variance = target.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / target.len() as f64;
     let deviation = variance.sqrt();
     if deviation < 1e-9 {
-        // every placement is worth the same, so there is nothing here to learn from
         return None;
     }
     for value in target.iter_mut() {
-        // the N64's own numbers have enormous outliers in them - a chain is worth thousands, a
-        // block left in the neck of the bottle costs nine - and a least squares fit chasing
-        // those would tell us nothing about how it ranks the placements it actually chooses
-        // between, so every pill is clipped to three deviations
+        // clipped to three deviations so the fit follows the ranking rather than outliers
         *value = ((*value - mean) / deviation).clamp(-3.0, 3.0);
     }
 
@@ -320,9 +277,7 @@ fn decision(
     })
 }
 
-// ---------------------------------------------------------------------------------------
 // the features
-// ---------------------------------------------------------------------------------------
 
 /// the names of every column, in the order [`rows`] builds them
 fn names() -> Vec<String> {
@@ -337,7 +292,7 @@ fn names() -> Vec<String> {
     names
 }
 
-/// how many inputs the model is fed today, and what they are called
+/// the inputs the model is fed, and their names
 const NOW: usize = BOTTLE_FEATURE_INPUTS;
 
 #[rustfmt::skip]
@@ -352,16 +307,8 @@ const NOW_NAMES: [&str; BOTTLE_FEATURE_INPUTS] = [
     "context.blocks_at_work_1", "context.viruses_at_work_1", "context.held",
 ];
 
-/// What is measured here and left out of the model, which is the control on the feature set:
-/// if a clone fed these as well plays better, the model is missing something.
-///
-/// The first two are here because `ga dr screen`'s selection left them out, and they are the
-/// two most often assumed to belong: how high the spawn columns stand, which is the only height
-/// that can end a game, and how many cells the stack has shut in above it. Against the thirty
-/// two input model that preceded this one, silencing their equivalents cost 558 and 332
-/// viruses - so if the smaller set is missing anything, they are the first place to look.
-///
-/// The other six are the original control group.
+/// Measured here and left out of the model: the control group. If a clone fed these as well
+/// plays better, the model is missing something.
 const EXTRA: [&str; 8] = [
     "entrance_height",
     "holes",
@@ -373,13 +320,10 @@ const EXTRA: [&str; 8] = [
     "imbalance",
 ];
 
-/// scorers to measure the fitted ones against: the hand written baseline the model is supposed
-/// to beat, and the simplest policy there is
+/// scorers the fitted ones are measured against
 const REFERENCE: [&str; 2] = ["hand written linear", "viruses this placement killed"];
 
-/// One row per placement: what the network is fed for this pill - already centred on the
-/// candidates and scaled, exactly as it is at play time - then the inputs left out of it, then
-/// the reference scorers.
+/// One row per placement: the fed inputs as at play time, then [`EXTRA`], then [`REFERENCE`].
 fn rows(placements: &[&Placement]) -> Vec<Vec<f64>> {
     let features: Vec<BottleFeatures> = placements.iter().map(|p| p.features()).collect();
     let fed = evaluator::inputs(&features);
@@ -398,8 +342,7 @@ fn rows(placements: &[&Placement]) -> Vec<Vec<f64>> {
         .collect()
 }
 
-/// [`EXTRA`], measured: what the placement put in the neck of the bottle, and the shape of the
-/// stack it left behind.
+/// [`EXTRA`], measured.
 fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
     let grid = Grid::of(placement.settled());
 
@@ -421,7 +364,6 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
 
     let heights = grid.heights();
 
-    // the two the selection left out; the grid already counts both in its one pass
     let settled = grid.stats();
 
     let stack_weight: f64 = TOP_ROW_RATE
@@ -455,18 +397,15 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
     ]
 }
 
-// ---------------------------------------------------------------------------------------
 // fitting a linear scorer, which is the ceiling a feature set puts on any model of it
-// ---------------------------------------------------------------------------------------
 
-/// the sums a least squares fit needs, over every candidate of every pill, gathered once for
-/// every feature so that a fit over any subset of them is only a small solve
+/// the sums a least squares fit needs, gathered once so a fit over any subset is a small solve
 struct Gram {
     /// `xx[i][j]` is the sum of feature i times feature j
     xx: Vec<Vec<f64>>,
     /// `xy[i]` is the sum of feature i times the priority
     xy: Vec<f64>,
-    /// the standard deviation of each feature over the whole corpus, used to standardise it
+    /// the standard deviation of each feature over the whole corpus, which standardises it
     deviation: Vec<f64>,
     /// the mean of each feature's spread within one pill: a feature with none cannot rank
     spread: Vec<f64>,
@@ -477,8 +416,7 @@ impl Gram {
         Self::over(corpus, None)
     }
 
-    /// the same, over the pills the ai read as one situation, so a scorer can be fitted for
-    /// that situation alone and asked whether it does better than the one fitted over all of it
+    /// the same, over the pills of one situation
     fn of_situation(corpus: &Corpus, situation: Situation) -> Self {
         Self::over(corpus, Some(situation))
     }
@@ -688,9 +626,7 @@ fn chance(corpus: &Corpus) -> f64 {
         / held.len().max(1) as f64
 }
 
-/// How a scorer gets on when it has to play rather than only agree: the point of imitating
-/// the N64 is to play like it, and agreeing with it on nine pills in ten would still be worth
-/// nothing if the tenth is the one that buries you.
+/// how a scorer gets on when it has to play rather than only agree
 struct Played {
     viruses: u32,
     bottles: u32,
@@ -818,11 +754,8 @@ fn choose_by_weights(
 /// Every input there is, which is the widest network the probe trains.
 const ALL_INPUTS: usize = NOW + EXTRA.len();
 
-/// Train a network of the shape the model is trained in - two hidden layers as wide as its
-/// input - to reproduce the N64's opinion of a placement, and report how well it does on the
-/// pills it never saw. A linear fit says whether the features carry the signal *linearly*;
-/// this says whether they carry it at all, and it is the same architecture a `ga dr` run has
-/// to find by mutation, so it is a fair ceiling on that run's best case.
+/// Train a network of the model's shape (two hidden layers as wide as its input) on the N64's
+/// priorities and report how it does on held-out pills.
 fn imitate<const IN: usize>(
     corpus: &Corpus,
     columns: &[usize],
@@ -831,9 +764,7 @@ fn imitate<const IN: usize>(
     seed: u64,
 ) -> (Fit, NeuralNetwork<IN, 2, 1, IN>) {
     assert_eq!(IN, columns.len());
-    // where a network starts moves the answer about by a good deal, so every clone in the
-    // report starts from a named place and the ones that are compared are averaged over
-    // several of them
+    // seeded, so clones are reproducible
     let mut rng = ChaChaRng::seed_from_u64(seed);
     let weights: Vec<f64> = (0..NeuralNetwork::<IN, 2, 1, IN>::TOTAL_SIZE)
         .map(|_| rng.random::<f64>() * 2.0 - 1.0)
@@ -907,9 +838,7 @@ fn imitate<const IN: usize>(
     )
 }
 
-/// Clone the N64 onto `columns` and then send the clone out to play, which is the only test
-/// of a feature set that counts: agreeing with the N64 is a means, and playing like it is the
-/// end.
+/// Clone the N64 onto `columns` `clones` times, play each, and average.
 fn clone_and_play<const IN: usize>(
     corpus: &Corpus,
     columns: &[usize],
@@ -964,8 +893,7 @@ fn choose_by_network<const IN: usize>(
     if built.is_empty() {
         return None;
     }
-    // the columns the model is fed arrive centred on the pill's candidates already; the rest
-    // are centred here, exactly as the corpus was, so the clone sees what it was trained on
+    // centred as the corpus was, so the clone sees what it was trained on
     let means: Vec<f64> = columns
         .iter()
         .map(|c| {
@@ -991,9 +919,7 @@ fn choose_by_network<const IN: usize>(
         .map(|(index, _)| index)
 }
 
-// ---------------------------------------------------------------------------------------
 // the report
-// ---------------------------------------------------------------------------------------
 
 /// `args` are the arguments after `ga dr probe`:
 /// `[seeds] [virus level] [decisions] [skip ablation]`
@@ -1008,8 +934,7 @@ pub fn probe_main(args: &[String]) -> Result<(), String> {
     const EPOCHS: usize = 10;
     /// random genomes played to see what the first generation of a training run looks like
     const GENOMES: usize = 24;
-    /// how many clones of each feature set are trained and played, since where a network starts
-    /// moves the answer about
+    /// clones of each feature set trained and played, since start weights move the answer
     const CLONES: u64 = 3;
     let games = GAMES;
 

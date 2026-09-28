@@ -1,15 +1,6 @@
-//! What jolts the board: the ricochet of a hard drop, and - for a theme that wants it - a
-//! rumble when a slab of nuisance lands.
-//!
-//! **Mean Bean Machine does not shake.** The stone wall between the two boards was
-//! cross-correlated against the first frame of a capture over all 294 of them, including a
-//! two row nuisance drop: zero displacement, every frame. What reads as a rumble there is
-//! every refugee bean bouncing at once, which is [`crate::animate::bounce`] fed by
-//! [`crate::animate::nuisance`]. So a rumble is opt-in, and neither retro Puyo theme takes
-//! it; it is a modern flare, and the particle theme is what it is for.
-//!
-//! Only the board moves. The panel and the shadow it casts stay where they are, which is
-//! what every retro theme in this compendium has always done with the hard drop's ricochet.
+//! What jolts the board: the ricochet of a hard drop, and an opt-in rumble when a slab of nuisance
+//! lands (fed by `AnimationMeta::nuisance_rumble`). Only the board moves; the panel and its shadow
+//! stay put.
 
 use std::time::Duration;
 
@@ -111,15 +102,13 @@ impl ImpactAnimation {
                     self.offset_y = 0.0;
                     State::Rest
                 } else {
-                    // it dies away rather than stopping, so the board settles instead of
-                    // snapping back to true on one frame
+                    // it dies away so the board settles rather than snapping back
                     let left = 1.0 - elapsed.as_secs_f64() / duration.as_secs_f64();
                     let phase = elapsed.as_secs_f64() / duration.as_secs_f64()
                         * RUMBLE_SHAKES
                         * std::f64::consts::TAU;
                     self.offset_x = amplitude * left * phase.sin();
-                    // ... and the vertical is at double the rate, so it is a shudder rather
-                    // than a wobble along one diagonal
+                    // the vertical runs at double the rate, a shudder rather than a diagonal wobble
                     self.offset_y = amplitude * left * (phase * 2.0).cos();
                     State::Rumble {
                         elapsed,
@@ -137,10 +126,8 @@ impl ImpactAnimation {
         self.state = State::Rest;
     }
 
-    /// Shake the board, in fractions of a block, for a theme that has asked for one.
-    ///
-    /// A rumble already running is restarted rather than added to, so a slab landing one
-    /// column at a time shakes once and not six times over.
+    /// Shake the board, in fractions of a block. A rumble already running is restarted rather than
+    /// added to, so a slab landing column by column shakes once.
     pub fn rumble(&mut self, amplitude: f64, duration: Duration) {
         if amplitude <= 0.0 || duration.is_zero() {
             return;
@@ -203,7 +190,7 @@ mod test {
         );
     }
 
-    /// a theme that asks for none is left exactly as it was, which is every retro theme here
+    /// A theme that asks for no rumble never shakes.
     #[test]
     fn a_rumble_of_nothing_is_nothing() {
         let mut impact = ImpactAnimation::new();
@@ -212,7 +199,7 @@ mod test {
         assert_eq!(impact.current_offset(), (0.0, 0.0));
     }
 
-    /// a slab arrives one column at a time, and each landing asks again: it shakes once
+    /// A slab landing column by column shakes once.
     #[test]
     fn a_rumble_restarts_rather_than_piling_up() {
         let mut impact = ImpactAnimation::new();

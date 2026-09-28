@@ -4,26 +4,13 @@ pub use engine::ai::{
     BottleNeuralGenome as DrNeuralGenome, BOTTLE_NEURAL_GENOME_SIZE as DR_NEURAL_GENOME_SIZE,
 };
 
-/// Eighteen bottle features and the held flag in, two hidden layers of 21, one score for the
-/// placement out - **1366 weights**, against the 3201 of the thirty two input model this
-/// replaced. What each input is, and why it and not another, is `evaluator::raw_inputs`.
+/// Eighteen features and the held flag in, two hidden layers of `BOTTLE_FEATURE_WIDTH` (21), one
+/// score out: 1366 weights. `Genome` is keyed only on length, so this and Rustris's network (1281)
+/// must never total the same or the second `feature_network!` will not compile.
 pub type DrNeuralNetwork = engine::ai::BottleFeatureNetwork;
 
-/// The model the agent plays.
-///
-/// **This is stage one only**, and it is worth saying what that means here because it is no
-/// longer the caveat it was. It is what `ga dr pretrain` left behind - a network taught by
-/// gradient descent to rank placements the way the deterministic N64 ai ranks them, over ten
-/// thousand of its pills - with no genetic run over it at all. It plays 4158 viruses, 97
-/// bottles, 2 buried over 5 games. The model it replaces played 4635, 101 and 3 *after a whole
-/// `ga dr auto`*.
-///
-/// So the features are worth about as much as a training run used to be, and what a training
-/// run is worth on top of them is not yet known. `ga dr auto` is how to find out; paste what it
-/// prints over this.
-///
-/// Typical rather than lucky: `ga dr screen` teaches fifty of these and puts the median at 3814
-/// viruses with all fifty above the bar stage two starts from. This is the best of twenty five.
+/// The trained model, as `ga dr pretrain` taught it with no genetic run over it. Paste what
+/// `ga dr auto` prints over this body.
 pub fn survival_trained() -> DrNeuralNetwork {
     DrNeuralNetwork::new(&[
         2.180948, -0.442651, 2.893822, 0.421871, 0.752079, 1.639939, 0.628898, 1.708527, 0.731667,

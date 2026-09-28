@@ -1,10 +1,8 @@
-//! The whole game. `main.rs` is one call into [`run`], and on Android `android.rs` is the
-//! same call behind the `SDL_main` SDL's Java activity looks for - see launcher/Cargo.toml.
+//! The whole game: `main.rs` calls [`run`], and on Android `android.rs` calls it from
+//! `SDL_main`.
 
 #[cfg(target_os = "android")]
 mod android;
-/// `ga cross` goes with the rest of the `ga` subcommand, which the browser and Android builds
-/// have none of
 #[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 mod cross;
 mod games;
@@ -17,16 +15,13 @@ mod build_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
-/// Runs the game, or with `ga` as the first argument the ai training and measurement tools
-/// (desktop builds only).
+/// Runs the game, or with `ga` first the ai tools: `ga dr ...`, `ga puyo rank|play|duel`,
+/// `ga cross`, and anything else is Rustris (`ga auto|play|...`). Desktop builds only.
 pub fn run() -> Result<(), String> {
-    // the ga training subcommand is not compiled for the browser, nor for Android, where an app
-    // is given no command line to ask for it and stdout goes nowhere
     #[cfg(not(any(target_os = "emscripten", target_os = "android")))]
     {
         let args: Vec<String> = std::env::args().skip(1).collect();
         if args.first().map(String::as_str) == Some("ga") {
-            // `ga dr ...` trains Dr. Rustario, everything else is Rustris
             if args.get(1).map(String::as_str) == Some("dr") {
                 use dr_rustario::game::ai::{explain, genetic, harness, probe};
                 return match args.get(2).map(String::as_str) {
@@ -48,9 +43,6 @@ pub fn run() -> Result<(), String> {
                 };
             }
 
-            // `ga puyo ...` plays and ranks Puyo Rusto, which trains nothing: its ai is a
-            // deterministic scorer and its difficulty ladder is a measurement rather than a
-            // model, so there is a `rank` where the other two games have an `auto`
             if args.get(1).map(String::as_str) == Some("puyo") {
                 use puyo_rusto::game::ai::harness;
                 return match args.get(2).map(String::as_str) {
@@ -64,8 +56,6 @@ pub fn run() -> Result<(), String> {
                 };
             }
 
-            // `ga cross` is the launcher's own: it is the only place that can see all
-            // three games at once, which is what pricing an attack between them needs
             if args.get(1).map(String::as_str) == Some("cross") {
                 return crate::cross::cross_main(&args[2..]);
             }

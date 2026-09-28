@@ -1,7 +1,5 @@
-// The Android shell around the game: SDL's Java activity and a manifest. The game itself is
-// the launcher crate built as a shared library, and SDL's Java half and libSDL2.so come from
-// the SDL release the Dockerfile builds - so this only builds through build-android.sh, which
-// hands app/build.gradle.kts where all three are.
+// SDL's activity and a manifest around the launcher library; builds only through
+// build-android.sh, which passes where the game and SDL's libraries are.
 pluginManagement {
     repositories {
         google()

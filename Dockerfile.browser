@@ -1,9 +1,5 @@
-# Browser (wasm32-unknown-emscripten) build.
-# The emsdk version must be new enough for the wasm features rustc's prebuilt std
-# emits (e.g. bulk-memory-opt needs binaryen >= 121): recent rustc needs emsdk 4.x.
-# The 3.1.68 named by the rustc platform-support docs is stale for rustc >= 1.88.
-# Emscripten makes no semver ABI promises, so bumping EMSDK_VERSION (build-browser.sh
-# passes it through) needs a link + in-browser retest. 4.0.15 and 6.0.7 both pass.
+# Browser (wasm32-unknown-emscripten) build. emsdk must be 4.x or newer for the wasm features
+# rustc's prebuilt std emits, and has no ABI promises, so a bump needs an in-browser retest.
 ARG EMSDK_VERSION=6.0.7
 FROM emscripten/emsdk:${EMSDK_VERSION}
 
@@ -15,7 +11,6 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /app
 COPY . .
 
-# no pkgconfig/vcpkg: sdl2-sys links nothing under emscripten, SDL2 comes from -sUSE_SDL=2
-# (the emscripten link args live in .cargo/config.toml)
+# SDL2 comes from -sUSE_SDL=2 in .cargo/config.toml, so no pkgconfig or vcpkg
 RUN cargo build --release -p dr-rustario-vs-rustris \
       --target wasm32-unknown-emscripten --no-default-features --features browser

@@ -1,55 +1,23 @@
 //! Scoring a candidate placement with the trained network.
 //!
-//! A scorer only ever has to separate the placements of *one pill* from each other, and that is
-//! what decides how the features are fed in. Everything comparative is centred on the mean over
-//! the candidates in front of it, so what reaches the network is what makes this placement
-//! different from the others rather than what the bottle happens to look like today. Without
-//! that the numbers drift: [`crate::game::ai::probe`] measured a network's output moving three
-//! times further from pill to pill than it did between the placements of one pill, which makes
-//! most of its choices rounding error.
+//! Comparative inputs are centred on the mean over one pill's candidates, since a scorer only
+//! separates those; the context inputs at the end are the bottle before the pill, the same for
+//! every candidate, and tell the network whether it is digging out or finishing.
 //!
-//! The context inputs at the end are deliberately *not* centred. They are the same for every
-//! candidate by construction, so they cannot rank anything; they are there because the N64 runs
-//! what amounts to two opposite policies, one while it is digging a full bottle out and another
-//! once the end is in sight, and a network with no idea which it is in can only learn the
-//! average of the two. Which is also why the context block is the bottle **before** the pill:
-//! the after-bottle varies per candidate and [`inputs`] would centre it away.
-//!
-//! **These were selected, not designed.** [`crate::game::ai::features`] measures more than is
-//! fed - every field of `BottleStats` and `PlacementStats` comes out of the same pass and costs
-//! almost nothing extra - and what is fed is what `ga dr screen` chose by adding and removing
-//! one input at a time, ranked on the median of fifty taught clones. Three of those measurements
-//! are worth writing down, because each is the opposite of what it looks like:
-//!
-//! * **A number is not an indicator.** `place.halves_work` says the better placed half is one
-//!   block short; `place.halves_one_short` and `place.halves_two_short` say the same thing as
-//!   counts. Feeding the two indicators as well as the number is worth **+763** on the median,
-//!   and neither indicator is worth anything without the other - drop either alone and nothing
-//!   moves, drop both and it all goes. A sigmoid layer should be able to carve "exactly one"
-//!   out of a continuous input and in practice it does not.
-//! * **The tallest column is the wrong height.** `delta.max_height` costs 201 to feed;
-//!   `delta.landing_height` - the *shortest* column, which is the lowest a pill can still be
-//!   put - is worth 337. One virus on the floor makes the tallest column 1 and changes nothing
-//!   about the game, because every other column is still open to the floor.
-//! * **More inputs are not better.** The same measurements with eight more of their own kind
-//!   fed alongside score a median of 3222 against this set's 3749. An input the network has to
-//!   learn to ignore is not free.
-//!
-//! To try a different set, change [`raw_inputs`] and [`SPREAD`], move [`COMPARATIVE`] to how
-//! many are centred, and set `BOTTLE_FEATURE_INPUTS`. `ga dr screen`'s silencing does the search
-//! without any of that.
+//! The nineteen inputs were selected by `ga dr screen` (medians over fifty taught clones, with
+//! inputs silenced), and each costs something to learn to ignore, so do not add one without a
+//! screen. To change the set, edit [`raw_inputs`] and [`SPREAD`], [`COMPARATIVE`] and
+//! `BOTTLE_FEATURE_INPUTS`.
 
 use crate::game::ai::features::BottleFeatures;
 use crate::game::ai::models::DrNeuralNetwork;
 use engine::ai::{Tensor, BOTTLE_FEATURE_INPUTS};
 
-/// How many of the inputs are comparative, and so centred on the pill's own candidates. The
-/// rest are the context block at the end.
+/// how many leading inputs are centred on the pill's own candidates; the rest are context
 pub const COMPARATIVE: usize = 16;
 
-/// Roughly how far each input moves between the placements of one pill, which is what it is
-/// divided by. The layers are sigmoid activated, so inputs have to arrive at about the same
-/// size as each other or the first layer saturates and every placement scores the same.
+/// Roughly how far each input moves between one pill's placements, which it is divided by so
+/// that no input saturates the sigmoid first layer.
 #[rustfmt::skip]
 const SPREAD: [f64; BOTTLE_FEATURE_INPUTS] = [
     // how the bottle moved
@@ -77,12 +45,10 @@ const SPREAD: [f64; BOTTLE_FEATURE_INPUTS] = [
     1.0,   // whether this is the held pill rather than the one in play
 ];
 
-/// Every measurement, in the network's own order and in its own units, before any centring.
-/// The first [`COMPARATIVE`] are about this placement against the others; the rest are context.
+/// Every input in the network's order and its own units, before centring.
 pub fn raw_inputs(features: &BottleFeatures) -> [f64; BOTTLE_FEATURE_INPUTS] {
     let delta = features.delta();
-    // the bottle as it was before the pill, which is the same for every candidate: context to
-    // gate on, with none of the ranking signal its delta already carries
+    // the same for every candidate, so it gates rather than ranks
     let before = features.global() - delta;
     let placement = features.placement();
 
@@ -109,9 +75,8 @@ pub fn raw_inputs(features: &BottleFeatures) -> [f64; BOTTLE_FEATURE_INPUTS] {
     ]
 }
 
-/// The rows a network is actually shown: [`raw_inputs`] for every candidate of one pill, with
-/// the comparative block centred on the mean over them and everything brought to about the same
-/// size.
+/// [`raw_inputs`] for every candidate of one pill, the comparative block centred and all scaled
+/// by [`SPREAD`].
 pub fn inputs(candidates: &[BottleFeatures]) -> Vec<[f64; BOTTLE_FEATURE_INPUTS]> {
     let mut rows: Vec<[f64; BOTTLE_FEATURE_INPUTS]> = candidates.iter().map(raw_inputs).collect();
     if rows.is_empty() {
@@ -132,14 +97,10 @@ pub fn inputs(candidates: &[BottleFeatures]) -> Vec<[f64; BOTTLE_FEATURE_INPUTS]
     rows
 }
 
-/// How a candidate placement is scored. The linear scorer is a hand written baseline: it is
-/// what the features say if you just weight them by hand, and it is the yardstick a trained
-/// model has to beat.
-///
-/// Only the `ga dr` modules score with it, and they are not built under `cfg(test)`.
+/// How a candidate placement is scored: a hand weighted baseline or the network. Only the
+/// `ga dr` modules use it, and they are not built under `cfg(test)`.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, allow(dead_code))]
-// the network is the whole point of the enum and is scored by value, a pill at a time
 #[allow(clippy::large_enum_variant)]
 pub enum Scorer {
     Linear,
@@ -148,8 +109,7 @@ pub enum Scorer {
 
 #[cfg_attr(test, allow(dead_code))]
 impl Scorer {
-    /// Score every placement of one pill at once, which is the only way the network can be
-    /// shown what separates them. The scores are comparable within the call and nowhere else.
+    /// Score every placement of one pill at once; scores are comparable only within one call.
     pub fn rank(&self, candidates: &[BottleFeatures]) -> Vec<f64> {
         match self {
             Scorer::Linear => candidates.iter().map(linear).collect(),
@@ -161,11 +121,7 @@ impl Scorer {
     }
 }
 
-/// The hand written baseline, in the order the game itself would put these things: bringing a
-/// virus nearer to killable is what the game is, walling one in where no line can ever reach it
-/// is the worst, and a half left one block from a clear is what a placement is for. Nothing here
-/// says a virus actually *died*: the selection left that input out, because the work counts
-/// already say it.
+/// the hand weighted baseline over the comparative inputs
 #[cfg_attr(test, allow(dead_code))]
 fn linear(features: &BottleFeatures) -> f64 {
     let delta = features.delta();
@@ -207,8 +163,7 @@ mod tests {
 
     #[test]
     fn every_input_stays_in_range_even_for_a_full_bottle() {
-        // the worst case for the raw counts: every cell occupied, so the work count, holes and
-        // virus count are all at their largest
+        // every cell occupied, so the raw counts are at their largest
         let mut bottle = Bottle::new();
         for y in 0..BOTTLE_HEIGHT {
             for x in 0..BOTTLE_WIDTH {
@@ -236,8 +191,7 @@ mod tests {
         assert_eq!(raw_inputs(&in_play)[BOTTLE_FEATURE_INPUTS - 1], 0.0);
         assert_eq!(raw_inputs(&swapped)[BOTTLE_FEATURE_INPUTS - 1], 1.0);
 
-        // pooled into one call it still says which is which, since it is context and not
-        // centred: the whole point of it is that it survives the comparison
+        // context is not centred, so pooled together it still says which is which
         let rows = inputs(&[in_play, swapped]);
         assert_eq!(rows[0][BOTTLE_FEATURE_INPUTS - 1], 0.0);
         assert_eq!(rows[1][BOTTLE_FEATURE_INPUTS - 1], 1.0);
@@ -253,8 +207,7 @@ mod tests {
         // one virus between two candidates: the comparative reading of it is half either side
         assert!(rows[0][0] < 0.0 && rows[1][0] > 0.0);
         assert_eq!(rows[0][0], -rows[1][0]);
-        // the context block is the bottle before the pill, so it is the same for both and
-        // keeps its own level rather than being centred away
+        // the context block keeps its own level
         assert_eq!(rows[0][COMPARATIVE], rows[1][COMPARATIVE]);
     }
 }

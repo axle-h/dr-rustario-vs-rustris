@@ -1,23 +1,10 @@
-//! Dr. Mario 64's own opponent, reimplemented.
+//! A port of Dr. Mario 64's deterministic opponent (`aiset.c` in the decompilation).
 //!
-//! This is a port of `aiset.c` from the Nintendo 64 game's decompilation: a hand written,
-//! deterministic scorer with no learning in it anywhere. For every place the pill in play can
-//! come to rest it drops the two halves into a copy of the bottle, measures the runs of colour
-//! they land in, takes away whatever clears, measures what is left, asks whether the bottle it
-//! leaves behind would chain, and adds the answers up with a table of weights. The highest
-//! total wins, and a tie goes to the first candidate in the original's own order.
-//!
-//! Three things decide the weights. The *skill* row is one of six, which is the one dial the
-//! original ai has: a Dr. Rustario difficulty picks a row out of [`params::SKILL_ORDER`] as well
-//! as deciding how fast the agent may press keys. The *situation* ([`Situation`]) and *wall* are
-//! read off the bottle at the start of every pill, which is what makes the ai play differently
-//! with a bottle full of viruses than with two left in the corner. Everything the original does that is not about choosing a square is left out: the
-//! sixteen characters and their moods, the deliberate mistakes, and the frame level key pacing,
-//! which [`engine::ai::KeyPacer`] already does.
-//!
-//! Where the two games disagree the bottle wins: the candidates come from
-//! [`crate::game::ai::placement`], which walks real [`Bottle`] moves and so honours Dr.
-//! Rustario's own wall kicks, and only the scoring is the N64's.
+//! Each candidate's halves are dropped into a copy of the bottle, the runs, clears and chains
+//! are measured and weighted; the highest total wins and a tie goes to the first candidate in
+//! the original's order. The weights are picked by skill row ([`params::SKILL_ORDER`]),
+//! [`Situation`] and wall. Candidates come from [`crate::game::ai::placement`], so Dr. Rustario's
+//! wall kicks apply; the characters, deliberate mistakes and key pacing are left out.
 
 mod chain;
 mod field;
@@ -38,12 +25,9 @@ pub use params::{DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 use score::{search_line_ms, Flag};
 
 /// What the bottle is asking for, which picks a column of the weight table.
-/// Original name: the `var_s5` that indexes `ai_param`.
+/// original name: the `var_s5` that indexes `ai_param`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Situation {
-    /// the original's practice mode, which this port never selects
-    #[allow(dead_code)]
-    Training = 0,
     /// almost nowhere left to put a pill
     Cornered = 1,
     /// the end is in sight and there are still viruses within reach
@@ -81,11 +65,11 @@ impl Half {
 }
 
 /// One place the pill can come to rest, in the ai's own terms.
-/// Original name: `struct_aiFlag`, before it is scored.
+/// original name: `struct_aiFlag`, before it is scored
 pub struct Candidate {
     /// which placement in the list handed to [`N64Ai::choose`] this is
     placement: usize,
-    /// 0 upright, 1 flat. Original name: `tory`
+    /// 0 upright, 1 flat; original name: `tory`
     tory: u8,
     /// the lower half of an upright pill, or the left half of a flat one
     row: usize,
@@ -99,8 +83,7 @@ pub struct Candidate {
     ec: bool,
 }
 
-/// Everything the ai made of one pill: which situation it read off the bottle, which side it
-/// found stacked up, what it thought every placement was worth, and which one it picked.
+/// Everything the ai made of one pill: situation, wall, every priority, and its pick.
 #[derive(Clone, Debug)]
 pub struct Reading {
     pub situation: Situation,
@@ -129,8 +112,7 @@ impl N64Ai {
         }
     }
 
-    /// one of the original's six rows of weights; they are personalities rather than a ladder,
-    /// so [`SKILL_ORDER`] is what ranks them
+    /// one of the original's six rows of weights, which [`SKILL_ORDER`] ranks
     pub fn with_skill(skill: u8) -> Self {
         Self {
             skill: skill.min(SKILLS as u8 - 1),
@@ -148,14 +130,12 @@ impl N64Ai {
         self.read(bottle, placements).chosen
     }
 
-    /// What this ai made of every placement, not just which one it picked. This is what the
-    /// probe reads to ask what the scorer is actually paying for.
+    /// What this ai made of every placement, for the probe.
     pub fn read(&self, bottle: &Bottle, placements: &[Placement]) -> Reading {
         self.read_tweaked(bottle, placements, |_| {})
     }
 
-    /// The same, with the weights for this pill nudged first, so a term can be taken out and
-    /// the ai asked what it would have played without it.
+    /// The same, with this pill's weights nudged first so a term can be ablated.
     pub fn read_tweaked(
         &self,
         bottle: &Bottle,
@@ -199,7 +179,8 @@ impl N64Ai {
         reading
     }
 
-    /// What one candidate is worth. Original name: the body of `aiHiruAllPriSet`'s loop.
+    /// What one candidate is worth.
+    /// original name: the body of `aiHiruAllPriSet`'s loop
     fn priority(
         &self,
         original: &Field,
@@ -249,8 +230,7 @@ impl N64Ai {
             *relief = chain.relieved;
         }
 
-        // and the same again with the other half turned about the one that made the line, since
-        // a chain that only wants the pill the other way round is still a chain worth having
+        // and again with the other half turned about the one that made the line
         let mut elsewhere = 0;
         for alternative in alternatives(main, second) {
             if !original.at(alternative.row, alternative.col).is_empty() {
@@ -282,7 +262,8 @@ impl N64Ai {
 }
 
 /// Where else the second half could have gone, turned about the half that made the line: flat
-/// either side of it, or upright above it. Original name: the tail of `aiHiruAllPriSet`.
+/// either side of it, or upright above it.
+/// original name: the tail of `aiHiruAllPriSet`
 fn alternatives(main: Half, second: Half) -> Vec<Half> {
     let mut places = vec![];
     let mut push = |row: i32, col: i32, st: u8| {
@@ -313,10 +294,8 @@ fn alternatives(main: Half, second: Half) -> Vec<Half> {
     places
 }
 
-/// Turn the placements the bottle found into the ai's own candidates, in the order
-/// `aifPlaceSearch` produces them: every upright place, then the same again with the colours
-/// swapped, then every flat one and its swap, each by row and then by column. That order is
-/// what settles a tie.
+/// Turn the bottle's placements into the ai's candidates in `aifPlaceSearch`'s order, which
+/// settles ties: upright, upright swapped, flat, flat swapped, each by row then column.
 fn candidates(field: &Field, placements: &[Placement]) -> Vec<Candidate> {
     let mut candidates: Vec<Candidate> = placements
         .iter()
@@ -390,8 +369,7 @@ fn candidate(field: &Field, placement: usize, landed: &Placement) -> Option<Cand
     };
 
     let ec = if tory == 0 {
-        // the original compares the two cells after placing them, and at the very top of the
-        // bottle the upper half is never placed
+        // at the very top of the bottle the original never places the upper half
         second.row != 0 && main.co == second.co
     } else {
         main.co == second.co
@@ -409,8 +387,8 @@ fn candidate(field: &Field, placement: usize, landed: &Placement) -> Option<Cand
     })
 }
 
-/// Read the bottle for the two things that pick the weights: which situation this is, and which
-/// side of the bottle is stacked up. Original name: the first half of `aiSetCharacter`.
+/// Read the bottle's situation and stacked-up side, which pick the weights.
+/// original name: the first half of `aiSetCharacter`
 fn classify(field: &Field, viruses: u32, average_route: f32) -> (Situation, usize) {
     // a column of one colour running down from the top, in the middle where the pills come in
     let mut stack = 0;
@@ -438,8 +416,7 @@ fn classify(field: &Field, viruses: u32, average_route: f32) -> (Situation, usiz
         }
     }
 
-    // which side is filled to the neck, how high the rest of it reaches, and how many viruses
-    // are still down there where a pill can get at them
+    // which side is filled to the neck, how high the rest reaches, and the reachable viruses
     let mut wall = 0usize;
     let mut top = 0x11usize;
     let mut reachable_viruses = 0u32;
@@ -602,8 +579,7 @@ mod tests {
         let placements = bottle.placements(bottle.stats());
         let candidates = candidates(&Field::of(&bottle), &placements);
         assert_eq!(candidates.len(), placements.len());
-        // upright first, then flat, and within each by row and then column, which is what
-        // settles a tie between two placements worth the same
+        // upright first, then flat, each by row then column
         assert!(candidates.windows(2).all(|pair| {
             let (a, b) = (&pair[0], &pair[1]);
             (a.tory, a.rev, a.row, a.col) <= (b.tory, b.rev, b.row, b.col)

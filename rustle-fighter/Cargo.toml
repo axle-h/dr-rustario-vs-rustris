@@ -8,9 +8,7 @@ edition.workspace = true
 workspace = true
 
 [dev-dependencies]
-# only to decode this theme's own png in a test: the sheet is cut by `art/rip.py` and the
-# theme has to agree with the script about which cell is which sprite - see
-# `theme::arcade`. Nothing in the crate proper reads a png; the engine loads them through SDL.
+# a test decodes the sheet `art/rip.py` cuts to check the theme agrees on which cell is which
 image.workspace = true
 
 [dependencies]

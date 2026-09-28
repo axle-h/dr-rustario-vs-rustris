@@ -1,9 +1,7 @@
-//! Durable-storage hooks. Native targets write straight to disk, so there is nothing to
-//! do; the browser writes land on an in-memory filesystem that must be flushed to
-//! IndexedDB (the IDBFS mount set up by the page, see `web/index.html`).
+//! Durable storage: the browser's writes land in memory and are flushed to IndexedDB, the
+//! IDBFS mount set up by `web/index.html`.
 
-/// Pushes pending writes to durable storage. Call after saving anything that must
-/// survive the session; a no-op everywhere but the browser.
+/// Call after saving anything that must survive the session; a no-op but in the browser.
 pub fn flush() {
     #[cfg(target_os = "emscripten")]
     unsafe {

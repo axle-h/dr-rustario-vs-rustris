@@ -8,8 +8,7 @@ use rand::prelude::ThreadRng;
 use rand::{rng, RngExt};
 use std::time::Duration;
 
-/// How a match is won. Game-neutral: stages are whatever a game calls a stage (a cleared
-/// bottle, ten lines...).
+/// How a match is won; a stage is whatever a game calls one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatchRules {
     /// endless; the highest score when everyone is out wins
@@ -25,9 +24,8 @@ pub enum MatchRules {
 impl MatchRules {
     pub const ONE_STAGE_SPRINT: Self = Self::StageSprint { stages: 1 };
     pub const DEFAULT_SCORE_SPRINT: Self = Self::ScoreSprint { score: 10_000 };
-    /// every mode a match can be played under, one or two players alike: a marathon and
-    /// the three sprints. The theme sprint leads the sprints because it is what a match
-    /// with a human in it opens on.
+    /// every mode a match can be played under; the theme sprint leads the sprints because a
+    /// match with a human opens on it
     pub const MODES: [Self; 4] = [
         Self::Marathon,
         Self::ThemeSprint,
@@ -35,8 +33,7 @@ impl MatchRules {
         Self::DEFAULT_SCORE_SPRINT,
     ];
 
-    /// the modes a match may be played under when the players run through `theme_count`
-    /// themes: a theme sprint is one stage per theme, so it takes more than one theme
+    /// a theme sprint is one stage per theme, so it needs more than one theme
     pub fn modes(theme_count: usize) -> Vec<Self> {
         Self::MODES
             .into_iter()
@@ -64,7 +61,6 @@ impl MatchRules {
         !matches!(self, MatchRules::Marathon)
     }
 
-    /// how these rules' high score table is ranked
     pub fn ranking(&self) -> Ranking {
         if self.is_sprint() {
             Ranking::LowestTime
@@ -73,11 +69,8 @@ impl MatchRules {
         }
     }
 
-    /// the mode a fresh pick of players opens on. A match anyone is playing opens on a
-    /// theme sprint, which runs a stage on each theme in turn and is the one that shows a
-    /// game off; sticking to a single theme takes it off the table, and there a single
-    /// player marathons and two race a stage. An ai demo is something to watch rather than
-    /// a race, so it opens on a marathon whatever else is set and plays on.
+    /// The mode a fresh pick of players opens on: a theme sprint when there is more than one
+    /// theme, else a marathon for one player and a stage race for two. An ai demo marathons.
     pub fn default_for(players: u32, ai_demo: bool, theme_count: usize) -> Self {
         if ai_demo {
             MatchRules::Marathon
@@ -122,7 +115,7 @@ impl<G: Game> Player<G> {
     }
 
     /// swap in the next stage's game, keeping score and stage count; speed carries over only
-    /// to the same game, as different games have different speed scales
+    /// to the same game, since games have different speed scales
     pub fn replace_game(&mut self, mut game: G) -> G {
         game.set_score(self.game.score());
         if game.game_id() == self.game.game_id() {
@@ -160,9 +153,7 @@ impl MatchState {
 
 pub struct Match<G: Game> {
     pub players: Vec<Player<G>>,
-    /// the table this match competes for, or `None` for a mode that does not rank at all -
-    /// the vs. playlist, whose sixty-odd combinations of playlist, games and difficulty are
-    /// more variations than anybody could read a table of
+    /// the table this match competes for, or `None` for a mode that does not rank
     high_scores: Option<HighScoreTable>,
     state: MatchState,
     rules: MatchRules,
@@ -170,15 +161,13 @@ pub struct Match<G: Game> {
     theme_count: u32,
     /// players a computer plays for; they do not enter the high score table
     ai_players: Vec<u32>,
-    /// the race clock of a sprint: it runs while anyone is playing, see [`Match::add_play_time`]
+    /// the race clock of a sprint, see [`Match::add_play_time`]
     play_time: Duration,
-    /// who attacked whom this frame. The session picks the victim, and only the attacker is
-    /// visible in the events, so the route is queued here for the renderer to drain.
+    /// who attacked whom this frame, for the renderer to drain; the events only name the attacker
     attack_routes: Vec<AttackRoute>,
     rng: ThreadRng,
 }
 
-/// An attack that landed, both ends of it named.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AttackRoute {
     pub from: u32,
@@ -188,9 +177,8 @@ pub struct AttackRoute {
 }
 
 impl<G: Game> Match<G> {
-    /// `theme_counts` is how many themes each player cycles through; `high_score_key` picks
-    /// the high score table this match competes for, and `None` is a match that competes for
-    /// none - it loads no table and can never reach [`NewHighScore`]
+    /// `theme_counts` is how many themes each player cycles through; a `None` `high_score_key`
+    /// loads no table and can never reach [`NewHighScore`]
     pub fn new(
         games: Vec<G>,
         rules: MatchRules,
@@ -242,7 +230,7 @@ impl<G: Game> Match<G> {
         }
     }
 
-    /// returns true if the pause state changed
+    /// returns `Some` with the new state if the pause state changed
     pub fn toggle_paused(&mut self) -> Option<bool> {
         match self.state {
             MatchState::Normal => {
@@ -261,9 +249,8 @@ impl<G: Game> Match<G> {
         self.state
     }
 
-    /// run the race clock: the match loop calls this for every frame at least one player is
-    /// playing, so it stops while paused and when everyone is held up at once (stage cards,
-    /// theme fades, the end of the match)
+    /// called for every frame at least one player is playing, so the clock stops while paused
+    /// and while everyone is held up at once
     pub fn add_play_time(&mut self, delta: Duration) {
         self.play_time += delta;
     }
@@ -272,7 +259,6 @@ impl<G: Game> Match<G> {
         self.play_time
     }
 
-    /// the clock as a high score table entry
     fn play_time_millis(&self) -> u32 {
         self.play_time.as_millis().min(u32::MAX as u128) as u32
     }
@@ -285,7 +271,6 @@ impl<G: Game> Match<G> {
         }
     }
 
-    /// whether completing the stage this player is on ends the match
     pub fn next_stage_ends_match(&self, player: u32) -> bool {
         match self.sprint_stages() {
             Some(stages) => self.player(player).game().completed_stages() + 1 >= stages,
@@ -304,8 +289,7 @@ impl<G: Game> Match<G> {
         player.completed_sprint = true;
     }
 
-    /// whether a player has reached the goal of a sprint (a stage sprint is flagged as the
-    /// last stage completes; a score sprint is read off the score)
+    /// a stage sprint is flagged as the last stage completes; a score sprint reads the score
     fn reached_sprint_goal(&self, player: &Player<G>) -> bool {
         match self.rules {
             MatchRules::ScoreSprint { score } => player.game.score() >= score,
@@ -347,8 +331,8 @@ impl<G: Game> Match<G> {
         }
     }
 
-    /// the player whose theme music should be played: a declared winner, otherwise whoever
-    /// has completed the most stages (score breaks ties). `None` when exactly tied.
+    /// the player whose music plays: a declared winner, else the most stages completed with
+    /// score breaking ties; `None` when exactly tied
     pub fn leading_player(&self) -> Option<u32> {
         if let Some(winner) = self.players.iter().find(|p| p.winner) {
             return Some(winner.player);
@@ -379,9 +363,8 @@ impl<G: Game> Match<G> {
         };
         let humans = self.players.iter().filter(|p| !self.is_ai_player(p.player));
         let high_score = if self.rules.is_sprint() {
-            // a sprint's table is the quickest finishes, so only a player who finished may
-            // enter it: not one who merely outlasted an opponent, nor one who topped out.
-            // The race clock stopped as the match ended, so it is the winner's time.
+            // a sprint table only takes a player who finished, timed by the clock that stopped with
+            // the match
             let millis = self.play_time_millis();
             humans
                 .filter(|p| self.reached_sprint_goal(p))
@@ -435,8 +418,7 @@ impl<G: Game> Match<G> {
         let victim = self.players.get_mut(pid).unwrap();
         let strength = attack.strength_for(victim.game.game_id());
         if strength == 0 {
-            // the clear was not worth anything to somebody playing the other game: nothing
-            // lands, so nothing flies across and nothing is heard either
+            // unpriced for the receiving game, so nothing lands, flies or sounds
             return false;
         }
         victim.game.receive_attack(attack);
@@ -448,7 +430,7 @@ impl<G: Game> Match<G> {
         true
     }
 
-    /// the attacks routed since the last drain, oldest first
+    /// oldest first
     pub fn drain_attack_routes(&mut self) -> Vec<AttackRoute> {
         std::mem::take(&mut self.attack_routes)
     }
@@ -564,7 +546,6 @@ mod tests {
         }
     }
 
-    /// a two player match of two different games
     fn mixed() -> Match<Counter> {
         let mut other = counter(0, 0, 0);
         other.id = 1;
@@ -595,7 +576,6 @@ mod tests {
             }]
         );
 
-        // ... and its own kind take it whole
         let mut fixture = mixed();
         assert!(fixture.send_attack(1, Attack::new(GameId(0), 6).with_foreign_for(GameId(1), 2)));
         assert_eq!(fixture.players[0].game.received, vec![6]);

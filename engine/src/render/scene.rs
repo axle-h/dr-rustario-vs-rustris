@@ -37,10 +37,8 @@ pub enum SceneType {
     Tile {
         texture: &'static [u8],
     },
-    /// One picture, scaled until it covers the window and centred on it - what a theme whose
-    /// backdrop is a painting rather than a tile wants. It is drawn with linear filtering
-    /// and nothing else here is: a tiled retro backdrop scales by whole pixels and has to
-    /// keep its hard edges, and a painted one has none to keep.
+    /// One picture, scaled to cover the window and centred, drawn with linear filtering since a
+    /// painted backdrop has no hard edges to keep.
     Cover {
         texture: &'static [u8],
     },
@@ -107,7 +105,6 @@ impl<'a> SceneRender<'a> {
             SceneType::Solid(_) => texture_creator
                 .create_texture_target(None, 1, 1)
                 .map_err(|e| e.to_string())?,
-            // TODO this is dirty
             SceneType::Particles { .. } => texture_creator
                 .create_texture_target(None, 1, 1)
                 .map_err(|e| e.to_string())?,
@@ -235,9 +232,8 @@ impl<'a> SceneRender<'a> {
     }
 }
 
-/// `source` blown up until it covers `width` by `height`, centred on it - the larger of the
-/// two ratios, so the short side fills and the long one hangs over the edge equally at both
-/// ends. A window narrower or shorter than the picture crops it rather than letterboxing.
+/// `source` scaled by the larger ratio to cover `width` by `height`, centred, cropping the overhang
+/// equally at both ends.
 fn cover(source: Rect, width: u32, height: u32) -> Rect {
     let factor = (width as f64 / source.width() as f64).max(height as f64 / source.height() as f64);
     let scaled = (
@@ -256,7 +252,7 @@ fn cover(source: Rect, width: u32, height: u32) -> Rect {
 mod tests {
     use super::*;
 
-    /// a 5:3 picture on a 16:9 window fills the width and hangs over the top and bottom
+    /// A 5:3 picture on a 16:9 window fills the width and overhangs top and bottom.
     #[test]
     fn a_wider_window_covers_by_the_width() {
         assert_eq!(
@@ -265,7 +261,7 @@ mod tests {
         );
     }
 
-    /// ... and a taller one the other way about, with the overhang split evenly
+    /// A taller picture fills the height, the overhang split evenly.
     #[test]
     fn a_taller_window_covers_by_the_height() {
         assert_eq!(

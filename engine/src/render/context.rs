@@ -1,6 +1,6 @@
 //! Every theme scaled to the window, with per-player render targets and animations, and the
-//! cross-fade when a player changes theme. Every theme keeps animation state for every
-//! player so a mid-match theme change is seamless.
+//! cross-fade when a player changes theme. Every theme keeps animation state for every player so a
+//! mid-match theme change is seamless.
 
 use crate::animate::attack_ball::AttackBallAnimation;
 use crate::animate::debris::{BurstSpec, DebrisArt, Spread};
@@ -110,8 +110,8 @@ struct ThemedPlayer {
 }
 
 impl ThemedPlayer {
-    /// `game_snip` is where the group agreed to put the playfield: the background hangs off
-    /// it by whatever margins this theme's art has around its own board.
+    /// `game_snip` is where the group put the playfield; the background hangs off it by this
+    /// theme's own margins.
     pub fn new(player: u32, theme: &Theme, scale: Scale, game_snip: Rect) -> Self {
         let (theme_width, theme_height) = theme.background_size();
         let playfield = theme.playfield_snip();
@@ -193,8 +193,7 @@ impl<'a> ScaledTheme<'a> {
         self.player_themes[player as usize].animations.blocks_tick()
     }
 
-    /// how far above the board an attack starts is this theme's geometry, not the game's:
-    /// the same cells fall from the top of whichever board the player is looking at
+    /// how far above the board an attack starts is this theme's geometry, not the game's
     pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], fall: NuisanceFall) {
         let hidden_rows = self.theme.geometry().hidden_rows();
         self.animations_mut(player)
@@ -203,8 +202,7 @@ impl<'a> ScaledTheme<'a> {
     }
 }
 
-/// The themes one player may use: a range of indices into the context's theme list, so a
-/// player on Dr. Rustario cycles Dr. Rustario themes while another cycles Tetris themes.
+/// The themes one player may use, as a range of indices into the context's theme list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlayerThemes {
     pub range: Range<usize>,
@@ -228,16 +226,13 @@ pub struct ThemeContext<'a> {
     ranges: Vec<Range<usize>>,
     themes: Vec<ScaledTheme<'a>>,
     fade_buffer: Texture<'a>,
-    /// per-player theme fade timer
     /// per-player (elapsed, total) theme fade timers
     fades: Vec<Option<(Duration, Duration)>>,
     /// the player whose theme music is playing
     music_player: u32,
     /// the theme index whose music is playing
     music_theme: Option<usize>,
-    /// which of that theme's tracks the match asked for
-    /// dealing a random track is the only thing this rolls for, and it is shared with
-    /// nothing: no game reads it and no replay depends on it
+    /// deals a random music track; nothing else reads it and no replay depends on it
     music_rng: ThreadRng,
     window_size: (u32, u32),
     /// the attacks crossing the window, which belong to no one player
@@ -246,12 +241,8 @@ pub struct ThemeContext<'a> {
     last_clear: Vec<Option<((f64, f64), CellId)>>,
 }
 
-/// Which face a player is dealt out of a cast of `cast`, off one seed.
-///
-/// The step is at least one and less than the cast, so consecutive players can never land on
-/// the same face - which is the property that matters, since a two player match must not put
-/// the same character on both panels. A theme with a cast of one deals it to everybody, which
-/// is what asking a one-character theme for a deal means.
+/// Which face a player is dealt out of a cast of `cast`, off one seed. The step is at least one
+/// and less than the cast, so consecutive players never share a face.
 fn deal_index(seed: u64, player: u32, cast: usize) -> usize {
     if cast <= 1 {
         return 0;
@@ -278,8 +269,8 @@ impl<'a> ThemeContext<'a> {
         fade_buffer.set_blend_mode(BlendMode::Blend);
         let players = player_themes.len();
 
-        // themes of the same board share a layout, so a player switching theme mid-game keeps
-        // the same board in the same place. Different boards (a bottle and a well) cannot.
+        // themes of the same board share a layout, so a player switching theme keeps the board in
+        // place
         let layouts = board_layouts(all_themes, players as u32, window_size, video_config);
 
         Ok(Self {
@@ -346,15 +337,13 @@ impl<'a> ThemeContext<'a> {
         self.themes[index].theme.audio()
     }
 
-    /// which of the context's themes a player is on right now, so the particle field can name
-    /// the sprites of the theme they are actually playing
+    /// which of the context's themes a player is on right now
     pub fn current_theme_index(&self, player: u32) -> usize {
         self.current[player as usize]
     }
 
-    /// the colours a player radiates into the background particle field: their theme's own,
-    /// or - for a retro theme, which has none - those of the first theme of their game that
-    /// does. Driven by the game they are playing, not by the theme they are looking at.
+    /// the colours a player radiates into the background particle field: their theme's own, or for
+    /// a retro theme those of the first theme of their game that has some
     pub fn player_palette(&self, player: u32) -> Palette {
         let current = self.current_theme_index(player);
         let own = self.themes[current].theme.particle_palette();
@@ -389,8 +378,7 @@ impl<'a> ThemeContext<'a> {
 
     pub fn update_animations(&mut self, delta: Duration) -> Vec<AnimationEvent> {
         self.attack_balls.update(delta);
-        // a ball that has arrived shatters where it landed, in its own colour - which is over
-        // the tray on a theme with one and over the middle of the top row on a theme without
+        // a ball that has arrived shatters where it landed, in its own colour
         for flight in self.attack_balls.arrived().to_vec() {
             let at = self.current(flight.to_player).theme.attack_arrival_cell();
             for theme in self.themes.iter_mut() {
@@ -400,21 +388,17 @@ impl<'a> ThemeContext<'a> {
                     .debris_mut()
                     .burst(BurstSpec {
                         spread: Spread::AllDirections,
-                        // the pieces drop back rather than sailing off: they are drawn on
-                        // the window, so one thrown much harder than this ends up out in the
+                        // low enough that the pieces drop back rather than sailing off into the
                         // bare scene
                         speed: (2.0, 5.0),
                         gravity: 22.0,
                         life: Duration::from_millis(320),
-                        // the same size the pop throws: a theme's droplet is cut small and
-                        // centred in a whole cell, so this is the cell's size and the piece
-                        // inside it comes out at about half of it
+                        // the cell's size; a droplet is cut at about half a cell and centred in it
                         size: 0.8,
                         ..BurstSpec::burst(
                             at,
                             ARRIVAL_SHARDS,
-                            // the theme's own droplet where it cut one, and the whole cell
-                            // where it did not - a burst never wants art of its own
+                            // the theme's own droplet where it cut one, otherwise the whole cell
                             DebrisArt::Debris(flight.cell),
                         )
                     });
@@ -434,9 +418,8 @@ impl<'a> ThemeContext<'a> {
     }
 
     pub fn animate_destroy(&mut self, player: u32, cells: &[PlacedCell]) {
-        // remembered because an attack is routed *after* the chain that earned it has
-        // finished, by which time the group that paid for it is off the board - and the ball
-        // has to leave from where it was, in the colour it was
+        // remembered because an attack is routed after its chain has finished and the group is
+        // gone, and the ball has to leave from where it was, in its colour
         if let Some(clear) = crate::animate::centre_and_modal(cells) {
             self.last_clear[player as usize] = Some(clear);
         }
@@ -448,18 +431,14 @@ impl<'a> ThemeContext<'a> {
         }
     }
 
-    /// Throw a ball from the group `from` last cleared to `to`'s board.
-    ///
-    /// One per attack route, which is one per attack. A player who has cleared nothing has
-    /// nothing to throw from - an attack can only ever follow a clear - so this is the one
-    /// case where nothing is drawn.
+    /// Throw a ball from the group `from` last cleared to `to`'s board; nothing is drawn if `from`
+    /// has cleared nothing.
     pub fn send_attack_ball(&mut self, from: u32, to: u32, held: usize, strength: u32) {
         let Some((at, cell)) = self.last_clear.get(from as usize).copied().flatten() else {
             return;
         };
         self.attack_balls.send(from, at, to, cell, strength);
-        // ... and the receiver's tray holds back whatever it has just been given until the
-        // ball carrying it lands, or the icons appear a third of a second before it does
+        // ... and the receiver's tray holds back what it has just been given until the ball lands
         for theme in self.themes.iter_mut() {
             theme.animations_mut(to).tray_mut().expect(held);
         }
@@ -469,8 +448,7 @@ impl<'a> ThemeContext<'a> {
         &self.attack_balls
     }
 
-    /// say `text` over the middle of `cells`, on whichever theme the player is on when it
-    /// is drawn
+    /// say `text` over the middle of `cells`, on whichever theme the player is on when it is drawn
     pub fn animate_popup(&mut self, player: u32, text: String, cells: &[PlacedCell]) {
         for theme in self.themes.iter_mut() {
             theme
@@ -517,15 +495,9 @@ impl<'a> ThemeContext<'a> {
         }
     }
 
-    /// Deal a player their character, on every theme in the group.
-    ///
-    /// Each theme picks out of its **own** cast with its own size, off one seed, so a theme
-    /// whose cast is a different length needs no coordination - and a playlist swapping a board
-    /// onto this game mid-match hands the player back the face they already had. The two
-    /// players of a two player match are never dealt the same one.
-    ///
-    /// `mirrored` is what makes a character face the other player's board: the cast is drawn
-    /// facing left or head on, so the player on the *left* of the window is the one flipped.
+    /// Deal a player their character on every theme in the group, each from its own cast off one
+    /// seed, so a playlist returning to this game hands back the same face. `mirrored` flips the
+    /// player on the left, so each character faces the other player's board.
     pub fn deal_characters(&mut self, seed: u64, players: u32) {
         for theme in self.themes.iter_mut() {
             for player in 0..players {
@@ -540,8 +512,7 @@ impl<'a> ThemeContext<'a> {
                 let Some(meta) = set.meta(index) else {
                     continue;
                 };
-                // built here rather than on the first draw, so the first frame of a match is
-                // not the one that pays for the texture
+                // built now so the first frame of a match does not pay for the texture
                 let _ = set.ensure_built(index);
                 let mirrored = players > 1 && player < players / 2;
                 theme
@@ -552,10 +523,7 @@ impl<'a> ThemeContext<'a> {
         }
     }
 
-    /// Deal one player one named character, rather than letting the seed choose.
-    ///
-    /// For tests and for `character_shot`, which walks the whole cast: a seed cannot be asked
-    /// for a particular face.
+    /// Deal one player one named character rather than letting the seed choose.
     pub fn deal_character(&mut self, player: u32, character: usize, mirrored: bool) {
         for theme in self.themes.iter_mut() {
             let Some((set, _)) = theme.theme.characters.as_ref() else {
@@ -573,9 +541,6 @@ impl<'a> ThemeContext<'a> {
     }
 
     /// Put one player's character into a state and start one named routine of it.
-    ///
-    /// The sibling of `deal_character`, and for the same reason: `kirby_shot` walks the
-    /// fifteen and a deal cannot be asked for a particular one.
     pub fn play_character_routine(&mut self, player: u32, routine: usize, home: Option<i32>) {
         for theme in self.themes.iter_mut() {
             theme
@@ -596,10 +561,6 @@ impl<'a> ThemeContext<'a> {
     }
 
     /// Where a rect of the theme's own source pixels lands in the window for a player.
-    ///
-    /// The panel is drawn into a texture and composited, so a caller that wants to look at one
-    /// piece of furniture - `character_shot` cropping the mugshot box - has to be told where
-    /// that texture ended up.
     pub fn player_source_rect(&self, player: u32, rect: Rect) -> Rect {
         let themed = &self.current(player).player_themes[player as usize];
         self.current(player).scale.scale_and_offset_rect(
@@ -625,16 +586,15 @@ impl<'a> ThemeContext<'a> {
         set.name(self.player_animations(player).character().character()?)
     }
 
-    /// A clear that chained. One pop is not a reaction: it is most clears, several a minute,
-    /// and it sends nothing either - so only a clear the game itself called a combo counts.
+    /// A clear the game called a combo; a single pop is not a reaction.
     pub fn animate_character_chain(&mut self, player: u32) {
         for theme in self.themes.iter_mut() {
             theme.animations_mut(player).character_mut().chained();
         }
     }
 
-    /// The two numbers with no event between them, read every frame: how high this player's
-    /// stack is and whether anything is waiting in their tray.
+    /// The per-frame danger reading: how high this player's stack is and whether their tray holds
+    /// anything.
     pub fn character_danger(&mut self, player: u32, danger: f64, pending: bool) {
         for theme in self.themes.iter_mut() {
             theme
@@ -664,8 +624,8 @@ impl<'a> ThemeContext<'a> {
         }
     }
 
-    /// an attack that waited in the tray falls in from over the top of the board, at
-    /// `rows_per_second`, and holds the game while it does
+    /// an attack that waited in the tray falls in from over the top of the board at
+    /// `rows_per_second`, holding the game while it does
     pub fn animate_nuisance(&mut self, player: u32, cells: &[PlacedCell], fall: NuisanceFall) {
         for theme in self.themes.iter_mut() {
             theme.animate_nuisance(player, cells, fall);
@@ -741,11 +701,8 @@ impl<'a> ThemeContext<'a> {
         true
     }
 
-    /// advance a single player to their next theme, cross-fading only their side of the screen
-    ///
-    /// A player with one theme to their name has nowhere to go, and fading is a second of
-    /// the board dissolving into itself - so that player is left alone. A game with a single
-    /// theme still runs on `ThemeMode::All`, and its stage boundaries ask for the next one.
+    /// Advance a single player to their next theme, cross-fading only their side of the screen. A
+    /// player with one theme is left alone.
     pub fn fade_into_next_theme(
         &mut self,
         player: u32,
@@ -769,8 +726,8 @@ impl<'a> ThemeContext<'a> {
         self.start_fade(player, canvas, frame)
     }
 
-    /// move a player onto a different set of themes (the next game of a playlist), fading
-    /// their side of the screen
+    /// move a player onto a different set of themes (the next game of a playlist), fading their
+    /// side of the screen
     pub fn switch_player_themes(
         &mut self,
         player: u32,
@@ -798,9 +755,9 @@ impl<'a> ThemeContext<'a> {
         Ok(())
     }
 
-    /// keep the music on the theme of the winning player. the leader is only re-evaluated when
-    /// `reevaluate_leader` is set (between stages), otherwise only the theme itself is checked
-    /// i.e. the music owner changed theme. returns true if the music was (re)started.
+    /// Keep the music on the theme of the winning player; returns true if the music was
+    /// (re)started. The leader is only re-evaluated when `reevaluate_leader` is set, between
+    /// stages.
     pub fn sync_music(
         &mut self,
         leader: Option<u32>,
@@ -817,14 +774,12 @@ impl<'a> ThemeContext<'a> {
         self.music_theme = Some(wanted);
 
         let audio = self.themes[wanted].theme.audio();
-        // the one place a random track is dealt: this is reached only when the theme the
-        // music belongs to has changed, so a match keeps the track it opened on through a
-        // pause, a stage clear and a game over, and picks another when the theme moves
+        // the one place a random track is dealt: reached only when the music's theme changes, so a
+        // match keeps its track through a pause, a stage clear and a game over
         audio.deal_game_music(&mut self.music_rng);
         match state {
-            // Only single player uses next-stage *music*; in multiplayer the stage clear is a
-            // jingle and game music must keep playing, otherwise another player's still-open
-            // interstitial would swap in a play-once track and leave the match silent.
+            // only single player uses next-stage music; in multiplayer another player's
+            // interstitial would swap in a play-once track and leave the match silent
             MatchState::Normal if is_single_player && self.is_animating_interstitial() => {
                 audio.play_next_stage_music()?
             }
@@ -867,9 +822,8 @@ impl<'a> ThemeContext<'a> {
     ) -> Result<(), String> {
         self.fades[player as usize] = Some((Duration::ZERO, total));
 
-        // snapshot the outgoing frame from the frame texture (never the backbuffer, whose
-        // content is undefined after a present under WebGL), and only this player's side
-        // so another player's in-progress fade is untouched
+        // snapshot from the frame texture, never the backbuffer (undefined after a present under
+        // WebGL), and only this player's side so another player's fade is untouched
         let clip = self.player_clip(player);
         let mut result = Ok(());
         canvas
@@ -908,9 +862,9 @@ impl<'a> ThemeContext<'a> {
     ) -> Result<(), String> {
         for (texture, texture_mode) in texture_refs.iter_mut() {
             let (TextureMode::Background(pid) | TextureMode::Board(pid)) = texture_mode;
-            // retro pixel art scales up by whole pixels, so keep its hard edges; a Native
-            // (modern) theme is built at 1-player size and drawn smaller when the window is
-            // shared, and nearest sampling breaks up its anti-aliased text
+            // retro art scales by whole pixels, so keep its hard edges; a Native theme is drawn
+            // smaller when the window is shared, and nearest sampling breaks up its anti-aliased
+            // text
             texture.set_scale_mode(match self.theme(*pid).scale_mode() {
                 ScaleMode::Source => TextureScaleMode::Nearest,
                 ScaleMode::Native => TextureScaleMode::Linear,
@@ -924,14 +878,9 @@ impl<'a> ThemeContext<'a> {
                 TextureMode::Board(pid) => {
                     let current = self.current(*pid);
                     let player = &current.player_themes[*pid as usize];
-                    // the panel's shadow goes on the scene first: the board is the first
-                    // thing composited for a player and the panel is laid over it, so this
-                    // is the one moment both of them are still to come.
-                    //
-                    // It is cast from the *panel*, and so it does not move with the impact
-                    // below: a hard drop jolts the board inside a panel that stays where it
-                    // is, which is what every retro theme here has always done, so a shadow
-                    // that shook with it would be a shadow of something that had not moved
+                    // the panel's shadow goes on the scene before the board and panel are
+                    // composited over it, and it does not move with the impact, since the panel
+                    // does not
                     if let Some(shadow) = current.theme.shadow() {
                         shadow.draw(canvas, player.bg_snip, &current.scale)?;
                     }
@@ -966,16 +915,8 @@ impl<'a> ThemeContext<'a> {
         Ok(())
     }
 
-    /// Every player's captions, on the window itself and over everything else.
-    ///
-    /// The board is drawn into a texture and composited, and the foreground particles go on
-    /// top of that - so a caption drawn with the board is under the very burst it is about.
-    /// This is called last instead, after the particles.
-    /// Every player's debris, on the window between the foreground particles and the
-    /// captions - so a burst is over the particles and a caption is over the burst.
-    ///
-    /// Clipped to the player, because a droplet may travel a long way and has no business in
-    /// the other player's half.
+    /// Every player's debris, on the window between the foreground particles and the captions,
+    /// clipped to the player. Also draws the routine characters, so no caller can forget them.
     pub fn draw_debris(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
         for player in 0..self.players() {
             let current = self.current(player);
@@ -999,25 +940,13 @@ impl<'a> ThemeContext<'a> {
             canvas.set_clip_rect(None);
             result?;
         }
-        // ... and a character who is a sprite rather than furniture, over the panel he stands
-        // on. Here rather than at every call site, which is what a forgotten seam looks like.
+        // ... and every character played as routines, over the panel he stands on
         self.draw_placed_characters(canvas)?;
         Ok(())
     }
 
-    /// Everything a character has thrown, on the window and clipped to its own player.
-    ///
-    /// Anchored on the **panel** rather than the board, since the box a character stands in is
-    /// panel furniture - which is the only thing this does not share with `draw_debris`. It is
-    /// drawn after it, so a spark crosses a droplet rather than the other way about.
-    /// Every character that is played as *routines*, on the window rather than into the panel.
-    ///
-    /// A mugshot is furniture and is drawn into the panel with the tray and the queue, because
-    /// it never leaves its box. Kirby is a **sprite**, and the game draws him over the stone
-    /// above the arch rather than hiding him behind it - measured: he climbs the wall and goes
-    /// on over the course above it in plain sight. So the routine path is drawn here, on the
-    /// window, clipped only to the player's own half the way [`Self::draw_character_particles`]
-    /// is. Called at the end of [`Self::draw_players`] so that no caller can forget it.
+    /// Every character played as routines, on the window and clipped only to the player's half,
+    /// since the game draws him over the stone above the arch.
     fn draw_placed_characters(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
         for player in 0..self.players() {
             let current = self.current(player);
@@ -1036,6 +965,8 @@ impl<'a> ThemeContext<'a> {
         Ok(())
     }
 
+    /// Everything a character has thrown, on the window, clipped to its player and anchored on
+    /// the panel. Drawn after `draw_debris`, so a spark crosses a droplet.
     pub fn draw_character_particles(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
         for player in 0..self.players() {
             let current = self.current(player);
@@ -1056,12 +987,8 @@ impl<'a> ThemeContext<'a> {
         Ok(())
     }
 
-    /// Every attack in the air, on the window and **unclipped** - it is the one thing here
-    /// that crosses between two players, so it belongs to neither one's area.
-    ///
-    /// Both ends are resolved through whichever theme each player is on right now, so a
-    /// theme change mid-flight moves them rather than leaving the ball flying to where a
-    /// board used to be.
+    /// Every attack in the air, on the window and unclipped, since it crosses between players. Both
+    /// ends resolve through each player's current theme, so a theme change mid-flight moves them.
     pub fn draw_attack_balls(&self, canvas: &mut WindowCanvas) -> Result<(), String> {
         if self.attack_balls.is_empty() {
             return Ok(());
@@ -1069,13 +996,8 @@ impl<'a> ThemeContext<'a> {
         canvas.set_clip_rect(None);
         for flight in self.attack_balls.flights() {
             let from = self.cell_in_window(flight.from_player, flight.from_cell);
-            // ... to the **tray** it is landing in, which is where its icons then slide out
-            // of. Resolved through whichever theme the receiver is on right now, like both
-            // ends of everything else here: the tray is on the wall over the board on
-            // `genesis`, down the arch on `snes` and beside the board on the particle theme,
-            // and a ball that always burst over the middle of the board would be flying to
-            // none of them. A theme with no tray keeps that middle - there is nowhere else
-            // for a hit that lands the moment it is sent.
+            // ... to the tray it is landing in, through the receiver's current theme; a theme with
+            // no tray keeps the middle of the board
             let to_theme = self.current(flight.to_player);
             let to = match to_theme.theme.pending_origin() {
                 Some(at) => self.background_point_in_window(flight.to_player, at),
@@ -1101,8 +1023,7 @@ impl<'a> ThemeContext<'a> {
                 size,
             );
             if !sender.draw_attack_ball(canvas, flight.from_player, flight.strength, dest)? {
-                // no ball art: the popped colour's own cell, and a white core over it, which
-                // is the nearest a theme with nothing cut can get
+                // no ball art: the popped colour's own cell with a white core over it
                 sender.draw_loose_cell(canvas, flight.cell, dest)?;
                 let core = flight.core();
                 if core > 0.0 {
@@ -1116,9 +1037,8 @@ impl<'a> ThemeContext<'a> {
         Ok(())
     }
 
-    /// where a point in a player's board cells falls in the window, in pixels
-    /// A point in a player's theme's own background pixels, on the window - the same
-    /// mapping the background texture itself is blitted through.
+    /// A point in a player's theme's own background pixels, on the window, through the same mapping
+    /// the background texture is blitted with.
     fn background_point_in_window(&self, player: u32, at: Point) -> (f64, f64) {
         let current = self.current(player);
         let themed = &current.player_themes[player as usize];
@@ -1235,8 +1155,7 @@ impl<'a> ThemeContext<'a> {
 mod character_deal_tests {
     use super::deal_index;
 
-    /// Two players must never be handed the same face; a panel showing the same character as
-    /// the one opposite it reads as a bug even though nothing is broken.
+    /// Two players are never dealt the same face.
     #[test]
     fn two_players_are_never_dealt_the_same_character() {
         for cast in 2..=13usize {
@@ -1271,7 +1190,7 @@ mod character_deal_tests {
         );
     }
 
-    /// a theme that has only one character hands it to everybody rather than dividing by zero
+    /// A theme with one character hands it to everybody.
     #[test]
     fn a_cast_of_one_deals_it_to_everybody() {
         assert_eq!(deal_index(7, 0, 1), 0);

@@ -1,5 +1,5 @@
-//! Audio output: a hand-rolled mixer fed through SDL's core audio callback.
-//! Effects are decoded up front; music is streamed from the embedded OGG files.
+//! Audio output: a hand-rolled mixer fed through SDL's core audio callback. Effects are
+//! decoded up front; music is streamed from the embedded OGG files.
 
 mod decode;
 mod mixer;
@@ -14,7 +14,7 @@ use sdl2::AudioSubsystem;
 use decode::VorbisStream;
 use mixer::{Command, Mixer};
 
-/// Volume scale shared with the config (0..=128, as SDL_mixer used).
+/// volume scale shared with the config, 0..=128
 pub const MAX_VOLUME: i32 = 128;
 pub const SAMPLE_RATE: u32 = 44_100;
 const BUFFER_FRAMES: u16 = 512;
@@ -78,7 +78,6 @@ fn send(command: Command) -> Result<(), String> {
         .map_err(|_| "audio device closed".to_string())
 }
 
-/// A fully decoded sound effect.
 pub struct Sound {
     pcm: Arc<Vec<i16>>,
     volume: i32,
@@ -92,14 +91,9 @@ impl Sound {
         })
     }
 
-    /// Scales the decoded samples by `percent`, which is how a theme is levelled against the
-    /// house (see [`crate::render::sound::AudioTheme::with_gain`]).
-    ///
-    /// In the samples rather than in [`Self::volume`] because a set may need **lifting** as
-    /// well as trimming, and volume is the config's own 0..=[`MAX_VOLUME`] dial with no room
-    /// above it. Anything that would clip is clamped, which is audible, so a gain over 100 is
-    /// only ever set from a measured peak that has the headroom for it - `audio_levels.py`
-    /// reports both.
+    /// Scales the decoded samples by `percent`, to level a theme (see
+    /// [`crate::render::sound::AudioTheme::with_gain`]). A gain over 100 has to live in the samples
+    /// because the config's volume dial has no headroom above [`MAX_VOLUME`]; clipping is clamped.
     pub fn with_gain(mut self, percent: i32) -> Self {
         if percent != 100 {
             let scaled = self
@@ -148,13 +142,11 @@ impl Music {
     }
 }
 
-/// A piece of music as requested: (intro, repeat, loops), each track identified by its
-/// embedded bytes.
+/// A piece of music as requested: (intro, repeat, loops), each track identified by its bytes.
 type MusicId = (Option<(usize, usize)>, (usize, usize), i32);
 
-/// What `play_music` last started, so an identical endless loop can be recognised and
-/// left playing. Never ends by itself (only endless loops are ever matched), so it is
-/// invalidated only by `play_music` and `halt_music`.
+/// What `play_music` last started, so an identical endless loop is left playing. Only
+/// `play_music` and `halt_music` change it.
 static CURRENT_MUSIC: Mutex<Option<MusicId>> = Mutex::new(None);
 
 fn music_id(intro: Option<Music>, repeat: Music, loops: i32) -> MusicId {
@@ -167,7 +159,7 @@ fn current_music() -> Result<std::sync::MutexGuard<'static, Option<MusicId>>, St
         .map_err(|_| "current music poisoned".to_string())
 }
 
-/// Plays `intro` once (if any) then `repeat` `loops` times (`-1` forever), replacing any current music.
+/// Plays `intro` once (if any) then `repeat` `loops` times (`-1` forever), replacing any music.
 pub fn play_music(
     intro: Option<Music>,
     repeat: Music,
@@ -183,9 +175,8 @@ pub fn play_music(
     })
 }
 
-/// Like [`play_music`], except that if this exact endlessly-looping music is already
-/// playing it is left alone rather than restarted, so menus that share a tune switch
-/// seamlessly.
+/// Like [`play_music`], but an identical endless loop already playing is left alone, so menus
+/// that share a tune switch seamlessly.
 pub fn play_music_unless_current(
     intro: Option<Music>,
     repeat: Music,
@@ -193,7 +184,6 @@ pub fn play_music_unless_current(
     gain: i32,
 ) -> Result<(), String> {
     if loops < 0 && *current_music()? == Some(music_id(intro, repeat, loops)) {
-        // already playing this loop: just make sure it is not paused
         return resume_music();
     }
     play_music(intro, repeat, loops, gain)

@@ -1,77 +1,13 @@
 #!/usr/bin/env python3
-"""Read Kirby's fifteen idle routines off Kirby's Avalanche, and cut the art for them.
+"""Read Kirby's idle routines off Kirby's Avalanche and cut the SNES theme's arch Kirby.
 
-`mugshots.py` is this script's sibling: same job, other game.  Where that one reads a *mugshot* -
-a fixed box, one strip a state, a face and nothing else - this reads the little Kirby the game
-stands in the arch at the foot of its centre column, who is a different animal.  He walks, he
-spins, he flops on his face, he inflates and floats clean out of the arch for a second and a
-half, and his frames are not one size: the idle pose is 14x14, the pancake he lands in is 14x7
-and the tall thin one he bobs up into is 6x14.  So the art model here is a *routine* - a list of
-(sprite, how long it is held, where it goes in the arch) - and not a strip at a constant rate.
+    python3 kirby.py read            # print the SPRITES rects the capture's poses match
+    python3 kirby.py cut [out_dir]   # write kirby.png (default src/theme/snes/) and print the
+                                     # Rust tables to paste over src/theme/snes/kirby.rs
 
-Two sources, neither of them in the repository:
-
-  * `retro/SNES - Kirby's Avalanche - Playable Characters - Kirby.png`, the spriters-resource
-    rip, which carries the poses and nothing else - no order, no timing, no positions, and no
-    grid either: it is packed edge to edge, so a sprite's own rect cannot be found by looking
-    for the gap around it, because there is not one.
-  * `~/Videos/Screencasts/Screencast From 2026-08-31 18-44-35.mp4`, a 115 second capture of the
-    centre column of the emulated game, which carries all three of the things the rip does not.
-
-    python3 kirby.py read      # re-derive SPRITES and ROUTINES from the capture
-    python3 kirby.py cut       # write theme/snes/kirby.png and print the Rust to paste back
-
-**How the tables below were got.**  The capture is registered against the game's own screen
-first - `kirby-layer-03.png` is a render of the SNES background layers, so correlating the two
-on their gradients gives the scale and the origin to a pixel: 4.74 and (104, 84), which is
-`SCALE` and `ORIGIN` below.  Then, per frame, Kirby is found by **background subtraction**
-against a plate of the empty column, and the crop is matched against the rip at *every* offset
-and at every size within a pixel of what the registration implies - not against a grid of cells,
-because there is no grid.  He is found on all 3465 frames of the capture, the search scores 0.93
-mean normalised correlation, and the rect it settles on is the sprite's own bounding box.
-
-Four things about the silhouette took a pass each and every one of them looked like something
-else, so they are worth knowing before changing any of it:
-
-  * the crop has to be the **whole recording** and not the arch - he is a sprite and the game
-    draws him over every course of the column, and a silhouette the crop has cut matches a
-    *sub-rect* of a sprite, so the cut sprite comes out cut too;
-  * a **colour** key drops his black outline and his shaded side, which does the same thing
-    more quietly - subtraction puts the standing pose at fourteen native pixels on 2691 frames
-    where the colour key wandered between ten and fifteen;
-  * the plate's exclusion box has to clear his **feet**, which hang four pixels below the pink
-    his body is located by, or the plate takes them for woodwork and they stop differing from
-    it;
-  * and his feet are often a **separate blob** from his body, so the components are found on a
-    dilated mask and intersected back, or the largest-blob rule keeps the body and drops the
-    feet.
-
-The `STAGE` sign is told from the woodwork by its own **variance** and not its colour, because
-brown answers a "redder than blue" test exactly as a flame does.  `SPRITES` is those rects, and two of them are the same pose **only if
-they agree to a pixel on every edge**. Every looser rule was tried and every one of them cuts a
-sprite short: tightening a rect onto its own content reaches into the sprite next door, because
-the rip is packed edge to edge; taking a group's union does the same; and grouping by overlap
-merges a pose with a *sub-rect of itself* - (65,113) is a fourteen wide Kirby and also, on the
-frames where the silhouette came out ten wide, the left ten of him - after which the group's
-modal rect cuts the wide pose's right side off.
-
-A pose is rare or it is common; it is not a misread because it is rare. The walk's own cycle is
-eight sprites shown for two frames each in one routine, so a plain count threshold cut the
-middle out of the walk. What tells a pose from a misread is how well it ever scored.
-
-**What is measured and what is not.**  The capture is 30 fps against the game's 60, so a hold is
-measured to two ticks and no better, and every number in `ROUTINES` is even for that reason.
-Positions are the *foot line* and the *centre* of the found silhouette - the two things the
-colour key gets right - because the mask clips a dark red foot at the edge and so the left and
-right edges of the box wander a pixel either way.  A gap of four frames or fewer is Kirby
-clipped by the arch's own edge and is walked across; a longer one is Kirby genuinely gone, which
-happens in five of the fifteen and is a frame that draws nothing.
-
-Which routine goes on which of the four `CharacterState` rows is **not** measured, and cannot be:
-nothing in the capture ties a routine to anything happening on the board, and the game gives no
-sign that anything does.  So the `state` column is this game's own reading - the placid ones idle,
-the excited ones on a chain, the flat one when the stack is high - and within a row the routine
-is dealt.
+Inputs, not in the repo: the rip `SHEET` in `retro/`, which has no grid, so two rects are the
+same pose only if every edge agrees; and `CAPTURE`, a 30 fps capture of the centre column, so
+every hold in `ROUTINES` is even.  Which `CharacterState` row a routine plays on is a choice.
 """
 
 import os
@@ -93,36 +29,25 @@ CAPTURE = os.path.join(
 # the rip's own background, which every cut sprite is keyed against
 KEY = (64, 0, 192)
 
-# the capture, registered against `kirby-layer-03.png` on gradients: one SNES pixel is this
-# many capture pixels, and capture (0, 0) is this point on the SNES screen
+# the capture registered against `kirby-layer-03.png`: capture pixels per SNES pixel, and the
+# SNES point at capture (0, 0)
 SCALE = 4.74
 ORIGIN = (104, 84)
 
-# the arch opening, in the panel's own pixels - which are the SNES screen's, since `snes/mod.rs`
-# cuts the panel from the screen itself.  Its bottom edge is the foot line every standing frame
-# of the capture sits on, measured at y=199 on 2343 of 2775 frames.
+# the arch opening in SNES screen pixels, which the panel shares; its bottom edge is the foot line
 BOX = (104, 157, 48, 42)
 
-# **The whole recording**, and not the arch. Kirby is a sprite: the game draws him over every
-# course of the centre column and right up past `STAGE`, seventy two pixels above the arch,
-# which is twice the arch's own height. Three croppings were tried and every one of them lost
-# him - the arch alone cut the climb off at the lintel, and a silhouette cut like that matches
-# a *sub-rect* of a sprite, so the sprite came out cut too. At this crop he is found on all
-# 3465 frames of the capture and 2700 of them measure exactly fourteen pixels across.
+# the whole recording, not the arch: Kirby climbs far above it, and a silhouette the crop cuts
+# matches a sub-rect of a sprite
 ARCH_CROP = (0, 0, 224, 600)
 
-# A silhouette whose top is within this many capture pixels of the crop's is Kirby half
-# *behind* the arch's own lintel, not a Kirby that shape. Those frames are kept out of the
-# vocabulary and given the nearest whole pose: the theme clips the arch itself, so the whole
-# pose should be drawn and hidden by it, and a routine that alternates a whole pose with a
-# bottom sliver of one flashes.
+# A silhouette whose top is this close to the crop's is Kirby half behind the lintel; it is
+# not a pose, and takes the nearest whole one, which the theme's arch then clips.
 LINTEL = 12
 
-# --------------------------------------------------------------------------------------
-# The measured tables.  Re-derive them with `read`; both are printed in this form.
+# --- the measured tables ---
 
-# Every pose the capture ever showed, as its own bounding box in the rip.  Kirby is not one
-# size: 45 sprites from 6x14 to 18x11.
+# every pose the capture shows, as its bounding box in the rip; `read` prints this form
 SPRITES = [
     ( 17, 129, 14, 14),   # 0
     ( 65,  17, 13, 14),   # 1
@@ -219,25 +144,15 @@ SPRITES = [
     (113,  32, 13, 16),   # 92
 ]
 
-# The rest between routines, in ticks: measured over the twenty seven gaps the capture holds,
-# whose median is exactly two seconds. They run from 0.93 to 2.30 s, so the character stands
-# for this long and then is dealt another - which is the shape of it, not the spread.
+# the rest between routines, in ticks: the capture's median gap
 REST = 120
 
-# Which routine is the blink - played between the others rather than as one of them - and which
-# one a buried character's is derived from.
+# the routine played between the others, and the one a buried Kirby's is cut from
 FILLER = "blink"
 DEFEAT_FROM = "flop"
 
-# Which routines are one move with a direction, and which of them the rip only drew one way
-# round. A `kind` is what the bag deals; the *direction* is chosen from where Kirby is standing,
-# which is the whole point - a Kirby against the right post should walk left, not slide left and
-# walk back.
-#
-# `jump`, `spin` and `tumble` have both ways in the game's own art. The other four travel and
-# were only ever recorded going one way, so their twin is **mirrored** - the poses flipped and
-# the offsets reflected about the routine's own opening frame. That is derived and not measured,
-# and it is the only art here that is.
+# A `kind` is what the bag deals; its direction is chosen from where Kirby stands.  `jump`,
+# `spin` and `tumble` are drawn both ways in the rip; the `MIRROR` routines get a flipped twin.
 KINDS = {
     "yawn": "yawn", "flop": "flop", "blink": "blink",
     "walk": "walk", "ricochet": "ricochet", "climb": "climb", "float-up": "float-up",
@@ -248,46 +163,18 @@ KINDS = {
 }
 MIRROR = ["walk", "ricochet", "spring", "takeoff"]
 
-# Whether a routine he is out of position for may be walked into at all.
-#
-# Nothing is refused for being out of position, or the narrow windows would hardly ever be
-# seen: `ricochet` throws him wall to wall and so has three pixels of window in a forty eight
-# pixel arch. When it happens the translation goes on the routine's own first hop - see the
-# `glide` each way carries - so it is never a slide along the floor.
+# whether a routine he is out of position for may be walked into, on its first hop (`glide`)
 APPROACH = "true"
 
-# The arch is forty eight pixels across, which is what a routine's whole drawn path has to stay
-# inside. Every one of the fifteen was captured being played from an origin that keeps it there
-# - the game itself only plays a routine where it fits - so nothing is ever shifted to make one
-# fit, and a routine simply is not dealt where it would not.
+# a routine's whole drawn path stays inside the arch; one is never dealt where it would not fit
 ARCH_WIDTH = 48
 
-# How much a dealing varies a routine's pace, as a fraction either way. Not measured - the game
-# plays each of these at one pace - and here because the same spin twice in a minute at exactly
-# the same speed reads as a loop rather than as a character.
+# how much a dealing varies a routine's pace either way, so a repeat does not read as a loop
 SPEED_SPREAD = 0.15
 
-# One entry a routine: its name, the `CharacterState` row it is dealt on, what it is, and the
-# frames.  A frame is (pose, how many 60 Hz ticks it is held, where its top left goes).
-#
-# A pose of `None` is Kirby off the top of the **recording** and nothing else - he is a sprite
-# and the game draws him over every course of the centre column, right up past `STAGE`. Six
-# capture frames of `ricochet` are the whole of it; every other routine is now tracked from
-# its first frame to its last.
-#
-# The place is **relative to the frame the routine opens on**, and not to the box, because the
-# order routines are dealt in is not the order the capture happened to play them: a routine
-# that walks Kirby nineteen pixels to the right has to start wherever the last one left him.
-# Every routine opens on a standing pose and every one lands back on the floor, so only the
-# horizontal displacement is carried between them - and `takeoff` reaches seventy two pixels
-# above the arch, which is twice the arch's own height.
-#
-# **Three of these are pairs**, and the pairing is the game's own: `jump`, `spin` and `tumble`
-# each have a left and a right, drawn as separate sprites rather than as one flipped - the two
-# tumbles' sprites are 0.91 to 0.98 mirrors of each other and not copies. They are one move
-# with a direction, and which one gets dealt is decided by where Kirby is standing: against the
-# right post, only the leftward one fits. The spins are the same *sprites* in the opposite
-# order, which is how a spin reverses.
+# One entry a routine: (name, `CharacterState` row, description, frames), a frame being (pose,
+# 60 Hz ticks held, top left).  A place is relative to the opening frame, so routines chain in
+# any order; each opens standing and lands on the floor.  A `None` pose is Kirby off the recording.
 ROUTINES = [
     ("blink", "idle",
      "the idle blink, twice",
@@ -731,11 +618,8 @@ ROUTINES = [
 ]
 
 
-# --------------------------------------------------------------------------------------
-
-
 def frames_of(path, size):
-    """the capture, decoded whole and cropped to the arch - about 400 MB, which is fine"""
+    """the capture, decoded whole (about 400 MB) and cropped to `ARCH_CROP`"""
     import subprocess
     width, height = size
     pipe = subprocess.Popen(
@@ -753,12 +637,7 @@ def frames_of(path, size):
 
 
 def largest_blob(mask):
-    """the biggest connected run of the mask, 8-connected.
-
-    The largest and not the whole mask, because the stage the capture was taken on has other
-    things in the arch - a firefly, a shooting star - and a bounding box over both walks
-    Kirby's measured place about.
-    """
+    """the biggest 8-connected run of the mask, so other things in the arch do not move Kirby's box"""
     height, width = mask.shape
     runs = []
     for y in range(height):
@@ -807,11 +686,7 @@ def largest_blob(mask):
 
 
 def plate_of(arch):
-    """A picture of the arch with nobody in it: the median of the frames Kirby is out of.
-
-    Bootstrapped by colour, which is good enough to say *whether* he is there and not good
-    enough to say how wide he is.
-    """
+    """the arch with nobody in it: the median of the frames a colour key finds Kirby absent from"""
     present = []
     for frame in arch:
         pixels = frame.astype(int)
@@ -838,13 +713,8 @@ def denoise(mask, neighbours=6):
 
 
 def silhouettes(arch, plate):
-    """Kirby per frame, by **background subtraction** and not by colour.
-
-    A colour key - pink, and redder than it is green - drops his black outline and his shaded
-    side, so a box over it is a pixel or three narrow. Subtraction against a plate of the empty
-    arch keeps the whole of him, and the standing pose then measures fourteen native pixels on
-    2512 frames of 3005 instead of wandering between ten and fifteen.
-    """
+    """Kirby per frame, by subtraction against `plate`, which keeps the outline and shaded side
+    that a colour key drops"""
     plate = plate.astype(np.int16)
     masks, boxes = [], []
     for frame in arch:
@@ -862,25 +732,15 @@ def silhouettes(arch, plate):
 
 
 def read():
-    """Re-derive `SPRITES` from the capture and print what the free search settled on.
-
-    The search is the expensive half - every frame against the rip at every offset and every
-    size within a pixel of what the registration implies - and it is what the 0.94 in this
-    file's docstring is. It prints the vocabulary; turning that into `ROUTINES` is the
-    segmenting and the run-length encoding, which is written up in the docstring and is not
-    worth the code to re-run, since the capture is one file and does not change.
-    """
+    """Match every frame against the rip at every offset and near size, and print the rects
+    found, which is `SPRITES`.  `ROUTINES` is not re-derived by code."""
     from numpy.lib.stride_tricks import sliding_window_view as window
 
     sheet = Image.open(SHEET).convert("RGB")
     pixels = np.asarray(sheet, np.int16)
     solid = ~np.all(pixels == np.array(KEY), axis=-1)
     luma = np.where(solid, np.asarray(sheet.convert("L"), np.float32), 0.0)
-    # The sprite region. The rip's last band of poses starts on row 129, so this cannot stop
-    # at 130 - a fourteen row window over the row every standing frame lives in would hang four
-    # rows past the edge and be thrown out, which is how a re-derivation once landed on a
-    # different standing pose two thirds of the way up the sheet. What is off limits is the
-    # tSR credits, which are the right hand side of the last band and nothing else.
+    # the sprite region: past row 130 only on the left, since the last band's right is credits
     allowed = np.zeros_like(solid)
     allowed[0:130, :] = True
     allowed[130:176, 0:48] = True
@@ -958,13 +818,9 @@ def read():
 
 
 def mirrored_routines():
-    """The one-directional routines, reflected: `(name, kind, desc, frames)` per twin.
-
-    A frame's place is relative to the routine's opening frame, so the reflection has to keep
-    frame 0 at zero: a pose `w` wide drawn at `dx` reflects to `w0 - dx - w`, where `w0` is the
-    opening pose's width. The pose itself is flipped, and the flipped ones are appended to
-    `SPRITES` - which is why this returns the extra poses as well.
-    """
+    """The `MIRROR` routines reflected, as `(name, kind, desc, frames)`, and the poses to flip,
+    which are appended after `SPRITES`.  A pose `w` wide at `dx` reflects to `w0 - dx - w`,
+    keeping the opening frame (`w0` wide) at zero."""
     extra = []          # indices into SPRITES to flip, in the order they are appended
     out = []
     for name, kind, desc, frames in [(n, KINDS[n], d, f) for n, _, d, f in ROUTINES]:
@@ -986,13 +842,8 @@ def mirrored_routines():
 
 
 def cut(out_dir):
-    """Write `kirby.png`: every sprite of `SPRITES` and the flipped ones the mirrored routines
-    need, keyed, on a readable grid.
-
-    A grid and not a strip, because this art is addressed by *rect* rather than by counting
-    frame widths from a strip's start - the frames are not one size, so counting cannot work -
-    and a grid is the layout a person can check against the rip.
-    """
+    """Write `kirby.png`: every sprite of `SPRITES` and the flipped ones, keyed, on a grid,
+    since poses of different sizes are addressed by rect."""
     sheet = Image.open(SHEET).convert("RGBA")
     pixels = np.array(sheet)
     key = np.all(pixels[:, :, :3] == np.array(KEY), axis=-1)
@@ -1033,19 +884,14 @@ def rust(rects):
         return max(0, -left), ARCH_WIDTH - right
 
     def glide(frames):
-        """When the character may be translated into position: the first stretch he is off the
-        ground for, so a routine that starts by hopping is walked into **in the air**.
-
-        Sliding along the floor to get somewhere is the one thing that reads as a glitch, and
-        `ricochet` opens by lying down for two thirds of a second, which is exactly where a
-        translation from tick zero would land.
-        """
+        """When the character may be translated into position: his first stretch off the
+        ground, so he never slides along the floor."""
         tick = 0
         for pose, ticks, (_, dy) in frames:
             if pose is not None and dy < -2:
                 return tick, ticks
             tick += ticks
-        # never leaves the ground: walk it in over the opening frame, which is what walking is
+        # never leaves the ground: walk it in over the opening frame
         return 0, frames[0][1]
 
     reach = {}
@@ -1054,31 +900,21 @@ def rust(rects):
     top = max(reach.values()) or 1
 
     out = []
-    out.append("/// Every pose, as its rect in `kirby.png`. This script cuts the sheet and")
-    out.append("/// prints the table, so the geometry is derived from the art rather than")
-    out.append("/// typed out twice - the same bargain `mugshots.py` makes for the genesis cast.")
-    out.append("///")
-    out.append("/// The last few are **flipped copies**, for the routines the rip only drew one")
-    out.append("/// way round. They are the one piece of derived art here.")
+    out.append("/// Every pose, as its rect in `kirby.png`. The last few are flipped copies for")
+    out.append("/// the routines the rip only drew one way round.")
     out.append("const POSES: &[(i32, i32, u32, u32)] = &[")
     for index, (x, y, w, h) in enumerate(rects):
         out.append("    (%3d, %3d, %2d, %2d), // %d" % (x, y, w, h, index))
     out.append("];")
     out.append("")
-    out.append("/// How long Kirby stands between routines, in 60 Hz ticks.")
-    out.append("///")
-    out.append("/// Measured over the twenty seven gaps the capture holds: the median is exactly")
-    out.append("/// two seconds and they run from 0.93 to 2.30, so this is the shape of it and")
-    out.append("/// not the spread.")
+    out.append("/// How long Kirby stands between routines, the median gap in the capture.")
     out.append("const REST: Duration = Duration::from_millis(%d);" % (REST * 1000 // 60))
     out.append("")
     out.append("/// How much a dealing varies a routine's pace, either way.")
     out.append("const SPEED_SPREAD: f64 = %s;" % SPEED_SPREAD)
     out.append("")
-    out.append("/// Whether a routine he is out of position for may be walked into.")
-    out.append("///")
-    out.append("/// Always: the narrow windows would hardly ever be seen otherwise. Where it")
-    out.append("/// happens the translation rides the routine's own first hop.")
+    out.append("/// Whether a routine he is out of position for may be walked into, riding the")
+    out.append("/// routine's first hop.")
     out.append("const APPROACH: bool = %s;" % APPROACH)
     out.append("")
 
@@ -1097,15 +933,12 @@ def rust(rects):
         out.append("];")
         out.append("")
 
-    # ... and the derived one: the flop with its own recovery cut off and the last pose held
+    # the collapse: the flop with its recovery cut off and the last pose held
     flop = dict((n, f) for n, _, _, f in every)[DEFEAT_FROM]
     collapse = list(flop[:-1])
     collapse[-1] = (collapse[-1][0], 60 * 60, collapse[-1][2])
-    out.append("/// The flop, with its own recovery cut off and the last pose held: a buried")
-    out.append("/// player's Kirby stays down rather than picking himself up every two seconds.")
-    out.append("///")
-    out.append("/// The one routine here that is **derived** and not measured - every frame is")
-    out.append("/// the capture's, but the game never showed a Kirby who had lost.")
+    out.append("/// The defeat routine: the flop with its recovery cut and the last pose held,")
+    out.append("/// so a buried player's Kirby stays down.")
     out.append("const COLLAPSE: Routine = &[")
     for pose, ticks, (dx, dy) in collapse:
         at = "None" if pose is None else "Some(%d)" % pose
@@ -1114,17 +947,10 @@ def rust(rects):
     out.append("];")
     out.append("")
 
-    out.append("/// Everything he may be dealt: one entry a **kind**, each with the ways round")
-    out.append("/// it can be played.")
+    out.append("/// Everything he may be dealt: one entry a kind, each with the ways round it")
+    out.append("/// can be played, the direction chosen from where he stands.")
     out.append("///")
-    out.append("/// The bag deals a *kind* and the **direction is chosen from where he is**, so")
-    out.append("/// a Kirby against the right post walks left rather than sliding left to walk")
-    out.append("/// back. `jump`, `spin` and `tumble` have both ways in the game's own art; the")
-    out.append("/// four that travel and were only recorded one way have a mirrored twin.")
-    out.append("///")
-    out.append("/// The intensity is **vertical reach**, scaled so the biggest is one: a blink")
-    out.append("/// and a spin are nothing much, a jump is something, and climbing clean out of")
-    out.append("/// the arch is the most he does. It decides the order a bag comes out in.")
+    out.append("/// The intensity is vertical reach scaled so the biggest is one, and orders the bag.")
     out.append("const CHOICES: &[RoutineChoice] = &[")
     kinds = []
     for name, kind, _, _ in every:
@@ -1149,10 +975,7 @@ def rust(rects):
     out.append("")
     blink = dict((n, f) for n, _, _, f in every)[FILLER]
     low, high = window(blink)
-    out.append("/// Played *between* routines and not as one of them, half the time.")
-    out.append("///")
-    out.append("/// The blink is a tic. Dealt like a routine it is a fraction of what he does")
-    out.append("/// and reads as a loop; between them it reads as a character standing there.")
+    out.append("/// Played between routines, half the time, rather than dealt as one.")
     out.append("const FILLER: RoutineWay = RoutineWay {")
     out.append("    frames: %s," % ident(FILLER))
     out.append("    origins: (%d, %d)," % (low, high))

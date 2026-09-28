@@ -1,36 +1,12 @@
 #!/usr/bin/env python3
-"""Cut the arcade theme's sound effects out of the PlayStation disc's own extractions.
+"""Cut the arcade theme's effects from the PlayStation disc's WAVs, resampled to the mixer's 44100.
 
     python3 rustle-fighter/art/sfx.py
 
-The effects are the one part of this theme that is **not** arcade: Alex's drop carries thirteen
-zips of plain WAVs pulled from the PlayStation disc's `data/*.emi` containers, and no arcade
-effect rip at all. That is the right way round anyway - the effects are the half tied to
-gameplay events, and the PlayStation port is the ruleset this game reproduces.
-
-**How each slot was chosen, since nobody here can listen to them.** The set was measured rather
-than auditioned: length, spectral centroid, spectral flatness, and the dominant pitch of a
-window in the middle of each file. Two families fall straight out of those numbers:
-
-* `00019`, `00020`, `00021` are three sounds of the same length (0.50-0.52s) and the same
-  shape whose pitch **climbs** - 2068, 3108, 3275 Hz. That is a chain-step set, and it is what
-  the four clear classes are built on, with `00023` (1.71s, and much the longest of the
-  family) as the big break at the top.
-* `00001`, `00003`, `00000`, `00022` are the four shortest files in the set (0.20-0.34s) and
-  the only ones flat enough to be clicks rather than tones, which is what a move, a rotate, a
-  lock and a settle are.
-
-The rest are placed by length and are **provisional**: the fanfares are the three longest
-files and go to victory, game over and the speed step. Anyone who can play them should check
-this table first - it is the least certain thing in the theme.
-
-**Resampled to 44100 Hz**, which the engine's mixer requires: the disc's own effects are
-11025 and 22050 Hz and are rejected outright at their native rate.
-
-Levelled to the house baseline: effects within about four decibels of the music's -22 dBFS
-RMS, nothing over -0.5 dBFS peak. **Matched on RMS with the peak only as a cap**, never slot by
-slot on peaks - two effects that both peak at -0.5 are ten decibels apart if one is a click and
-the other a chord, which is the mistake `puyo-rusto/art/retro_audio.py` records making.
+Slots were chosen by measurement, not by ear. `00019`-`00021` climb in pitch at one length, so
+they are chain pops 1-3, with `00023`, the longest of that family, as pop 4; the four shortest,
+flattest files are the clicks; the rest are placed by length and are provisional. Levels match
+RMS with the peak only as a cap.
 """
 
 import math
@@ -44,21 +20,18 @@ RIPS = os.path.expanduser("~/Downloads/Super Puzzle Fighter Art/sfx")
 ZIP = "PlayStation - Super Puzzle Fighter II Turbo - Miscellaneous - Sound Effects.zip"
 OUT = os.path.join(os.path.dirname(__file__), "..", "src", "theme", "arcade")
 
-# effects sit here, which is within four decibels of the music's -22
+# within four decibels of the music's -22
 TARGET_RMS_DB = -20.0
 PEAK_CEILING_DB = -0.5
 
-# the rate the engine's mixer runs at; anything else is refused when a theme is built
 MIXER_RATE = 44100
 
 SLOTS = {
-    # the four short clicks, in ascending length
-    "move": "SE_COMN.EMI_00001",       # 0.20s, the shortest and the flattest
-    "rotate": "SE_COMN.EMI_00003",     # 0.25s
-    "settle": "SE_COMN.EMI_00022",     # 0.33s
-    "lock": "SE_COMN.EMI_00000",       # 0.34s
-    "hard-drop": "SE_COMN.EMI_00002",  # 0.47s
-    # the chain, which climbs: 2068, 3108, 3275 Hz, and then the long one
+    "move": "SE_COMN.EMI_00001",
+    "rotate": "SE_COMN.EMI_00003",
+    "settle": "SE_COMN.EMI_00022",
+    "lock": "SE_COMN.EMI_00000",
+    "hard-drop": "SE_COMN.EMI_00002",
     "pop-1": "SE_COMN.EMI_00019",
     "pop-2": "SE_COMN.EMI_00020",
     "pop-3": "SE_COMN.EMI_00021",

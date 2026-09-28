@@ -63,11 +63,11 @@ pub struct ModernThemeOptions {
     pub columns: u32,
     pub rows: u32,
     pub visible_rows: u32,
-    /// the cell pitch to build at. The board is drawn at its built size or smaller, so pass
-    /// the largest block the window can hold: see [`crate::scale::fit`].
+    /// the cell pitch to build at; pass the largest block the window can hold, see
+    /// [`crate::scale::fit`]
     pub block_size: u32,
-    /// the topmost visible rows, kept above the skyline for spawning pieces. Like the gap
-    /// above the board they may fall off the top of the window rather than cost a whole step.
+    /// the topmost visible rows, kept above the skyline for spawning pieces; they may fall off the
+    /// top of the window rather than cost a whole step
     pub top_buffer_rows: u32,
     /// HUD rows under the side column, top to bottom, with the largest value each can show
     pub metrics: Vec<(MetricKind, u32)>,
@@ -79,13 +79,11 @@ pub struct ModernThemeOptions {
     pub spawn_cell: CellPoint,
     pub cell_idle_type: FrameAnimationType,
     pub queue_max: u32,
-    /// how many queued attacks the strip above the board has room for. 0 draws no strip,
-    /// which is every game that takes its hits the moment they arrive.
+    /// how many queued attacks the tray has room for; 0 draws no tray
     pub pending_max: u32,
     pub particle_color: Color,
     /// what this theme radiates into the background particle field, see
-    /// [`crate::particles::field`]. `particle_color` stays the fallback, so the foreground
-    /// burst effects are unaffected.
+    /// [`crate::particles::field`]; `particle_color` still drives the foreground bursts
     pub particle_palette: Vec<Color>,
     pub clear_particles: ClearParticles,
     pub destroy_style: Option<DestroyStyle>,
@@ -99,9 +97,7 @@ pub struct ModernThemeOptions {
     pub attack_ball: Option<AttackBallData>,
     /// how hard the board shakes when nuisance lands, if the theme wants it to at all
     pub nuisance_rumble: Option<(f64, Duration)>,
-    /// art for the captions a clear says over the board, when the theme has some. Without it
-    /// they are written in the engine's own face, which is what every theme did before one
-    /// had any - see [`PopupSpriteData`].
+    /// art for the captions a clear says over the board; without it they use the engine's own face
     pub popup_sprites: Option<PopupSpriteData>,
 }
 
@@ -114,8 +110,8 @@ pub fn modern_theme<'a>(
 
     let board_top_buffer = (BOARD_TOP_BUFFER_PCT * window_height as f64).round() as u32;
     let block_size = options.block_size as f64;
-    // a retro theme's board frame starts at the skyline with the spawning rows floating
-    // above it; the queue and hold sit alongside. Match that.
+    // a retro theme's board frame starts at the skyline with the spawning rows floating above it
+    // and the queue and hold alongside; match that
     let above_skyline = options.top_buffer_rows * options.block_size;
     let skyline = board_top_buffer + above_skyline;
     let border_weight = (block_size * BOARD_BORDER_PCT_OF_BLOCK).round() as u32;
@@ -153,10 +149,8 @@ pub fn modern_theme<'a>(
         font_size,
         Color::WHITE,
     )?;
-    // The cards are drawn across the board, so they have to fit a board of any width: at a
-    // fixed size "game over" is a little narrower than a ten column board and half as wide
-    // again as a six column one. Shrink to fit and never grow, so a board wide enough for the
-    // full size gets exactly the card it always got.
+    // the cards are drawn across the board, so shrink them to fit a narrow board and never grow
+    // them
     let mut match_end_size = font_size * 3;
     let mut font_match_end = retro_font(canvas, texture_creator, match_end_size)?;
     let card_width = geometry.width() * 15 / 16;
@@ -234,7 +228,7 @@ pub fn modern_theme<'a>(
                 let height = sizes.iter().map(|(_, h)| *h).max().unwrap();
                 let point =
                     |kind_height: u32| Point::new(side_x, side_y + (height - kind_height) as i32);
-                // HACK the hand point is empirical... how else would we find it?!
+                // the hand point is empirical
                 let hand_point = Point::new(side_x, side_y + 10 * height as i32 / 19);
                 let layout = MascotLayout {
                     hand_point,
@@ -374,16 +368,9 @@ pub fn modern_theme<'a>(
         clear: options.clear_particles,
     };
 
-    // The tray of attacks still to land runs **down the left of the board**, a cell to an
-    // icon, hanging from the skyline the way what it stands for hangs over the player.
-    //
-    // It was a row in the gap above the board, which is where the retro themes take it from
-    // - and there it was under the spawning piece, which is drawn over it and hides the one
-    // part of the HUD a player has to read while looking at their own skyline. The left
-    // column is otherwise empty on the only game with a tray, so it costs the layout
-    // nothing and gives the gap above the board back to the slack a short window may crop.
-    // A game with a hold box *and* a tray would have both in that column and want another
-    // arrangement; none has one today.
+    // the tray of attacks still to land runs down the left of the board from the skyline, a cell to
+    // an icon, where the spawning piece cannot cover it; a game with both a hold box and a tray
+    // would need another arrangement
     let pending = (options.pending_max > 0).then(|| PendingLayout {
         point: Point::new(
             board_bg_snip.left() - vertical_gutter as i32 - block_size as i32,
@@ -409,11 +396,8 @@ pub fn modern_theme<'a>(
             },
         )
     } else {
-        // a column of slots beside the board, the next piece largest. The smaller slots are
-        // centred on the big one rather than sharing its left edge: a piece is drawn in the
-        // middle of its slot, so left aligned slots of two widths put the pieces on two
-        // different axes - which reads as a ragged column, and is glaring in a game whose
-        // pieces are all one column wide
+        // a column of slots beside the board, the next piece largest; the smaller slots are centred
+        // on the big one so the pieces share one axis
         let mut slots = vec![Rect::new(side_x, side_y, big_slot_size, big_slot_size)];
         let slot_x = side_x + (big_slot_size - slot_size) as i32 / 2;
         let mut y = side_y + big_slot_size as i32 + vertical_gutter as i32;
@@ -437,8 +421,7 @@ pub fn modern_theme<'a>(
     if let Some(data) = options.popup_sprites.as_ref() {
         popup_font = popup_font.with_sprites(texture_creator, data, block_size)?;
     }
-    // a theme that cut no ball art falls back to the popped cell's own sprite, which every
-    // theme has - the same rule the pending tray follows
+    // a theme that cut no ball art falls back to the popped cell's own sprite
     let attack_ball = match options.attack_ball {
         Some(data) => Some(AttackBallSprites::new(
             data.sheet.sprite_sheet(texture_creator)?,
@@ -464,7 +447,6 @@ pub fn modern_theme<'a>(
         // the particle theme's board has a field behind it, not a scene to lift off
         shadow: None,
         mascot: mascot_layout,
-        // no game has asked for a cast on a particle theme yet; the seam is the same one
         characters: None,
         animation_meta,
         match_end: Some(MatchEndSprites {
@@ -483,8 +465,8 @@ pub fn modern_theme<'a>(
         particle_palette: options.particle_palette,
         family: ThemeFamily::Particle,
         scale_mode: ScaleMode::Native,
-        // nothing is ever drawn in the gap above the board, unlike the rows below it: the
-        // whole of it is slack a short window may crop
+        // nothing is ever drawn in the gap above the board, so all of it is slack a short window
+        // may crop
         top_slack,
     })
 }

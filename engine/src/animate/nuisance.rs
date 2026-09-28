@@ -1,34 +1,14 @@
-//! An attack falling in from over the top of the board.
-//!
-//! Garbage that waited in the tray does not appear where it lands: it drops in from above the
-//! board, fast, and the game is held while it does. The rules have already put every cell
-//! where it comes to rest - this is only where each one is *drawn* on the way there - so
-//! nothing about the game is waiting on the answer, and a headless run never plays it at all.
-//!
-//! A column falls as one piece, keeping the spacing it lands in, so five rows read as a slab
-//! of garbage rather than as a shower; and the bottom of each column starts one row above the
-//! first visible one, so nothing is ever seen appearing in mid-board. A column landing on an
-//! empty well takes longer to arrive than one landing on a full stack, so the board fills
-//! raggedly from the top - which is what falling from a common height means.
-//!
-//! The fall itself is under **gravity** ([`NuisanceFall`]): it starts slowly, accelerates,
-//! and each column is given a small head start of its own so the level row it starts as
-//! breaks up on the way down. That head start is a hash of the column index rather than a
-//! random number - the same board falls the same way twice, it can be asserted about, and
-//! there is no randomness anywhere on the render path.
-//!
-//! Every cell reports itself as it **lands**, so a theme that squashes a landing cell
-//! ([`crate::animate::bounce`]) squashes each refugee bean as it arrives, staggered by
-//! column. That is the rumble Mean Bean Machine actually has: nothing shakes, but the whole
-//! bottom of the board bounces at once.
+//! Garbage that waited in the tray falling in from over the top of the board, under gravity, while
+//! the game is held; each cell reports itself as it lands so a theme can squash it. Fed by a game's
+//! [`crate::render::GameRender::attack_fall`]; the rules have already placed every cell.
 
 use crate::game::geometry::Point as CellPoint;
 use crate::game::{CellId, PlacedCell};
 use std::collections::HashMap;
 use std::time::Duration;
 
-/// How an attack falls in: a shove to start it, gravity to build it up, and a small
-/// per-column stagger so the row it starts as does not stay a row.
+/// How an attack falls in: a shove to start it, gravity to build it up, and a small per-column
+/// stagger so the row it starts as does not stay a row.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NuisanceFall {
     /// rows a second at the moment it appears
@@ -42,7 +22,7 @@ pub struct NuisanceFall {
 }
 
 impl NuisanceFall {
-    /// a fall at one constant speed, which is what every theme had before gravity
+    /// a fall at one constant speed
     pub fn at(rows_per_second: f64) -> Self {
         Self {
             initial_speed: rows_per_second,
@@ -68,12 +48,8 @@ impl NuisanceFall {
         }
     }
 
-    /// How long a column is held back before it starts to fall.
-    ///
-    /// The golden ratio's fractional part, which spreads consecutive integers about as evenly
-    /// over 0..1 as anything can: neighbouring columns are given very different offsets, so a
-    /// level row visibly breaks up rather than tilting. It is a hash and not a random number,
-    /// so the same board falls the same way every time and a test can say so.
+    /// How long a column is held back before it starts to fall: the golden ratio walk, a hash so
+    /// the same board falls the same way and neighbouring columns differ.
     fn delay(&self, column: i32) -> f64 {
         const GOLDEN: f64 = 0.618_033_988_749_895;
         self.column_jitter.as_secs_f64() * ((column as f64 * GOLDEN).fract().abs())
@@ -87,7 +63,7 @@ impl NuisanceFall {
         if self.acceleration <= 0.0 {
             return self.initial_speed * seconds;
         }
-        // ... until it reaches the speed limit, after which it is a straight line again
+        // ... until it reaches the speed limit, after which it is linear
         let to_limit = (self.max_speed - self.initial_speed).max(0.0) / self.acceleration;
         if seconds <= to_limit {
             self.initial_speed * seconds + 0.5 * self.acceleration * seconds * seconds
@@ -127,11 +103,8 @@ impl State {
             .is_some_and(|(_, distance)| self.fallen(point.x) < *distance)
     }
 
-    /// every cell still in the air, with how far above its landing place to draw it, in rows.
-    ///
-    /// Negative, the way every other animation's `offset_y` is: up the board. Two of them can
-    /// never overlap - a column keeps its spacing and columns do not move sideways - so the
-    /// order they come out in does not matter.
+    /// every cell still in the air, with how far above its landing place to draw it, in rows;
+    /// negative is up the board, like every other `offset_y`
     pub fn frames(&self) -> Vec<(CellPoint, CellId, f64)> {
         self.cells
             .iter()
@@ -169,10 +142,7 @@ impl NuisanceAnimation {
         Self::default()
     }
 
-    /// Step the fall, reporting every cell that came to rest this frame.
-    ///
-    /// The caller passes those to whatever bounces a landing cell, which is how a slab of
-    /// nuisance arrives one column at a time rather than all at once.
+    /// Step the fall, returning every cell that came to rest this frame for the caller to bounce.
     pub fn update(&mut self, delta: Duration) -> Vec<PlacedCell> {
         let Some(state) = self.state.as_mut() else {
             return vec![];
@@ -191,12 +161,10 @@ impl NuisanceAnimation {
     }
 
     /// Start `cells` falling in, `hidden_rows` being how many rows sit above the visible board.
-    ///
-    /// The distance is worked out per column off its *lowest* cell, which is the one that
-    /// stops one row above the board's first visible row; everything above it in that column
-    /// starts higher again and is clipped by the board until it arrives.
+    /// Each column's lowest cell starts one row above the first visible row, and the column keeps
+    /// its spacing.
     pub fn drop_in(&mut self, cells: &[PlacedCell], hidden_rows: u32, fall: NuisanceFall) {
-        // a drop always replaces whatever was in the air: only one of them can be landing
+        // a drop replaces whatever was in the air
         self.state = None;
         if cells.is_empty() || fall.initial_speed <= 0.0 {
             return;
@@ -234,7 +202,7 @@ mod tests {
     use crate::game::CellId;
 
     const ID: CellId = CellId(1);
-    /// one row a second at a constant speed, so a duration reads as a distance
+    /// one row a second at constant speed, so a duration reads as a distance
     const SLOW: NuisanceFall = NuisanceFall {
         initial_speed: 1.0,
         acceleration: 0.0,
@@ -253,8 +221,8 @@ mod tests {
         assert!(animation.state().is_none());
     }
 
-    /// the lowest cell of a column stops one row above the first visible one, so a well that
-    /// is empty to the floor is the longest fall on the board
+    /// An empty well is the longest fall: the lowest cell starts one row above the first visible
+    /// one.
     #[test]
     fn a_column_falls_the_depth_of_where_its_lowest_cell_lands() {
         let mut animation = NuisanceAnimation::new();
@@ -269,8 +237,7 @@ mod tests {
         );
     }
 
-    /// a slab keeps its shape: every cell of a column shares the fall, so none of them is ever
-    /// seen appearing in mid-board
+    /// A column keeps its shape as it falls.
     #[test]
     fn a_column_falls_as_one_piece() {
         let mut animation = NuisanceAnimation::new();
@@ -288,7 +255,7 @@ mod tests {
         );
     }
 
-    /// a puyo landing on the row below the top has nowhere to fall from and so does not
+    /// A cell landing on the top rows has nowhere to fall from.
     #[test]
     fn a_cell_landing_at_the_top_of_the_board_does_not_animate() {
         let mut animation = NuisanceAnimation::new();
@@ -317,8 +284,7 @@ mod tests {
         assert_eq!(state.frames().len(), 1);
     }
 
-    /// it starts slowly and speeds up, which is what falling looks like and what a constant
-    /// speed never did
+    /// The fall starts slowly and speeds up.
     #[test]
     fn a_fall_under_gravity_accelerates() {
         let fall = NuisanceFall::accelerating(4.0, 20.0, 100.0);
@@ -331,7 +297,7 @@ mod tests {
         );
     }
 
-    /// ... and never past its limit, so a deep well is a fall rather than a teleport
+    /// ... and never passes its limit.
     #[test]
     fn a_fall_stops_speeding_up_at_its_limit() {
         let fall = NuisanceFall::accelerating(4.0, 100.0, 10.0);
@@ -342,8 +308,7 @@ mod tests {
         );
     }
 
-    /// the level row an attack starts as has to break up on the way down, or a slab lands
-    /// like a wall rather than like rain
+    /// Columns are staggered so the starting row breaks up.
     #[test]
     fn two_columns_falling_the_same_distance_land_at_different_times() {
         let mut animation = NuisanceAnimation::new();
@@ -363,8 +328,7 @@ mod tests {
         );
     }
 
-    /// ... but the same board falls the same way every time, because the stagger is a hash of
-    /// the column and not a random number
+    /// The same board falls the same way every time.
     #[test]
     fn the_stagger_is_the_same_every_time() {
         let fall = NuisanceFall::at(1.0).jittered_by(Duration::from_millis(60));

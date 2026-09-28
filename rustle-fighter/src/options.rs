@@ -1,14 +1,5 @@
-//! The match options Super Rustle Fighter offers on the main menu.
-//!
-//! Short, because this game has fewer dials than the other three: one theme, so nothing to
-//! pick between; **no ai yet**, so no vs-ai rows and no demos - see the plan's phase 3.
-//!
-//! **Character select is a menu row rather than a screen of its own**, which is the one shell
-//! question the plan left open (2026-09-07). A row is what the choice actually is - it changes
-//! one thing about the match, the way the difficulty does - and the arcade's select screen art
-//! is a screen for choosing an *opponent* as much as a fighter, which is a Street Puzzle mode
-//! thing and out of scope. If the fighter layer ever wants the portraits, the row can become
-//! the screen without moving the option.
+//! The match options Super Rustle Fighter offers on the main menu: no theme, ai or demo rows,
+//! and the fighter is a menu row rather than a select screen.
 
 use crate::game::counter::Fighter;
 use crate::game::random::{GameRandom, Seed};
@@ -18,8 +9,7 @@ use engine::app::ThemeMode;
 use engine::menu::MenuItem;
 use std::str::FromStr;
 
-/// A stage here is a speed step rather than a level of its own, but the HUD row is the same
-/// `Level` every game shows, so the menu calls it what the other games call it.
+/// a stage is a speed step, named to match the HUD's `Level` row
 pub const STAGE_NOUN: &str = "level";
 
 const MODE: &str = "mode";
@@ -42,7 +32,6 @@ impl Options {
     }
 
     pub fn theme_mode(&self) -> ThemeMode {
-        // one theme, so there is nothing to run through and nothing to hold still
         ThemeMode::Fixed(self.config.themes.initial_index())
     }
 
@@ -51,7 +40,7 @@ impl Options {
         self.config.rules = MatchRules::default_for(players, false, MatchThemes::count());
     }
 
-    /// the title screen's players list, which here is only ever humans
+    /// the title screen's players list, humans only
     pub fn players_list(&self, max_players: u32) -> (Vec<String>, usize) {
         let players: Vec<String> = (1..=max_players).map(|i| i.to_string()).collect();
         let current = (self.config.players as usize).clamp(1, max_players as usize) - 1;
@@ -135,8 +124,7 @@ impl Options {
         }
     }
 
-    /// One game per player, all dealt from one seed - which is what makes a two player match
-    /// the same game twice rather than two games.
+    /// one game per player, all dealt from one seed
     pub fn games(&self, players: usize) -> Vec<Game> {
         let seed = Seed::random();
         (0..players)
@@ -156,8 +144,7 @@ impl Options {
 mod tests {
     use super::*;
 
-    /// every row the menu offers reads its own value back, which is what stops a dial that
-    /// silently does nothing
+    /// every menu row reads its own value back
     #[test]
     fn every_menu_row_round_trips() {
         let mut options = Options::default();
@@ -171,8 +158,7 @@ mod tests {
         assert_eq!(items.len(), 4, "mode, fighter, difficulty and level");
     }
 
-    /// **a theme sprint is not offered**, because there is one theme and it would be a one
-    /// stage sprint under another name
+    /// with one theme, no theme sprint is offered
     #[test]
     fn the_menu_offers_no_theme_sprint() {
         let modes = MatchRules::modes(MatchThemes::count());

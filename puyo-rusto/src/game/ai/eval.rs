@@ -1,15 +1,5 @@
-//! What a field is worth.
-//!
-//! Fifteen numbers, weighted and added up. The shape of it - and most of the terms - is
-//! ama's (`ai/search/beam/eval.cpp`, MIT), the strongest open Puyo Puyo Tsu ai; the
-//! measurements are written out here against this game's own board rather than its bitboard,
-//! and the two places they differ are noted where they happen.
-//!
-//! The single most important term is not on the board at all. [`quiet`] asks what chain the
-//! field is *holding* - how long it would run if one more puyo were dropped on it, where, and
-//! at what cost - and the best answer it finds is most of the score. Everything else is about
-//! keeping the field in a state where such an answer keeps existing: flat enough to build on,
-//! open over the spawn column, with its pairs and threes still joinable.
+//! What a field is worth: fifteen weighted terms, after ama's `ai/search/beam/eval.cpp` (MIT).
+//! The biggest is [`quiet`]'s answer to what chain the field is holding.
 
 use crate::game::ai::field::{Field, SPAWN_COLUMN, WIDTH};
 use crate::game::ai::quiet;
@@ -18,7 +8,7 @@ use crate::game::ai::quiet;
 /// weight and is written so that bigger is worse.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Weights {
-    /// how many steps the chain the field is holding would run to - the whole point
+    /// how many steps the chain the field is holding would run to
     pub chain: i32,
     /// how high up the column that would set it off stands
     pub trigger_height: i32,
@@ -50,8 +40,7 @@ pub struct Weights {
 }
 
 impl Weights {
-    /// The set to read first: it builds, it is not in a hurry, and it does not throw its
-    /// board away. Ama's `build`, carried over term for term.
+    /// Ama's `build`, term for term.
     pub const BUILD: Weights = Weights {
         chain: 1000,
         trigger_height: 289,
@@ -70,9 +59,7 @@ impl Weights {
         death: -1_000_000,
     };
 
-    /// Ama's `fast`: the same game played in less time. It cares much less about taking a
-    /// hit and much less about how tall the trigger stands, which is what a player chasing a
-    /// quick second chain looks like.
+    /// Ama's `fast`: less care about taking a hit and about how tall the trigger stands.
     pub const FAST: Weights = Weights {
         chain: 500,
         trigger_height: 77,
@@ -110,13 +97,8 @@ impl Weights {
         death: -1_000_000,
     };
 
-    /// A player who has learned that four in a row pops and nothing else. It reads the field
-    /// well enough not to stack itself into a wall, but it puts no value at all on a chain it
-    /// cannot see yet, which is the difference between clearing puyos and playing Puyo.
-    ///
-    /// This is roughly what Puyo VS's own cpu does (`Puyolib/AI.cpp`: take the biggest chain
-    /// on offer, and otherwise place at random), with the random half replaced by something
-    /// that at least keeps the board flat.
+    /// Pops four in a row and values no chain it cannot see yet, keeping the board flat. Puyo
+    /// VS's cpu (`Puyolib/AI.cpp`) with its random placement replaced.
     pub const GREEDY: Weights = Weights {
         chain: 0,
         trigger_height: 0,
@@ -137,11 +119,8 @@ impl Weights {
 }
 
 impl Weights {
-    /// Does anything this player thinks depend on the chain the field is holding?
-    ///
-    /// A row that answers no is not merely cheaper to run, it is playing a different game -
-    /// it can see what pops and not what *would* pop - and the quiescence search, which is
-    /// most of what an evaluation costs, is skipped outright for it.
+    /// Whether any weight depends on the chain the field is holding; if not, the quiescence
+    /// search is skipped.
     fn reads_potential(&self) -> bool {
         self.chain != 0 || self.trigger_height != 0 || self.key != 0 || self.chi != 0
     }
@@ -152,8 +131,7 @@ pub fn evaluate(field: &Field, w: &Weights) -> i32 {
     let heights = field.heights();
     let mut score = 0i32;
 
-    // the chain the field is holding, which is most of the answer. Only the best one counts:
-    // a field with two triggers is not twice the field, it is one chain with a spare
+    // only the best chain the field holds counts: a spare trigger does not double it
     let mut best: Option<i32> = None;
     quiet::search_if(w.reads_potential(), field, |trigger| {
         let (link_2, link_3) = trigger.remain.link_counts();
@@ -181,27 +159,19 @@ pub fn evaluate(field: &Field, w: &Weights) -> i32 {
     score
 }
 
-/// What the placement itself cost, as against the field it left behind.
-///
-/// Kept apart from [`evaluate`] because it is paid once and carried: a search several pairs
-/// deep is the sum of what every placement along the way cost, while the field is only ever
-/// the field as it stands now.
+/// What the placement itself cost. Kept apart from [`evaluate`] because a search sums it along
+/// the path while the field is scored as it stands.
 pub fn action(tear: u32, waste: u32, w: &Weights) -> i32 {
     tear as i32 * w.tear + waste as i32 * w.waste
 }
 
-/// How far a chain set off in `column` could still be stretched sideways.
-///
-/// A trigger with nothing but taller columns beside it is finished; one with a run of
-/// shorter columns to grow into is not. Counted twice over in each direction - once for
-/// columns no taller, and again for columns strictly shorter - so a step down counts for
-/// more than a step level. Ama's `get_chi`.
+/// How far a chain set off in `column` could still be stretched sideways, counting columns no
+/// taller and again columns strictly shorter so a step down weighs more. Ama's `get_chi`.
 fn chi(heights: &[u8; WIDTH], column: usize) -> i32 {
     let at = heights[column];
     let mut chi = 0;
     for pass in 0..2 {
-        // the second pass stops one column earlier: a column exactly level with the trigger
-        // is somewhere to grow, but it is not a step *down* into
+        // the second pass skips columns level with the trigger
         let strictly_shorter = pass == 1;
         for height in heights[column + 1..].iter() {
             if *height > at || (strictly_shorter && *height == at) {
@@ -219,11 +189,8 @@ fn chi(heights: &[u8; WIDTH], column: usize) -> i32 {
     chi
 }
 
-/// How far the field is from a shape that can be built on.
-///
-/// The ideal is a field that leans: three columns a little above the average on the left and
-/// three a little below on the right, which is the profile every staircase and every GTR is
-/// laid into. Measured as the total deviation from it, so it is a cost.
+/// Total deviation from the ideal leaning profile, three columns a little above average on the
+/// left and three below on the right, which every staircase and GTR is laid into.
 fn shape(heights: &[u8; WIDTH]) -> i32 {
     const IDEAL: [i32; WIDTH] = [1, 1, 1, -1, -1, -1];
     let average = heights.iter().map(|h| *h as i32).sum::<i32>() / WIDTH as i32;
@@ -232,8 +199,7 @@ fn shape(heights: &[u8; WIDTH]) -> i32 {
         .sum()
 }
 
-/// How deep the field's wells are: a column below both its neighbours can only be filled
-/// from directly above, and a deep one can only be filled by a pair standing on end.
+/// How deep the field's wells are; a deep one can only be filled by a pair on end.
 fn well(heights: &[u8; WIDTH]) -> i32 {
     let mut well = 0;
     for x in 0..WIDTH {
@@ -267,12 +233,8 @@ fn bump(heights: &[u8; WIDTH]) -> i32 {
     bump
 }
 
-/// How much of the ghost row has been walled off from the spawn column.
-///
-/// A pair moves sideways with one half in the ghost row, so a puyo resting up there is a
-/// door closed: everything past it can no longer be reached even if the column under it is
-/// empty. Counted as the cells of that row no longer reachable, which is ama's `waste_14`
-/// against the row above its ghost row - the same row, on a board with one fewer.
+/// Ghost row cells walled off from the spawn column, since a pair moves sideways with one half
+/// in the ghost row. Ama's `waste_14`.
 fn walled_off_ghost_cells(row: u8) -> i32 {
     let mut reachable = 1;
     for x in SPAWN_COLUMN + 1..WIDTH {
@@ -290,10 +252,7 @@ fn walled_off_ghost_cells(row: u8) -> i32 {
     WIDTH as i32 - reachable
 }
 
-/// How much lower the spawn column stands than the taller of the two sides.
-///
-/// Building over the middle is how a field kills itself: the death square is there, and so is
-/// the only way across. Ama measures it as the taller wing against the middle column.
+/// How much lower the spawn column stands than the taller side, where the death square is.
 fn side_bias(heights: &[u8; WIDTH]) -> i32 {
     let left: i32 = heights[..SPAWN_COLUMN].iter().map(|h| *h as i32).sum();
     let right: i32 = heights[SPAWN_COLUMN + 1..].iter().map(|h| *h as i32).sum();
@@ -309,7 +268,7 @@ mod tests {
         Field::from_board(&board(rows))
     }
 
-    /// the whole point: a field holding a chain is worth more than the same puyos in a heap
+    /// a field holding a chain beats the same puyos in a heap
     #[test]
     fn a_field_holding_a_chain_beats_a_field_that_is_only_tidy() {
         let holding = field(&[".g....", "rg....", "rrgg.."]);
@@ -323,9 +282,7 @@ mod tests {
         );
     }
 
-    /// the chain weight is the quiescence search's, and a field holding nothing is not
-    /// touched by it however heavily it is set - which is why the greedy row, whose chain
-    /// weight is zero, plays a different game rather than a quieter one
+    /// a field holding no chain is untouched by the chain weight however heavy
     #[test]
     fn the_chain_weight_only_moves_a_field_that_is_holding_one() {
         let holding = field(&[".g....", "rg....", "rrgg.."]);
@@ -358,7 +315,7 @@ mod tests {
         assert_eq!(well(&[4, 4, 4, 4, 4, 1]), 3);
     }
 
-    /// a puyo in the ghost row is a door closed, and how much it shuts off depends where it is
+    /// how much a ghost row puyo shuts off depends where it is
     #[test]
     fn a_ghost_row_puyo_walls_off_everything_past_it() {
         assert_eq!(walled_off_ghost_cells(0b000000), 0);
@@ -367,8 +324,7 @@ mod tests {
         assert_eq!(walled_off_ghost_cells(0b000001), 1, "the far left column");
     }
 
-    /// the deviation is from the *ideal* profile, not from flat: a field that leans the way
-    /// a chain is built scores better than one that does not lean at all
+    /// a field leaning the way a chain is built beats a flat one
     #[test]
     fn the_ideal_shape_leans() {
         assert!(shape(&[5, 5, 5, 3, 3, 3]) < shape(&[4, 4, 4, 4, 4, 4]));

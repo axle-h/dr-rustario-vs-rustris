@@ -1,15 +1,9 @@
-//! Plays a built-in neural network model headless on a fixed seed for as long as it can,
-//! printing progress as it goes.
+//! Plays a built-in model headless on a fixed seed for as long as it can, printing progress:
+//! `dr-rustario-vs-rustris ga play <seed> [line cap] [report every n lines] [survival|tetris]`.
 //!
-//! `dr-rustario-vs-rustris ga play <seed> [line cap] [report every n lines] [survival|tetris]`
-//!
-//! Mirrors [HeadlessGame](super::headless_game): a 60 Hz step with the agent pressing keys as
-//! fast as it likes, and a simulated 750 ms line clear animation.
-//!
-//! The game caps its own counters ([MAX_LINES](crate::game::MAX_LINES) and
-//! [MAX_SCORE](crate::game::MAX_SCORE)) so lines are counted here from the clear events, and the
-//! score is banked and reset whenever it gets close to the cap. Neither counter feeds back into
-//! the rules (level comes from `stage_lines`).
+//! The game saturates [MAX_LINES](crate::game::MAX_LINES) and
+//! [MAX_SCORE](crate::game::MAX_SCORE), so lines are counted from clear events and the score is
+//! banked before it reaches the cap.
 
 use crate::game::ai::action_evaluator::ActionEvaluator;
 use crate::game::ai::agent::AiAgent;

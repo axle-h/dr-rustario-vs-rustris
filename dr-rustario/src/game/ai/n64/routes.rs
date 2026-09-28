@@ -1,18 +1,11 @@
-//! How much room the pill has to move, which is the one thing the situation classifier asks
-//! about the bottle that is not about colours.
-//!
-//! `aifPlaceSearch` lists every resting place in the bottle and `aifMoveCheck` walks back up
-//! from each one to where the pill comes in, counting the cells on the way. The average of
-//! those counts over the places it can actually reach is `aiRootP`: a bottle with room to play
-//! in gives long routes, and a bottle filled to the neck gives short ones. Nothing else here
-//! feeds the score - the placements the agent really chooses between come from the bottle
-//! itself, which knows about wall kicks - so this only has to be faithful enough to tell a
-//! roomy bottle from a desperate one.
+//! How much room the pill has to move (`aiRootP`), for the situation classifier: the average
+//! route length from each reachable resting place back to the spawn. Only the classifier reads
+//! it, so it need only tell a roomy bottle from a desperate one.
 
 use crate::game::ai::n64::field::{Field, COLS, ROWS};
 
-/// the padded grid the original searches: a wall column either side and a wall row underneath,
-/// so the walk never has to check its bounds. Original name: `aiRecurData`
+/// the grid padded with walls either side and below, so the walk never checks bounds;
+/// original name: `aiRecurData`
 const P_ROWS: usize = ROWS + 1;
 const P_COLS: usize = COLS + 2;
 
@@ -33,7 +26,7 @@ struct Walk {
 }
 
 /// The average number of cells on the route to a resting place, over the places that have one.
-/// Original name: `aiRootP`
+/// original name: `aiRootP`
 pub fn average_route(field: &Field) -> f32 {
     let base = Walk::of(field);
     let mut routes = 0u32;
@@ -83,7 +76,7 @@ impl Walk {
     }
 
     /// every resting place in the bottle, as (upright, column, row) in padded coordinates.
-    /// Original name: `aifPlaceSearch`
+    /// original name: `aifPlaceSearch`
     fn places(&self) -> Vec<(bool, usize, usize)> {
         let mut places = vec![];
         for row in 1..P_ROWS - 1 {
@@ -110,7 +103,7 @@ impl Walk {
         places
     }
 
-    /// Original name: `aifTRecur`, with the pill upright and (col, row) its lower half
+    /// original name: `aifTRecur`, with the pill upright and (col, row) its lower half
     fn upright(&mut self, col: usize, row: usize) {
         self.co[row][col] = VISITED;
 
@@ -143,7 +136,7 @@ impl Walk {
         }
     }
 
-    /// Original name: `aifYRecur`, with the pill flat and (col, row) its left half
+    /// original name: `aifYRecur`, with the pill flat and (col, row) its left half
     fn flat(&mut self, col: usize, row: usize) {
         self.co[row][col] = VISITED;
 

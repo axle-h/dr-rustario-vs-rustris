@@ -27,14 +27,12 @@ impl<T> KeyPacer<T> {
         self.pending.extend(inputs);
     }
 
-    /// whether the next key is due
     fn is_ready(&self) -> bool {
         self.since_last_key >= self.key_delay
     }
 
-    /// Give back the delay the last [`Self::next_key`] charged, for a plan that carries
-    /// **waypoints as well as keys**: a step that presses nothing costs the agent's hands
-    /// nothing, so whatever follows it is due straight away rather than a key delay later.
+    /// Refund the delay the last [`Self::next_key`] charged: a waypoint presses nothing, so what
+    /// follows it is due at once.
     pub fn refund(&mut self) {
         self.since_last_key = self.key_delay;
     }

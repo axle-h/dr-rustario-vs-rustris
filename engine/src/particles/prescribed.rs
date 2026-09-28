@@ -19,11 +19,9 @@ use std::time::Duration;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PlayerParticleTarget {
-    /// whole cells
     Cells(Vec<CellPoint>),
     /// the opaque pixels of these cells, so particles take their shape
     MaskedCells(Vec<PlacedCell>),
-    /// whole rows of the board
     Rows(Vec<u32>),
     Board,
 }
@@ -193,7 +191,7 @@ pub fn prescribed_fireworks(window: Rect, scale: &Scale) -> Box<dyn ParticleSour
 }
 
 /// What one theme contributes to the piece race: `theme` indexes the particle renderer's
-/// themes, `scale` shrinks its sprites to match the other themes.
+/// themes, and `scale` matches its sprites to the others.
 #[derive(Clone, Debug)]
 pub struct RaceTheme {
     pub theme: usize,
@@ -203,7 +201,6 @@ pub struct RaceTheme {
     pub scale: f64,
 }
 
-/// Pieces, animated cells and mascots from every theme drift across the window.
 pub fn prescribed_piece_race(
     window: Rect,
     scale: &Scale,

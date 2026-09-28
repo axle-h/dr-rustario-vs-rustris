@@ -31,10 +31,7 @@ pub const BIG_CLEAR_PUYOS: u32 = 8;
 /// the chain length that earns the background field's `CHAIN`
 pub const LONG_CHAIN: u32 = 4;
 
-/// What a [`GameEvent::Clear`] carries in its game-private `detail`.
-///
-/// The renderer reads it back out to grade the clear and pick a word for it; the engine never
-/// looks inside.
+/// What a [`GameEvent::Clear`] carries in its game-private `detail`, read back by the renderer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ClearDetail {
     /// which step of the chain this was, counting from 1
@@ -66,12 +63,8 @@ impl From<u64> for ClearDetail {
     }
 }
 
-/// Where the game is in a placement.
-///
-/// A turn is: a pair falls, it locks, the halves come apart, whatever pops pops - a settle and
-/// a pop at a time, so the chain can be watched - and then the queue empties onto whatever is
-/// left. Classic Tsu offset lives in that last step: the chain has already been resolved
-/// against the tray by the time anything drops.
+/// Where the game is in a placement: a pair falls and locks, the chain resolves a settle and a
+/// pop at a time, and then the queue drops, already offset against the chain.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum State {
     /// nothing in play; the next pair is about to appear
@@ -109,15 +102,12 @@ pub struct Game {
     chain_score: u32,
     soft_drop: bool,
     fall: Duration,
-    /// which of the theme's sprite sets this player's cells are drawn from - see
-    /// [`PuyoSkin`]. Every [`CellId`] and [`PieceId`] this game reports carries it
+    /// which sprite set this player's cells are drawn from, carried on every id it reports
     skin: PuyoSkin,
 }
 
 impl Game {
-    /// `skin` is which of the theme's sprite sets this board draws itself from, which is the
-    /// player's slot rather than a choice of art - see [`PuyoSkin`]. It reaches every cell id
-    /// this game hands out and nothing else: the rules are the same whoever is playing.
+    /// `skin` is the player's sprite set; it reaches every cell id and nothing in the rules.
     pub fn new(
         difficulty: Difficulty,
         speed_index: u32,
@@ -126,7 +116,6 @@ impl Game {
     ) -> Self {
         let mut queue = Nuisance::new(random.seed());
         let mut board = Board::new(skin);
-        // the two harder settings start you already buried
         let rows = difficulty.starting_nuisance_rows();
         if rows > 0 {
             queue.drop_onto(&mut board, rows * nuisance::ROW, skin);
@@ -200,8 +189,7 @@ impl Game {
         let Some(pair) = self.pair.take() else { return };
         let cells = pair.cells(self.skin);
         pair.lock(&mut self.board);
-        // whichever half is already resting on something has *landed*; the other is about to
-        // come apart from it and falls, and reports itself out of the settle below instead
+        // the half already resting has landed; the other reports itself from the settle below
         let landed: Vec<_> = cells
             .iter()
             .copied()
@@ -226,10 +214,8 @@ impl Game {
             .collect()
     }
 
-    /// One turn of the chain loop: let gravity finish, then pop whatever is ready.
-    ///
-    /// Gravity comes first so that the halves of the pair come apart before anything is
-    /// measured, and so that each chain step lands before the next is looked for.
+    /// One turn of the chain loop: let gravity finish, then pop whatever is ready, so a pair
+    /// splits and each step lands before the next is looked for.
     fn resolve(&mut self, chain: u32) {
         let settled = self.board.settle();
         if !settled.is_empty() {
@@ -264,9 +250,7 @@ impl Game {
         self.events.push(GameEvent::Clear {
             cells: step.cells,
             count,
-            // the same grammar Dr. Rustario uses for a combo: false on the first step of a
-            // chain, true on every one after it, so the rest of the engine needs to know
-            // nothing about chains
+            // false on a chain's first step and true after, the grammar Dr. Rustario's combos use
             is_combo: chain > 1,
             detail: detail.into(),
         });
@@ -279,8 +263,7 @@ impl Game {
     /// The chain is over: settle up with the tray, then let whatever still waits fall.
     fn finish_chain(&mut self, chain: u32) {
         if chain > 0 {
-            // Resolve first, *then* earn: Tsu pays the all clear bonus out on the next chain,
-            // so the chain that empties the board must not spend its own reward
+            // resolve before earning: the all clear pays out on the next chain, not this one
             let all_clear = self.board.is_all_clear();
             let outgoing = self.queue.resolve(self.chain_score);
             if all_clear {
@@ -294,8 +277,7 @@ impl Game {
                         .with_foreign_for(ids::RUSTRIS, foreign_attack(ids::RUSTRIS, sent)),
                 ));
             }
-            // one event per stage the chain paid for, since a big enough chain pops more
-            // than a stage's worth of puyos at once and each step owed is a step faster
+            // one event per stage the chain paid for, since a big chain can clear several
             while self.stage_puyos >= rules::PUYOS_PER_STAGE {
                 self.stage_puyos -= rules::PUYOS_PER_STAGE;
                 self.stage_complete = true;
@@ -314,7 +296,7 @@ impl Game {
         }
     }
 
-    /// the death square decides it, and only once something is resting on it
+    /// the game ends only once something rests on the death square
     fn next_pair(&mut self) {
         if self.board.is_dead() {
             self.events.push(GameEvent::GameOver);
@@ -365,12 +347,11 @@ impl Game {
         let moved = f(&mut pair, &self.board);
         if moved {
             self.pair = Some(pair);
-            // a pair that is still being moved has not settled yet
             if let State::Falling { lock } = &mut self.state {
                 *lock = Duration::ZERO;
             }
         } else {
-            // a refused rotation still has to be remembered, for the quick turn
+            // a refused rotation is still stored, for the quick turn
             self.pair = Some(pair);
         }
         moved
@@ -429,15 +410,9 @@ impl engine::game::Game for Game {
         }
     }
 
-    /// Taking soft drop up or letting it go carries the pair's *position* across the change,
-    /// not the time it has banked towards the next row.
-    ///
-    /// [`Self::fall`] counts towards one row at whatever interval is in force, so the two are
-    /// only meaningful together. Handing a bank filled at gravity's eight hundred milliseconds
-    /// to the eighty three of a soft drop lets [`Self::tick_falling`]'s loop spend it eight
-    /// times over - eight rows in the single frame the key went down, which is one faint tap
-    /// putting the pair half way down the board however slow the rate itself is. Rustris never
-    /// had this: it steps one row per tick and drops the remainder.
+    /// Toggling soft drop carries the pair's position across the change but not the time banked
+    /// towards the next row, or a gravity bank would be spent several rows at once at the soft
+    /// drop rate.
     fn set_soft_drop(&mut self, soft_drop: bool) {
         if soft_drop == self.soft_drop {
             return;
@@ -447,13 +422,8 @@ impl engine::game::Game for Game {
         self.fall = self.fall_interval().mul_f64(travelled.clamp(0.0, 1.0));
     }
 
-    /// The pair slides between cells rather than stepping whole ones - see
-    /// [`engine::game::Game::fall_progress`] for why this game overrides it and the other two
-    /// do not.
-    ///
-    /// Zero while the pair is resting on something. The fall timer goes on accumulating there
-    /// until it next comes round, so drawing it would sink a settled pair into whatever it is
-    /// sitting on and snap it back, once per fall interval, for the whole of the lock delay.
+    /// The pair slides between cells. Zero while it is resting, since the fall timer keeps
+    /// running through the lock delay and would sink a settled pair.
     fn fall_progress(&self) -> f64 {
         let Some(pair) = self.pair else { return 0.0 };
         if !matches!(self.state, State::Falling { .. }) || pair.is_resting(&self.board) {
@@ -471,8 +441,7 @@ impl engine::game::Game for Game {
             return;
         }
         let Some(mut pair) = self.pair else { return };
-        // where it started, not where it lands: the trail animation smears down from these
-        // cells towards the landing point, so handing it the landing point draws it below.
+        // where it started, not where it lands: the trail smears down from these cells
         let cells = pair.cells(self.skin);
         let dropped_rows = pair.hard_drop(&self.board);
         self.pair = Some(pair);
@@ -483,9 +452,7 @@ impl engine::game::Game for Game {
         self.lock_pair(true);
     }
 
-    /// Tsu has no hold, and this is a decision rather than an oversight: adding one would
-    /// change the balance of the game and widen the ai's search for no gain in fidelity. A
-    /// Puyo board shows no hold box either.
+    /// Tsu has no hold.
     fn hold(&mut self) {}
 
     fn drain_events(&mut self) -> Vec<GameEvent> {
@@ -519,7 +486,7 @@ impl engine::game::Game for Game {
         }
         match self.board.get(point) {
             None => Cell::Empty,
-            // nuisance is not something the player put there, which is what Garbage means
+            // nuisance is not something the player put there
             Some(PuyoCell::Nuisance) => Cell::Garbage(PuyoCell::Nuisance.id(self.skin)),
             Some(cell) => Cell::Stack(cell.id(self.skin)),
         }
@@ -540,7 +507,7 @@ impl engine::game::Game for Game {
     fn metric(&self, kind: MetricKind) -> Option<u32> {
         match kind {
             MetricKind::Score => Some(self.score),
-            // Puyo has no level, so the speed step stands in for one
+            // the speed step stands in for a level
             MetricKind::Level => Some(self.speed_index),
             MetricKind::Chain => Some(self.max_chain),
             MetricKind::Lines | MetricKind::Viruses => None,
@@ -594,12 +561,8 @@ impl engine::game::Game for Game {
         Ok(())
     }
 
-    /// An attack joins the tray rather than landing.
-    ///
-    /// It is visible, it can be answered by chaining back at it, and it drops when the chain
-    /// finishes - and that is true of an attack from another game as much as from another Puyo
-    /// player, because offset is the identity mechanic here and it would be strange for it to
-    /// work against one opponent and not another.
+    /// An attack joins the tray rather than landing, whichever game it came from, so offset
+    /// can answer it.
     fn receive_attack(&mut self, attack: Attack) {
         self.queue.receive(attack.strength_for(GAME_ID));
     }
@@ -609,37 +572,16 @@ impl engine::game::Game for Game {
     }
 }
 
-/// How much nuisance one row of Rustris garbage, or one Dr. Rustario garbage block, is worth.
-///
-/// **Two rocks** - [`nuisance::MAX_DROP`] is the most that can fall at once, so this is the
-/// price of a chain that would take a Puyo player two whole drops to dig out of. It is one
-/// number for both crossings rather than two because it landed in the right place for both:
-/// see [`foreign_attack`].
+/// How much nuisance one row of Rustris garbage or one Dr. Rustario garbage block is worth:
+/// two rocks.
 const NUISANCE_PER_FOREIGN_UNIT: u32 = 2 * nuisance::MAX_DROP;
 
-/// the most a single chain sends abroad, however big it was: a Dr. Rustario combo and a
-/// Rustris tetris are each worth four over there, and nothing this game does should be worth
-/// more than the biggest thing the receiving game can do to itself
+/// the most a single chain sends abroad, the biggest thing either receiving game can do to itself
 const MAX_FOREIGN: u32 = 4;
 
-/// What a chain worth `nuisance` puyos is worth to a player of `receiver`, in their own units.
-///
-/// **Measured with `ga cross`**, which plays each game's own ai alone and counts what it
-/// throws. A Puyo player alone is in a chain-building paradise - nothing arrives to offset, so
-/// the ai fires 327 nuisance a minute where Rustris manages thirteen rows and Dr. Rustario
-/// six blocks. Priced at that ratio a single chain would bury either of them, so this is
-/// tuned a long way down: at two rocks apiece a Puyo player lands 0.49 of the pressure a Dr.
-/// Rustario opponent applies to a bottle and 0.23 of what a Rustris opponent applies to a
-/// well, either side of the two crossings that already shipped and play well (0.79 and 0.24).
-///
-/// **It is deliberately harsher out than in.** Garbage arriving at a Puyo board joins the
-/// tray, where offset can cancel it and the ai will chain back at it; what leaves here lands
-/// on a player with no offset at all and no way to answer, so the same number is not fair in
-/// both directions.
-///
-/// The routine two-chains a Puyo player throws constantly - the 1s to 20s that are most of
-/// what `ga cross` counted - cross as **nothing**, which is the intent: only a chain worth
-/// digging out of should be felt in another game at all.
+/// What a chain worth `nuisance` puyos is worth to a player of `receiver`, in their units. The
+/// price is measured by `ga cross` and set well below Puyo's own output, since what leaves here
+/// lands on a player with no offset; routine two-chains cross as nothing.
 pub fn foreign_attack(receiver: GameId, nuisance: u32) -> u32 {
     match receiver {
         ids::DR_RUSTARIO | ids::RUSTRIS => (nuisance / NUISANCE_PER_FOREIGN_UNIT).min(MAX_FOREIGN),
@@ -670,8 +612,7 @@ mod tests {
         )
     }
 
-    /// a game with a board of our choosing and no pair in play, so a chain can be set off on
-    /// purpose
+    /// a game with a board of our choosing and no pair in play
     fn game_with(rows: &[&str]) -> Game {
         let mut game = game();
         game.drain_events();
@@ -705,17 +646,12 @@ mod tests {
         events
     }
 
-    /// A pair locks with one half resting and the other over a well, so only the resting one
-    /// has landed - the other reports itself out of the settle a moment later.
-    ///
-    /// This is why the event exists at all: `Settle` fires once for a whole board and only
-    /// when something moved, so a pair landing flat on the stack would be seen not at all
-    /// and a pair over a ledge only half a beat late.
+    /// a pair locking with one half over a well lands only the resting half at once
     #[test]
     fn only_the_half_that_is_resting_lands_with_the_lock() {
         let floor = ROWS as i32 - 1;
         let mut game = game_with(&["......", "......", "......", "......", "......", "r....."]);
-        // laid across the ledge the red bean makes: the pivot on it, the child over the well
+        // the pivot on the red bean's ledge, the child over the well
         let piece = game.random.next_pair();
         let mut pair = Pair::new(Point::new(0, floor - 1), piece);
         pair.rotate(&game.board, true);
@@ -858,8 +794,7 @@ mod tests {
         assert_eq!(game.board.height(SPAWN.x), 2);
     }
 
-    /// the trail animation smears down from the cells the event carries, so they have to be
-    /// where the pair started rather than where it landed
+    /// the trail's cells are where the pair started, not where it landed
     #[test]
     fn a_hard_drop_reports_where_the_pair_fell_from() {
         let mut game = game();
@@ -881,7 +816,7 @@ mod tests {
         assert!(hard_drop.1 > 0);
     }
 
-    /// a placement that clears nothing simply hands over to the next pair
+    /// a placement that clears nothing hands over to the next pair
     #[test]
     fn a_placement_that_clears_nothing_brings_the_next_pair() {
         let mut game = game();
@@ -891,8 +826,7 @@ mod tests {
         assert!(game.pair.is_some(), "a new pair is in play");
     }
 
-    /// the chain loop's event grammar: one Clear per step, `is_combo` false on the first and
-    /// true after, with a Settle between
+    /// one Clear per step, `is_combo` false on the first and true after, a Settle between
     #[test]
     fn a_chain_reports_one_clear_per_step() {
         let mut game = game_with(&[
@@ -945,7 +879,7 @@ mod tests {
         assert_eq!(game.metric(MetricKind::Chain), Some(2));
     }
 
-    /// and the nuisance that buys, through the tray
+    /// ... and the nuisance that buys, through the tray
     #[test]
     fn a_chain_sends_the_nuisance_its_score_buys() {
         let mut game = game_with(&[
@@ -957,7 +891,7 @@ mod tests {
         assert!(game.queue.all_clear_owed());
     }
 
-    /// classic offset: a chain cancels the tray before it sends anything
+    /// a chain cancels the tray before it sends anything
     #[test]
     fn a_chain_answers_what_is_waiting_before_it_attacks() {
         let mut game = game_with(&["rrrr.."]);
@@ -983,7 +917,7 @@ mod tests {
         assert_eq!(game.pending_nuisance(), 0);
     }
 
-    /// whatever still waits falls as soon as the chain finishes - one chain to answer it
+    /// whatever still waits falls as soon as the chain finishes
     #[test]
     fn what_is_not_answered_drops_when_the_chain_finishes() {
         let mut game = game_with(&["rrrr.."]);
@@ -1000,9 +934,7 @@ mod tests {
         assert_eq!(game.board.occupied(), 6, "a whole row of it");
     }
 
-    /// The other half of classic offset: garbage falls at the end of the turn whether or not
-    /// you chained. Puyo Nexus, *Tsu (rule)*: "No matter what the player creates a chain or
-    /// more, Garbage Puyos will still fall in board if not cleared."
+    /// garbage falls at the end of the turn whether or not you chained, per Puyo Nexus *Tsu (rule)*
     #[test]
     fn what_is_waiting_falls_even_after_a_placement_that_clears_nothing() {
         let mut game = game_with(&["r....."]);
@@ -1036,9 +968,7 @@ mod tests {
         assert_eq!(game.pending_nuisance(), 0);
     }
 
-    /// A pair that lands flat clears nothing and settles nothing, so nothing in the chain loop
-    /// would recompute the link masks - the lock has to do it, or the puyos it just laid down
-    /// draw unjoined for the rest of the game.
+    /// the lock recomputes link masks, since a pair landing flat triggers nothing else that would
     #[test]
     fn the_puyos_a_lock_lays_down_are_joined_to_what_they_land_beside() {
         use crate::game::cell::LinkMask;
@@ -1060,9 +990,7 @@ mod tests {
         assert_eq!(links(floor - 2), LinkMask::NONE, "the blue joined nothing");
     }
 
-    /// A falling pair is drawn between cells rather than on them, so that two or three frames
-    /// a row reads as a fall - and sits still the moment it is resting, since the fall timer
-    /// goes on running under it while the lock delay burns down.
+    /// a falling pair is drawn between cells, and sits still once resting
     #[test]
     fn a_falling_pair_slides_between_cells_and_settles_still() {
         let mut game = game();
@@ -1085,8 +1013,7 @@ mod tests {
         );
 
         assert!(game.pair.is_some_and(|p| p.is_resting(&game.board)));
-        // the lock delay is twenty five frames of sitting on the floor, and the fall timer is
-        // still running the whole of it
+        // twenty five frames of lock delay, with the fall timer still running
         for frame in 0..25 {
             assert_eq!(
                 game.fall_progress(),
@@ -1097,10 +1024,7 @@ mod tests {
         }
     }
 
-    /// A tap of soft drop moves the pair one row at most, however long gravity has been
-    /// banking time towards the next one - see [`Game::set_soft_drop`]. Before that carried the
-    /// position across rather than the bank, a single frame of soft drop after most of a second
-    /// of gravity moved the pair eight rows, which no per-row rate can slow down.
+    /// a tap of soft drop moves the pair at most one row, however much gravity has banked
     #[test]
     fn a_tap_of_soft_drop_is_one_row_however_long_gravity_has_been_banking() {
         for banked in 0..48 {
@@ -1122,7 +1046,7 @@ mod tests {
         }
     }
 
-    /// holding soft drop is what makes a pair fall faster, and nothing else about it changes
+    /// holding soft drop makes a pair fall faster and changes nothing else
     #[test]
     fn soft_drop_hurries_the_pair_along() {
         let mut drifting = game();
@@ -1159,8 +1083,7 @@ mod tests {
         assert_eq!(tray.len(), 2, "a large icon and a small one");
     }
 
-    /// an attack from a game nobody has priced a crossing to is worth nothing here, which is
-    /// the safe default - see [`foreign_attack`] for the six that *are* priced
+    /// an attack from an unpriced game is worth nothing here
     #[test]
     fn an_unpriced_foreign_attack_lands_as_nothing() {
         let mut game = game();
@@ -1173,9 +1096,7 @@ mod tests {
         assert_eq!(foreign_attack(GameId(u16::MAX), 600), 0);
     }
 
-    /// Only a chain worth digging out of crosses at all, and it crosses at two rocks a unit -
-    /// see [`foreign_attack`]. The routine two-chains a Puyo player throws constantly are
-    /// worth nothing in another game, which is the intent rather than an oversight.
+    /// only a chain worth digging out of crosses, at two rocks a unit
     #[test]
     fn only_a_chain_worth_digging_out_of_crosses_to_another_game() {
         for receiver in [ids::RUSTRIS, ids::DR_RUSTARIO] {
@@ -1187,8 +1108,7 @@ mod tests {
                 (2 * nuisance::MAX_DROP - 1, 0),
                 (4 * nuisance::MAX_DROP, 2),
                 (8 * nuisance::MAX_DROP, 4),
-                // however big the chain, it is never worth more than the biggest thing the
-                // receiving game can do to itself
+                // never worth more than the receiving game can do to itself
                 (100 * nuisance::MAX_DROP, MAX_FOREIGN),
             ] {
                 assert_eq!(
@@ -1200,7 +1120,7 @@ mod tests {
         }
     }
 
-    /// ... and a chain that crosses says so on the attack it sends, in both games' units
+    /// ... and a chain that crosses carries both games' units on its attack
     #[test]
     fn a_chain_prices_itself_for_both_of_the_other_games() {
         let attack = Attack::new(GAME_ID, 4 * nuisance::MAX_DROP)
@@ -1217,7 +1137,7 @@ mod tests {
         assert_eq!(attack.strength_for(ids::RUSTRIS), 2);
     }
 
-    /// Tsu's all clear: the bonus rides on the next chain, not the one that emptied the board
+    /// the all clear bonus rides on the next chain, not the one that emptied the board
     #[test]
     fn an_all_clear_pays_out_on_the_following_chain() {
         let mut game = game_with(&["rrrr.."]);
@@ -1283,8 +1203,7 @@ mod tests {
         game.chain_score = 10;
         game.finish_chain(1);
         assert_eq!(game.stage_state(), StageState::StageComplete);
-        // the flag alone changes nothing: a seamless game is carried into its next stage
-        // by the event, and a game that only sets the flag never speeds up at all
+        // the flag alone does not speed a seamless game up; the event carries it on
         assert_eq!(
             stage_completions(&game),
             1,
@@ -1318,7 +1237,7 @@ mod tests {
         assert_eq!(game.stage_state(), StageState::Playing);
     }
 
-    /// the promise the whole compendium rests on: one seed, one game, for every player
+    /// one seed deals one game to every player
     #[test]
     fn one_seed_deals_every_player_the_same_game() {
         let seed = Seed::from_u64(2024);
@@ -1341,7 +1260,7 @@ mod tests {
         assert_eq!(boards[0], boards[2]);
     }
 
-    /// the harder settings start you buried, per the game's own difficulty table
+    /// the harder settings start you buried
     #[test]
     fn the_harder_settings_start_you_buried() {
         assert_eq!(game_at(Difficulty::Normal).board.occupied(), 0);
@@ -1368,7 +1287,7 @@ mod tests {
         assert!(matches!(game.cell(Point::new(0, 0)), Cell::Empty));
     }
 
-    /// nuisance is somebody else's doing, which is what Garbage means to the engine
+    /// nuisance reports as Garbage to the engine
     #[test]
     fn nuisance_reads_as_garbage_and_puyos_as_stack() {
         let mut game = game_with(&["ro...."]);
@@ -1432,14 +1351,8 @@ mod tests {
         }
     }
 
-    /// Two players firing on the same frame both get hit.
-    ///
-    /// The one thing the match screen's ordering guarantees is that every board is updated
-    /// before any attack of that frame is delivered, so a chain resolves against the tray as
-    /// it stood when the chain started - which means neither of two simultaneous chains
-    /// offsets the other, and both trays fill. Get that backwards and whichever player
-    /// happened to be stepped first would cancel the other's attack with a chain that was
-    /// already over.
+    /// Two players firing on the same frame both get hit: every board updates before any attack
+    /// is delivered, so neither chain offsets the other.
     #[test]
     fn two_chains_fired_on_the_same_frame_both_land() {
         let staircase = [
@@ -1451,8 +1364,7 @@ mod tests {
         let mut frames_with_both = 0;
 
         for _ in 0..2000 {
-            // every board steps, and only then is anything delivered - the match screen
-            // collects a frame's events from all players before it routes any of them
+            // every board steps, and only then is anything delivered
             let mut routed = vec![];
             for (player, game) in games.iter_mut().enumerate() {
                 game.update(STEP);
@@ -1484,11 +1396,8 @@ mod tests {
         );
     }
 
-    /// A worked three chain, end to end, against the total Puyo Nexus publishes for a chain
-    /// made entirely of four-puyo links: 40 + 320 + 640 = 1000 points, which buys 14 nuisance.
-    ///
-    /// The field is a staircase in two columns. The reds go, the blues fall together and go,
-    /// the greens fall together and go, and the board is left empty.
+    /// A two-column staircase three chain of four-links scores 40 + 320 + 640 = 1000 points,
+    /// buys 14 nuisance and leaves the board empty, as Puyo Nexus publishes.
     #[test]
     fn a_three_chain_scores_and_sends_what_the_published_table_says() {
         let mut game = game_with(&[

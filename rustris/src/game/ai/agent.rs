@@ -181,21 +181,18 @@ impl AiAgent {
 
         if let Some(shape) = game.board.tetromino().map(|t| t.shape()) {
             let (best_inputs, is_alt) = if let Some(playback) = &mut self.playback {
-                // Playback mode: get the recorded decision
                 if let Some(recorded_input) = playback.next_decision() {
                     match recorded_input.keys {
                         Some(input_sequence) => (input_sequence, recorded_input.is_alt),
                         None => {
-                            // This was a null decision - do nothing
+                            // a null decision
                             return;
                         }
                     }
                 } else {
-                    // Playback finished
                     return;
                 }
             } else {
-                // Normal AI decision-making when not in playback mode
                 let best_result = self.best_move(game, shape);
 
                 let alt_next_shape = game
@@ -261,7 +258,6 @@ impl AiAgent {
     }
 
     fn best_move(&self, game: &Game, shape: TetrominoShape) -> Option<(InputSequence, f64)> {
-        // Normal AI decision-making (playback is now handled at the act level)
         self.best_single_move(game.board, game.board.stack_stats(), shape)
             .map(|(result, cost)| (result.inputs().clone(), cost))
     }
@@ -291,7 +287,7 @@ impl AiAgent {
         (result1, cost1): &(InputSequenceResult, f64),
         (result2, cost2): &(InputSequenceResult, f64),
     ) -> Ordering {
-        // if multiple moves have teh same score then we must order them to deterministically choose
+        // order moves of equal score so the choice is deterministic
         cost1
             .total_cmp(cost2)
             .then_with(|| result1.inputs().cmp(result2.inputs()))

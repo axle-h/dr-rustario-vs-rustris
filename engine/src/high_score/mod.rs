@@ -4,8 +4,7 @@ pub mod table;
 
 use table::Ranking;
 
-/// Which table a match competes for: a game (or the vs. playlist), the mode within it and
-/// how that mode ranks its entries. `game` and `mode` structure `high_scores.yml` and title
+/// Which table a match competes for. `game` and `mode` structure `high_scores.yml` and title
 /// the high score screens, so they are display names.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HighScoreKey {
@@ -29,8 +28,7 @@ impl HighScoreKey {
     }
 }
 
-/// A table entry waiting for a name: `score` is points or, for a sprint's best-times table,
-/// milliseconds (see [`table::Ranking`]).
+/// A table entry waiting for a name; `score` is as [`table::Ranking`] says.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NewHighScore {
     pub player: u32,

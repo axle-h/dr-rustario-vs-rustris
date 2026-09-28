@@ -45,15 +45,14 @@ impl<'a> MenuScreen<'a> {
         })
     }
 
-    /// Refresh the values a select list offers, for a list whose options depend on
-    /// another item. Call it after [`Self::update`] rather than from its callback: the
-    /// menu is borrowed for the frame.
+    /// Refresh the values a select list offers. Call it after [`Self::update`], not from its
+    /// callback, since the menu is borrowed for the frame.
     pub fn set_items(&mut self, app: &mut App, items: &[MenuItem]) -> Result<(), String> {
         self.menu.set_items(&mut app.canvas, items)
     }
 
-    /// One frame: input, update, render, present. `on_select` sees every change of a list
-    /// item and every selected item by name and may end the menu with a value.
+    /// One frame: input, update, render, present. `on_select` sees every list change and every
+    /// selected item by name, and may end the menu with a value.
     pub fn update<R>(
         &mut self,
         app: &mut App,
@@ -94,11 +93,9 @@ impl<'a> MenuScreen<'a> {
         app.canvas.set_draw_color(Color::BLACK);
         app.canvas.clear();
 
-        // particles
         particles.update(delta);
         particles.draw(&mut app.canvas)?;
 
-        // menu
         self.menu.draw(&mut app.canvas)?;
 
         app.canvas.present();

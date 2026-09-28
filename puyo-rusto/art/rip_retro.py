@@ -1,37 +1,16 @@
 #!/usr/bin/env python3
-"""Cuts puyo-rusto's retro themes out of the rips in `art/retro/`.
+"""Cuts puyo-rusto's retro themes out of the gitignored spriters-resource rips in `art/retro/`.
+Re-run this rather than editing its output.
 
-`rip.py` is the particle theme's cutter and this is its sibling: same job, three more
-sources. None of them are in the repository - they are spriters-resource downloads sitting
-under their verbatim download names in `art/retro/`, gitignored beside the Puyo Puyo Tetris
-sheet the particle theme is cut from. Re-run this rather than editing its output.
+    python3 puyo-rusto/art/rip_retro.py            # cut every theme
+    python3 puyo-rusto/art/rip_retro.py genesis    # ... or just one
+    python3 puyo-rusto/art/rip_retro.py check      # write art/retro-alignment.png
 
-    python3 puyo-rusto/art/rip_retro.py                # cut every theme
-    python3 puyo-rusto/art/rip_retro.py genesis        # ... or just one
-    python3 puyo-rusto/art/rip_retro.py check          # write art/retro-alignment.png
-
-The output layout is `rip.py`'s, so a retro theme's `mod.rs` addresses its sheet exactly the
-way `theme/modern/mod.rs` addresses that one - one band of six rows, at the source block size
-of whichever rip it came from:
+Each `sprites.png` has `rip.py`'s layout, at the rip's own block size:
 
     block (col, row) -> (PAD + PITCH * col, PAD + PITCH * row), BLOCK square
-    rows 0-4  one colour each (red, green, blue, yellow, purple), column = link mask bits
+    rows 0-4  red, green, blue, yellow, purple; column = link mask bits
     row 5     col 0 nuisance, cols 1-3 the tray's small, large and rock symbols
-
-Where this differs from `rip.py` is how the sixteen link variants are *found*. That sheet
-laid them out as a grid and the work was repairing necks that stopped short of their cell.
-These sheets do not have a grid: PicsAndPixels arranged Mean Bean Machine's beans as
-*groups* - a page of two-, three-, four- and five-bean shapes, each drawn as it appears in
-play - so the sixteen variants are in there but scattered, and which variant a given bean is
-depends on what it is standing next to.
-
-So `link_grid` reads the arrangement rather than a table. Every group is a connected run of
-non-background pixels whose bounding box is a whole number of cells; inside that box a cell
-is occupied or it is not; and a bean's link mask is which of its four neighbours in that box
-are occupied. One pass over the sheet yields every mask of every colour, with no coordinates
-written down by hand and nothing to get wrong when the next sheet is laid out differently.
-It also self-checks: a sheet that does not yield all sixteen of all five is a sheet this has
-misread, and `link_grid` says so rather than writing a theme with holes in it.
 """
 
 import os
@@ -48,14 +27,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RETRO = os.path.join(HERE, "retro")
 SRC = os.path.normpath(os.path.join(HERE, "..", "src", "theme"))
 
-# the output grid, which is `rip.py`'s: sixteen link variants along a row, a row per colour,
-# then one more for the nuisance puyo and the tray's three symbols
+# the output grid: a column per link mask, a row per colour, then the nuisance row
 PAD = 4
 COLUMNS = 16
 COLOR_ROWS = 5
 SHEET_ROWS = COLOR_ROWS + 1
 
-# this game's colour order, which is the order the rows come out in
 COLORS = ["Red", "Green", "Blue", "Yellow", "Purple"]
 
 # LinkMask's bits, from `game/cell.rs`: a puyo joined upwards has bit 1 set
@@ -78,12 +55,7 @@ def rgb(image):
 
 
 def background_of(pixels):
-    """the sheet's transparent colour, which is simply the one it has most of.
-
-    Every one of these rips keys transparency to a flat fill and no two of them agree on
-    which - Mean Bean Machine's beans are on (0, 128, 128) and its fonts on (0, 108, 108),
-    from the same ripper on the same day - so nothing here hard codes one.
-    """
+    """the sheet's transparent colour: its commonest, since each rip keys to a different fill"""
     counts = Counter(map(tuple, pixels.reshape(-1, 3)[::3]))
     return list(counts.most_common(1)[0][0])
 
@@ -93,11 +65,7 @@ def matches(pixels, color, tolerance=12):
 
 
 def components(mask):
-    """the 4-connected components of a boolean mask, as (x, y, w, h) boxes.
-
-    Written out rather than imported: this repository's Python is numpy and PIL and nothing
-    else, and `scipy.ndimage.label` is the only thing scipy would be here for.
-    """
+    """the 4-connected components of a boolean mask, as (x, y, w, h) boxes (numpy only, no scipy)"""
     height, width = mask.shape
     seen = np.zeros((height, width), bool)
     out = []
@@ -122,12 +90,7 @@ def components(mask):
 
 
 def hue_of(pixels, mask):
-    """the median hue of a cell's own art, in degrees.
-
-    The outline and the eyes are dropped first: every bean on every one of these sheets is
-    drawn with a black rim and two white eyes, and averaging those in walks every colour
-    towards the same grey.
-    """
+    """the median hue of a cell's art in degrees, ignoring the black rim and white eyes"""
     px = pixels[mask]
     if len(px) == 0:
         return None
@@ -158,15 +121,10 @@ def classify(hue, bands):
 
 
 def link_grid(image, block, bands, backdrops=()):
-    """every colour's sixteen link variants, read off a sheet of arranged groups.
+    """every colour's sixteen link variants, as `{(colour, mask): (x, y)}` cell corners.
 
-    `backdrops` are the flat colours the ripper painted behind the beans to show a group's
-    extent - they are part of a cell's *occupancy* but not part of its art, so a cell is
-    occupied if it holds either, and the art keyed out at the end is the sheet background and
-    these together.
-
-    Returns `{(colour, mask): (x, y)}` - the top left of a cell drawing that variant.
-    """
+    A group is a connected run whose box is whole cells, and a bean's mask is which neighbours in
+    that box are occupied; `backdrops` count as occupied but are not art."""
     pixels = rgb(image)
     background = background_of(pixels)
     empty = matches(pixels, background)
@@ -208,8 +166,7 @@ def link_grid(image, block, bands, backdrops=()):
                     ),
                     bands,
                 )
-                # the first exemplar of a variant wins, and the sheets are read top to
-                # bottom, so a variant is taken from the smallest group that shows it
+                # the first exemplar wins, so a variant comes from the smallest group showing it
                 if color is not None and (color, mask) not in found:
                     found[(color, mask)] = (left, top)
     missing = [
@@ -224,7 +181,6 @@ def link_grid(image, block, bands, backdrops=()):
 
 
 def keyed(image, box, block, transparent):
-    """one cell of a sheet, with every listed colour turned transparent"""
     x, y = box
     cell = image.crop((x, y, x + block, y + block)).convert("RGBA")
     px = np.array(cell)
@@ -235,14 +191,7 @@ def keyed(image, box, block, transparent):
 
 
 def assert_no_marker(tiles):
-    """catch a flat fill the ripper painted behind the beans that nothing keyed out.
-
-    Mean Bean Machine's sheet has three of them - a green, a pale green and a pink - and
-    nothing on it says so; the third was found by eye, in a cut sheet, after the first two
-    had been listed. Puyos of different colours share only their black rim and their white
-    eyes, so any *other* colour that is the dominant one in cells of three or more colour
-    rows is not bean art: it is a marker, and this says which so it can be listed.
-    """
+    """fail on a colour dominant in three or more colour rows: a backdrop nothing keyed out"""
     dominant = {}
     for (row, _), tile in tiles.items():
         if row >= COLOR_ROWS:
@@ -264,26 +213,16 @@ def assert_no_marker(tiles):
         )
 
 
-# The scene each retro theme stands on: a wash of the backdrop's own colour, lifted in the
-# middle and falling away to the corners. It is written small and drawn through
-# `SceneType::Cover`, which scales one picture over the whole window with linear filtering -
-# so a hundred pixels across is smooth at 4k and costs a couple of kilobytes.
-#
-# Both of these themes tiled the game's own wall here and neither could any longer. Once the
-# panel was cut level with the top of the field, a puyo spawning above it had that same hand
-# scattered stone behind it, and neither plane read as being in front of the other. A flat
-# colour fixed that and read as flat; this is the same colour with somewhere to fall to.
+# the scene: the backdrop colour, bright in the middle and falling to the corners, drawn small
 VIGNETTE = (96, 54)
-# how bright the middle is and how much of that is left at the corners, as fractions of the
-# backdrop's own colour
+# the middle's brightness, and how much of it falls away by the corners
 VIGNETTE_MIDDLE = 0.75
 VIGNETTE_FALL = 0.62
-# how sharply it falls: over one, so the middle stays open and the shoulder is short
+# over one, so the middle stays open and the shoulder is short
 VIGNETTE_CURVE = 1.3
 
 
 def vignette(color):
-    """the scene behind one theme's panels, in that theme's own colour"""
     width, height = VIGNETTE
     y, x = np.mgrid[0:height, 0:width]
     radius = np.hypot((x - width / 2) / (width / 2), (y - height / 2) / (height / 2))
@@ -312,12 +251,7 @@ def write_png(path, image):
 
 
 def digits(image, band, first, pitch, width, transparent):
-    """ten digits in a row at one pitch, packed edge to edge for `numeric_sprites`.
-
-    That reader divides the sheet's width by ten and takes its whole height, so the output
-    has to be exactly ten cells wide with no margin - which is not how any of these fonts is
-    laid out on its own sheet.
-    """
+    """ten digits packed edge to edge, since `numeric_sprites` splits the width in ten"""
     top, bottom = band
     height = bottom - top
     out = Image.new("RGBA", (width * 10, height), (0, 0, 0, 0))
@@ -333,9 +267,7 @@ def digits(image, band, first, pitch, width, transparent):
     return out
 
 
-# --------------------------------------------------------------------------------------
-# Dr. Robotnik's Mean Bean Machine (Sega Genesis, 1993)
-# --------------------------------------------------------------------------------------
+# Dr. Robotnik's Mean Bean Machine (Sega Genesis)
 
 GENESIS_BEANS = (
     "Sega Genesis - Dr. Robotnik's Mean Bean Machine - Miscellaneous - Beans.png"
@@ -350,13 +282,10 @@ GENESIS_FONTS = (
 
 GENESIS_BLOCK = 16
 
-# the three flat fills PicsAndPixels painted behind the arranged groups: a green, a pale
-# green and a pink. All three mean "a bean stands here" and none of them is bean art. The
-# pink was found by `assert_no_marker` after the other two had been listed, which is what
-# that check is for.
+# the flat fills behind the arranged groups: occupancy for `link_grid`, never art
 GENESIS_BACKDROPS = ([34, 177, 76], [181, 255, 181], [255, 174, 201])
 
-# where the hues of Mean Bean Machine's five beans fall. Red wraps, so it gets two bands
+# where the hues of the five beans fall; red wraps, so it gets two bands
 GENESIS_HUES = [
     ("Red", 330, 360),
     ("Red", 0, 15),
@@ -366,11 +295,7 @@ GENESIS_HUES = [
     ("Purple", 265, 320),
 ]
 
-# The top of the beans sheet is a strip of animation frames per colour on a 19 pixel pitch:
-# five bands of them across, then the refugee bean. The first frame of each is the bean
-# flashing white just before it pops, so the *second* is the one at rest - which is what an
-# unlinked bean draws as, and the one variant the arrangements below cannot supply because
-# nothing down there stands on its own.
+# the top strip, 19 pixels a frame per colour band; frame 1 is the bean at rest, 0 the pop flash
 GENESIS_TOP_ROW = 32
 GENESIS_TOP_PITCH = 19
 GENESIS_COLOR_BANDS = {
@@ -382,160 +307,80 @@ GENESIS_COLOR_BANDS = {
 }
 GENESIS_IDLE_FRAME = 1
 
-# the refugee bean, which is this game's nuisance puyo
+# the refugee bean, this game's nuisance puyo
 GENESIS_REFUGEE = (627, 32)
 
-# The three tray symbols, smallest first: one nuisance, six, and a rock of thirty.
-#
-# The first two are **measured off the emulated game**, not chosen: at the top of a board the
-# tray draws the little eyeless blob for singles (12x9 on the sheet) and the black bean with
-# the white outline for rows of six (14x12). The rip carries no third symbol at all, and the
-# capture never showed one - so the rock borrows the *solid* refugee, the one a bean flashes
-# to on its way out, which is 16x13 and so the biggest of the three. That gives the strip a
-# size as well as a shape to read: a small blob, an outlined bean, a whole one.
+# tray symbols for one, six and thirty: the game's blob and outlined bean, then the solid refugee
 GENESIS_TRAY = [(665, 32), (627, 50), (646, 50)]
 
-# ... and the solid one is white on the sheet, which in a tray reads as a hole in the wall
-# rather than as the heaviest thing in it. Alex has seen a **red** rock in the game and no
-# rip carries it, so the third symbol is painted: white to the red player one's score is
-# printed in, which is the only red this theme owns. It is authored art, like the sweat in
-# `mugshots.py` - if a rip of the real symbol ever turns up, drop this and cut that instead.
+# the rock repainted in player one's score red, since white reads as a hole (authored, not ripped)
 GENESIS_ROCK_INK = {(255, 255, 255): (224, 64, 96)}
 
-# The pop, which Mean Bean Machine plays in four beats: the bean sees it coming, curls into a
-# ball, the ball shrinks, and what is left bursts into droplets. Every colour band carries all
-# of it. The surprised face is the *last* frame of the strip at the top - the one with both
-# eyes wide open - and the three balls sit in a block of their own below the arrangements,
-# beside the halo and the wings the same bean wears as an angel. Each is `(dx, y, size)`: an
-# offset along the colour's own band, a row on the sheet, and the square to cut.
+# the pop, `(dx, y, size)` along each band: the wide-eyed last top-strip frame, then two balls
 GENESIS_SURPRISED = (GENESIS_TOP_PITCH * 4, GENESIS_TOP_ROW, GENESIS_BLOCK)
 GENESIS_BALL = (19, 157, 16)
 GENESIS_SMALL_BALL = (19, 147, 8)
 GENESIS_DROPLET = (29, 147, 8)
 
-# the frames of one pop, which is what `DestroyStyle::Pop` counts, and the widest strip on
-# the sheet - so it is also the sheet's own width.
-#
-# Three, not five: the bean pulls a face, curls into a ball and the ball shrinks, and then
-# there is nothing of it left. The two frames that used to follow drew four droplets *inside*
-# the cell at two spreads, which is as far as a sprite can throw anything; they are now
-# thrown as debris instead and leave the cell, the board and the panel behind them.
+# frames in one pop, which `DestroyStyle::Pop` counts; the widest strip, so also the sheet's width
 GENESIS_POP_FRAMES = 3
 
-# The refugee bean blinks where the beans wriggle: the sheet carries it shrunken and eyeless
-# beside the one with its eyes open, which is the whole of the animation. It is the same art
-# the tray draws a single nuisance with - see [`GENESIS_TRAY`] - and it is cut twice rather
-# than shared, because the tray wants a still and this wants a frame.
+# the refugee bean shrunken and eyeless, its blink frame
 GENESIS_REFUGEE_SMALL = (665, 32)
-# ... and the white-outlined refugee, which is what it flashes to on its way out
+# the white-outlined refugee it flashes to on its way out
 GENESIS_REFUGEE_FLASH = (646, 50)
 
-# The squash a bean plays where it lands, which every colour band carries as its own pair on
-# a row of its own: a **flat** bean and a **tall** one, drawn nowhere else on the sheet and
-# used for nothing else. That is the whole of the landing bounce - the bean hits and
-# compresses, springs back past its own height, and the strip runs out into the still sprite
-# it was going to draw anyway. `(dx, y)` along the colour's band, as everything here is.
-#
-# It is deliberately *not* the top strip's middle frames, which look like a squash and are
-# not: those are the faces the bean pulls on its way out, and belong to the pop.
+# the landing squash, flat then tall, `(dx, y)` along each band; not the top strip's pop faces
 GENESIS_SQUASH = (0, 70)
 GENESIS_STRETCH = (19, 70)
 
-# the refugee bean's own squash - the flat eyeless one beside it - which is the same art the
-# blink shuts its eyes with. It has no stretch, so it settles straight back instead.
+# the refugee's squash, the same art as its blink; it has no stretch
 GENESIS_REFUGEE_SQUASH = (665, 32)
 
-# how many frames a landing takes. Two, and short: a squash that outstays a landing reads as
-# a puyo drawn wrong rather than as a bounce.
+# frames in a landing; a longer squash reads as a puyo drawn wrong
 GENESIS_BOUNCE_FRAMES = 2
 
-# One droplet on its own, centred in a cell: what a bean throws off as it bursts, and the
-# only frame of that. The strip drew four of them at two spreads *inside* the cell they came
-# from, which is as far as a sprite can go; thrown as debris one is drawn over and over and
-# leaves the cell, the board and the panel, which is what the game does with them.
+# one droplet centred in a cell, thrown as debris
 GENESIS_DEBRIS_FRAMES = 1
 
-# The ball an attack crosses the screen as, which is a sprite of its own and not a puyo: a
-# white core inside a coloured rim, 22x20 for a big attack and 16x16 for a small one, in the
-# **sending player's** palette - red for player one, blue for player two, the same rule the
-# score font follows. They sit on the sheet's own teal backdrop rather than on a green matte,
-# below the refugee bean.
-#
-# Cut into cells of [`GENESIS_BALL_CELL`] - the big one is wider than a bean - laid out as
-# one strip: player one big, player one small, player two big, player two small.
+# the attack balls on the teal backdrop in the sender's palette: P1 big, small, then P2's
 GENESIS_ATTACK_BALLS = [(624, 98, 22, 20), (659, 101, 16, 16), (624, 134, 22, 20), (659, 137, 16, 16)]
 GENESIS_BALL_CELL = 24
 
-# the animation sheet's own grid. The frames of a strip have to be edge to edge - the engine
-# addresses one by counting frame widths from its start - so only the rows are spaced out.
+# only the rows are spaced: the engine finds a frame by counting frame widths from its strip's start
 GENESIS_ANIM_ROW_GAP = 4
 
-# The dungeon wall the panels stand against, read off the board art. Nothing is tiled with it
-# any more - it is the colour [`vignette`] washes the scene in.
+# the dungeon wall's colour, which [`vignette`] washes the scene in
 GENESIS_WALL = (0x42, 0x45, 0x00)
 
-# the in-game board, which is the third of the four 320x224 boards on the boards sheet -
-# measured against a live frame of the emulated game rather than picked by eye
+# the in-game board, the third of the four 320x224 boards on the boards sheet
 GENESIS_BOARD_TILE = (1, 1180)
 GENESIS_SCREEN = (320, 224)
 
-# ... and the same board again, beside it: the *frame*. The sheet carries the screen as the
-# two planes the Genesis drew it on, and the one on the left is only the back half - the
-# dungeon wall and the wells sunk into it, with no border round anything. The stone that
-# frames a well, the floor it stands on and the boxes the next beans and the mugshot sit in
-# are all on the front plane, laid out over a flat key. Cutting the back plane alone is what
-# left the beans looking like they stopped a row short of the bottom: the well was there,
-# the floor under it was not, so the last row of beans had sixteen pixels of open well
-# beneath it. Compositing the two is the whole fix, and it is what hands the panel its NEXT
-# boxes as well.
+# the front plane beside it (borders, well floors, boxes) over a flat key, composited over the back
 GENESIS_FRAME_TILE = (323, 1180)
 GENESIS_FRAME_KEY = (0, 64, 64)
 # the left well within that board: six columns and twelve rows of 16, at (16, 16)
 GENESIS_WELL = (16, 16, 96, 192)
 
-# Mean Bean Machine lays a course of stone over the well mouth and the hole is cut through
-# it: the spawning row is open to the scene. It was tried with the row drawn *behind* that
-# stone first, and it looked right until a stack reached the top and a bean that mattered
-# was simply not there.
-# one player's panel is the well and the column of furniture beside it, cut where the second
-# player's well begins
+# the panel: the well and the furniture column, up to the second player's well
 GENESIS_PANEL_WIDTH = 208
 
-# The outer rock, cut off the panel and padded straight back as transparency: `(left, right)`.
-#
-# The panel is the widest thing on a two player screen - 208 source pixels into a 952 pixel
-# half - so it is what the cell size is worked out from, and the two boards end up sixteen
-# pixels apart with a course of stone doing nothing on either side of them. Cutting the stone
-# and *keeping the box* is the whole trick: the png is still 208 wide, so the cell is still
-# 73 and every coordinate in `genesis/mod.rs` still lands where it did, and what was rock is
-# scene. The left course is the well's own wall and is halved rather than removed; the right
-# is the outside edge of the score column, which has less to lose.
-#
-# `SIDE_TRIM` in `genesis/mod.rs` is this same pair, since the shadow has to know which part
-# of the box is not art - and a test there holds the two together.
+# the outer rock cleared from each side, `(left, right)`, keeping the png's width so the cell size
+# holds; `SIDE_TRIM` in `genesis/mod.rs` must equal it, and a test there checks it
 GENESIS_PANEL_TRIM = (8, 4)
 
-# Every face on the fonts sheet is laid out the same way: eight pixels wide on a nine pixel
-# pitch, thirty glyphs to a row - the ten digits and then A to T. So one reading serves all of
-# them and a word is a lookup into the alphabet.
+# every face on the fonts sheet: 8 pixel glyphs on a 9 pixel pitch, the ten digits then A to T
 GENESIS_GLYPH = (1, 9, 8)
 GENESIS_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRST"
 
-# The face the game sets `NEXT`, `SCORE` and both players' scores in, four inks and sixteen
-# rows. It is *green* on the sheet because green is the palette the labels take; a score is
-# the same glyphs in the player's own, which for player one is [`GENESIS_SCORE_INK`]. Matched
-# glyph for glyph against the game's own `00007536`, so this is the face and not a guess -
-# the big white one at 123 the first pass used is `FINAL STAGE`'s and a different shape.
+# the bold score face, green until [`GENESIS_SCORE_INK`] swaps it; the white one at 123 is not it
 GENESIS_FACE_BOLD = (174, 190)
 
-# ... and the smaller white one it sets `STAGE`, `1P` and `DR R` in, and the stage number with
-# them. Its ink is nine rows inside a sixteen row cell, which is why the word is pasted at 80
-# and reads at 84.
+# the plain white face of `STAGE`, `1P` and the stage number, inked nine rows into a 16 row cell
 GENESIS_FACE_PLAIN = (140, 156)
 
-# Green to red, by role. The sheet and a frame of the game are the same eight levels per
-# channel at two different scalings, so the pairing was read off the game a digit at a time
-# and written back in the sheet's own scaling.
+# green to player one's red, role for role, in the sheet's own colour scaling
 GENESIS_SCORE_INK = {
     (0, 96, 0): (128, 0, 64),
     (0, 128, 0): (128, 0, 64),
@@ -544,21 +389,16 @@ GENESIS_SCORE_INK = {
     (160, 224, 160): (224, 128, 128),
 }
 
-# the flat the ripper laid behind each glyph cell, which is not the page colour and is not ink
+# the flat behind each glyph cell, neither page colour nor ink
 GENESIS_FONT_CELL = (0, 64, 64)
 
-# The words the frame plane does not carry. Mean Bean Machine prints `NEXT`, `1P`, `DR R`,
-# `STAGE` and `SCORE` down the middle of the screen and *every one of them is a text sprite*,
-# so the frame has the boxes and no words at all - and a bare number on stone says nothing.
-# These two are the ones with a number under them. In **screen** coordinates, like
-# [`GENESIS_WELL`], since the panel is cut sixteen rows down from there.
+# the labels the game draws as text sprites, in screen coordinates like [`GENESIS_WELL`]
 GENESIS_LABELS = (
     ("SCORE", GENESIS_FACE_BOLD, (128, 160)),
     ("STAGE", GENESIS_FACE_PLAIN, (128, 80)),
 )
 
 def keyed_box(image, box, transparent):
-    """one rectangle of a sheet, with the flat colours in `transparent` knocked out"""
     x, y, w, h = box
     px = np.array(image.crop((x, y, x + w, y + h)).convert("RGBA"))
     flat = px[:, :, :3].astype(int)
@@ -568,7 +408,6 @@ def keyed_box(image, box, transparent):
 
 
 def repaint(cell, table):
-    """swap flat colours for others, leaving everything the table does not name alone"""
     px = np.array(cell)
     flat = px[:, :, :3].astype(int)
     for source_color, target in table.items():
@@ -591,10 +430,7 @@ def genesis_glyphs(fonts, band, text, transparent, recolour=None):
     if not recolour:
         return out
     px = np.array(repaint(out, recolour))
-    # ... and nothing green may survive a swap out of a green face. The sheet has seven
-    # shades in it, two of them a couple of dozen pixels across the whole row, and a shade
-    # left off the table shows up as a lit edge on three of the ten digits and nowhere else -
-    # which is exactly how it was found. Name the shade rather than widening the table.
+    # ... and no green may survive: add a missed shade to the table rather than widen the match
     left = np.array(Image.fromarray(px).convert("RGBA"))
     lit = (left[:, :, 3] > 0) & (left[:, :, 1].astype(int) > left[:, :, 0].astype(int))
     if lit.any():
@@ -606,11 +442,7 @@ def genesis_glyphs(fonts, band, text, transparent, recolour=None):
 
 
 def genesis_cell(beans, box, size, transparent):
-    """one sprite of the beans sheet, keyed and centred in a whole [`GENESIS_BLOCK`] cell.
-
-    The balls a popping bean shrinks through are drawn smaller than a cell and cut as such,
-    so they are put back on the cell they came out of rather than scaled up to fill it.
-    """
+    """one beans sheet sprite, keyed and centred unscaled in a [`GENESIS_BLOCK`] cell"""
     tile = keyed(beans, box, size, transparent)
     if size == GENESIS_BLOCK:
         return tile
@@ -621,18 +453,9 @@ def genesis_cell(beans, box, size, transparent):
 
 
 def genesis_animations(beans, transparent):
-    """the pop of each colour, the refugee bean's pop and blink, and every landing squash.
+    """the pops, the refugee's pop and blink, the landing squashes and the droplets.
 
-    The rows are laid out in the order `theme/genesis/mod.rs` counts them - the pops, the
-    refugee's pop, its blink, then the squashes - and that file is the only other place the
-    order is written down, so a row moved here and not there draws another strip's art
-    rather than failing.
-
-    One strip per row, every frame a whole cell, laid out for
-    `AnimationSpriteSheetData::non_exclusive_linear` - which counts frame widths from a
-    strip's own start, so the frames of one strip are edge to edge and only the rows are
-    spaced apart.
-    """
+    Rows are in the order `theme/genesis/mod.rs` counts them, and nothing checks the two agree."""
     cut = lambda box, size: genesis_cell(beans, box, size, transparent)
     strips = []
     for color in COLORS:
@@ -647,8 +470,7 @@ def genesis_animations(beans, transparent):
                 cut((band + mx, my), msize),
             ]
         )
-    # the refugee bean has no ball and no droplets of its own on the sheet - it flashes white
-    # and shrinks away, which is the art it does have
+    # the refugee has no ball or droplets: it flashes white and shrinks away
     strips.append(
         [
             cut(GENESIS_REFUGEE, GENESIS_BLOCK),
@@ -656,7 +478,6 @@ def genesis_animations(beans, transparent):
             cut(GENESIS_REFUGEE_SMALL, GENESIS_BLOCK),
         ]
     )
-    # ... and its blink, which is the same shrunken bean between two of the still one
     strips.append(
         [
             cut(GENESIS_REFUGEE, GENESIS_BLOCK),
@@ -664,7 +485,6 @@ def genesis_animations(beans, transparent):
             cut(GENESIS_REFUGEE, GENESIS_BLOCK),
         ]
     )
-    # the landing squash, one row per colour and then the refugee's
     for color in COLORS:
         band = GENESIS_COLOR_BANDS[color]
         sqx, sqy = GENESIS_SQUASH
@@ -681,8 +501,7 @@ def genesis_animations(beans, transparent):
             cut(GENESIS_REFUGEE, GENESIS_BLOCK),
         ]
     )
-    # one droplet per colour, centred, and the refugee bean's - which has none of its own on
-    # the sheet, so it throws the little mono one it flashes to instead
+    # one droplet per colour, and the refugee's small bean in place of one
     dx, dy, dsize = GENESIS_DROPLET
     for color in COLORS:
         strips.append([cut((GENESIS_COLOR_BANDS[color] + dx, dy), dsize)])
@@ -700,11 +519,7 @@ def genesis_animations(beans, transparent):
 
 
 def genesis_attack_balls(beans):
-    """the four attack balls, each centred in its own [`GENESIS_BALL_CELL`] cell.
-
-    They are keyed on the sheet's teal backdrop rather than on the green matte the beans sit
-    on, so they are cut against that instead of through `keyed`.
-    """
+    """the four attack balls, keyed on the teal backdrop, each centred in a [`GENESIS_BALL_CELL`]"""
     teal = beans.getpixel((2, 2))[:3]
     out = Image.new(
         "RGBA", (GENESIS_BALL_CELL * len(GENESIS_ATTACK_BALLS), GENESIS_BALL_CELL), (0, 0, 0, 0)
@@ -726,14 +541,7 @@ def genesis_attack_balls(beans):
 
 
 def genesis_screen(boards, back_at, front_at):
-    """One whole 320x224 board screen, the two planes the sheet keeps apart put together.
-
-    The front plane is keyed on [`GENESIS_FRAME_KEY`] - a flat teal that means "the back
-    plane shows here" - and covers the rest: every stone border, the well floors and the
-    boxes down the middle. Composited against a live frame of the emulated game the result
-    agrees to within the rip's own colour rounding; the back plane alone does not, and the
-    sixteen rows under each well are where it differs.
-    """
+    """one 320x224 screen: the back plane under the front plane keyed on [`GENESIS_FRAME_KEY`]"""
     bx, by = back_at
     fx, fy = front_at
     w, h = GENESIS_SCREEN
@@ -786,28 +594,17 @@ def genesis():
     fx, fy = GENESIS_FRAME_TILE
     wx, wy, ww, wh = GENESIS_WELL
     screen = genesis_screen(boards, (bx, by), (fx, fy))
-    # The panel is cut at the *well's* top edge and not the screen's, so it stops level with
-    # the top of the field: the spawning row is drawn a cell above it, over the scene, with
-    # nothing to either side of it - which is where the game's course of stone over the well
-    # mouth goes, and is what a retro Rustris board does at its skyline. The theme puts the
-    # cell back as `top_padding`, above the panel and the board alike, so **a point in the
-    # padded background is a point on the Genesis screen**.
+    # cut at the well's top so the spawning row is drawn over the scene; the theme adds that cell
+    # back as `top_padding`, so the padded background matches the Genesis screen
     panel = screen.crop((0, wy, GENESIS_PANEL_WIDTH, GENESIS_SCREEN[1]))
-    # ... with a hole where the well is. The board is drawn *under* the background and the
-    # cells with it, so a panel that carries its own well would cover the whole game - which
-    # is exactly what it did the first time. Both of the other games' retro themes cut the
-    # same hole; nothing says so anywhere but the art.
+    # ... with a hole where the well is, since the board is drawn under the background
     hole = np.array(panel)
     hole[0:wh, wx : wx + ww, 3] = 0
-    # ... and the outer rock cut off both sides and padded back as nothing - see
-    # [`GENESIS_PANEL_TRIM`]. Cleared outright rather than only made transparent, so no
-    # colour is left behind an edge for a filter to find.
+    # ... and the outer rock cleared, colour and all, so no filter finds an edge
     left, right = GENESIS_PANEL_TRIM
     hole[:, :left] = 0
     hole[:, GENESIS_PANEL_WIDTH - right :] = 0
     panel = Image.fromarray(hole)
-    # ... and the one word of the middle column's furniture this rip can put back, added
-    # after the fonts are read, further down
     write_png(
         os.path.join(out, "board.png"), screen.crop((wx, wy, wx + ww, wy + wh))
     )
@@ -819,7 +616,6 @@ def genesis():
     for word, band, (lx, ly) in GENESIS_LABELS:
         panel.alpha_composite(genesis_glyphs(fonts, band, word, keys), (lx, ly - wy))
     write_png(os.path.join(out, "background.png"), panel)
-    # the score is the bold face in the first player's red; the stage number is the plain one
     write_png(
         os.path.join(out, "font.png"),
         genesis_glyphs(fonts, GENESIS_FACE_BOLD, "0123456789", keys, GENESIS_SCORE_INK),
@@ -830,21 +626,16 @@ def genesis():
     )
 
 
-# --------------------------------------------------------------------------------------
-# Kirby's Avalanche (SNES, 1995)
-# --------------------------------------------------------------------------------------
+# Kirby's Avalanche (SNES)
 
 SNES_BLOBS = "SNES - Kirby's Avalanche - Miscellaneous - Blobs & Boulders.png"
 
 SNES_BLOCK = 16
 
-# the pale fill the ripper laid behind each block of sprites; the sheet background is the
-# magenta `background_of` finds on its own
+# the pale fill behind each block of sprites; the magenta background is found on its own
 SNES_BACKDROPS = ([248, 128, 248],)
 
-# Where each colour's "Placed Blob" grid starts. Unlike Mean Bean Machine's sheet this one is
-# a *grid*: sixteen link variants in two rows of eight, in the game's own order, with a third
-# row of loose frames under them that this ignores.
+# each colour's "Placed Blob" grid: two rows of eight variants, then a row of loose frames
 SNES_GRIDS = {
     "Blue": (8, 80),
     "Red": (192, 104),
@@ -853,57 +644,27 @@ SNES_GRIDS = {
     "Purple": (8, 360),
 }
 
-# The sheet's own link order, which is not this game's.
-#
-# Read off the grid rather than assumed: a neck runs to its cell edge (that is what makes two
-# joined blobs meet flush), so which sides a variant is joined on is which edges its art
-# touches in the middle - and the purple grid, whose blobs carry no shadow to confuse it,
-# decodes to exactly this. Bit 1 of the sheet's index is up, 2 is right, 4 is down, 8 is left.
+# the sheet's link order: index bit 1 is up, 2 right, 4 down, 8 left
 SNES_INDEX_BITS = ((1, UP), (2, RIGHT), (4, DOWN), (8, LEFT))
 SNES_GRID_COLUMNS = 8
 
-# the boulder, which is this game's nuisance puyo, and its dissolving frames. Kirby's
-# Avalanche has no tray either, so the three symbols are the boulder at three weights: the
-# most dissolved for a single, the next for six, and the whole rock for thirty.
+# the boulder, this game's nuisance, with four dissolving frames; the tray uses three of them
 SNES_BOULDER = (8, 152)
 SNES_BOULDER_FRAMES = 4
 
-# ... and which of those four the boulder *pops* through: the three after the whole rock, so
-# the strip is the rock coming apart. Frame 0 is the rock the board already draws, and a pop
-# that opened on it would hold what the blink has just finished showing.
+# the frames the boulder pops through: the three after the whole rock the board already draws
 SNES_BOULDER_POP = (1, 2, 3)
 
-# The last of them - the rock down to a scatter of dots - is also what it throws off as it
-# goes. The sheet has no droplet for a boulder any more than Mean Bean Machine's has one for
-# its refugee bean, and this is the art it does have.
+# the last frame, a scatter of dots, doubles as the boulder's debris
 SNES_BOULDER_DEBRIS = 3
 
-# The **third row** under each "Placed Blob" grid, which the grid reader steps over: three
-# loose frames, on the colour's own row, that are the whole of this game's cell animation.
-#
-# The sheet does not label them - the block is called "Placed Blob" and that is all - so they
-# were read off the art. In order: a blob with its eyes wide open, which is the face it pulls
-# on its way out; a **flat** one; and a **tall** one. The flat and the tall are drawn nowhere
-# else and used for nothing else, which is the same tell that found Mean Bean Machine's pair
-# on the row below its beans - a landing squash and the spring back through it.
-#
-# They are deliberately *not* the four frames of "Controlling Blob + Shadow", which also
-# carry a squash and a stretch: those are the blob in the air under the player's hand, drawn
-# with the white flash rim it wears while it is still in play.
+# the loose third row: wide eyes (pop), flat, tall (landing); not the in-play "Controlling Blob"
 SNES_LOOSE_ROW = SNES_BLOCK * 2
 SNES_SURPRISED = 0
 SNES_SQUASH = SNES_BLOCK
 SNES_STRETCH = SNES_BLOCK * 2
 
-# "Dissolving Blob / Angel Trail / Win SFX": the little block of three the sheet gives every
-# colour, and the rest of the pop. A ball, a smaller ball and a four pixel spark, each cut to
-# its own size and centred in a whole cell - they are drawn smaller than a cell on the
-# hardware too, so they go back on the cell they came out of rather than being scaled up.
-#
-# Only the first of the three is named as pop art. The other two are the trail behind the
-# angel a losing blob turns into and the sparkle of a win, and they are used here because a
-# blob that is a ball and then nothing is a pop two frames long - the same borrow, and for
-# the same reason, that the genesis refugee bean's pop makes of the art it does have.
+# each colour's "Dissolving Blob / Angel Trail / Win SFX" block: ball, smaller ball, spark
 SNES_DISSOLVE = {
     "Blue": (8, 192),
     "Red": (192, 232),
@@ -911,161 +672,72 @@ SNES_DISSOLVE = {
     "Green": (8, 432),
     "Purple": (32, 432),
 }
-# `(dx, dy, w, h)` off the strip's own corner, measured off the sheet - every colour lays
-# them out identically, which is what `snes_animations` asserts before it cuts anything.
+# `(dx, dy, w, h)` off the block's corner, the same for every colour, as `snes_animations` asserts
 SNES_BALL = (0, 0, 8, 8)
 SNES_TRAIL = (9, 2, 6, 5)
 SNES_SPARK = (18, 3, 4, 3)
 
-# the frames of one pop, which is what `DestroyStyle::Pop` counts, and the widest strip on
-# the sheet - so it is also the sheet's own width
+# frames in one pop, which `DestroyStyle::Pop` counts; the widest strip, so also the sheet's width
 SNES_POP_FRAMES = 3
-# the squash and the stretch, and nothing else: a landing that outstays itself reads as a
-# blob drawn wrong rather than as a bounce
+# the squash and the stretch; a longer landing reads as a blob drawn wrong
 SNES_BOUNCE_FRAMES = 2
 SNES_DEBRIS_FRAMES = 1
 
-# the animation sheet's own grid. The frames of a strip have to be edge to edge - the engine
-# addresses one by counting frame widths from its start - so only the rows are spaced out.
+# only the rows are spaced: the engine finds a frame by counting frame widths from its strip's start
 SNES_ANIM_ROW_GAP = 4
 
 
-# --- and the rest of it, which no rip carries -------------------------------------------
-#
-# Kirby's Avalanche has one sheet of playfield art on spriters-resource and it is the blobs:
-# no board, no background, no font. So those three come out of the game itself, and *not* by
-# screenshotting the board - a frame has the blobs, Kirby, the opponent's portrait and both
-# players' HUDs drawn into it.
-#
-# What they come out of instead is the SNES's own layer switch. `$212C` is the main screen
-# designation - a bit per background layer and one for the sprites - and snes9x keeps it in
-# `Memory.FillRAM`, which is a block of any savestate it writes. So: take a state mid-match,
-# poke that one byte, load it back, and the emulator renders whichever layers you asked for
-# and nothing else. Kirby's Avalanche plays in mode 2 with `$212C = 0x13`, which is BG1, BG2
-# and the sprites; the two renders below are `0x03` (both backgrounds, no sprites) and `0x02`
-# (BG2 alone). What that separates:
-#
-#   BG2   the forest, the grass border and the score line - the scenery
-#   BG1   the wooden centre column, the flower border, and the blobs in play
-#
-# and the field itself is on neither: it is the backdrop colour, so the forest simply shows
-# through it. That is why `board.png` is a crop of the BG2 render and not a frame of its own.
-#
-# Reproducing the two PNGs, if they are ever lost (`ra.py` is the retroarch skill's):
+# The board, panel and font come from the game: snes9x renders of a mid-match savestate with the
+# main screen byte `$212C` poked in its FIL block, 0x03 for BG1 and BG2 and 0x02 for BG2 (the
+# scenery) alone. The field is the backdrop colour, so `board.png` is a crop of BG2; the font is
+# read from the uncompressed state's VRAM. With the retroarch skill's `ra.py`:
 #
 #   ra.py start --core snes9x --rom "Kirby's Avalanche (USA).sfc" \
 #       --set video_vsync=false --set savestate_file_compression=false
-#   ... drive it to a match, then ra.py state save 2
-#   poke byte 0x212c of the state's FIL block to 0x03 (and again to 0x02), ra.py state load 2,
-#   ra.py screenshot
-#
-# `video_vsync=false` is not optional: with it on RetroArch answers the command port for a few
-# seconds and then stops replying to anything at all, while the process stays alive.
-# the canopy the panels stand against, read off the forest layer - the colour [`vignette`]
-# washes this theme's scene in
+#   drive to a match, ra.py state save 2, poke 0x212c, ra.py state load 2, ra.py screenshot
+
+# the forest canopy's colour, which [`vignette`] washes the scene in
 SNES_FOREST = (0x08, 0x28, 0x10)
 
 SNES_LAYERS_BOTH = "kirby-layer-03.png"
 SNES_LAYER_SCENERY = "kirby-layer-02.png"
 SNES_STATE = "kirby-avalanche.state"
 
-# the SNES screen, and the left player's field on it: six columns and twelve rows of 16.
-# Measured off the game rather than the BG1 render, which is a pixel out: a blob's eyes sit
-# three rows into its cell, and in a frame with the field full they land on 99, 115, 131 ...
-# 195, so the bottom row is 192 and the top of the field is 208 - 192 = 16.
+# the SNES screen, and the left field: 6x12 cells of 16, read off the game (BG1 is a pixel out)
 SNES_SCREEN = (256, 224)
-# ... whose last row is one flat blue-grey run right across it: the console's own border row
-# rather than any of the game's art. The panel used to be cut through it and it never showed,
-# because the panel ran off the bottom of the window; with air under the panel it is a stripe
-# along the bottom of every match, so the cut stops a row short of the screen.
+# ... stopping a row short: the last row is the console's flat border, a stripe under every match
 SNES_SCREEN_BOTTOM = SNES_SCREEN[1] - 1
 SNES_FIELD = (8, 16, 96, 192)
-# one player's panel is the field and the wooden column beside it, cut where the second
-# player's field begins
+# the panel: the field and the wooden column, up to the second player's field
 SNES_PANEL_WIDTH = 152
 
-# The game draws its own score along the bottom border, and this game draws its own over the
-# top - so the number is painted out with a clean run of the grass beside it and only the
-# `SC` label is kept. `PATCH` is what gets covered, `GRASS` is what covers it, and the last
-# course of it is *clipped* to the patch: the grass is wider than what is left to cover, and
-# laying a whole one down ran sixty pixels past the patch and over the wooden platform at the
-# foot of the centre column - the one Kirby stands on - leaving a band of grass where the
-# floor of the arch should be.
-# The patch runs to the foot of the centre column, because the game right aligns its number
-# there and two pixels of the last digit survived a patch that stopped short of it; the grass
-# is taken from clear of the `SC`, because a course cut through the label repeats a sliver of
-# it across the border.
+# the game's score, grassed over to the column's foot; the last course stops short of the platform
 SNES_SCORE_PATCH = (34, 200, 70, 24)
 SNES_GRASS = (26, 200, 64, 24)
 
-# The game's two name plates, at (104, 31), and the three wooden posts that used to be run up
-# over them, are both gone from this script: the `NEXT` sign coming down nine rows (see
-# [`SNES_NEXT_SIGN`]) lands its plank exactly over that run and covers it outright. The plates
-# named one queue per player and this panel has both boxes to itself, so they had to go
-# whichever way covered them.
-#
-# `FLOOR` lays a whole course of plank across the mouth of the arch, where the game stands
-# Kirby and this one stands nothing: the ground under him is bare dark and reads as a gap in
-# the column. It copies from the panel itself - the course between `STAGE` and the arch - so
-# the wood is the game's own and no two courses are alike by accident.
+# a course of plank laid across the empty arch, copied from the panel's own course below `STAGE`
 SNES_FLOOR = (104, 192, 48, 16)
 SNES_FLOOR_DONOR = (104, 120, 48, 16)
 
-# Two blobs sit *outside* the field, in the little arch at the foot of the centre column where
-# Kirby stands - so they survive punching the field out and have to be painted over. They are
-# found rather than measured: a blob comes to rest on the arch's floor, which is black, so the
-# patch is the bounding box of whatever is saturated in that band, filled with the colour the
-# ring around it is mostly made of. The band is only the floor - the arch's own sky is blue and
-# saturated too, and searching the whole arch paints that out with it.
+# the blobs in the arch outside the field; only its black floor, since the sky is saturated too
 SNES_ARCH = (104, 194, 48, 14)
 
-# Kirby's `NEXT` sign is nailed *above* the top edge of the field, and the panel is cut at that
-# edge so that the spawning row has nothing behind it - which cut the sign in half. So the sign
-# comes down.
-#
-# What moves is the whole assembly and not just the letters: the sign is letters *on* a plank,
-# 7 to 31 on the screen, and moving any less of it than that leaves a plank sawn through
-# halfway - which is what the first attempt did. Nine rows down puts the letters' own top edge
-# level with the top of the field they label, and the plank lands where the game's two name
-# plates were. Those are painted out on this panel anyway (they name one queue per player and
-# this panel has both boxes to itself), so the plank covers the hole they leave and the boxes
-# hang off it exactly as they hung off it before.
+# the `NEXT` sign and plank, moved down to the field's top so the panel's cut does not halve it
 SNES_NEXT_SIGN = (104, 7, 48, 24)
 
-# The recess the game prints its stage number in. This game shows no level at all, so a number
-# sitting there would be wrong on every stage but the first. The recess is a flat sixteen
-# square of one colour with the digit drawn on it, so it is *filled* rather than patched -
-# `snes_paint_out` would take the black around the box for the colour to cover the digit with
-# and leave a black hole under `STAGE`, which is exactly what it did.
+# the stage number's recess, filled flat since this game shows no level
 SNES_STAGE_NUMBER = (120, 103, 16, 16)
 
-# The two boxes under `NEXT`, one per name plate, and the arch at the foot of the column.
-# Nothing is cut from these - they are here because they are what `snes/mod.rs` addresses,
-# and measuring them once here keeps the theme's numbers and the art they were read off in
-# the same file. The plates are the two runs of white at row 31; the arch is the run of sky
-# blue below the last of the slats.
+# the `NEXT` boxes and the arch mouth, not cut but measured here for `snes/mod.rs`
 SNES_NEXT_BOXES = ((104, 38, 24, 41), (128, 38, 24, 41))
 SNES_ARCH_MOUTH = (104, 186, 48, 14)
 
-# the ten digits in the game's own face, as tiles of its VRAM. Three indices: nothing, the
-# dark outline and the white fill, which is what they are drawn as on screen.
-# The game's own numeric face: **sixteen rows and not eight**. Each digit is two tiles, the
-# top at `SNES_FONT_TILE + n` and the bottom `SNES_FONT_ROW` further on, because the font is
-# laid out sixteen glyphs to a VRAM row. There is an eight row face at tile 896 as well - the
-# small one the game sets its menus in - and cutting the score in it drew numbers a little
-# over half the height of the `SC` they sit beside, which is what gave this away.
-#
-# Which tiles those are was not guessed. The game prints one digit on the layer render (the
-# `0` of its own score) and one in the `STAGE` recess, so both were masked off the render and
-# matched against a decode of all 2048 tiles: the score's `0` is 769 over 785 exactly, the
-# stage's `1` is 770 over 786, and no other reading of the sheet produces a pair that agrees
-# to the pixel.
+# The score face in VRAM tiles: each digit is two, the top at `SNES_FONT_TILE + n` and the bottom
+# `SNES_FONT_ROW` further on. The eight row face at 896 is the menu font and too short beside `SC`.
 SNES_FONT_TILE = 769
 SNES_FONT_ROW = 16
 
-# ... and the four inks it uses, paired index to colour off those same two digits. The
-# palette is the *player's*: the left panel draws its numbers in the red its `SC` is drawn in
-# and the right one in white. This panel is the left one.
+# ink index to colour, in the left player's palette (the right one draws in white)
 SNES_FONT_INK = {
     1: (0x00, 0x00, 0x00, 0xff),
     5: (0xE7, 0x51, 0x63, 0xff),
@@ -1107,11 +779,7 @@ def snes_font(vram):
 
 
 def snes_paint_out(panel, region):
-    """paint over whatever is saturated in `region`, with the colour around it.
-
-    Used twice: for the blobs standing in the arch at the foot of the centre column, which
-    survive punching the field out because they are not in the field; and for the stage number.
-    """
+    """paint over whatever is saturated in `region` with the commonest colour around it"""
     ax, ay, aw, ah = region
     px = np.array(panel)
     region = px[ay : ay + ah, ax : ax + aw, :3].astype(int)
@@ -1134,12 +802,7 @@ def snes_paint_out(panel, region):
 
 
 def snes_fill_flat(panel, region):
-    """flood one flat region of the panel with the colour it is mostly made of.
-
-    For a recess the game draws a number into: the box is one colour and the digit is a
-    handful of pixels on it, so the colour to cover the digit with is the region's own
-    commonest, and there is no bounding box to find.
-    """
+    """flood one flat region with its commonest colour, covering a digit drawn on it"""
     x, y, w, h = region
     px = np.array(panel)
     fill = Counter(map(tuple, px[y : y + h, x : x + w, :3].reshape(-1, 3))).most_common(1)
@@ -1153,8 +816,7 @@ def snes_art(out):
     scenery = source(SNES_LAYER_SCENERY)
     gx, gy, gw, gh = SNES_FIELD
 
-    # painted on the whole screen, so every rect below is the game's own coordinate, and cut
-    # to the panel at the end
+    # worked on the whole screen, in the game's coordinates, and cut to the panel at the end
     panel = both.crop((0, 0, SNES_PANEL_WIDTH, SNES_SCREEN[1])).convert("RGBA")
     grass = panel.crop(
         (
@@ -1172,25 +834,19 @@ def snes_art(out):
     snes_fill_flat(panel, SNES_STAGE_NUMBER)
     dx, dy, dw, dh = SNES_FLOOR_DONOR
     panel.paste(panel.crop((dx, dy, dx + dw, dy + dh)), (SNES_FLOOR[0], SNES_FLOOR[1]))
-    # ... the `NEXT` sign brought down onto its own plank, so the cut below does not halve it
     sx, sy, sw, sh = SNES_NEXT_SIGN
     panel.paste(panel.crop((sx, sy, sx + sw, sy + sh)), (sx, gy))
 
     # ... and the hole the board draws through, which is the field
     holed = np.array(panel)
     holed[gy : gy + gh, gx : gx + gw, 3] = 0
-    # ... and then the panel is cut at the *field's* top edge, so it stops level with it and
-    # the spawning row is drawn a cell above the panel, over the scene, with nothing to either
-    # side. The hedge the game lays across the top of the screen goes with that cut. The theme
-    # puts the cell back as `top_padding`, above the panel and the board alike, so a point in
-    # the padded background is a point on the SNES screen.
+    # ... cut at the field's top edge, as genesis is
     write_png(
         os.path.join(out, "background.png"),
         Image.fromarray(holed).crop((0, gy, SNES_PANEL_WIDTH, SNES_SCREEN_BOTTOM)),
     )
 
-    # the field is the backdrop showing through, so its art is the scenery behind it: the
-    # game's own twelve rows, stopping where the game stopped them
+    # the field is the backdrop showing through, so its art is the scenery layer
     write_png(
         os.path.join(out, "board.png"),
         scenery.crop((gx, gy, gx + gw, gy + gh)).convert("RGBA"),
@@ -1203,12 +859,7 @@ def snes_art(out):
 
 
 def snes_cell(blobs, box, transparent):
-    """one sprite of the blobs sheet, keyed and centred in a whole [`SNES_BLOCK`] cell.
-
-    The balls and the spark a popping blob shrinks through are drawn smaller than a cell and
-    cut as such, so they are put back on the cell they came out of rather than scaled up to
-    fill it.
-    """
+    """one blobs sheet sprite, keyed and centred unscaled in a [`SNES_BLOCK`] cell"""
     _, _, w, h = box
     tile = keyed_box(blobs, box, transparent)
     if (w, h) == (SNES_BLOCK, SNES_BLOCK):
@@ -1219,7 +870,6 @@ def snes_cell(blobs, box, transparent):
 
 
 def snes_dissolve_boxes(strip):
-    """the three sprites of one colour's dissolve block, as boxes on the sheet"""
     x, y = strip
     return [
         (x + dx, y + dy, w, h) for dx, dy, w, h in (SNES_BALL, SNES_TRAIL, SNES_SPARK)
@@ -1227,14 +877,8 @@ def snes_dissolve_boxes(strip):
 
 
 def snes_assert_dissolve_blocks(blobs, transparent):
-    """every colour's dissolve block has to be laid out identically, and it is not labelled.
-
-    The five blocks are scattered down the sheet with a colour's own art around them, so each
-    is measured by hand and a number typed a row out cuts a sliver of the sprite beside it -
-    which draws a smaller ball rather than failing. What holds them together is the layout
-    itself: at the offsets above, and only at those offsets, each block is exactly three
-    islands of art with the sheet's own backdrops all round them.
-    """
+    """fail unless each dissolve block is three islands of art at exactly the offsets above,
+    since a mistyped offset otherwise cuts a sliver of the next sprite"""
     pixels = rgb(blobs)
     drawn = np.ones(pixels.shape[:2], bool)
     for color in transparent:
@@ -1243,8 +887,7 @@ def snes_assert_dissolve_blocks(blobs, transparent):
         for box in snes_dissolve_boxes(strip):
             x, y, w, h = box
             inside = drawn[y : y + h, x : x + w]
-            # the art fills the box to all four edges - these are round sprites, so the box is
-            # their bounding box and not a rectangle they fill
+            # the art touches all four edges of its bounding box
             if not (
                 inside.any(1).all() and inside.any(0).all()
             ):
@@ -1262,19 +905,9 @@ def snes_assert_dissolve_blocks(blobs, transparent):
 
 
 def snes_animations(blobs, transparent):
-    """the pop of each colour, the boulder's, every landing squash and every burst.
+    """the pops, the boulder's pop, the landing squashes and every burst.
 
-    The rows are laid out in the order `theme/snes/mod.rs` counts them - the pops, the
-    boulder's pop, the squashes, then the debris - and that file is the only other place the
-    order is written down, so a row moved here and not there draws another strip's art
-    rather than failing.
-
-    One strip per row, every frame a whole cell, laid out for
-    `AnimationSpriteSheetData::non_exclusive_linear` - which counts frame widths from a
-    strip's own start, so the frames of one strip are edge to edge and only the rows are
-    spaced apart. The boulder has no squash of its own on the sheet and gets no bounce row:
-    its three dissolving frames are the rock coming apart, not a rock landing.
-    """
+    Rows are in the order `theme/snes/mod.rs` counts them, and nothing checks the two agree."""
     snes_assert_dissolve_blocks(blobs, transparent)
     cut = lambda box: snes_cell(blobs, box, transparent)
     loose = lambda color, dx: (
@@ -1290,15 +923,12 @@ def snes_animations(blobs, transparent):
         SNES_BLOCK,
     )
     strips = []
-    # the pop: the blob's eyes go wide, it curls into a ball, and the ball shrinks away
     for color in COLORS:
         ball, trail, _ = snes_dissolve_boxes(SNES_DISSOLVE[color])
         strips.append([cut(loose(color, SNES_SURPRISED)), cut(ball), cut(trail)])
     strips.append([cut(boulder(frame)) for frame in SNES_BOULDER_POP])
-    # the landing squash, one row per colour and none for the boulder
     for color in COLORS:
         strips.append([cut(loose(color, SNES_SQUASH)), cut(loose(color, SNES_STRETCH))])
-    # one spark per colour, centred, and the boulder's own scatter of dots
     for color in COLORS:
         strips.append([cut(snes_dissolve_boxes(SNES_DISSOLVE[color])[2])])
     strips.append([cut(boulder(SNES_BOULDER_DEBRIS))])
@@ -1345,17 +975,11 @@ def snes():
     snes_art(out)
 
 
-# --------------------------------------------------------------------------------------
 
 THEMES = {"genesis": genesis, "snes": snes}
 
 def check():
-    """draw every theme's cells as a board that uses all sixteen masks.
-
-    A seam is a hairline and the only way to see one is to put two puyos side by side - so
-    this is `rip.py check`'s twin, and it is the thing to look at after touching any of the
-    cutting above.
-    """
+    """draw every theme's cells as a board using all sixteen masks, to show the seams"""
     board = [
         "1111.2",
         "1..1.2",

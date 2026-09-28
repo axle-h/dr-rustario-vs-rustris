@@ -1,28 +1,8 @@
-//! The arcade theme: Super Puzzle Fighter II Turbo's own art, cut by `rustle-fighter/art/`.
+//! The arcade theme: Super Puzzle Fighter II Turbo's own art, cut by `rustle-fighter/art/`,
+//! with the arcade's music and the PlayStation port's effects.
 //!
-//! Everything drawn here is the arcade game's, off the Spriters Resource rips in Alex's drop -
-//! the gems, the playfield frame, the NEXT box, the score plate, the brick wall behind the
-//! panels. The music is the arcade's QSound, rendered out of the VGM logs; the **effects are
-//! the PlayStation port's**, because no arcade effect rip exists and the effects are the half
-//! tied to gameplay events anyway.
-//!
-//! **The panel layout is composed, not measured**, and that is a departure from the house rule
-//! worth stating plainly. Every other retro theme here has its geometry measured against the
-//! emulated game; this one could not be, so what is below arranges the arcade's own
-//! furniture - the frame, the NEXT box, the score plate - rather than reproducing where the
-//! arcade puts them. The *board* is exact: the frame's interior is six columns and thirteen
-//! rows at sixteen pixels to the cell, straight off the rip.
-//!
-//! One thing the art settled that the disassembly had already said: the frame's top row is
-//! hatched tabs over every column **except column 3**, which is open. That is the Drop Alley,
-//! and the frame confirms it independently of the code.
-//!
-//! **This theme is about nine megabytes**, nearly all of it the seven stage tunes, and every
-//! theme in the app is built at startup and kept - so it is the biggest single addition to
-//! that bill the compendium has taken. It is left whole: `dr-rustario/build.rs` halves its
-//! sheets for the `portmaster` and `browser` builds and this could do the same with its music
-//! if either one ever complains, but neither has been measured yet and cutting art nobody has
-//! found too heavy would be guessing.
+//! The board is exact, six columns by thirteen rows at sixteen pixels off the frame, but the
+//! panel layout around it is composed rather than measured against the emulated game.
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS};
 use crate::game::cell::{GemSprite, PowerMask};
@@ -49,16 +29,12 @@ mod sprites {
     pub const BACKGROUND: &[u8] = include_bytes!("background.png");
     pub const BOARD: &[u8] = include_bytes!("board.png");
     pub const SCENE: &[u8] = include_bytes!("scene.png");
-    /// the score face, the one the plate's own baked zeros are set in
+    /// the score face the plate's baked zeros are set in
     pub const FONT: &[u8] = include_bytes!("font.png");
 }
 
-/// The arcade's QSound, rendered out of the VGM logs by `art/music.py`.
-///
-/// One stage theme per fighter we field. Puzzle Fighter plays the *opponent's* stage theme,
-/// which is not something the engine's music dealing can express - it deals one when a match
-/// opens - so these are simply the pool a match is dealt from. Each is a pair: the intro, and
-/// then the part that repeats, split at the loop point the VGM header carries.
+/// Rendered by `art/music.py`; each stage track is an intro and a repeat, split at the VGM
+/// loop point, and a match is dealt one from the pool.
 mod sound {
     pub const MOVE: &[u8] = include_bytes!("move.ogg");
     pub const ROTATE: &[u8] = include_bytes!("rotate.ogg");
@@ -78,7 +54,7 @@ mod sound {
     pub const VICTORY: &[u8] = include_bytes!("victory.ogg");
     pub const GAME_OVER: &[u8] = include_bytes!("game-over.ogg");
 
-    /// the character select screen's tune, which this game plays over its menus
+    /// the character select tune, played over the menus
     pub const MENU: (&[u8], &[u8]) = (
         include_bytes!("menu-intro.ogg"),
         include_bytes!("menu-repeat.ogg"),
@@ -133,55 +109,38 @@ pub const SRC_BLOCK_SIZE: u32 = 16;
 const PAD: i32 = 4;
 const PITCH: i32 = SRC_BLOCK_SIZE as i32 + 2 * PAD;
 
-/// how many sprites `art/rip.py` writes per colour: the plain gem, the crash gem, the nine
-/// power gem masks and the ten counter gem digits
+/// per colour: plain, crash, nine power gem masks and ten counter digits
 #[cfg(test)]
 const SPRITES_PER_COLOR: i32 = 21;
 
-/// The transparent row above the panel, which is the row a pair spawns in.
-///
-/// The frame is thirteen rows tall and the board is fourteen, the extra being the headroom the
-/// erase pass reaches into - so it is drawn above the frame's mouth, against the brick wall,
-/// exactly as Puyo Rusto draws its ghost row.
+/// The transparent band above the frame for the board's fourteenth, headroom row, which the
+/// thirteen row frame does not cover.
 const TOP_PADDING: u32 = SRC_BLOCK_SIZE * HIDDEN_ROWS;
 const BOTTOM_PADDING: u32 = 6;
 
-/// where the board sits inside the panel: three pixels of the frame's wall to its left, and
-/// its top row level with the frame's own
+/// where the board sits inside the panel
 const BOARD: (i32, i32) = (3, 0);
 
-/// **Every point below is in the *padded* background's coordinates**, which is the panel art
-/// shifted down by [`TOP_PADDING`] - the band the headroom row is drawn in. The panel's own
-/// top left is therefore `(0, TOP_PADDING)`, and a constant measured off the art has the
-/// padding added to it here rather than at the point of use.
+/// A y off the panel art in the padded background's coordinates, shifted down by
+/// [`TOP_PADDING`]; every point below goes through it.
 const fn padded(y: i32) -> i32 {
     y + TOP_PADDING as i32
 }
 
-/// where the pair waits: centred in the NEXT box's black interior, which the art puts at
-/// x 110-135, y 12-55
+/// centred in the NEXT box's interior, x 110-135 and y 12-55 on the art
 const NEXT_PAIR: (i32, i32) = (115, padded(17));
 
-/// The score plate's digit bed, which `rip.py` paints the plate's own zeros out of. The plate
-/// sits at (106, 70) in the art and its zeros run from (2, 15) inside it.
+/// the score plate's digit bed, whose baked zeros `rip.py` paints out
 const SCORE_AT: (i32, i32) = (108, padded(85));
-/// The speed step, right aligned under the plate.
-///
-/// Under it rather than on it: the plate has one row of digits and it belongs to the score,
-/// which is the number this game's own HUD gives it.
+/// the speed step, right aligned under the plate, whose one row of digits is the score's
 const LEVEL_AT: (i32, i32) = (165, padded(110));
 
-/// Where the counter gems still to fall are shown: down the right hand column, under the
-/// score plate.
-///
-/// The arcade shows this as a CAUTION / WARNING / DANGER plate rather than as a count, and
-/// those plates are on the sheet - but the engine's widget is a row of icons and it says the
-/// same thing more precisely, so the plates are left for the fighter layer to use.
+/// the pending counter gem tray, under the score plate
 const TRAY: (i32, i32) = (112, padded(130));
 const TRAY_ICON: u32 = SRC_BLOCK_SIZE * 3 / 4;
 const TRAY_MAX: u32 = 6;
 
-/// the brick wall's own colour, which is what shows where the tile does not reach
+/// the brick wall's colour, shown where the tile does not reach
 const WALL: Color = Color::RGB(0x3a, 0x18, 0x14);
 
 /// where a sprite sits on `rip.py`'s grid: a row per colour, in `GemColor`'s own order
@@ -199,18 +158,14 @@ fn gem(sprite: GemSprite) -> Point {
         GemSprite::Counter { color, countdown } => {
             (color.index() as i32, 2 + 9 + countdown.min(9) as i32)
         }
-        // the rainbow has no art of its own on the gem sheets - it is drawn as the crash gem
-        // of the first colour until one is cut for it
+        // no rainbow art on the sheets, so the first colour's crash gem stands in
         GemSprite::Rainbow => (0, 1),
     };
     Point::new(column * PITCH + PAD, row * PITCH + PAD)
 }
 
-/// The nine masks in the order `art/rip.py` writes them, which is `POWER_MASKS` there.
-///
-/// A mask that is not one of the nine cannot occur on a board - see
-/// [`PowerMask::REACHABLE`] - so it falls back to the fully joined middle, which is the one
-/// that looks least wrong anywhere.
+/// The nine masks in `art/rip.py`'s `POWER_MASKS` order; an unreachable mask falls back to
+/// the fully joined middle.
 fn power_column(mask: PowerMask) -> i32 {
     PowerMask::REACHABLE
         .iter()
@@ -237,7 +192,7 @@ pub fn arcade_theme<'a>(
             previews: previews(),
             mascot: None,
         },
-        // every row is drawn, the headroom fourteenth included
+        // the headroom row is drawn too
         geometry: BoardGeometry::new(SRC_BLOCK_SIZE, 0, (0, 0), COLUMNS, ROWS, ROWS),
         audio: audio(
             config.audio,
@@ -288,7 +243,6 @@ pub fn arcade_theme<'a>(
         game_over_points: vec![],
         interstitial_points: vec![],
         overlay_size: None,
-        // Puzzle Fighter has no hold box, and neither does this
         hold: None,
         peek: PeekLayout::Slots {
             slots: vec![Rect::new(
@@ -331,8 +285,7 @@ mod tests {
         (word(16), word(20))
     }
 
-    /// the sheet is `art/rip.py`'s and nothing in Rust can check the script - but a sheet that
-    /// had drifted from the layout this reads it as would draw the wrong gem rather than fail
+    /// the gem sheet's dimensions match the grid `gem` reads
     #[test]
     fn the_gem_sheet_is_the_shape_the_layout_reads_it_as() {
         let (width, height) = png_size(sprites::GEMS);
@@ -343,8 +296,7 @@ mod tests {
         );
     }
 
-    /// the board's own backdrop is exactly the playfield: six columns and thirteen rows, which
-    /// is the frame's interior off the rip
+    /// the board backdrop is exactly the visible playfield
     #[test]
     fn the_board_backdrop_is_the_frames_interior() {
         let (width, height) = png_size(sprites::BOARD);
@@ -352,7 +304,7 @@ mod tests {
         assert_eq!(height, (ROWS - HIDDEN_ROWS) * SRC_BLOCK_SIZE);
     }
 
-    /// every mask a rectangle can produce has a column of its own, and no two share one
+    /// every reachable mask has a column of its own
     #[test]
     fn the_nine_power_gem_masks_each_have_their_own_sprite() {
         let columns: std::collections::HashSet<i32> = PowerMask::REACHABLE
@@ -367,13 +319,8 @@ mod tests {
         );
     }
 
-    /// **The theme and the script agree about which cell is which sprite.**
-    ///
-    /// Nothing in Rust can check `art/rip.py`, and a sheet that had drifted from the layout
-    /// this module reads it as would draw the wrong gem rather than fail - so the sheet is
-    /// decoded here and every sprite the game can report is looked up in it. A cell that came
-    /// out empty is a cut that landed on the sheet's background; two sprites that came out
-    /// identical are two cuts that landed on the same art.
+    /// Every sprite's cell on the decoded sheet is non-empty and unique, so the layout agrees
+    /// with `art/rip.py`.
     #[test]
     fn every_sprite_lands_on_art_of_its_own() {
         let sheet = image::load_from_memory(sprites::GEMS)
@@ -382,7 +329,7 @@ mod tests {
         let mut seen: std::collections::HashMap<Vec<u8>, GemSprite> =
             std::collections::HashMap::new();
         for sprite in GemSprite::all() {
-            // the rainbow has no art of its own yet and deliberately shares the crash gem's
+            // the rainbow shares the crash gem's art
             if sprite == GemSprite::Rainbow {
                 continue;
             }

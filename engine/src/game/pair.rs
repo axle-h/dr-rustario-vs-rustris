@@ -1,44 +1,16 @@
-//! Puyo Puyo's rotation, for the two-cell pieces that use it.
-//!
-//! This is the geometry only - a pivot, a child orbiting it, and the rules for sliding,
-//! falling and turning over a board that says which cells are free. What the two halves *are*
-//! is the game's, so a game wraps a [`PairMotion`] in its own piece type rather than the other
-//! way round: see `puyo-rusto/src/game/pair.rs`, which is that wrapper.
-//!
-//! It rhymes with Dr. Rustario's pill - two halves, a pivot, kicks, splitting once it lands -
-//! but the kick rules are Puyo's own, so `pill.rs` stays where it is rather than being merged
-//! into this. The rules here are Puyo Nexus's [Rotation](https://puyonexus.com/wiki/Rotation),
-//! read 2026-08-27:
-//!
-//! * a **floor kick** pushes the whole pair *up* when the cell a puyo is rotating down into is
-//!   taken;
-//! * a **wall kick** pushes it sideways when the cell it is rotating into is a wall or a puyo;
-//! * when the kicked-to cell is taken as well, the rotation is refused and the **double
-//!   rotate** (quick turn) rule takes over: pressing rotate again flips the pair end over end,
-//!   in place, the two halves swapping the cells they already hold.
-//!
-//! One rule is not on that page and is easy to miss: a pair whose pivot is already under the
-//! ceiling may not turn upright at all once the cell it wants is taken - the rotation is
-//! refused rather than kicked anywhere. That is the game's own *current row check*, from
-//! [Rotation, collision and push
-//! back](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Rotation,_collision_and_push_back), and it
-//! is what stops a player shuffling a pair about up in the ghost rows. Whether a board has
-//! such a row at all is the board's to say - [`PairBoard::is_ceiling`] defaults to no.
+//! Puyo Puyo's rotation for two-cell pieces, shared by Puyo Rusto and Super Rustle Fighter,
+//! from Puyo Nexus's [Rotation](https://puyonexus.com/wiki/Rotation). Geometry only: a game
+//! wraps a [`PairMotion`] in its own piece type.
 
 use crate::game::geometry::{Point, Rotation};
 
 /// The board a [`PairMotion`] moves over, as far as the motion needs to know it.
 pub trait PairBoard {
-    /// free *and* on the board; anything off the board counts as occupied, so a pair cannot be
-    /// moved into it
+    /// free and on the board; off the board counts as occupied
     fn is_free(&self, point: Point) -> bool;
 
-    /// Is a pair with its pivot here up against the ceiling, where an upright rotation is
-    /// refused outright rather than kicked anywhere - and does not even arm the quick turn?
-    ///
-    /// Puyo Puyo Tsu's *current row check*, which is half of its ceiling above the thirteenth
-    /// row; the other half is the board having no fourteenth row to turn into. A board with no
-    /// such row says no, which is the default.
+    /// Whether a pivot here is under the ceiling, where an upright rotation into a taken cell
+    /// is refused without a kick or arming the quick turn (Puyo Puyo Tsu's current row check).
     fn is_ceiling(&self, _pivot: Point) -> bool {
         false
     }
@@ -61,7 +33,7 @@ pub enum RotateOutcome {
     Turned,
     /// turned after the pair was pushed out of the way
     Kicked,
-    /// flipped end over end, the pair being wedged too tightly to turn
+    /// flipped end over end in place
     QuickTurned,
     /// nothing was possible; a second press will try the quick turn
     Blocked,
@@ -102,7 +74,6 @@ impl PairMotion {
         [self.pivot, self.child()]
     }
 
-    /// would the pair fit here, with both halves on the board and on free cells?
     fn fits<B: PairBoard + ?Sized>(board: &B, candidate: &PairMotion) -> bool {
         candidate.points().iter().all(|point| board.is_free(*point))
     }
@@ -114,7 +85,6 @@ impl PairMotion {
         }
     }
 
-    /// slide sideways, if there is room for both halves
     pub fn shift<B: PairBoard + ?Sized>(&mut self, board: &B, dx: i32) -> bool {
         let candidate = self.moved(dx, 0);
         if Self::fits(board, &candidate) {
@@ -125,7 +95,6 @@ impl PairMotion {
         }
     }
 
-    /// step down one row, if there is room
     pub fn fall<B: PairBoard + ?Sized>(&mut self, board: &B) -> bool {
         let candidate = self.moved(0, 1);
         if Self::fits(board, &candidate) {
@@ -136,12 +105,11 @@ impl PairMotion {
         }
     }
 
-    /// nothing below either half: the pair is about to lock
     pub fn is_resting<B: PairBoard + ?Sized>(&self, board: &B) -> bool {
         !Self::fits(board, &self.moved(0, 1))
     }
 
-    /// fall as far as the pair will go, returning how many rows it dropped
+    /// returns the rows dropped
     pub fn hard_drop<B: PairBoard + ?Sized>(&mut self, board: &B) -> u32 {
         let mut rows = 0;
         while self.fall(board) {
@@ -150,17 +118,14 @@ impl PairMotion {
         rows
     }
 
-    /// where the pair would come to rest, for the ghost
     pub fn ghost<B: PairBoard + ?Sized>(&self, board: &B) -> PairMotion {
         let mut ghost = *self;
         ghost.hard_drop(board);
         ghost
     }
 
-    /// Turn a quarter, kicking off the floor or a wall if that is what it takes.
-    ///
-    /// Refusing a rotation arms the quick turn, so a second press flips the pair instead -
-    /// which is the only way out when it is wedged between two columns.
+    /// Turn a quarter, kicking off the floor or a wall if needed. A refused rotation arms the
+    /// quick turn, so the next press flips the pair instead.
     pub fn rotate<B: PairBoard + ?Sized>(&mut self, board: &B, clockwise: bool) -> RotateOutcome {
         let rotation = self.rotation.rotate(clockwise);
         let turned = PairMotion { rotation, ..*self };
@@ -170,20 +135,12 @@ impl PairMotion {
             return RotateOutcome::Turned;
         }
 
-        // A pair whose pivot is under the ceiling may not turn upright at all once the cell it
-        // wants is taken: the rotation is refused outright rather than pushed anywhere, and it
-        // does not even arm the quick turn. Puyo Nexus, [Rotation, collision and push
-        // back](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Rotation,_collision_and_push_back)
-        // - the current row check, `if(current_row < 2) if(target_cell == bottom || target_cell
-        // == top) exit;`. It is what keeps a player from shoving a pair about up in the ghost
-        // rows, and it is half of Tsu's ceiling: the other half is the board having no
-        // fourteenth row to turn into.
+        // the current row check: under the ceiling an upright turn is refused without arming
         if board.is_ceiling(self.pivot) && matches!(rotation, Rotation::North | Rotation::South) {
             return RotateOutcome::Blocked;
         }
 
-        // push the pair away from whatever the child was turning into: down into the floor
-        // pushes up, into a wall pushes sideways
+        // kick away from whatever the child turned into: up off the floor, sideways off a wall
         let away = -child_offset(rotation);
         let kicked = PairMotion {
             rotation,
@@ -205,17 +162,8 @@ impl PairMotion {
         RotateOutcome::Blocked
     }
 
-    /// The double rotate: the two halves swap cells, so the pair flips end over end without
-    /// moving.
-    ///
-    /// Puyo Nexus, [Rotation, collision and push
-    /// back](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Rotation,_collision_and_push_back): "a
-    /// rotation pushes the pair's main puyo upwards, with the slave puyo taking its place at
-    /// the bottom; or the slave puyo ends up at the top with the main puyo being pushed down
-    /// by one cell". Either way the pair ends up on the same two squares with the halves the
-    /// other way round - which is why the page can say that by this point "nothing will cancel
-    /// the rotation". Those two squares are the ones the pair is already standing on, so there
-    /// is nothing left to collide with and this cannot fail.
+    /// The halves swap cells. The pair stays on the squares it already holds, so this cannot
+    /// fail.
     fn quick_turn(&self) -> PairMotion {
         PairMotion {
             pivot: self.child(),
@@ -232,11 +180,10 @@ mod tests {
     const COLUMNS: i32 = 6;
     const ROWS: i32 = 13;
 
-    /// a board of nothing but occupancy, which is all the motion asks of one
     #[derive(Clone, Default)]
     struct Grid {
         taken: Vec<Point>,
-        /// row 0 is the ghost row, the way Puyo Rusto's board has one
+        /// row 0 is a ceiling row
         ceiling: bool,
     }
 
@@ -294,8 +241,7 @@ mod tests {
         assert_eq!(pair.child().y, ROWS - 1);
     }
 
-    /// wedged between two columns: the first press is refused and the second flips the pair
-    /// end over end, in place
+    /// wedged between two columns, the first press is refused and the second flips in place
     #[test]
     fn a_wedged_pair_quick_turns_on_the_second_press() {
         let wedge = Grid::default().with(1, 0..ROWS).with(3, 0..ROWS);
@@ -322,7 +268,7 @@ mod tests {
         assert_eq!(pair.ghost(&stack).pivot(), pair.pivot());
     }
 
-    /// under a ceiling an upright rotation is refused outright: no kick, and no arming either
+    /// under a ceiling an upright rotation is refused without a kick or arming
     #[test]
     fn a_ceiling_refuses_an_upright_rotation_rather_than_kicking_it() {
         let full = Grid::default().under_a_ceiling();
@@ -339,8 +285,7 @@ mod tests {
         assert_eq!(pair.rotation(), Rotation::East, "still lying flat");
     }
 
-    /// A board with no ceiling row says so by saying nothing, and the same pair in the same
-    /// place is an ordinary wedged pair again: refused once, then flipped.
+    /// without a ceiling the same top-row pair is refused once, then flipped
     #[test]
     fn a_board_with_no_ceiling_quick_turns_in_its_top_row_instead() {
         let full = (0..COLUMNS).fold(Grid::default(), |grid, x| grid.with(x, 1..ROWS));

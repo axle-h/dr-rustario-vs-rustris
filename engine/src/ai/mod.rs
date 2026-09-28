@@ -1,9 +1,6 @@
-//! The parts of a learned agent that are not game rules: the neural network it scores
-//! placements with, and the genetic algorithm that trains one. Both games extract their own
-//! board features into a [FeatureNetwork] and supply their own [genetic::Fitness].
-//!
-//! The training half is not compiled for the browser or Android, which have nowhere to run it;
-//! the network itself always is.
+//! The parts of a learned agent that are not game rules: network shapes, genome, genetic
+//! algorithm and its [genetic::Fitness] seam, which each game fills with its own headless game.
+//! Training is not compiled for the browser or Android.
 
 mod coefficient;
 mod end_game;

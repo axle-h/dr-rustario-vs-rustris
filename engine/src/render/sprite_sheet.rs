@@ -1,9 +1,6 @@
-//! Sprites for everything on a board, keyed by the game's own [`CellId`]s and [`PieceId`]s.
-//!
-//! A theme describes where each cell's sprite is in a source PNG; the sheet rescales them all
-//! into one atlas at the theme's block size, pre-rotates cells that need it, keeps alpha
-//! variants for ghosts and trails, animated strips for cells that idle or pop, and masks for
-//! particle emission.
+//! Sprites for everything on a board, keyed by the game's own [`CellId`]s and [`PieceId`]s. A theme
+//! says where each sprite is in a source PNG; the sheet rescales them into one atlas at the block
+//! size, with rotations, alpha, animated strips and particle masks.
 
 use crate::animate::debris::DebrisArt;
 use crate::animate::destroy::{DestroyStyle, PopPhase};
@@ -21,26 +18,15 @@ use sdl2::video::WindowContext;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-/// how wide an atlas may get before it wraps onto another row.
-///
-/// A sheet is one texture with every cell side by side, and a game with a great many cells -
-/// Puyo Rusto keys a colour by sixteen link masks for each of fifteen sprite sets - runs off
-/// the end of what a driver will allocate in a single dimension. GLES parts commonly stop at
-/// 4096, so that is where this stops; laying the surplus on another row costs the same
-/// pixels and asks for no more of the driver than any other theme does.
-///
-/// It is the ceiling on a theme's *source* sheet too, which is loaded whole and in one piece
-/// - Puyo Rusto's is laid out against this, and says so.
+/// How wide an atlas or a theme's source sheet may get before it wraps onto another row; GLES
+/// drivers commonly refuse a texture wider than 4096.
 pub const MAX_ATLAS_WIDTH: u32 = 4096;
 
 /// nothing is faded at all
 const OPAQUE: u8 = 0xff;
 
-/// Lays sprites out left to right, onto another shelf once a row is [`MAX_ATLAS_WIDTH`] wide.
-///
-/// Every shelf is as tall as the tallest sprite, which wastes a little on a sheet of mixed
-/// sizes and keeps the arithmetic to one line. Returns where each went and how big the sheet
-/// has to be.
+/// Lays sprites out left to right, onto another shelf once a row is [`MAX_ATLAS_WIDTH`] wide, every
+/// shelf as tall as its tallest sprite. Returns where each went and the sheet's size.
 fn shelve(sizes: &[(u32, u32)]) -> (Vec<Rect>, u32, u32) {
     let row_height = sizes.iter().map(|(_, h)| *h).max().unwrap_or(1);
     let (mut x, mut y, mut width) = (0, 0, 0);
@@ -60,8 +46,8 @@ fn shelve(sizes: &[(u32, u32)]) -> (Vec<Rect>, u32, u32) {
 /// Where a cell's sprite is in the source file.
 #[derive(Clone, Copy, Debug)]
 pub struct CellSpriteData {
-    /// the sprite for the cell while it is part of the active piece (and anywhere else if
-    /// `stack` is not given)
+    /// the sprite for the cell while it is part of the active piece, and anywhere else if `stack`
+    /// is not given
     pub snip: Rect,
     /// a different sprite once the cell is locked into the stack
     pub stack: Option<Rect>,
@@ -90,28 +76,24 @@ impl CellSpriteData {
     }
 }
 
-/// Animated strips a group of cells share. Every one is optional and defaulted, so a theme
-/// names only the strips it has art for and gains a new one without being touched.
+/// Animated strips a group of cells share, each optional and defaulted.
 #[derive(Clone, Debug, Default)]
 pub struct CellAnimationData {
     /// plays while the cell sits on the board; its first frame replaces the still sprite
     pub idle: Option<AnimationSpriteSheetData>,
     /// plays when the cell is cleared ([`DestroyStyle::Pop`])
     pub pop: Option<AnimationSpriteSheetData>,
-    /// plays where the cell comes to rest ([`crate::game::GameEvent::Landed`]); a theme with
-    /// none simply draws what it always drew
+    /// plays where the cell comes to rest ([`crate::game::GameEvent::Landed`])
     pub bounce: Option<AnimationSpriteSheetData>,
     /// what one piece thrown off this cell is drawn as
-    /// ([`crate::animate::debris::DebrisArt::Debris`]); one frame is enough, and a theme
-    /// with none throws whole cells instead
+    /// ([`crate::animate::debris::DebrisArt::Debris`]); without it whole cells are thrown
     pub debris: Option<AnimationSpriteSheetData>,
 }
 
 /// How the queue and hold box show a whole piece.
 #[derive(Clone, Debug)]
 pub enum PreviewData {
-    /// dedicated sprites per piece, every one `size` in the source file; they are scaled by
-    /// the same factor as the cells
+    /// dedicated sprites per piece, every one `size` in the source file, scaled like the cells
     Sprites {
         file: &'static [u8],
         pieces: Vec<(PieceId, Rect)>,
@@ -337,9 +319,8 @@ pub struct FlatSpriteSheet<'a> {
     pub mascot: Option<MascotSprites<'a>>,
 }
 
-/// SDL packs `ARGB8888` into a 32 bit word and writes it out in the machine's byte order, so
-/// the bytes come back reversed on a little endian machine - see [`BlockMask::from_pixels`],
-/// which learned this the hard way.
+/// SDL writes `ARGB8888` as a 32 bit word in machine byte order, so the bytes are reversed on a
+/// little endian machine; see [`BlockMask::from_pixels`].
 #[cfg(target_endian = "little")]
 const CHANNELS: [usize; 4] = [3, 2, 1, 0]; // a, r, g, b
 #[cfg(target_endian = "big")]
@@ -348,12 +329,9 @@ const CHANNELS: [usize; 4] = [0, 1, 2, 3];
 /// a pixel below this alpha is not part of the sprite
 const OPAQUE_ENOUGH: u8 = 0x40;
 
-/// The colour each cell is drawn in, read off the built atlas in one pass.
-///
-/// Pixels are weighted by saturation times brightness, so the outline a sprite is drawn with
-/// and the white of a puyo's eyes do not wash the answer out - what comes back is the colour
-/// somebody would name if you pointed at the sprite. A sprite with no saturation anywhere
-/// (nuisance, a monochrome theme) falls back to the plain average of what is there.
+/// The colour each cell is drawn in, read off the built atlas in one pass. Pixels are weighted by
+/// saturation times brightness so outlines and highlights do not wash it out; a colourless sprite
+/// falls back to the plain average.
 fn cell_colors(
     pixels: &[u8],
     atlas_width: u32,
@@ -425,14 +403,7 @@ fn snip_color(pixels: &[u8], atlas_width: u32, snip: Rect) -> Option<Color> {
 }
 
 pub struct BlockSpriteSheet<'a> {
-    /// The atlas, every cell of it, drawn from at whatever alpha the caller asks for.
-    ///
-    /// Fading means [`Texture::set_alpha_mod`], which is a mutation behind a `&self` draw, so
-    /// it sits in a `RefCell` the same way the popup font's fill does for its tint. This used
-    /// to be a bank of sixty three whole copies of the atlas, one per alpha step, to keep the
-    /// draws behind a shared reference; that is a texture the size of every cell a theme has,
-    /// sixty three times over, and Puyo Rusto's fifteen sets of puyos would have made it most
-    /// of a gigabyte.
+    /// the atlas, faded with [`Texture::set_alpha_mod`] behind `&self`, hence the `RefCell`
     texture: RefCell<Texture<'a>>,
     ghost_alpha_mod: u8,
     cells: HashMap<CellId, CellSnips>,
@@ -455,8 +426,7 @@ impl<'a> BlockSpriteSheet<'a> {
         let block_size = block_size.into().unwrap_or(data.source_block_size);
         let sprite_src = texture_creator.load_texture_bytes(data.file)?;
 
-        // the atlas: normal then stack sprite of every cell, along a row and onto the next
-        // once the row is as wide as a driver is asked to go
+        // the atlas: normal then stack sprite of every cell, wrapping at [`MAX_ATLAS_WIDTH`]
         let per_row = (MAX_ATLAS_WIDTH / block_size.max(1)).max(1);
         let mut cells = HashMap::new();
         let mut slot = 0u32;
@@ -531,9 +501,8 @@ impl<'a> BlockSpriteSheet<'a> {
             });
         }
 
-        // one readback for the whole atlas, which the masks and the colours are both cut out
-        // of. Reading a cell at a time is a pipeline stall per cell, and a theme with fifteen
-        // sprite sets has twelve hundred of them
+        // one readback for the whole atlas, which the masks and colours are both cut from; a
+        // readback per cell is a pipeline stall per cell
         let pixels = read_texture(canvas, &mut texture, width, height)?;
         let mut masks = HashMap::new();
         for (id, snips) in cells.iter() {
@@ -579,8 +548,8 @@ impl<'a> BlockSpriteSheet<'a> {
                 }
             }
             PreviewData::Compose { pieces } => {
-                // where each piece's cells sit relative to its own top left, and how big that
-                // makes it
+                // where each piece's cells sit relative to its own top left, and how big that makes
+                // it
                 let bounds = |piece_cells: &Vec<(CellPoint, CellId)>| {
                     let min_x = piece_cells.iter().map(|(p, _)| p.x).min().unwrap_or(0);
                     let min_y = piece_cells.iter().map(|(p, _)| p.y).min().unwrap_or(0);
@@ -679,11 +648,8 @@ impl<'a> BlockSpriteSheet<'a> {
         self.masks.get(&id)
     }
 
-    /// The colour this theme draws a cell in, near enough for something else to be drawn to
-    /// match it - a caption over the cells that just cleared, say.
-    ///
-    /// Read off the sheet rather than declared, so it is right on every theme including ones
-    /// built from a rip, and costs a game no new contract at all.
+    /// The colour this theme draws a cell in, near enough to draw something else to match, read off
+    /// the sheet rather than declared.
     pub fn cell_color(&self, id: CellId) -> Option<Color> {
         self.colors.get(&id).copied()
     }
@@ -708,11 +674,8 @@ impl<'a> BlockSpriteSheet<'a> {
         self.cell_animations(id).and_then(|a| a.debris.as_ref())
     }
 
-    /// Draw one piece of debris, `dest` already sized and placed.
-    ///
-    /// [`DebrisArt::Debris`] falls back to the whole cell, so a theme that cut no droplet
-    /// still bursts - the way [`crate::render::PendingLayout`] draws a tray out of the
-    /// theme's own cells rather than wanting art of its own.
+    /// Draw one piece of debris, `dest` already sized and placed. [`DebrisArt::Debris`] falls back
+    /// to the whole cell when the theme cut no droplet.
     pub fn draw_debris_piece(
         &self,
         canvas: &mut WindowCanvas,
@@ -799,18 +762,15 @@ impl<'a> BlockSpriteSheet<'a> {
             return Ok(());
         };
         let snip = if stacked { snips.stack } else { snips.normal };
-        // set every time rather than only when it changes: the atlas is shared by every cell
-        // on the board, so a fade left behind by the last draw would tint the next one
+        // set on every draw: the atlas is shared, so a fade left by the last draw would tint the
+        // next
         let mut texture = self.texture.borrow_mut();
         texture.set_alpha_mod(alpha_mod.into().unwrap_or(OPAQUE));
         canvas.copy(&texture, snip, self.offset_by_block_ratio(dest, offset_y))
     }
 
-    /// Draw a cell as it sits on the stack: the squash it is playing where it landed, else
-    /// its idle strip if it has one, else the still sprite.
-    ///
-    /// The bounce goes first because it is the one that has just happened; when it runs out
-    /// the cell falls straight back to whichever of the other two it was drawing before.
+    /// Draw a cell as it sits on the stack: its landing squash, else its idle strip, else the still
+    /// sprite.
     fn draw_stack_cell(
         &self,
         canvas: &mut WindowCanvas,
@@ -910,20 +870,15 @@ impl<'a> BlockSpriteSheet<'a> {
                 .unwrap_or(false)
         };
 
-        // how far the piece in play is into the row below, so it slides rather than stepping.
-        // Zero for a game that does not interpolate, and the ghost never takes it: the ghost
-        // marks the cell the piece lands in, which is a grid position whatever the piece is
-        // doing between two of them
+        // how far the piece in play is into the row below, so it slides rather than steps; the
+        // ghost never takes it, since it marks a grid position
         let fall_offset = game.fall_progress();
 
-        // a lost board slides off the bottom of the screen, column by column, each carrying
-        // whatever it is holding. Only what is settled goes: the drain starts after the last
-        // piece has locked, so there is nothing else on the board to take with it
+        // a lost board slides off the bottom column by column; only settled cells remain by then
         let drain = animations.game_over().drain();
         let drain_offset = |point: CellPoint| drain.map_or(0.0, |d| d.offset(point.x));
 
-        // a cell that is still falling in from over the top is drawn after the board, on its
-        // way down, and not where the rules have already put it
+        // a cell still falling in from over the top is drawn after the board, on its way down
         let falling = animations.nuisance().state();
         let in_the_air = |point: CellPoint| falling.is_some_and(|s| s.is_falling(point));
 
@@ -967,9 +922,7 @@ impl<'a> BlockSpriteSheet<'a> {
                         let offset_y = landing + drain_offset(point);
                         self.draw_stack_cell(canvas, point, id, dest, offset_y, animations)?
                     }
-                    // through the stack path, so garbage that idles gets its strip: a Puyo
-                    // nuisance blinks where a Dr. Mario virus wriggles. With no strip this
-                    // is the still stacked sprite, which is what every other game gets
+                    // through the stack path, so garbage with an idle strip plays it
                     Cell::Garbage(id) if !in_the_air(point) => self.draw_stack_cell(
                         canvas,
                         point,
@@ -984,9 +937,8 @@ impl<'a> BlockSpriteSheet<'a> {
         }
 
         if let Some(falling) = falling {
-            // clipped to the playfield: a theme's board texture may carry room above the top
-            // row - a stone border, the sky over a well - and an attack coming in has to
-            // appear over the board's own top edge rather than out of the furniture
+            // clipped to the playfield, so an incoming attack appears over the board's top edge
+            // rather than out of the furniture above it
             let clip = canvas.clip_rect();
             canvas.set_clip_rect(geometry.game_snip());
             let result = falling
@@ -1006,8 +958,7 @@ impl<'a> BlockSpriteSheet<'a> {
                     for (point, id) in destroyed.cells().iter().copied() {
                         let dest = geometry.raw_block(point);
                         match destroy.pop_phase(id) {
-                            // the tell: the group is still on the board exactly as it sits -
-                            // joined to its neighbours and all - and only flashes
+                            // the tell: the group flashes in place, still joined to its neighbours
                             Some(PopPhase::Blink { on: true }) => {
                                 self.draw_stack_cell(canvas, point, id, dest, 0.0, animations)?
                             }
@@ -1069,7 +1020,7 @@ impl<'a> BlockSpriteSheet<'a> {
         Ok(())
     }
 
-    /// draw the cells of a piece at their board positions (e.g. a spawning piece)
+    /// draw the cells of a piece at their board positions, such as a spawning piece
     pub fn draw_cells(
         &self,
         canvas: &mut WindowCanvas,

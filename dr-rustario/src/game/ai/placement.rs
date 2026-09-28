@@ -1,19 +1,11 @@
 //! Every placement the pill in play can reach, and the bottle each one leaves behind.
 //!
-//! Candidates are found by replaying real [Bottle] moves on a clone, so Dr. Mario's wall kicks
-//! and the blocks already in the bottle are honoured for free.
+//! Candidates are found by replaying real [Bottle] moves on a clone, so wall kicks are honoured.
 //!
-//! **A tuck is a move like any other here.** Besides moving and rotating, the search may let
-//! the pill *come to rest* ([`Translation::Rest`]) and carry on moving from there, which is how
-//! a half gets under an overhang and into the pit a straight drop can never reach. It used to
-//! be left out on the grounds that the agent had no single step soft drop to execute one with,
-//! and that is true and beside the point: what makes a tuck executable in this game is extended
-//! placement lock down. A pill that has come to rest may be moved for another
-//! [`engine::game::timing::Timing::lock`] and each move restarts that delay, up to
-//! `max_lock_placements` of them - so "fall, then slide" needs no timing at all, only somewhere
-//! to slide to. Resting is the *only* way down the search takes, rather than a row at a time,
-//! because a pill cannot fall past where it comes to rest: an agent waiting for that has
-//! nothing to get wrong.
+//! Besides moving and rotating, the search may let the pill come to rest ([`Translation::Rest`])
+//! and move on under an overhang, which extended lock down allows for another
+//! [`engine::game::timing::Timing::lock`] per move. Resting is the only way down the search
+//! takes, since a pill cannot fall past its rest and so nothing has to be timed.
 
 use crate::game::ai::features::{placement_stats, BottleFeatures, BottleStats, Grid};
 use crate::game::ai::input_sequence::{InputSequence, Translation};
@@ -22,9 +14,8 @@ use crate::game::geometry::{BottlePoint, Rotation};
 use crate::game::pill::{PillShape, VirusColor};
 use std::collections::{HashSet, VecDeque};
 
-/// The moves the search walks. [`Translation::Rest`] is last so that breadth first order
-/// prefers a placement a straight drop can reach: two routes to the same landing are the same
-/// placement, and the shorter one is the one the agent is given.
+/// The moves the search walks. [`Translation::Rest`] is last so breadth first order gives the
+/// agent the straight-drop route to a landing when one exists.
 const MOVES: [Translation; 5] = [
     Translation::Left,
     Translation::Right,
@@ -33,9 +24,8 @@ const MOVES: [Translation; 5] = [
     Translation::Rest,
 ];
 
-/// How far the search is allowed to walk the pill. Tucking doubles the placements on offer and
-/// so doubles what a generation of training costs, and it is the one change here whose worth is
-/// meant to be measured rather than assumed, so it can be turned off.
+/// How far the search may walk the pill. Tucking doubles the placements and so the cost of a
+/// training generation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Reach {
     /// move and rotate, then drop: every placement is a straight fall from where the pill spawns
@@ -70,9 +60,7 @@ impl Placement {
         self.features
     }
 
-    /// the bottle this placement leaves behind, cleared and cascaded out. [BottleFeatures] is
-    /// the reading of it the scorers take; anything measuring the bottle some other way - the
-    /// feature probe - reads it here.
+    /// the bottle this placement leaves behind, cleared and cascaded out
     pub fn settled(&self) -> &Bottle {
         &self.settled
     }
@@ -83,9 +71,7 @@ impl Placement {
         self
     }
 
-    /// where the two halves come to rest, in the pill's own order: the left hand vitamin of
-    /// the pill as it spawns first. The scorers that work on the bottle rather than on
-    /// [BottleFeatures] need to know which cells the pill actually filled.
+    /// where the two halves come to rest, the spawn's left hand vitamin first
     pub fn landing(&self) -> Landing {
         self.landing
     }
@@ -99,10 +85,8 @@ pub trait PlacementSearch {
 
     fn placements_within(&self, reach: Reach, stats_before: BottleStats) -> Vec<Placement>;
 
-    /// The placements the bottle would offer if `shape` were the pill in play instead, which is
-    /// what an agent weighing the held pill against the one in front of it searches. Every one
-    /// of them is marked [`BottleFeatures::of_the_held_pill`], since a scorer shown both sets at
-    /// once has no other way to tell that reaching for one of these costs a hold.
+    /// The placements `shape` would have as the pill in play, each marked
+    /// [`BottleFeatures::of_the_held_pill`] so a scorer can tell them apart.
     fn placements_of(
         &self,
         reach: Reach,
@@ -138,9 +122,7 @@ impl PlacementSearch for Bottle {
 
         let mut visited: HashSet<Pose> = HashSet::from([pose(self)]);
         let mut queue = VecDeque::from([(self.clone(), InputSequence::default())]);
-        // several poses drop into the same place - a wall kick can leave the pill a row lower in
-        // the same column - so placements are keyed by where the pill comes to rest, and
-        // breadth first order means the first route to each one is the shortest
+        // keyed by where the pill rests, so the first route found to each is the shortest
         let mut landings: HashSet<Landing> = HashSet::new();
         let mut placements = vec![];
 
@@ -190,11 +172,9 @@ fn apply(bottle: &mut Bottle, translation: Translation) -> bool {
         Translation::RotateClockwise => bottle.rotate(true),
         Translation::RotateAnticlockwise => bottle.rotate(false),
         Translation::HardDrop => bottle.hard_drop().is_some(),
-        // a rest that moves the pill nowhere is not a move, and a self loop the visited set
-        // would have to catch
+        // a rest that moves the pill nowhere is not a move
         Translation::Rest => bottle.hard_drop().is_some_and(|(rows, _)| rows > 0),
-        // the search is always of one pill: a swap is what the agent decides *between* two
-        // searches, and never a move inside either of them
+        // a swap is decided between two searches, never inside one
         Translation::Hold => false,
     }
 }
@@ -326,10 +306,7 @@ mod tests {
         }
     }
 
-    /// A pit under an overhang: column 0 is open to the floor but roofed over at row 12, and
-    /// column 1 beside it is clear all the way down. A straight drop into column 0 lands on the
-    /// roof; the only way into the pit is to come down column 1, land on the floor, and walk
-    /// left underneath.
+    /// A pit in column 0 roofed at row 12 beside a clear column 1, reachable only by a tuck.
     fn a_roofed_pit() -> Bottle {
         with_pill(
             PillShape::new(Red, Blue),

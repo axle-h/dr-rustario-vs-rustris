@@ -244,7 +244,6 @@ impl<'a> HighScoreRender<'a> {
         let padding = font_size / 2;
         let width =
             ordinal_column_width + padding + name_column_width + padding + score_column_width;
-        // all rows will be same height as the tallest row
         let row_height = rows.iter().map(|r| r.height()).max().unwrap();
         let height = n_rows * row_height + (n_rows - 1) * padding;
         let mut texture = texture_creator
@@ -270,7 +269,6 @@ impl<'a> HighScoreRender<'a> {
             title.height,
         );
 
-        // which game and mode the table belongs to, under the title
         let subtitle = match subtitle {
             Some(text) => {
                 let font_subtitle = FontType::Bold.load(window_width / 48)?;

@@ -9,13 +9,12 @@ use sdl2::video::WindowContext;
 
 #[derive(Debug, Clone)]
 enum FrameFormat {
-    /// texture only contains a linear set of square frames, nothing else
-    /// i.e. the width of a frame == height of frame == height of texture
+    /// texture only contains a linear set of square frames: frame width == frame height == texture
+    /// height
     ExclusiveSquareLinear,
 
-    /// texture only contains a linear set of frames, nothing else
-    /// i.e. the width of a frame is texture width / frames
-    ///      & height is same as texture height
+    /// texture only contains a linear set of frames: frame width is texture width / frames, height
+    /// is texture height
     ExclusiveLinear { count: u32 },
 
     /// animation is contained within a texture
@@ -26,11 +25,10 @@ enum FrameFormat {
         height: u32,
     },
 
-    /// texture only contains a linear set of square frames, nothing else
-    /// static means only use the first frame
+    /// texture only contains a linear set of square frames, of which only `frame` is used
     StaticExclusiveSquare { frame: u32 },
 
-    /// A table of sprites
+    /// a table of sprites
     ExclusiveTable { rows: u32, cols: u32, count: u32 },
 }
 
@@ -179,9 +177,8 @@ impl AnimationSpriteSheetData {
 }
 
 pub struct AnimationSpriteSheet<'a> {
-    /// Behind a `RefCell` because fading one is `set_alpha_mod`, which is a mutation, and
-    /// every draw here takes `&self` - the same trick the block atlas and the popup font's
-    /// fill already use, and for the same reason.
+    /// behind a `RefCell` because fading is `set_alpha_mod`, a mutation, and every draw takes
+    /// `&self`
     texture: RefCell<Texture<'a>>,
     frames: Vec<Rect>,
     frame_width: u32,
@@ -243,17 +240,12 @@ impl<'a> AnimationSpriteSheet<'a> {
         let mut texture = self.texture.borrow_mut();
         texture.set_alpha_mod(alpha);
         let result = canvas.copy(&texture, snip, dest);
-        // put it back: every other draw here takes the sheet as it finds it, so a fade left
-        // behind would quietly fade the next frame drawn from it
+        // put it back, or the fade would carry into the next frame drawn from the sheet
         texture.set_alpha_mod(u8::MAX);
         result
     }
 
-    /// one frame, optionally mirrored - so that in a two player match a character beside one
-    /// board can face the other one.
-    ///
-    /// Nothing else in the compendium flips a sprite: every other `copy_ex` here passes
-    /// `false, false`.
+    /// one frame, optionally mirrored so a character beside one board can face the other
     pub fn draw_frame_scaled_flipped(
         &self,
         canvas: &mut WindowCanvas,
@@ -273,10 +265,7 @@ impl<'a> AnimationSpriteSheet<'a> {
         )
     }
 
-    /// A flipped frame at an alpha, which is what a particle fading out of the air wants.
-    ///
-    /// The alpha is a mutation behind a `&self` draw, which is why the texture is in a
-    /// `RefCell` at all - the same trick the popup font's tint and the block atlas's fade use.
+    /// A flipped frame at an alpha, for a particle fading out of the air.
     pub fn draw_frame_scaled_faded(
         &self,
         canvas: &mut WindowCanvas,
@@ -319,7 +308,7 @@ impl<'a> AnimationSpriteSheet<'a> {
         width: u32,
         height: u32,
     ) -> Result<AnimationSpriteSheet<'b>, String> {
-        // sdl has a texture size limit so scale to a square of frames
+        // SDL has a texture size limit, so lay the frames out as a square
         let frame_len_sqrt = (self.frames.len() as f64).sqrt();
         let cols = frame_len_sqrt.floor() as u32;
         let rows = frame_len_sqrt.ceil() as u32;

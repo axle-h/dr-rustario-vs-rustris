@@ -59,9 +59,7 @@ impl HeadlessGame {
     fn update(&mut self) -> Option<GameResult> {
         self.duration += self.options.step;
 
-        // A game called off for going nowhere is *out*, not a survivor. The finish line asks
-        // whether every seed was played to the end of its budget without being buried, and a
-        // candidate that spent two hundred pills without touching a virus did neither.
+        // a game called off for going nowhere counts as buried
         if self.pills_since_clear >= self.options.stall_pills {
             self.game_over = true;
         }
@@ -135,23 +133,11 @@ pub struct HeadlessGameOptions {
     pub clear_delay: Duration,
     pub step: Duration,
     pub speed: GameSpeed,
-    /// The last bottle a training game plays. A candidate that clears this one has cleared the
-    /// game as far as training cares; [crate::game::rules::MAX_VIRUS_LEVEL] goes further.
+    /// the last bottle a training game plays
     pub top_level: u32,
-    /// Pills a game may go without destroying a virus before it is called off, as a burial.
-    /// The budget in [`crate::game::ai::run::PILL_BUDGET`] already stops a game that goes
-    /// nowhere; this stops it *early*, since a candidate that has not touched a virus in two
-    /// hundred pills is not going to spend the rest of its budget any better and a generation
-    /// is paid for in pills.
+    /// pills a game may go without destroying a virus before it is called off as a burial
     pub stall_pills: u32,
-    /// Whether the agent may weigh the pill it is holding against the one in play. Off, which
-    /// is measured: with the held input silenced - the only honest place to start a model that
-    /// has never been asked - the embedded model played 2996 viruses over six seeds with it on
-    /// against 4595 with it off, worse on every one of them. Indifference is not neutrality. It
-    /// swaps whenever the other pill's best placement happens to score higher, which throws the
-    /// pill in play away for a rounding error. Turning it on here is what would let the genetic
-    /// algorithm put a price on a swap, which is the one thing that could make it worth having;
-    /// it also doubles what the search costs, so it is a decision and not a default.
+    /// whether the agent may weigh the held pill; see [`Hold`] for why it is off
     pub hold: Hold,
 }
 
@@ -228,29 +214,16 @@ impl HeadlessGameFixture {
         self.seed
     }
 
-    /// Play one whole game per seed and average them.
-    ///
-    /// Two things the genetic algorithm cannot decide for itself are decided here, because the
-    /// average it is handed hides the seeds and this is the only thing that can tell them
-    /// apart. Both are [`crate::game::ai::run`]'s rules.
-    ///
-    /// The first is whether the candidate is still standing: [`survived_the_budget`] asks it of
-    /// every seed rather than of their average, and the aggregate's game over flag is how the
-    /// answer is carried, since being out of a *run* of several seeds means having been buried
-    /// on any one of them.
-    ///
-    /// The second is that a candidate going nowhere is not played out. The first
-    /// [`PROBE_SEEDS`] say whether the rest are worth playing, and a candidate that is cut is
-    /// still averaged over every seed it was *given* rather than the ones it played - so being
-    /// cut can only ever cost it, and can never lift it above a candidate that was played out.
+    /// Play one whole game per seed and average them. The average's game over flag is set if any
+    /// seed was buried, and a candidate cut after [`PROBE_SEEDS`] is still divided by every seed
+    /// it was given, so a cut can only cost it.
     pub fn play(&self, network: DrNeuralNetwork) -> GameResult {
         let results = self.play_run(network, self.seed);
         let total: GameResult = results.iter().copied().sum();
         (total / self.seeds_per_game).with_game_over(!survived_the_budget(&results))
     }
 
-    /// The seeds of one run, played from `block`, cut short if the probe seeds say the rest are
-    /// not worth the machine time.
+    /// the seeds of one run from `block`, cut short if the probe seeds go nowhere
     pub fn play_run(&self, network: DrNeuralNetwork, block: Seed) -> Vec<GameResult> {
         let mut results: Vec<GameResult> = Vec::with_capacity(self.seeds_per_game);
         for i in 0..self.seeds_per_game as u128 {

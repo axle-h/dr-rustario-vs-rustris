@@ -1,3 +1,6 @@
+//! Fire-and-forget emitters, for every foreground effect and menu: a group, once emitted,
+//! evolves on its own until its particles expire.
+
 use crate::particles::color::ParticleColor;
 use crate::particles::geometry::{RectF, Vec2D};
 use crate::particles::meta::ParticleSprite;
@@ -9,15 +12,14 @@ use rand::{rng, RngExt};
 use std::time::Duration;
 
 #[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]
 pub enum ParticlePositionSource {
-    /// All particles are emitted from one point
+    /// all particles are emitted from one point
     Static(Vec2D),
 
-    /// All particles in each cascade are emitted from a random point within a rectangle.
+    /// all particles in each cascade come from a random point within a rectangle
     RandomCascade(RectF),
 
-    /// Emitted randomly within a rectangle
+    /// emitted randomly within a rectangle
     Rect(RectF),
 
     Lattice(Vec<Vec2D>),
@@ -26,15 +28,14 @@ pub enum ParticlePositionSource {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ParticleModulation {
-    /// All available particles are emitted as soon as possible
+    /// all available particles are emitted as soon as possible
     Cascade,
 
-    /// A maximum number of particles are emitted
+    /// at most `count` particles are emitted
     CascadeLimit { count: u32 },
 
-    /// A maximum number of particles are emitted at a constant time step
+    /// at most `count` particles are emitted, one every `step`
     Constant { count: u32, step: Duration },
 }
 
@@ -182,7 +183,7 @@ impl ParticleSource for RandomParticleSource {
     }
 }
 
-// todo trait this out so I can have an aggregate particle source
+// TODO trait this out for an aggregate particle source
 impl RandomParticleSource {
     pub fn new(position_source: ParticlePositionSource, modulation: ParticleModulation) -> Self {
         Self {

@@ -28,15 +28,8 @@ pub mod sprites {
     pub const VIRUS_BLUE_IDLE: &[u8] = include_bytes!("viruses/b.png");
     pub const VIRUS_YELLOW_IDLE: &[u8] = include_bytes!("viruses/y.png");
 
-    // dr - 591 frames of 478 pixels square, over four sheets.
-    //
-    // A desktop is what 4k is drawn from and gets them as they were drawn. The handheld and
-    // browser builds get them halved into `OUT_DIR` by this crate's `build.rs`: the largest
-    // is 209 MiB as a texture, every one is held twice over while it is scaled down to the
-    // six and a half blocks the Dr. is drawn at, and three of the four are past the 4096
-    // pixels a handheld will allocate in a dimension. Nothing else changes - the theme asks
-    // for the mascot by a height in blocks, so `modern_theme` reads the scale back off
-    // whichever sheet it was given.
+    // dr: the handheld and browser builds include the sheets `build.rs` halved into `OUT_DIR`;
+    // the mascot is sized in blocks, so `modern_theme` reads the scale off whichever it gets
     #[cfg(not(any(feature = "portmaster", feature = "browser", feature = "android")))]
     pub const DR_THROW: &[u8] = include_bytes!("dr/throw.png");
     #[cfg(not(any(feature = "portmaster", feature = "browser", feature = "android")))]
@@ -80,9 +73,8 @@ mod sound {
     pub const VICTORY: &[u8] = include_bytes!("victory.ogg");
 }
 
-/// what the modern theme radiates into the background particle field: the three vitamin
-/// colours. The blue is lifted off the one in the art, which is a navy that all but vanishes
-/// as a particle over a black background
+/// the vitamin colours the modern theme radiates into the particle field, the blue lifted from
+/// the art's navy so it shows over black
 const VITAMIN_PALETTE: [Color; 3] = [
     Color::RGB(0xE8, 0x06, 0x06), // red
     Color::RGB(0x2E, 0x7B, 0xD6), // blue

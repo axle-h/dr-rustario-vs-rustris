@@ -1,12 +1,6 @@
-//! The modern themes' background: one retained pool of particles spanning every player on a
-//! particle scene, choreographed by a director and pushed about by what happens in the match.
-//!
-//! It is a *field*, not an emitter: the particles never die. Ones that leave the canvas are
-//! re-seeded on the far side, so the population is constant and nothing is ever removed from
-//! the middle of a vector. Feature routines retarget the particles that already exist.
-//!
-//! The field observes the match and never influences it: it reads no game state directly,
-//! shares no RNG with the games, and everything it reacts to is handed to it.
+//! The particle themes' background: a retained pool that owns its particles for the whole
+//! match, reacts to a [`SceneContext`] and is driven by [`director`]. It never touches game
+//! state or shares an RNG with the games; a particle leaving the canvas is re-seeded opposite.
 
 pub mod color;
 pub mod context;
@@ -37,20 +31,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// The field's own randomness. It is a seedable generator rather than the thread's because a
-/// routine's whole look is drawn from it, and a test that measures what the field does over
-/// thirty frames can only assert anything if those frames are the same ones every run. It is
-/// still seeded from entropy in a match ([`ParticleField::new`]), and from nothing the games
-/// have ever touched.
+/// Seedable so tests over a run of frames see the same frames every run; a match seeds it from
+/// entropy.
 pub type FieldRng = ChaChaRng;
 
-/// a generator seeded from the thread's, for everything that is not a test
 pub fn field_rng() -> FieldRng {
     FieldRng::from_rng(&mut rng())
 }
 
-/// the one seed every test in here runs on. Nothing about it is special - it is a seed that
-/// was passing, pinned so that a run that fails is a change and not a draw
+/// the seed every test here runs on, so a failure is a change and not a draw
 #[cfg(test)]
 pub(crate) const TEST_SEED: u64 = 20_260_829;
 
@@ -59,44 +48,33 @@ pub(crate) fn test_rng() -> FieldRng {
     FieldRng::seed_from_u64(TEST_SEED)
 }
 
-/// how much of the pool stays ambient while a feature runs, so the field is never empty and
-/// never fully hijacked
+/// the share of the pool that stays ambient while a feature runs
 const AMBIENT_SHARE: f64 = 0.3;
-/// the longest step the field will integrate in one go: a stall must not fling it apart
+/// the longest step integrated at once, so a stall cannot fling the field apart
 const MAX_STEP: f64 = 1.0 / 20.0;
-/// how far outside the canvas a particle may drift before it is re-seeded on the far side
+/// how far outside the canvas a particle drifts before it is re-seeded
 const WRAP_MARGIN: f64 = 0.06;
-/// particles slower than this get a nudge, so an ambient routine never settles to a stop
+/// slower particles are nudged, so an ambient routine never stops
 const MIN_DRIFT: f64 = 0.012;
-/// and faster than this are damped back down: a gravity well or a shatter can fling one
 const MAX_DRIFT: f64 = 0.35;
-/// how fast a re-seeded particle comes back into the canvas. Slow enough to read as drift,
-/// fast enough that a shockwave's worth of them is back inside within a few seconds.
 const RE_ENTRY_DRIFT: (f64, f64) = (0.06, 0.16);
-/// how hard a formation pulls
 const GATHER_STIFFNESS: f64 = 90.0;
 /// how far beyond a playfield's edge the board's influence reaches, in particle space
 const BOARD_MARGIN: f64 = 0.06;
-/// what a particle's alpha is multiplied by when it is right behind a playfield. The board is
-/// the one thing the player is actually reading, and in a bottle the colours *are* the game -
-/// but the field should still show through it rather than stop dead at its edge
+/// alpha multiplier for a particle right behind a playfield
 const BOARD_ALPHA: f64 = 0.35;
-/// how hard a board nudges the ambient field away from itself, per second
+/// how hard a board pushes the ambient field away, per second
 const BOARD_PUSH: f64 = 0.08;
-/// the least a particle that is part of a formation may be dimmed to over a board. A
-/// silhouette is a deliberate thing and has to hold together; break it up over a playfield
-/// and it reads as a fault rather than as a shape.
+/// the least a formation member is dimmed to over a board, so a silhouette holds together
 const FORMATION_BOARD_ALPHA: f64 = 0.45;
-/// what the ambient share is faded to while a formation holds, so the shape is not lost in
-/// the drift it is standing in front of
+/// the ambient share's alpha while a formation holds
 const AMBIENT_UNDER_FORMATION: f64 = 0.45;
-/// how far apart two particles may be and still be linked, as a fraction of canvas height
+/// link radius, as a fraction of canvas height
 const LINK_RADIUS: f64 = 0.075;
-/// link thickness, as a fraction of the window height
+/// link thickness, as a fraction of window height
 const LINK_WIDTH: f64 = 0.0045;
 
-/// What the renderer and the field share: the outlines the renderer builds for it, and the
-/// events the match screen queues into it.
+/// The outlines the renderer builds for the field and the events the match screen queues into it.
 #[derive(Default)]
 pub struct FieldBus {
     pub shapes: ShapeBank,
@@ -105,20 +83,18 @@ pub struct FieldBus {
 
 pub type SharedBus = Rc<RefCell<FieldBus>>;
 
-/// per particle state the [`Particle`] itself has no room for
 #[derive(Clone, Copy, Debug)]
 struct Member {
-    /// stable 0-1: where this particle reads the palette, so colour flows rather than flickers
+    /// stable 0-1 palette position, so colour flows rather than flickers
     seed: f64,
     base_size: f64,
     base_alpha: f64,
-    /// conscripted into a comet, and so not the ambient field's to steer
+    /// in a comet, so not the ambient field's to steer
     in_comet: bool,
 }
 
-/// How much a board owns a point: 1.0 anywhere inside the playfield, tapering to 0 at
-/// [`BOARD_MARGIN`] beyond its edge, with the direction that leaves it the shortest way.
-/// `None` once the point is clear of it altogether.
+/// How much a board owns a point, 1.0 inside tapering to 0 at [`BOARD_MARGIN`] beyond it, with
+/// the shortest way out; `None` clear of it.
 fn board_influence(board: &RectF, point: Vec2D) -> Option<(f64, Vec2D)> {
     let nearest = Vec2D::new(
         point.x().clamp(board.x(), board.right()),
@@ -132,8 +108,7 @@ fn board_influence(board: &RectF, point: Vec2D) -> Option<(f64, Vec2D)> {
     let away = if distance > 0.0 {
         out.unit_vector()
     } else {
-        // inside: out by whichever edge is closest, which for a tall narrow playfield is
-        // almost always one of the sides
+        // inside: out by the closest edge
         let gaps = [
             (point.x() - board.x(), Vec2D::new(-1.0, 0.0)),
             (board.right() - point.x(), Vec2D::new(1.0, 0.0)),
@@ -150,8 +125,7 @@ fn board_influence(board: &RectF, point: Vec2D) -> Option<(f64, Vec2D)> {
 
 pub struct ParticleField {
     canvas: RectF,
-    /// the window's width over its height: particle space is normalised to the window, so
-    /// without this every circle would be an ellipse
+    /// particle space is normalised to the window, so without this every circle is an ellipse
     window_aspect: f64,
     density: ParticleDensity,
     particles: Vec<Particle>,
@@ -160,7 +134,7 @@ pub struct ParticleField {
     ambient: Ambient,
     colors: ColorDriver,
     formation: Formation,
-    /// the particles taking part in the current formation, in target order
+    /// the current formation's particles, in target order
     cast: Vec<usize>,
     link_builder: LinkBuilder,
     bus: SharedBus,
@@ -170,9 +144,9 @@ pub struct ParticleField {
     /// the wandering centre a vortex or flow reads from
     focus: Vec2D,
     focus_velocity: Vec2D,
-    /// a feature staged by [`ParticleField::force`], for the diagnostic renderer
+    /// a feature staged by [`ParticleField::force`]
     forced: Option<Feature>,
-    /// a word the match has called for, spelt by the next text formation
+    /// a word the match called for, spelt by the next text formation
     word: Option<&'static str>,
     time: f64,
     rng: FieldRng,
@@ -188,8 +162,7 @@ impl ParticleField {
         Self::with_rng(canvas, window_size, density, bus, field_rng())
     }
 
-    /// the same field, playing out the same way every time: what the director picks, where a
-    /// formation lands and where every particle starts all come off this one seed
+    /// Everything the field draws comes off `seed`, so it plays out the same every time.
     pub fn seeded(
         canvas: RectF,
         window_size: (u32, u32),
@@ -214,8 +187,7 @@ impl ParticleField {
         mut rng: FieldRng,
     ) -> Self {
         let window_aspect = window_size.0 as f64 / window_size.1.max(1) as f64;
-        // the director and the colour walk each get their own stream off the field's, so one
-        // of them drawing a number more often than it used to cannot shift the others
+        // separate streams, so one drawing more numbers cannot shift the others
         let director = Director::new(FieldRng::from_rng(&mut rng));
         let colors = ColorDriver::new(FieldRng::from_rng(&mut rng));
         let mut field = Self {
@@ -245,14 +217,12 @@ impl ParticleField {
         field
     }
 
-    /// the canvas's own width over height in real pixels, which is what formations are
-    /// authored against
+    /// the canvas's width over height in real pixels, which formations are authored against
     fn canvas_aspect(&self) -> f64 {
         (self.canvas.width() * self.window_aspect / self.canvas.height()).max(0.01)
     }
 
-    /// scaled by the share of the window the canvas covers, so half a screen is half as many
-    /// particles rather than twice the density
+    /// scaled by the canvas's share of the window, so density stays constant
     fn wanted_len(&self) -> usize {
         let area = (self.canvas.width() * self.canvas.height()).clamp(0.0, 1.0);
         ((self.density.pool_size() as f64) * area).round() as usize
@@ -280,8 +250,6 @@ impl ParticleField {
     }
 
     fn build_particle(&mut self, position: Vec2D) -> (Particle, Member) {
-        // the same mixture the background has always had: mostly plain circles, with the
-        // occasional hollow one or star
         let roll = self.rng.random::<f64>();
         let (sprite, size) = if roll < 0.8 {
             (
@@ -330,8 +298,7 @@ impl ParticleField {
         (particle, member)
     }
 
-    /// a theme switch or a resize moved the canvas: bring the field with it rather than
-    /// leaving half of it stranded, and give up on any half-finished routine
+    /// follow a moved canvas and abandon any half-finished routine
     fn set_canvas(&mut self, canvas: RectF) {
         let previous = self.canvas;
         self.canvas = canvas;
@@ -356,9 +323,7 @@ impl ParticleField {
         self.resize();
     }
 
-    /// Stage one named feature on the next update, whatever the director had in mind. The
-    /// diagnostic renderer's way in: a routine that only comes up every minute or so is not
-    /// one you can eyeball by waiting for it.
+    /// Stage `feature` on the next update, whatever the director had in mind.
     pub fn force(&mut self, feature: Feature) {
         self.forced = Some(feature);
     }
@@ -370,8 +335,7 @@ impl ParticleField {
         }
     }
 
-    /// A point in the canvas that no board is sitting on. A gravity well behind a playfield
-    /// is a permanent stream of particles through the one place the player is trying to read.
+    /// The nearest point to `start` in the canvas that no board sits on.
     fn clear_of_boards(&self, ctx: &SceneContext, start: Vec2D) -> Vec2D {
         let mut point = start;
         for _ in 0..6 {
@@ -413,7 +377,6 @@ impl ParticleField {
         self.update_links();
     }
 
-    /// the point a vortex winds around and a flow reads from, wandering inside the canvas
     fn update_focus(&mut self, delta_time: f64, ctx: &SceneContext) {
         self.focus += self.focus_velocity * delta_time;
         let inset = 0.2;
@@ -435,7 +398,6 @@ impl ParticleField {
             self.focus.x().clamp(min_x, max_x),
             self.focus.y().clamp(min_y, max_y),
         );
-        // a vortex winding up behind a board is the same problem as a well sitting on one
         self.focus = self.clear_of_boards(ctx, self.focus);
     }
 
@@ -462,7 +424,6 @@ impl ParticleField {
 
     fn build_formation(&mut self, feature: Feature, ctx: &SceneContext) -> Formation {
         let aspect = self.canvas_aspect();
-        // the playfields, in the canvas-normalised coordinates the routines are authored in
         let boards = ctx
             .visible()
             .map(|region| {
@@ -483,8 +444,7 @@ impl ParticleField {
             .collect::<Vec<RectF>>();
         match feature {
             Feature::Sprite => {
-                // the sprite set is the union of the games being played: the outlines are
-                // only ever those of the themes the players are actually on
+                // outlines only come from the themes the players are on
                 let themes = ctx.regions().map(|r| r.theme).collect::<Vec<usize>>();
                 let bus = self.bus.clone();
                 let bus = bus.borrow();
@@ -505,8 +465,6 @@ impl ParticleField {
             Feature::Text => {
                 let bus = self.bus.clone();
                 let bus = bus.borrow();
-                // a word the match called for, else whatever the match screen has offered
-                // and the renderer has outlined
                 let wanted = self
                     .word
                     .take()
@@ -534,7 +492,7 @@ impl ParticleField {
         }
     }
 
-    /// hand roughly 70% of the pool to the formation, leaving the rest ambient
+    /// hand the formation all but [`AMBIENT_SHARE`] of the pool
     fn assign_cast(&mut self) {
         self.release_cast();
         let capacity = self.formation.capacity();
@@ -548,11 +506,10 @@ impl ParticleField {
             Some(capacity) => capacity.min(available),
             None => available,
         };
-        // a particle already flying an attack is not the formation's to take
+        // a particle flying an attack is not the formation's to take
         let mut indices = (0..self.particles.len())
             .filter(|index| !self.members[*index].in_comet)
             .collect::<Vec<usize>>();
-        // a shuffle, so a formation is not always built from the same particles
         for i in (1..indices.len()).rev() {
             indices.swap(i, self.rng.random_range(0..=i));
         }
@@ -592,8 +549,7 @@ impl ParticleField {
         self.formation = Formation::Free;
     }
 
-    /// every shockwave goes through here, so a burst of clears can never pile up more of them
-    /// than the density allows
+    /// caps the live shockwaves at what the density allows
     fn add_wave(&mut self, wave: Shockwave) {
         if self.waves.len() < self.density.max_effects() {
             self.waves.push(wave);
@@ -625,8 +581,7 @@ impl ParticleField {
                 for row in rows.iter().take(2) {
                     self.add_wave(Shockwave::horizontal(row.center(), strength, color));
                 }
-                // the big one: both games grade their largest clear as class 3, so a Tetris
-                // and a four virus combo take the field over the same way
+                // every game grades its largest clear as class 3
                 if class >= 3 {
                     self.colors.add_energy(0.5);
                     let centre = rows
@@ -664,7 +619,6 @@ impl ParticleField {
                 }
             }
             FieldEvent::GameOver { player } => {
-                // the loser's half desaturates and falls
                 if let Some(region) = ctx.region(player).filter(|r| r.in_canvas) {
                     self.palls.push(Pall::new(region.clip, 4.0, 0.5, 0.9));
                 }
@@ -674,9 +628,7 @@ impl ParticleField {
         }
     }
 
-    /// take the field over and spell `word` out. Ignored if the renderer has not outlined it
-    /// yet, which is a couple of frames at the start of a match: a word half spelt is worse
-    /// than one missed.
+    /// Take the field over and spell `word`; ignored until the renderer has outlined it.
     fn spell(&mut self, word: &'static str, ctx: &SceneContext) {
         if self.bus.borrow().shapes.text(word).is_none() {
             return;
@@ -705,7 +657,6 @@ impl ParticleField {
             .map(|r| r.palette.pick(self.colors.phase()))
             .unwrap_or(ParticleColor::WHITE);
 
-        // thickness and count scale with how big the attack is
         let wanted = (8 + 6 * strength.min(6) as usize).min(self.particles.len() / 4);
         let members = self.conscript(wanted);
         if members.is_empty() {
@@ -752,7 +703,6 @@ impl ParticleField {
         }
         self.palls.retain(|pall| !pall.is_spent());
 
-        // comets steer their own members, then burst on arrival
         let mut arrivals: Vec<(Vec2D, ParticleColor, Vec<usize>)> = vec![];
         for comet in self.comets.iter_mut() {
             let arrived = comet.update(delta_time);
@@ -793,7 +743,6 @@ impl ParticleField {
         );
         let count = self.cast.len();
 
-        // hand the formation's members their targets
         if gathering {
             for (slot, index) in self.cast.iter().enumerate() {
                 let Some(target) = self.formation.target(slot, count, elapsed, aspect, energy)
@@ -816,13 +765,12 @@ impl ParticleField {
             let member = self.members[index];
             let has_target = self.particles[index].target().is_some();
 
-            // a particle with somewhere to be is not the ambient field's to steer
             let active_field = if has_target { None } else { Some(&field) };
             if !has_target {
                 if let Some(feature) = feature {
                     self.apply_free_feature(index, feature, delta_time, ctx);
                 }
-                // the gravity wells routine is the one thing allowed to gather on a board
+                // only the gravity wells routine may gather on a board
                 if feature != Some(Feature::Wells) {
                     self.push_off_boards(index, delta_time, ctx);
                 }
@@ -858,8 +806,6 @@ impl ParticleField {
                 centre: self.focus,
                 strength: 0.012,
             },
-            // a constellation wants its particles drifting slowly and evenly, so the links
-            // between them keep making and breaking: a very weak flow is enough
             Ambient::Constellation => Field::Flow {
                 scale: 3.0,
                 strength: 0.012,
@@ -868,7 +814,6 @@ impl ParticleField {
         }
     }
 
-    /// the routines that steer with forces rather than targets
     fn apply_free_feature(
         &mut self,
         index: usize,
@@ -878,15 +823,13 @@ impl ParticleField {
     ) {
         match feature {
             Feature::Weather => {
-                // speed tied to how fast the pieces are falling
                 let speed = ctx.regions().map(|r| r.speed_index).max().unwrap_or(0) as f64;
                 let fall = 0.18 + 0.02 * speed.min(15.0);
                 let wind = (self.time * 0.4).sin() * 0.05;
                 self.particles[index].add_velocity(Vec2D::new(wind, fall) * delta_time);
             }
             Feature::Wells => {
-                // every board pulls the field toward it, and a board whose stack is near the
-                // top pushes it away instead
+                // a board pulls the field in, and pushes it away once its stack nears the top
                 for region in ctx.visible() {
                     let centre = region.board.center();
                     let field = if region.danger > 0.7 {
@@ -904,8 +847,6 @@ impl ParticleField {
         }
     }
 
-    /// boards hold the drifting field off them, so it thins out over a playfield instead of
-    /// piling up behind it
     fn push_off_boards(&mut self, index: usize, delta_time: f64, ctx: &SceneContext) {
         let position = self.particles[index].position();
         for region in ctx.visible() {
@@ -915,7 +856,6 @@ impl ParticleField {
         }
     }
 
-    /// how much of its brightness a particle keeps where it is
     fn board_shade(ctx: &SceneContext, point: Vec2D) -> f64 {
         ctx.visible()
             .filter_map(|region| board_influence(&region.board, point))
@@ -923,8 +863,6 @@ impl ParticleField {
             .fold(1.0, f64::min)
     }
 
-    /// an ambient routine should never settle to a stop, and nothing in it should be moving
-    /// like a bullet either: a 1/r^2 well or a shatter can leave a particle very fast indeed
     fn settle(&mut self, index: usize, delta_time: f64) {
         let velocity = self.particles[index].velocity();
         let speed = velocity.magnitude();
@@ -939,16 +877,11 @@ impl ParticleField {
         }
     }
 
-    /// particles never die: one that leaves the canvas comes back in on the far side.
-    ///
-    /// It comes back anywhere along that edge with a fresh gentle drift *across* the canvas,
-    /// rather than keeping the speed and heading it left with. A shockwave sweeps a good part
-    /// of the field off one side at once, and re-admitting all of it at the same point moving
-    /// the same way leaves a clump crossing the canvas for the next several seconds.
+    /// Wrap a particle that left the canvas to the far edge with a fresh gentle drift across it;
+    /// keeping its heading re-admits a shockwave's worth as one clump.
     fn wrap(&mut self, index: usize) {
         let position = self.particles[index].position();
         let horizontal = if position.x() < self.canvas.x() - WRAP_MARGIN {
-            // off the left, so back in from the right, heading left
             Some(-1.0)
         } else if position.x() > self.canvas.right() + WRAP_MARGIN {
             Some(1.0)
@@ -970,7 +903,7 @@ impl ParticleField {
         let drift =
             RE_ENTRY_DRIFT.0 + (RE_ENTRY_DRIFT.1 - RE_ENTRY_DRIFT.0) * self.rng.random::<f64>();
         let spread = (self.rng.random::<f64>() - 0.5) * drift;
-        // just inside the far edge, so it is drawn from the frame it returns
+        // just inside, so it is drawn from the frame it returns
         let inset = 0.001;
         let (position, velocity) = match (horizontal, vertical) {
             (Some(direction), _) => (
@@ -1032,7 +965,6 @@ impl ParticleField {
         } else {
             shade
         };
-        // while a formation holds, the drift behind it steps back
         let focus = match (forming, in_formation) {
             (true, true) => 1.2,
             (true, false) => AMBIENT_UNDER_FORMATION,
@@ -1041,12 +973,10 @@ impl ParticleField {
         let alpha = self.colors.alpha(member.base_alpha) * (1.0 - 0.5 * drain) * shade * focus;
         self.particles[index].set_alpha(alpha + flash * 0.3 * shade);
 
-        // formation members tighten up, comet members burn brighter and bigger
         let size = if member.in_comet {
             member.base_size * 1.4
         } else if self.particles[index].target().is_some() {
-            // a formation reads by its outline, so its members tighten up: at full size the
-            // sprites of adjacent lattice points overlap and the shape turns to mush
+            // at full size adjacent lattice sprites overlap and the shape turns to mush
             member.base_size * 0.65
         } else {
             member.base_size
@@ -1056,7 +986,6 @@ impl ParticleField {
 
     fn update_links(&mut self) {
         let budget = self.density.link_budget();
-        // links belong to the constellation, and are a hint of one everywhere else
         let (budget, alpha) = match self.ambient {
             Ambient::Constellation => (budget, 0.85),
             _ => (budget / 2, 0.5),
@@ -1137,9 +1066,6 @@ mod tests {
         .unwrap()
     }
 
-    /// every test here measures a randomised field, several of them statistically over a
-    /// run of frames, so all of them are handed the same seed: a failure is then a change to
-    /// the field and never a bad draw
     fn field(ctx: &SceneContext) -> ParticleField {
         ParticleField::seeded(
             ctx.canvas,
@@ -1150,7 +1076,6 @@ mod tests {
         )
     }
 
-    /// one frame at 60fps
     const FRAME: Duration = Duration::from_micros(16_667);
 
     fn run(field: &mut ParticleField, ctx: &SceneContext, seconds: f64) {
@@ -1166,8 +1091,6 @@ mod tests {
                 position.x().is_finite() && position.y().is_finite(),
                 "{position:?}"
             );
-            // a shatter or a comet can throw one well past the edge, but never off to
-            // infinity: anything loose is wrapped and slowed
             assert!(
                 position.x() > ctx.canvas.x() - 1.0 && position.x() < ctx.canvas.right() + 1.0,
                 "{position:?}"
@@ -1194,7 +1117,6 @@ mod tests {
         let mut field = field(&ctx);
         let population = field.particles().len();
         assert_eq!(population, ParticleDensity::High.pool_size());
-        // long enough to run several ambient routines and several features
         run(&mut field, &ctx, 120.0);
         assert_eq!(field.particles().len(), population);
         assert_sane(&field, &ctx);
@@ -1208,7 +1130,6 @@ mod tests {
         run(&mut field, &whole, 2.0);
         let whole_population = field.particles().len();
 
-        // a theme switch takes the right hand player retro under the field's feet
         field.update(FRAME, &half);
         assert_eq!(field.clip(), Some(half.canvas));
         assert!(
@@ -1227,7 +1148,6 @@ mod tests {
         let half = two_players(false);
         let mut field = field(&whole);
         run(&mut field, &whole, 1.0);
-        // a particle in the middle of the window is in the middle of the left half after
         let index = 0;
         let before = whole.canvas.normalise(field.particles()[index].position());
         field.update(FRAME, &half);
@@ -1276,7 +1196,6 @@ mod tests {
 
     #[test]
     fn an_attack_on_a_player_outside_the_canvas_still_flies() {
-        // the right hand player is retro, so only the left half is drawn
         let ctx = two_players(false);
         let mut field = field(&ctx);
         field.bus.borrow_mut().events.push(FieldEvent::Attack {
@@ -1286,7 +1205,6 @@ mod tests {
         });
         field.update(FRAME, &ctx);
         assert_eq!(field.comets.len(), 1);
-        // and it leaves on the victim's side
         assert_eq!(field.comets[0].target().x(), ctx.canvas.right());
         run(&mut field, &ctx, 3.0);
         assert!(field.comets.is_empty());
@@ -1307,13 +1225,10 @@ mod tests {
 
     #[test]
     fn a_board_pushes_out_the_nearest_way() {
-        // just inside the left edge of a tall narrow playfield: out to the left, not up
         let (_, away) = board_influence(&board(), Vec2D::new(0.22, 0.5)).unwrap();
         assert_eq!(away, Vec2D::new(-1.0, 0.0));
-        // just inside the top edge, which is nearer than either side from here
         let (_, away) = board_influence(&board(), Vec2D::new(0.3, 0.21)).unwrap();
         assert_eq!(away, Vec2D::new(0.0, -1.0));
-        // outside, straight out from the nearest point on the rect
         let (_, away) = board_influence(&board(), Vec2D::new(0.42, 0.5)).unwrap();
         assert_eq!(away, Vec2D::new(1.0, 0.0));
     }
@@ -1347,14 +1262,11 @@ mod tests {
         let canvas_area = ctx.canvas.width() * ctx.canvas.height();
         run(&mut field, &ctx, 5.0);
 
-        // how much is over a playfield at any one moment swings about as routines come and
-        // go, so this samples over half a minute rather than trusting a single frame
+        // sampled over half a minute, since one frame swings as routines come and go
         const SAMPLES: usize = 30;
         let (mut over, mut over_alpha) = (0.0, 0.0);
         let (mut clear, mut clear_alpha) = (0.0, 0.0);
-        // a formation is authored across the whole canvas and is allowed to cross a board -
-        // it is placed away from them where it can be, and dimmed where it cannot - so it is
-        // the resting field that has to thin out
+        // formations may cross a board, so only the resting field must thin out
         let (mut resting_over, mut resting_frames) = (0.0, 0.0);
         for _ in 0..SAMPLES {
             run(&mut field, &ctx, 1.0);
@@ -1382,7 +1294,6 @@ mod tests {
              {overall_density:.0} per unit area overall, {clear_alpha:.3} clear of one"
         );
 
-        // toned down, but still plainly visible through the board
         assert!(
             over_alpha < clear_alpha * 0.6,
             "{over_alpha:.3} over a board against {clear_alpha:.3} clear of one"
@@ -1391,7 +1302,6 @@ mod tests {
             over_alpha > clear_alpha * 0.15,
             "{over_alpha:.3} over a board is nearly invisible"
         );
-        // and thinner, because the boards hold the drift off them
         assert!(
             over_density < overall_density * 0.8,
             "{over_density:.0} per unit area over the boards at rest, \
@@ -1399,8 +1309,7 @@ mod tests {
         );
     }
 
-    /// the whole field once swept itself off the canvas and sat in a ring just outside it,
-    /// because a wrapped particle was re-admitted on the far side still heading outward
+    /// a wrapped particle is re-admitted heading inwards, so a big clear cannot empty the canvas
     #[test]
     fn a_big_clear_never_sweeps_the_field_off_the_canvas() {
         let ctx = two_players(true);
@@ -1424,8 +1333,6 @@ mod tests {
         for _ in 0..20 {
             run(&mut field, &ctx, 1.0);
             let inside = inside(&field);
-            // the bug this guards against left about 5% of the field on the canvas; the
-            // usual figure is 80-95%, the rest being briefly out in the wrap margin
             assert!(
                 inside as f64 > population as f64 * 0.7,
                 "only {inside} of {population} left on the canvas"
@@ -1433,7 +1340,6 @@ mod tests {
         }
     }
 
-    /// a field with one word already outlined, as the renderer would have left it
     fn field_knowing(word: &str, ctx: &SceneContext) -> ParticleField {
         let field = field(ctx);
         field.bus.borrow_mut().shapes.insert_text(
@@ -1463,7 +1369,6 @@ mod tests {
             "{:?}",
             field.director.stage()
         );
-        // it is spelling the word it was given, not falling back to a ribbon
         assert!(matches!(field.formation, Formation::Sprite { .. }));
         assert_eq!(field.word, None, "the word is spent once it is spelt");
     }
@@ -1499,7 +1404,6 @@ mod tests {
             .events
             .push(FieldEvent::Spell { word: words::COMBO });
         field.update(FRAME, &ctx);
-        // half a word is worse than none: the field carries on with what it was doing
         assert!(matches!(field.director.stage(), Stage::Ambient { .. }));
         assert_eq!(field.word, None);
     }

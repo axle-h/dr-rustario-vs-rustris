@@ -16,42 +16,21 @@ pub struct DrAiAgent {
     keys: KeyPacer<Translation>,
     /// whether the pill in play has already been given a plan
     decided: bool,
-    /// The plan has reached a [`Translation::Rest`] and nothing more is pressed until the pill
-    /// stops falling. This is the whole of what executing a tuck takes: the pill cannot fall
-    /// past where it comes to rest, so there is no row to hit and nothing to time, and once it
-    /// is there extended placement lock down gives the agent another lock delay - restarted by
-    /// every move it makes - to walk it sideways under the overhang.
-    ///
-    /// **The wait is a soft drop, not a watch** - see [`DrAiAgent::act`].
+    /// The plan has reached a [`Translation::Rest`] and soft drops until the pill lands, then
+    /// uses the lock delay to walk it under the overhang; see [`DrAiAgent::act`].
     resting: bool,
-    /// Hold has been pressed and the swapped pill has not spawned yet. The bottle has no pill
-    /// in it while that is true, which is otherwise the signal to throw the plan away - so this
-    /// says the plan is still good and the pill it was made for is on its way.
+    /// Hold has been pressed and the swapped pill has not spawned, so an empty bottle does not
+    /// discard the plan.
     swapping: bool,
     /// whether this agent is allowed to reach for the held pill at all
     hold: Hold,
-    /// how far the agent's placement search may walk the pill. On by default, and the dial is
-    /// here so that what tucking is worth can be measured again rather than remembered.
+    /// how far the agent's placement search may walk the pill
     reach: Reach,
 }
 
-/// Whether an agent weighs the pill it is holding against the one in play.
-///
-/// This is off by default and that is a measurement, not an oversight. What a model learns to
-/// rank from ([`crate::game::ai::imitation`]) has no hold: the deterministic ai scores a
-/// *placement* against the bottle, with no notion of what giving up the pill in play costs, so
-/// no lesson in the corpus says anything about a swap. Taught with hold on offer, a model
-/// played 25 viruses over five games and buried itself in every one; taught without it, the
-/// same model played 3143 and finished 80 bottles.
-///
-/// What was wrong there was the *weights*, not the idea. Gradient descent only moves a weight
-/// the corpus gives it a gradient for, and the input that says "this is the other pill" is zero
-/// on every lesson - so a taught network came out of stage one holding an arbitrary opinion
-/// about swapping, drawn at random and applied with full confidence. Stage one now silences
-/// that input outright ([`engine::ai::NeuralNetwork::silence_input`]), which leaves a taught
-/// model indifferent to a swap rather than superstitious about one, and leaves the genetic
-/// algorithm - which *can* judge a swap, because it plays whole games - free to move it either
-/// way. Turning it on doubles what the search costs, which is why it is a dial.
+/// Whether an agent weighs the pill it is holding against the one in play. Off by default:
+/// no scorer prices giving up the pill in play, so with hold on they swap whenever the other
+/// pill's best placement scores a shade higher, and it doubles the search.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Hold {
     #[default]
@@ -60,8 +39,7 @@ pub enum Hold {
 }
 
 impl DrAiAgent {
-    /// Dr. Mario 64's own deterministic opponent, on its strongest row - which is also what
-    /// [`DrAiKind::default`] is, named outright here so a harness asking for the port says so.
+    /// Dr. Mario 64's deterministic opponent on its strongest row, as [`DrAiKind::default`].
     pub fn n64() -> Self {
         Self::of(DrAiKind::N64(N64Ai::new()))
     }
@@ -114,15 +92,12 @@ impl DrAiAgent {
         self.keys.tick(delta);
 
         if game.bottle().pill().is_none() {
-            // a swap is the one time the bottle is empty and the plan is still good: the pill
-            // it was made for is the one about to spawn
             if self.swapping {
                 return;
             }
             // nothing is falling, so nothing should still be held down
             game.set_soft_drop(false);
-            // between pills: the bottle is clearing, cascading or spawning, and anything still
-            // queued belonged to a pill that has already locked
+            // anything still queued belonged to a pill that has already locked
             self.keys.abandon();
             self.decided = false;
             self.resting = false;
@@ -135,27 +110,18 @@ impl DrAiAgent {
             self.decided = true;
         }
 
-        // The plan is waiting for the pill to land before the rest of it can be pressed, and
-        // **it waits by soft dropping rather than by watching gravity**. A tuck used to cost a
-        // second or more of a pill drifting down a bottle it had already been lined up over,
-        // which is the whole of what a tuck looked like from outside; soft drop divides the
-        // fall step by twenty and the pill cannot fall past where it comes to rest, so there is
-        // still nothing to time.
+        // a tuck waits for the pill to land by soft dropping rather than waiting on gravity
         if self.resting {
             if !game.bottle().is_collision() {
                 game.set_soft_drop(true);
                 return;
             }
-            // Let go before the tuck. Soft drop cuts the lock delay from 500 ms to 150, which
-            // is shorter than every speed limited difficulty's key delay, so holding it down
-            // through the tuck would lock the pill exactly where the tuck was meant to move it
-            // from.
+            // Soft drop cuts the lock delay from 500 ms to 150, under every speed limited
+            // difficulty's key delay, so it must be released before the tuck or the pill locks.
             game.set_soft_drop(false);
             self.resting = false;
         }
 
-        // a speed limited agent gets one key here and then has to wait; at full speed the whole
-        // sequence goes in this frame
         while let Some(translation) = self.keys.next_key() {
             match translation {
                 Translation::Left => game.left(),
@@ -165,12 +131,8 @@ impl DrAiAgent {
                 Translation::HardDrop => game.hard_drop(),
                 Translation::Rest => {
                     if !game.bottle().is_collision() {
-                        // A waypoint is not a key press and costs the agent's hands nothing,
-                        // so the move that follows it is due the moment the pill lands. That
-                        // only started to matter once the wait became a soft drop: the pill
-                        // now arrives in a few frames rather than a second, and a speed
-                        // limited agent charged a key delay for the waypoint would stand on
-                        // the stack burning the lock delay that the tuck itself needs.
+                        // a waypoint is refunded so the tuck is due the moment the pill lands,
+                        // rather than a key delay later spent out of the lock delay
                         self.keys.refund();
                         self.resting = true;
                         return;
@@ -178,8 +140,7 @@ impl DrAiAgent {
                 }
                 Translation::Hold => {
                     game.hold();
-                    // the swapped pill spawns over the next few frames and the rest of the plan
-                    // is for that pill, so nothing more is pressed until it is there
+                    // the rest of the plan is for the swapped pill, so wait for it to spawn
                     self.swapping = true;
                     return;
                 }
@@ -195,22 +156,8 @@ impl DrAiAgent {
         }
     }
 
-    /// Choose with the deterministic ai, which the original never had a hold to offer.
-    ///
-    /// Pooling both pills' placements into one [`N64Ai::read`] suits *this* scorer far better
-    /// than it suits the network. The N64 reads the situation off the bottle and picks its
-    /// weight table once per call, and the bottle is the same whichever pill is played - so
-    /// every candidate in a pooled call is scored on one table, and its priorities are absolute
-    /// rather than centred on the candidates the way [`Scorer`]'s are. Comparing a placement of
-    /// one pill against a placement of the other is therefore a comparison the original's own
-    /// numbers can carry, which is exactly what it could not do for the network.
-    ///
-    /// It still does not pay, which is measured: over twelve seeds at the training budget the
-    /// strongest row played 10,133 viruses and 235 bottles with a hold against 10,730 and 241
-    /// without one. What it buys is safety - burials fell from three to one - and what it costs
-    /// is pace. That is the same answer the network gave far more loudly (2,996 against 4,595),
-    /// and for the same reason: neither scorer prices what giving up the pill in play *costs*,
-    /// so both swap whenever the other pill's best placement scores a shade higher.
+    /// Choose with the deterministic ai. With [`Hold::On`] both pills' placements are pooled
+    /// into one call, which the N64's absolute priorities can compare.
     fn decide_by_n64(&mut self, game: &mut Game, ai: N64Ai) {
         let bottle = game.bottle();
         let stats = bottle.stats();
@@ -231,15 +178,8 @@ impl DrAiAgent {
         self.keys.queue(placements[chosen].inputs().clone());
     }
 
-    /// Choose between the placements in front of the agent, scoring them all in one call: the
-    /// network is shown what separates the candidates from each other, so the scores mean
-    /// something within the call and nothing at all outside it.
-    ///
-    /// With [`Hold::On`] the candidates are both pills' - the one in play and the one a swap
-    /// would bring in - pooled into a single call, which is the only way a scorer that ranks by
-    /// what separates its candidates can compare them at all. Every placement of the swapped
-    /// pill is marked, and the input that says so is what the genetic algorithm has to express
-    /// what a swap is worth; see [`Hold`] for why it is silenced rather than taught.
+    /// Choose by scoring every candidate in one call, since scores are centred on the call.
+    /// With [`Hold::On`] the held pill's placements join the call, marked by the held input.
     fn decide_by_score(&mut self, game: &mut Game, scorer: Scorer) {
         let bottle = game.bottle();
         let stats = bottle.stats();

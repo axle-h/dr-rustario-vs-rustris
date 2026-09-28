@@ -1,23 +1,8 @@
 //! Mean Bean Machine's thirteen characters, in the box the game keeps its mugshot in.
 //!
-//! The art is cut by `puyo-rusto/art/mugshots.py` out of the game's `Mugshots` rip, which is not
-//! in the repository.  One png per character rather than one sheet for the cast, because
-//! [`engine::render::character`] builds a face's texture only when it is dealt and a single
-//! sheet would have to be loaded whole to build any one of them.
-//!
-//! **Every number below is measured**, off screen captures of the emulated game, one character
-//! at a time - each character's reading is the constants it appears in here, and
-//! `puyo-rusto/art/mugshots.py` is what produced them. A capture is variable rate, so take a
-//! period as within about a fifth of the truth.
-//!
-//! Two things are already baked into the art and so are absent here.  A row is cut **action
-//! first and rest last**, because [`FrameAnimationType::LinearWithPause`] holds the *last* frame
-//! of its strip - so the pose a character rests in has to come last, and which frame that is was
-//! measured rather than assumed (it is the sheet's frame 0 in every row of every character
-//! except Grounder's losing row).  And the **fade is dropped**: the last frame of a defeat row
-//! on the sheet is an earlier pose at exactly half brightness, and no capture has ever run long
-//! enough to see the game reach it - the longest is Sir Ffuzzy-Logik's, still animating 6.9 s
-//! after the death.  So a defeat row here is the poses and nothing else.
+//! Cut and measured from captures of the emulated game by `puyo-rusto/art/mugshots.py`, one png
+//! per character so a face's texture is built only when it is dealt. Each row is cut action
+//! first and rest last, since [`FrameAnimationType::LinearWithPause`] holds the last frame.
 
 use engine::animate::character::{EmitterSource, EmitterTrigger};
 use engine::animate::frames::FrameAnimationType;
@@ -43,25 +28,17 @@ mod sprites {
 
 /// The size of one frame, which is exactly the `MUGSHOT` hole in the panel.
 pub const FRAME: (u32, u32) = (80, 56);
-/// rows of a character's png are spaced by this, so a person can read the sheet
+/// the spacing of a character png's rows
 pub const ROW_PITCH: u32 = FRAME.1 + 1;
 
 /// The sweat's dial: above this much of the board filled, at this many drops a second when it
-/// is completely full.
-///
-/// **Higher than `DANGER_ENTER`**, because the sweat comes on later than the losing face does -
-/// Grounder holds the losing face for a whole clip with a low stack and sweats nothing at all,
-/// while his game over clip has drops throughout. Three thresholds in this order: the face,
-/// then the sweat, then the danger flash, which is not drawn here at all.
+/// is completely full. Kept above `DANGER_ENTER`, so the losing face comes on before the sweat.
 const SWEAT_TRIGGER: EmitterTrigger = EmitterTrigger::Danger {
     above: 0.55,
     per_second: 10.0,
 };
 
 /// The cast, in the order the sheet draws them.
-///
-/// Dr. Robotnik is in it like anybody else: he is the *final boss* of Mean Bean Machine, not its
-/// player character, so there is no reason to hold him out.
 pub const CAST: &[CharacterData] = &[
     // frankly
     CharacterData {
@@ -572,21 +549,14 @@ mod tests {
     use engine::animate::character::CharacterState;
 
     fn png_size(bytes: &[u8]) -> (u32, u32) {
-        // a png's IHDR carries width and height as big-endian u32s at a fixed offset, which is
-        // cheaper here than decoding the whole image
+        // a png's IHDR carries width and height as big-endian u32s at a fixed offset
         assert_eq!(&bytes[1..4], b"PNG", "not a png");
         let at =
             |o: usize| u32::from_be_bytes([bytes[o], bytes[o + 1], bytes[o + 2], bytes[o + 3]]);
         (at(16), at(20))
     }
 
-    /// The art is cut by a script out of a rip that is not in the repository, and every rect
-    /// below is declared here by hand - so a re-cut that moved a strip or changed a row's
-    /// length would otherwise be found by a face playing somebody else's frames, or by a layer
-    /// drawing a slice of the character underneath it. Nothing else would catch either.
-    ///
-    /// It checks the whole png rather than the portrait alone, since the layers, the emitters
-    /// and the cast-wide sweat all live further down the same file.
+    /// Every portrait row, layer and emitter each character declares lies inside its png.
     #[test]
     fn every_character_declares_the_art_it_actually_has() {
         let sweat = characters().sweat.expect("the cast lost its sweat");
@@ -607,7 +577,6 @@ mod tests {
                     (state as u32 * ROW_PITCH + FRAME.1) as i32,
                 );
             }
-            // the widest row is what sets the png's width, so it is exact rather than a bound
             let widest = character
                 .states
                 .iter()
@@ -642,9 +611,7 @@ mod tests {
         }
     }
 
-    /// The sweat is the one piece of art nobody owns, so the cutter writes it into **every**
-    /// character's png at the same place. A character cut before that rule existed would draw
-    /// whatever happened to be at those pixels instead, which is the failure this catches.
+    /// Every character's png has room for the shared sweat under its four portrait rows.
     #[test]
     fn every_character_carries_the_shared_sweat_at_the_same_place() {
         let sweat = characters().sweat.expect("the cast lost its sweat");
@@ -663,10 +630,7 @@ mod tests {
         }
     }
 
-    /// **The sweat is the losing row's and only the losing row's** (Alex, 2026-08-30). A
-    /// character who is winning is not sweating however full their board is, and a buried one
-    /// has stopped - so the state machine gates it as well as the dial does, and the dial
-    /// alone is not enough. Pinned because it is one word in a generated table.
+    /// The sweat triggers in the losing state and no other.
     #[test]
     fn the_sweat_runs_on_the_losing_row_and_nowhere_else() {
         let sweat = characters().sweat.expect("the cast lost its sweat");
@@ -694,9 +658,7 @@ mod tests {
         assert_eq!(names.len(), before, "two characters share a name");
     }
 
-    /// Sir Ffuzzy-Logik is the one character whose defeat row keeps animating - his fur
-    /// dither goes on ticking over, still going 6.9 s after the death in the capture. Every
-    /// other defeat is a held pose. Worth pinning, because it reads as a mistake otherwise.
+    /// Sir Ffuzzy-Logik's defeat row animates, as in the game; every other defeat is held.
     #[test]
     fn only_sir_ffuzzy_logik_animates_after_he_is_buried() {
         for character in CAST {

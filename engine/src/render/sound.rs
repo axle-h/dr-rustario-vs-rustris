@@ -7,9 +7,8 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Which sound effect a theme plays for a game event. `Clear(class)` lets a game grade its
-/// clears (a tetris vs a single, a virus vs a vitamin) without the theme knowing the rules:
-/// see [`crate::render::GameRender::clear_class`].
+/// Which sound effect a theme plays for a game event. `Clear(class)` lets a game grade its clears
+/// without the theme knowing the rules; see [`crate::render::GameRender::clear_class`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SfxKey {
     Move,
@@ -29,12 +28,10 @@ pub enum SfxKey {
 
 pub struct AudioTheme {
     sfx: HashMap<SfxKey, Sound>,
-    /// every track this theme will play a match on. Most themes offer one; a theme that
-    /// offers several has one of them dealt per match by [`Self::deal_game_music`]
+    /// every track this theme may play a match on; with several, one is dealt per match by
+    /// [`Self::deal_game_music`]
     game_music: Vec<Rc<StructuredMusic>>,
-    /// which of them is playing. A `Cell` because themes are built once and lived on as
-    /// `&'static`, so every play site holds a `&self` - the same reason the fill font of
-    /// [`crate::render::Theme`] sits in a `RefCell`
+    /// which of them is playing; a `Cell` because themes are shared behind `&self`
     game_music_index: Cell<usize>,
     game_over_music: Option<Rc<StructuredMusic>>,
     next_stage_music: Option<Rc<StructuredMusic>>,
@@ -91,10 +88,7 @@ impl AudioTheme {
         self.with_game_music_track(None, music)
     }
 
-    /// another track this theme may be dealt a match on, appended to the ones already offered:
-    /// a game with a soundtrack rather than a tune calls this once per track. Nothing picks
-    /// between them, so the order is the game's own to choose - what it costs a theme to
-    /// offer a track is how often that track comes up.
+    /// another track this theme may be dealt a match on, appended to the ones already offered
     pub fn with_game_music_track(
         mut self,
         intro: Option<&'static [u8]>,
@@ -110,20 +104,9 @@ impl AudioTheme {
         Ok(self)
     }
 
-    /// Levels this whole theme - its music and its effects together - against the house.
-    ///
-    /// **The house baseline is a theme's music at -22 dBFS RMS**, with its effects within a few
-    /// decibels of that, and `engine/art/audio_levels.py` is the meter that reads it: it decodes
-    /// every embedded file in the repository, applies these gains, and prints what is out of
-    /// band. Rustris and Dr. Rustario came off rips that happen to sit there already; Puyo
-    /// Rusto's are mastered some eight decibels hotter than the rest of the app and are brought
-    /// back here, which is a gain rather than a re-cut because most of those rips are not on
-    /// this machine and cannot be re-run.
-    ///
-    /// Applied to music and effects **together**, so a theme's own internal balance - which is
-    /// the mix its source was mastered with - survives being levelled. Use
-    /// [`Self::with_effects_at`] for the other thing, when a theme's effects sit wrong against
-    /// its own music.
+    /// Levels this whole theme, music and effects together, against the house baseline of music at
+    /// -22 dBFS RMS; `engine/art/audio_levels.py` measures it. Use [`Self::with_effects_at`] when a
+    /// theme's effects sit wrong against its own music.
     pub fn with_gain(mut self, percent: i32) -> Self {
         self.sfx = self
             .sfx
@@ -137,13 +120,8 @@ impl AudioTheme {
         self
     }
 
-    /// Plays this theme's effects at `percent` of what its music plays at.
-    ///
-    /// Where a game's effects and its music come off rips that were not mastered against each
-    /// other, this is the one place that can say so - a set that is *balanced* wrong rather than
-    /// levelled wrong. Over 100 lifts a set that sits too far under its own music, which is why
-    /// it is a gain on the samples and not the config's volume dial: that dial has no headroom
-    /// above it.
+    /// Plays this theme's effects at `percent` of what its music plays at. Over 100 scales the
+    /// samples, since the config's volume dial has no headroom above it.
     pub fn with_effects_at(mut self, percent: i32) -> Self {
         self.sfx = self
             .sfx
@@ -168,8 +146,7 @@ impl AudioTheme {
         self.game_music.len()
     }
 
-    /// Deals the track the next match is played on. A game with one tune is dealt it every
-    /// time, which is what asking for a deal means there.
+    /// Deals the track the next match is played on.
     pub fn deal_game_music(&self, rng: &mut impl Rng) {
         self.game_music_index.set(if self.game_music.len() > 1 {
             rng.random_range(0..self.game_music.len())
@@ -295,8 +272,7 @@ mod tests {
         audio
     }
 
-    /// over enough matches a soundtrack is dealt all the way through, rather than the same
-    /// track every time
+    /// Over enough matches every track of a soundtrack is dealt.
     #[test]
     fn a_random_choice_deals_every_track_and_only_those() {
         let audio = theme(4);
@@ -309,7 +285,7 @@ mod tests {
         assert!(seen.into_iter().all(|s| s));
     }
 
-    /// the games with a single tune ask for a deal and get the one they have
+    /// A theme with one tune is always dealt it.
     #[test]
     fn one_track_is_the_one_that_is_dealt() {
         let audio = theme(1);

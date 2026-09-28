@@ -1,21 +1,17 @@
-//! Constellation links: soft lines between particles that are near each other.
-//!
-//! The neighbour search is a uniform grid bucketed at the link radius; each particle scans its
-//! own bucket and the eight around it. That is O(n) and needs no tree.
+//! Constellation links between near particles, found through a uniform grid bucketed at the
+//! link radius so each particle scans only its own bucket and the eight around it.
 
-use crate::particles::color::ParticleColor;
 use crate::particles::geometry::RectF;
 use crate::particles::particle::Particle;
 use crate::particles::pool::ParticleLink;
 
 /// the most links one particle may own, so a dense clump does not eat the whole budget
 const MAX_PER_PARTICLE: usize = 3;
-/// the coarsest the grid is allowed to get, in buckets per side
+/// the coarsest the grid may get, in buckets per side
 const MAX_BUCKETS: usize = 64;
 
 #[derive(Default)]
 pub struct LinkBuilder {
-    /// bucket index -> particle indices
     buckets: Vec<Vec<usize>>,
     cols: usize,
     rows: usize,
@@ -83,8 +79,7 @@ impl LinkBuilder {
                         if distance_squared > radius_squared {
                             continue;
                         }
-                        // near neighbours are solid and distant ones fainter, but never so
-                        // faint that a link appears out of nothing as two particles close
+                        // fade with distance, but never so faint that a link pops in from nothing
                         let closeness =
                             0.4 + 0.6 * (1.0 - (distance_squared / radius_squared).sqrt());
                         self.links.push(ParticleLink {
@@ -111,10 +106,6 @@ impl LinkBuilder {
         (col as usize, row as usize)
     }
 }
-
-/// the colour a link takes when neither end has one yet
-#[allow(dead_code)]
-pub const DEFAULT_LINK_COLOR: ParticleColor = ParticleColor::WHITE;
 
 #[cfg(test)]
 mod tests {

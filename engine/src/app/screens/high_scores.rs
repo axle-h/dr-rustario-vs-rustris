@@ -1,5 +1,5 @@
-//! Browses the high score tables, one page per table; ticked once per frame.
-//! Left/right (or up/down) pages between tables and any other key leaves.
+//! Browses the high score tables, a page per table: left/right or up/down pages, any other key
+//! leaves.
 
 use crate::app::App;
 use crate::frame_rate::FrameRate;
@@ -23,9 +23,8 @@ pub struct HighScoreViewScreen<'a> {
 }
 
 impl<'a> HighScoreViewScreen<'a> {
-    /// The tables of `keys`, in that order, each at its defaults until a score is saved;
-    /// any saved tables under other keys (e.g. from older versions) follow.
-    /// `None` when there is nothing to show.
+    /// The tables of `keys` in order, each at its defaults until a score is saved, then any saved
+    /// tables under other keys; `None` when there is nothing to show.
     pub fn new(
         app: &mut App,
         texture_creator: &'a TextureCreator<WindowContext>,
@@ -85,7 +84,7 @@ impl<'a> HighScoreViewScreen<'a> {
         )
     }
 
-    /// One frame; `Ok(Some(()))` when the player leaves.
+    /// one frame; `Ok(Some(()))` when the player leaves
     pub fn update(
         &mut self,
         app: &mut App,
@@ -120,7 +119,6 @@ impl<'a> HighScoreViewScreen<'a> {
         app.canvas.set_draw_color(Color::BLACK);
         app.canvas.clear();
 
-        // particles
         particles.update(delta);
         particles.draw(&mut app.canvas)?;
 

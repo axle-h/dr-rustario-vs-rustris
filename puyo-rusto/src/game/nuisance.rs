@@ -1,11 +1,6 @@
-//! The nuisance queue: what is waiting to land on you, what your chain cancels, and how the
-//! rest of it falls.
-//!
-//! This is the identity mechanic of the game. Under **classic Tsu offset** (Puyo Nexus,
-//! [Offset rule](https://puyonexus.com/wiki/Offset_rule)) a chain first cancels whatever is
-//! queued against you and only then sends anything on, and whatever still waits drops as soon
-//! as your chain finishes - so you generally get exactly one chain to answer an attack. It is
-//! what turns two people racing into two people fighting.
+//! The nuisance queue. Under classic Tsu offset a chain first cancels what is queued against
+//! you and only then sends the rest, and whatever still waits drops as soon as your chain
+//! finishes. Puyo Nexus, [Offset rule](https://puyonexus.com/wiki/Offset_rule).
 
 use crate::game::board::{Board, COLUMNS};
 use crate::game::cell::{NuisanceIcon, PuyoCell, PuyoSkin};
@@ -18,18 +13,14 @@ use rand_chacha::ChaChaRng;
 /// a full row of the board
 pub const ROW: u32 = COLUMNS;
 
-/// The most nuisance that can fall at once: five rows.
-///
-/// Puyo Nexus, *Nuisance queue*: this is what the rock symbol stands for, and "the maximum
-/// number of Garbage Puyos that can fall at once". Anything past it stays in the queue for the
-/// next drop, which is what makes a big attack something you dig out of over several turns
-/// rather than an instant burial.
+/// The most nuisance that can fall at once: five rows, the rock symbol. The rest waits for the
+/// next drop. Puyo Nexus, *Nuisance queue*.
 pub const MAX_DROP: u32 = 30;
 
 /// What a chain did to the queue.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Outgoing {
-    /// cancelled off what was waiting, and so never landed at all
+    /// cancelled off what was waiting, so it never landed
     pub offset: u32,
     /// what was left over and goes to the opponent
     pub sent: u32,
@@ -48,10 +39,8 @@ pub struct Nuisance {
     points: NuisancePoints,
     /// an all clear has been earned and is owed against the next chain
     all_clear_owed: bool,
-    /// Where the remainder of a drop scatters. Kept apart from anything that decides *what*
-    /// is dealt: the pair pool is fixed when the match starts, so drawing from here can never
-    /// put two players' colours out of step. It could not anyway - what lands on you depends
-    /// on your opponent, and is yours alone.
+    /// where the remainder of a drop scatters, kept apart from the pair pool so it cannot put
+    /// players' deals out of step
     rng: ChaChaRng,
 }
 
@@ -74,8 +63,7 @@ impl Nuisance {
         self.pending > 0
     }
 
-    /// an attack has landed in the tray. It waits there - visible, and answerable - rather
-    /// than dropping straight in
+    /// an attack lands in the tray, where it waits to be answered rather than dropping straight in
     pub fn receive(&mut self, count: u32) {
         self.pending = self.pending.saturating_add(count);
     }
@@ -89,11 +77,8 @@ impl Nuisance {
         self.all_clear_owed
     }
 
-    /// What a chain worth `score` does: cancel first, send the rest.
-    ///
-    /// The all clear bonus rides on the *next* chain to clear anything, so it is spent here
-    /// rather than when the board was emptied - and it is spent whether or not the chain was
-    /// otherwise worth a single puyo.
+    /// What a chain worth `score` does: cancel first, send the rest. An owed all clear is spent
+    /// on this chain even if it is worth nothing on its own.
     pub fn resolve(&mut self, score: u32) -> Outgoing {
         if score == 0 {
             return Outgoing::default();
@@ -118,11 +103,8 @@ impl Nuisance {
         dropping
     }
 
-    /// Which columns `count` puyos fall down, full rows first and the remainder scattered.
-    ///
-    /// Full rows before anything else is what makes a big attack land flat rather than in a
-    /// tower; the remainder is spread over distinct columns so that the last few do not stack
-    /// up in one place.
+    /// Which columns `count` puyos fall down: full rows first so a big attack lands flat, then
+    /// the remainder over distinct columns.
     pub fn drop_columns(&mut self, count: u32) -> Vec<i32> {
         let mut columns = vec![];
         for _ in 0..count / ROW {
@@ -141,10 +123,8 @@ impl Nuisance {
         columns
     }
 
-    /// Drop `count` puyos onto a board, reporting where each landed.
-    ///
-    /// A column with no room takes nothing and the puyo is simply lost, which is what the
-    /// real game does with a bottle that is already full to the brim.
+    /// Drop `count` puyos onto a board, reporting where each landed; a full column loses its
+    /// puyo, as in the original.
     pub fn drop_onto(
         &mut self,
         board: &mut Board,
@@ -163,10 +143,8 @@ impl Nuisance {
         landed
     }
 
-    /// The tray above the board: what is waiting, as the symbols that stand for it.
-    ///
-    /// This is what [`engine::game::Game::pending_attacks`] reports, and what a theme's
-    /// pending strip draws.
+    /// The tray above the board as its symbols, which is what
+    /// [`engine::game::Game::pending_attacks`] reports.
     pub fn tray(&self, skin: PuyoSkin) -> Vec<CellId> {
         NuisanceIcon::decompose(self.pending)
             .into_iter()
@@ -194,7 +172,7 @@ mod tests {
         assert_eq!(queue.pending(), 12);
     }
 
-    /// the whole point: a chain cancels what is waiting before it sends anything on
+    /// a chain cancels what is waiting before it sends anything on
     #[test]
     fn a_chain_cancels_what_is_waiting_before_it_sends() {
         let mut queue = nuisance();
@@ -225,7 +203,7 @@ mod tests {
         assert_eq!(out.sent, 5);
     }
 
-    /// the remainder carries between chains, so small chains eventually add up to a puyo
+    /// small chains' remainders add up to a puyo
     #[test]
     fn the_remainder_carries_between_chains() {
         let mut queue = nuisance();
@@ -233,7 +211,7 @@ mod tests {
         assert_eq!(queue.resolve(40).sent, 1, "80 points across two chains is");
     }
 
-    /// clearing nothing is not a chain at all: it neither spends the carry nor the all clear
+    /// clearing nothing spends neither the carry nor the all clear
     #[test]
     fn a_placement_that_clears_nothing_resolves_to_nothing() {
         let mut queue = nuisance();
@@ -245,8 +223,7 @@ mod tests {
         assert!(queue.all_clear_owed(), "the all clear is still owed");
     }
 
-    /// Tsu's all clear: thirty extra on the *next* chain, not on the one that emptied the
-    /// board
+    /// an all clear adds thirty to the next chain, not the one that emptied the board
     #[test]
     fn an_all_clear_rides_on_the_next_chain() {
         let mut queue = nuisance();
@@ -257,7 +234,7 @@ mod tests {
         assert_eq!(queue.resolve(2 * TARGET_POINTS).sent, 2, "only once");
     }
 
-    /// ... and it is spent even by a chain too small to send anything of its own
+    /// ... and it is spent even by a chain too small to send anything
     #[test]
     fn an_all_clear_rides_on_a_chain_worth_nothing_by_itself() {
         let mut queue = nuisance();
@@ -376,7 +353,7 @@ mod tests {
         );
     }
 
-    /// a worked exchange, end to end: they hit you, you chain back, the rest still lands
+    /// a worked exchange: they hit you, you chain back, the rest still lands
     #[test]
     fn one_chain_to_answer_an_attack_and_the_rest_still_lands() {
         let mut queue = nuisance();

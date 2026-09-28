@@ -1,9 +1,4 @@
-//! The piece lifecycle: what the engine drives, one frame at a time.
-//!
-//! [`crate::game::Playfield`] is the rules and knows nothing about time. This is the state
-//! machine over it - a pair falls, it locks, the chain loop runs a pass at a time so it can be
-//! watched, the garbage that survived the offset lands, and the next pair enters - plus the
-//! [`engine::game::Game`] impl that is the whole of what the engine sees.
+//! The timed state machine over [`crate::game::Playfield`], and the [`engine::game::Game`] impl.
 
 use crate::game::board::{self, Board, COLUMNS, ROWS, SPAWN, VISIBLE_ROWS};
 use crate::game::cell::{Gem, PowerMask};
@@ -27,10 +22,7 @@ pub const BIG_BREAK_GEMS: u32 = 8;
 /// the chain length that earns the background field's `CHAIN`
 pub const LONG_CHAIN: u32 = 4;
 
-/// What a [`GameEvent::Clear`] carries in its game-private `detail`.
-///
-/// The renderer reads it back to grade the break and pick a word for it; the engine never
-/// looks inside.
+/// What a [`GameEvent::Clear`] carries in its game-private `detail`; only the renderer reads it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ClearDetail {
     /// which pass of the chain this was, counting from 1
@@ -102,8 +94,7 @@ pub struct Game {
     stage_complete: bool,
     /// gems destroyed towards the next speed step
     stage_gems: u32,
-    /// **the round clock**, `+0x1f0`. Every attack in this game grows with it, which is a rule
-    /// no other game in the compendium has
+    /// the round clock, `+0x1f0`; every attack grows with it
     round: Duration,
     soft_drop: bool,
     fall: Duration,
@@ -176,10 +167,7 @@ impl Game {
         self.play.fighter
     }
 
-    /// **The round clock in whole seconds**, capped where the game caps it.
-    ///
-    /// Damage grows with this and with nothing else about how the board looks - see
-    /// [`crate::game::score::time_tier`].
+    /// The round clock in whole seconds, capped; see [`crate::game::score::time_tier`].
     pub fn round_seconds(&self) -> u32 {
         (self.round.as_secs() as u32).min(rules::MAX_ROUND_SECONDS)
     }
@@ -193,8 +181,7 @@ impl Game {
         }
     }
 
-    /// the cells of a pair, always drawn unjoined - a gem joins a power gem only once it has
-    /// landed and a rectangle has been found
+    /// the cells of a pair, always unjoined: a gem joins a power gem only once it has landed
     fn pair_cells(pair: &Pair) -> Vec<PlacedCell> {
         let [pivot, child] = pair.points();
         let [pivot_half, child_half] = pair.halves();
@@ -208,7 +195,6 @@ impl Game {
         let piece = self.random.next_pair();
         let pair = Pair::new(SPAWN, piece);
         if pair.points().iter().any(|p| !self.play.board.is_free(*p)) {
-            // the Drop Alley is blocked, and there is nowhere for a piece to enter
             self.events.push(GameEvent::GameOver);
             self.state = State::GameOver;
             return;
@@ -226,13 +212,11 @@ impl Game {
         };
     }
 
-    /// put the pair down and start the chain loop
     fn lock_pair(&mut self, dropped: bool) {
         let Some(pair) = self.pair.take() else { return };
         let cells = Game::pair_cells(&pair);
         pair.lock(&mut self.play.board);
-        // whichever half is already resting on something has landed; the other is about to
-        // come apart from it and reports itself out of the settle instead
+        // only a half already resting has landed; the other reports itself out of the settle
         let landed: Vec<PlacedCell> = cells
             .iter()
             .copied()
@@ -242,7 +226,7 @@ impl Game {
         if !landed.is_empty() {
             self.events.push(GameEvent::Landed { cells: landed });
         }
-        // a piece landing is what ripens every counter gem on the board by one
+        // counter gems ripen once per piece landed
         self.play.board.tick_countdowns();
         self.state = State::Resolving {
             chain: 0,
@@ -250,7 +234,6 @@ impl Game {
         };
     }
 
-    /// what the board holds at each of `points`, as the engine's own placed cells
     fn placed(&self, points: &[Point]) -> Vec<PlacedCell> {
         points
             .iter()
@@ -263,7 +246,6 @@ impl Game {
             .collect()
     }
 
-    /// One pass of the chain loop, or the end of it.
     fn resolve(&mut self, chain: u32) {
         let round = self.round_seconds();
         let Some(step) = self.play.resolve_step(chain, round, self.level) else {
@@ -286,8 +268,6 @@ impl Game {
         self.events.push(GameEvent::Clear {
             cells,
             count,
-            // the same grammar the other games use: false on the first pass of a chain, true
-            // on every one after, so nothing else has to know what a chain is
             is_combo: step.chain > 1,
             detail: detail.into(),
         });
@@ -297,7 +277,7 @@ impl Game {
         };
     }
 
-    /// The chain is over: settle up with the tray, then let whatever is still owed land.
+    /// Offset the chain's attack against the tray, then land whatever is still owed.
     fn finish_chain(&mut self, chain: u32) {
         if chain > 0 {
             let sent = self.play.offset_outgoing();
@@ -305,7 +285,7 @@ impl Game {
                 self.events
                     .push(GameEvent::AttackSent(Attack::new(GAME_ID, sent)));
             }
-            // one event per stage the chain paid for, since a long chain can be worth several
+            // a long chain can pay for several stages
             while self.stage_gems >= rules::GEMS_PER_STAGE {
                 self.stage_gems -= rules::GEMS_PER_STAGE;
                 self.stage_complete = true;
@@ -330,7 +310,6 @@ impl Game {
         self.play.board.occupied().map(|(at, _)| at).collect()
     }
 
-    /// the cells that are on the board now and were not before
     fn arrived(&self, before: &[Point]) -> Vec<PlacedCell> {
         let points: Vec<Point> = self
             .play
@@ -376,7 +355,7 @@ impl Game {
         self.state = State::Falling { lock };
     }
 
-    /// run the pair through a closure, keeping the lock delay alive while it is nudged about
+    /// run the pair through a closure, resetting the lock delay if it moved
     fn with_pair(&mut self, f: impl FnOnce(&mut Pair, &Board) -> bool) -> bool {
         if !matches!(self.state, State::Falling { .. }) {
             return false;
@@ -385,7 +364,7 @@ impl Game {
             return false;
         };
         let moved = f(&mut pair, &self.play.board);
-        // a refused rotation still has to be remembered, for the quick turn
+        // stored even when refused, since a refused rotation arms the quick turn
         self.pair = Some(pair);
         if moved {
             if let State::Falling { lock } = &mut self.state {
@@ -402,7 +381,6 @@ impl engine::game::Game for Game {
     }
 
     fn update(&mut self, delta: Duration) {
-        // the round clock runs whatever the board is doing, because damage grows with it
         if !matches!(self.state, State::GameOver) {
             self.round += delta;
         }
@@ -451,9 +429,8 @@ impl engine::game::Game for Game {
         }
     }
 
-    /// Taking soft drop up or letting it go carries the pair's *position* across the change,
-    /// not the time it has banked towards the next row - the same trap Puyo Rusto documents,
-    /// and for the same reason: this game slides between cells too.
+    /// Carries the pair's fractional position across the change rather than its banked time,
+    /// or the sliding pair would jump.
     fn set_soft_drop(&mut self, soft_drop: bool) {
         if soft_drop == self.soft_drop {
             return;
@@ -463,8 +440,8 @@ impl engine::game::Game for Game {
         self.fall = self.fall_interval().mul_f64(travelled.clamp(0.0, 1.0));
     }
 
-    /// Zero while the pair is resting: the fall timer goes on accumulating there, and drawing
-    /// it would sink a settled pair into the stack and snap it back once a fall interval.
+    /// Zero while the pair rests, since the fall timer keeps accumulating there and would sink
+    /// it into the stack.
     fn fall_progress(&self) -> f64 {
         let Some(pair) = self.pair else { return 0.0 };
         if !matches!(self.state, State::Falling { .. }) || pair.is_resting(&self.play.board) {
@@ -482,7 +459,7 @@ impl engine::game::Game for Game {
             return;
         }
         let Some(mut pair) = self.pair else { return };
-        // where it started, not where it lands: the trail smears down from these cells
+        // the start cells, which the trail smears down from
         let cells = Game::pair_cells(&pair);
         let dropped_rows = pair.hard_drop(&self.play.board);
         self.pair = Some(pair);
@@ -493,9 +470,7 @@ impl engine::game::Game for Game {
         self.lock_pair(true);
     }
 
-    /// Puzzle Fighter has no hold box and this game does not add one. The pair in play and the
-    /// one NEXT box are the whole of what a player is given to plan with, and the game's
-    /// difficulty is built around that.
+    /// Puzzle Fighter has no hold box.
     fn hold(&mut self) {}
 
     fn drain_events(&mut self) -> Vec<GameEvent> {
@@ -529,15 +504,13 @@ impl engine::game::Game for Game {
         }
         match self.play.board.get(point) {
             None => Cell::Empty,
-            // a counter gem is the one thing on this board the player did not put there
             Some(gem @ Gem::Counter { .. }) => Cell::Garbage(gem.loose_id()),
             Some(gem) => Cell::Stack(gem.id(self.play.board.power_mask(point))),
         }
     }
 
     fn queue(&self) -> Vec<PieceId> {
-        // `peek` fills lazily, and `queue` only has `&self` - so the NEXT box is read off the
-        // pairs already dealt into the buffer, which `next_pair` keeps topped up
+        // `queue` has only `&self`, so this reads the buffer `next_pair` keeps topped up
         self.random
             .peeked()
             .into_iter()
@@ -552,7 +525,7 @@ impl engine::game::Game for Game {
     fn metric(&self, kind: MetricKind) -> Option<u32> {
         match kind {
             MetricKind::Score => Some(self.play.score),
-            // there is no level in this game, so the speed step stands in for one
+            // no levels here, so the speed step stands in
             MetricKind::Level => Some(self.speed_index),
             MetricKind::Chain => Some(self.play.best_chain),
             MetricKind::Lines | MetricKind::Viruses => None,
@@ -583,8 +556,7 @@ impl engine::game::Game for Game {
         }
     }
 
-    /// The board is never cleared away between stages: a speed step is something that happens
-    /// to a round in progress, not a new round. Dr. Rustario's bottle is the odd one out here.
+    /// A speed step happens to a round in progress, so the board is never cleared.
     fn stage_transition(&self) -> StageTransition {
         StageTransition::Seamless
     }
@@ -604,20 +576,17 @@ impl engine::game::Game for Game {
         Ok(())
     }
 
-    /// Garbage arriving does not land immediately: it joins the tray, where this player's own
-    /// next break can still cancel it. That is the offset this game shares with Puyo, and it
-    /// is why the tray is worth showing.
+    /// Garbage joins the tray, where this player's next break can still offset it.
     fn receive_attack(&mut self, attack: Attack) {
         let gems = attack.strength_for(GAME_ID);
         if gems > 0 {
-            // an attack that arrived having been cancelled down lands on a shorter fuse; this
-            // is the plain case, so it lands on the full five
+            // an uncancelled attack lands on the full five turn fuse
             self.play.tray.receive(gems, false);
         }
     }
 
     fn pending_attacks(&self) -> Vec<CellId> {
-        // one icon per counter gem still to fall, drawn in the colour the sender will send
+        // drawn in the colour the sender's pattern will drop
         let pending = self.play.tray.pending().min(board::VISIBLE_CELLS);
         (0..pending)
             .map(|i| {
@@ -645,8 +614,7 @@ mod tests {
         )
     }
 
-    /// run the game until `f` says so, or give up - so a test cannot hang on a state that
-    /// never ends
+    /// run the game until `f` holds, giving up after 20,000 frames
     fn run_until(game: &mut Game, mut f: impl FnMut(&Game) -> bool) -> bool {
         for _ in 0..20_000 {
             if f(game) {
@@ -683,11 +651,7 @@ mod tests {
         assert_eq!(vec![PieceId::from(game.pair.unwrap().piece())], next);
     }
 
-    /// A crash gem landing on its own colour breaks, even straight out of the deal.
-    ///
-    /// The "a pair never self-destructs" rule is narrower than it looks: it demotes only when
-    /// **both** halves are the same crash gem. A plain gem under a crash gem of that colour is
-    /// an ordinary two-gem break, and one arrives within a pair or two of any seed.
+    /// A plain gem and a crash gem of its colour dealt as one pair break where they land.
     #[test]
     fn a_gem_under_its_own_crash_gem_breaks_where_it_lands() {
         let mut game = game();
@@ -725,8 +689,7 @@ mod tests {
         );
     }
 
-    /// **the chain is watched, not computed.** One pass fires, then the game waits out the
-    /// forty frame erase animation before the next
+    /// a two pass chain fires its passes as separate, ordered clears
     #[test]
     fn a_chain_is_stepped_one_pass_at_a_time() {
         let mut game = game();
@@ -748,8 +711,7 @@ mod tests {
         assert_eq!(passes, vec![1, 2], "two passes, in order");
     }
 
-    /// a break's attack is offset against what is already falling towards this player, and
-    /// only the remainder is sent
+    /// a four gem attack against a two gem tray sends two
     #[test]
     fn an_attack_is_offset_against_the_tray_before_it_is_sent() {
         let mut game = game();
@@ -773,11 +735,7 @@ mod tests {
         assert_eq!(game.pending_counter_gems(), 0);
     }
 
-    /// garbage that survives the offset lands, and the engine is told so it can be watched in
-    ///
-    /// Driven straight into the chain loop with nothing on the board, so that the pair dealt
-    /// cannot break and cancel the tray on its way past - which is what a hard drop here
-    /// happens to do on this seed, and is the rule working rather than the test.
+    /// six gems in the tray and no chain land as six received cells
     #[test]
     fn garbage_that_survives_the_offset_lands() {
         let mut game = game();
@@ -803,7 +761,7 @@ mod tests {
         assert_eq!(received, 6);
     }
 
-    /// **game over is the Drop Alley blocking.** Nothing else ends a round.
+    /// a full Drop Alley column ends the game at the next spawn
     #[test]
     fn the_game_ends_when_the_drop_alley_is_blocked() {
         let mut game = game();
@@ -819,7 +777,7 @@ mod tests {
         assert_eq!(game.stage_state(), StageState::GameOver);
     }
 
-    /// the round clock is what every attack in this game grows with, so it has to run
+    /// the round clock counts game time and caps at `MAX_ROUND_SECONDS`
     #[test]
     fn the_round_clock_runs_and_stops_at_the_cap() {
         let mut game = game();
@@ -830,8 +788,7 @@ mod tests {
         assert_eq!(game.round_seconds(), rules::MAX_ROUND_SECONDS);
     }
 
-    /// a counter gem draws as garbage rather than as part of the stack, and a power gem cell
-    /// draws joined to the rest of its rectangle
+    /// a counter gem reports as garbage and a power gem cell as joined stack
     #[test]
     fn the_board_reports_cells_the_way_a_theme_draws_them() {
         let mut game = game();
@@ -869,8 +826,7 @@ mod tests {
         assert_eq!(id, Gem::plain(GemColor::Red).loose_id());
     }
 
-    /// a speed step is something that happens to a round in progress: the board is not cleared
-    /// away and the gems keep counting
+    /// completing a stage leaves the board as it was
     #[test]
     fn a_speed_step_leaves_the_board_alone() {
         let mut game = game();

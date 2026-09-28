@@ -70,10 +70,8 @@ impl Search {
             if !current_board.apply_inputs(&inputs) {
                 continue;
             }
-            // dedupe on the pose actually reached on the board (after wall kicks), not on the
-            // pose a translation would geometrically produce: two different poses can share a
-            // geometric neighbour but kick to different places, so pruning on geometry loses
-            // reachable placements.
+            // dedupe on the pose reached after wall kicks, not the geometric one, since two poses
+            // can share a geometric neighbour but kick to different places
             let pose = current_board.tetromino().unwrap().pose();
             if !self.visited.insert(pose) {
                 continue;
@@ -91,10 +89,8 @@ impl Search {
     }
 
     pub fn search_translations_from_current_results(&mut self) {
-        // `results` is a HashMap with randomised iteration order. The order in which poses are
-        // expanded decides which input sequence first claims a pose in `visited`, so the seeds
-        // must be expanded in a deterministic order or the chosen inputs (and via the tie-break
-        // in the agent, the chosen placement) change from run to run.
+        // `results` iterates in random order, and expansion order decides which inputs claim a
+        // pose in `visited`, so the seeds are expanded in a deterministic order
         let seeds: Vec<InputSequence> = self
             .results
             .values()
@@ -197,9 +193,7 @@ mod tests {
         assert_eq!(inputs.len(), 18); // 7 flat positions + 10 upright positions + 1 open hole position
     }
 
-    /// Regression: on this board (from a real game) the S tuck into the gap at the bottom is reachable
-    /// by several equally-ranked soft drop sequences, and the search used to return whichever one the
-    /// random HashMap iteration order happened to find first, making AI games non-reproducible.
+    /// An S tuck reachable by several equally ranked soft drop sequences always gets the same one.
     #[test]
     fn search_is_deterministic_for_tied_soft_drop_sequences() {
         fn board() -> Board {

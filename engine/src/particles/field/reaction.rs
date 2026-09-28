@@ -1,18 +1,12 @@
 //! What the field does about the match: shockwaves from clears, comets for attacks and a pall
-//! over a board that is losing.
-//!
-//! Every player's events feed the field whatever theme they are on — a retro player's line
-//! clear still ripples through the visible modern half, which reads correctly as "something
-//! happened over there".
+//! over a losing board. Every player's events feed it, whatever theme they are on.
 
 use crate::particles::color::ParticleColor;
 use crate::particles::geometry::{RectF, Vec2D};
 use crate::particles::particle::Particle;
 
-/// The words the field spells out when the match calls for one. They are the engine's own
-/// because they are arcade words rather than either game's vocabulary - a game only says
-/// *when*, through [`crate::render::GameRender::clear_word`] - and because the renderer
-/// outlines them ahead of time, so one is ready the moment it is called for.
+/// The words the field spells when the match calls for one; a game only says when, through
+/// [`crate::render::GameRender::clear_word`]. The renderer outlines them ahead of time.
 pub mod words {
     pub const TETRIS: &str = "TETRIS";
     pub const COMBO: &str = "COMBO";
@@ -24,15 +18,15 @@ pub mod words {
     pub const ALL: [&str; 6] = [TETRIS, COMBO, T_SPIN, PERFECT, GAME_OVER, CHAIN];
 }
 
-/// Something that happened in the match, in the terms the field cares about. Built by the
-/// match screen, which is the only place that knows both the events and where the boards are.
+/// Something that happened in the match, built by the match screen, the only place that knows
+/// both the events and where the boards are.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldEvent {
-    /// `rows` are the cleared rows on screen, so the wave starts where the clear was
+    /// `rows` are the cleared rows on screen, where the wave starts
     Clear {
         player: u32,
         rows: Vec<RectF>,
-        /// the game's own grading of the clear, see `GameRender::clear_class`
+        /// the game's own grading, see `GameRender::clear_class`
         class: u16,
         count: u32,
         is_combo: bool,
@@ -58,7 +52,7 @@ pub enum FieldEvent {
     GameOver {
         player: u32,
     },
-    /// spell one of [`words`] out now, whatever the field had in mind
+    /// spell one of [`words`] now, whatever the field had in mind
     Spell {
         word: &'static str,
     },
@@ -66,13 +60,11 @@ pub enum FieldEvent {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WaveKind {
-    /// expanding ring
     Ring,
     /// a band sweeping up and down away from a row
     Horizontal,
 }
 
-/// An expanding front that shoves whatever it passes through.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shockwave {
     origin: Vec2D,
@@ -129,21 +121,18 @@ impl Shockwave {
         self.radius += self.speed * delta_time;
     }
 
-    /// how much of the wave is left, for the colour flash it carries
     fn fade(&self) -> f64 {
         (1.0 - self.elapsed / self.duration).clamp(0.0, 1.0)
     }
 
-    /// push a particle if the front is passing it, and return how strongly it was hit so the
-    /// colour flash can follow
+    /// push a particle if the front is passing it, returning how hard for the colour flash
     pub fn apply(&self, particle: &mut Particle, delta_time: f64) -> f64 {
         let delta = particle.position() - self.origin;
         let (distance, direction) = match self.kind {
             WaveKind::Ring => (delta.magnitude(), delta),
             WaveKind::Horizontal => (
                 delta.y().abs(),
-                // mostly vertical, with a little outward spread so the row does not become a
-                // pair of flat sheets
+                // mostly vertical, spread a little so a row does not become two flat sheets
                 Vec2D::new(delta.x() * 0.35, delta.y()),
             ),
         };
@@ -166,22 +155,19 @@ impl Shockwave {
     }
 }
 
-/// A trail of particles flying from one board to another. The victim is resolved against the
-/// canvas, so an attack aimed at a player the field never draws over still leaves properly.
+/// A trail of particles flying from one board to another.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Comet {
     from: Vec2D,
     to: Vec2D,
-    /// how far the arc bows away from the straight line
+    /// how far the arc bows from the straight line
     bow: f64,
     elapsed: f64,
     duration: f64,
     color: ParticleColor,
-    /// the particles it has conscripted out of the ambient field
     members: Vec<usize>,
     /// where each member sits along the trail, 0 at the head
     offsets: Vec<f64>,
-    /// true once the arrival burst has been spawned
     arrived: bool,
 }
 
@@ -200,7 +186,6 @@ impl Comet {
         Self {
             from,
             to,
-            // a bigger attack takes a wider arc
             bow: 0.08 + 0.02 * strength.min(6) as f64,
             elapsed: 0.0,
             duration: 0.75,
@@ -227,7 +212,7 @@ impl Comet {
         self.elapsed >= self.duration
     }
 
-    /// true on the frame the head lands, so the caller can burst
+    /// true on the frame the head lands
     pub fn update(&mut self, delta_time: f64) -> bool {
         self.elapsed += delta_time;
         if self.elapsed >= self.duration && !self.arrived {
@@ -237,7 +222,6 @@ impl Comet {
         false
     }
 
-    /// where the `index`th member should be right now
     pub fn position_of(&self, index: usize) -> Vec2D {
         let t = (self.elapsed / self.duration - self.offsets[index]).clamp(0.0, 1.0);
         self.point_at(t)
@@ -251,14 +235,12 @@ impl Comet {
     }
 }
 
-/// A weight settling over one part of the canvas: what an attack lands on its victim, and what
-/// the losing half of the screen gets at the end of a match.
+/// A weight settling over part of the canvas: an attack's victim, or the losing half at the end.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pall {
     region: RectF,
     elapsed: f64,
     duration: f64,
-    /// pressed downward
     gravity: f64,
     /// 0-1 of the colour drained out
     drain: f64,
@@ -298,9 +280,7 @@ impl Pall {
     }
 }
 
-/// One end of an attack: where that player's board is, and whether the field draws over it.
-/// A board outside the canvas is still known — that is what makes the half-visible cases
-/// answerable.
+/// One end of an attack: its player's board, and whether the field draws over it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AttackEnd {
     pub board: RectF,
@@ -313,28 +293,23 @@ impl AttackEnd {
     }
 }
 
-/// Where an attack's comet starts and ends, resolved against the canvas. A board outside it
-/// is replaced by the canvas edge on that board's side, so the comet leaves or enters rather
-/// than being drawn over a half that is not ours.
+/// Where an attack's comet starts and ends. A board outside the canvas is replaced by the
+/// canvas edge on its side, so the comet leaves or enters; `None` when neither board is drawn.
 pub fn attack_endpoints(
     canvas: RectF,
     attacker: AttackEnd,
     victim: AttackEnd,
 ) -> Option<(Vec2D, Vec2D)> {
     match (attacker.in_canvas, victim.in_canvas) {
-        // both boards are ours: the full comet
         (true, true) => Some((attacker.board.center(), victim.board.center())),
-        // the attacker is ours; the comet leaves the canvas on the victim's side
         (true, false) => Some((attacker.board.center(), edge_toward(canvas, victim.board))),
-        // the victim is ours; the comet enters from the attacker's side
         (false, true) => Some((edge_toward(canvas, attacker.board), victim.board.center())),
-        // neither is ours; there is no field over either of them and nothing to draw
         (false, false) => None,
     }
 }
 
-/// the point on the canvas edge nearest `board`, at the board's own height. Player clips are
-/// vertical slices, so a board outside the canvas is always to one side of it.
+/// the point on the canvas edge nearest `board`, at its height; player clips are vertical
+/// slices, so an outside board is always to one side
 fn edge_toward(canvas: RectF, board: RectF) -> Vec2D {
     let centre = board.center();
     let x = if centre.x() < canvas.center().x() {
@@ -375,7 +350,6 @@ mod tests {
 
     #[test]
     fn an_attack_on_a_player_we_do_not_draw_leaves_on_their_side() {
-        // only the left half is ours; the victim's board is off to the right
         let half = RectF::new(0.0, 0.0, 0.5, 1.0);
         let (from, to) = attack_endpoints(
             half,
@@ -390,7 +364,6 @@ mod tests {
 
     #[test]
     fn an_attack_from_a_player_we_do_not_draw_enters_from_their_side() {
-        // only the right half is ours; the attacker's board is off to the left
         let half = RectF::new(0.5, 0.0, 0.5, 1.0);
         let (from, to) = attack_endpoints(
             half,

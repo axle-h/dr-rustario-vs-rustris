@@ -12,9 +12,7 @@ rand = "0.10.2"
 rand_chacha = "0.10.0"
 serde = { version = "1.0.229", default-features = false, features = ["derive"] }
 sdl2 = { version = "0.38.0", default-features = false }
-# sdl2's own linking half, depended on directly so that `use-pkgconfig` can be turned on by a
-# dependency only some targets have rather than by a feature edge every target sees; see
-# engine/Cargo.toml. sdl2 0.38 wants exactly this version of it.
+# direct so engine/Cargo.toml can enable `use-pkgconfig` per target; must match sdl2's version
 sdl2-sys = { version = "0.38.0", default-features = false }
 ab_glyph = "0.2"
 image = { version = "0.25", default-features = false, features = ["png"] }
@@ -26,9 +24,7 @@ strum_macros = "0.28.0"
 titlecase = "3.6.0"
 
 [workspace.lints.clippy]
-# A `debug_assert!` does not evaluate its arguments at all in a release build, so a value the
-# game needs cannot be produced inside one - which is how every versus ai mode came to panic
-# the moment a match started in a release build and in no test run at all.
+# a `debug_assert!` skips its arguments in release, so nothing the game needs may be made in one
 debug_assert_with_mut_call = "deny"
 
 [profile.release]

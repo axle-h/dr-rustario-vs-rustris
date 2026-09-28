@@ -10,11 +10,8 @@ use engine::game::GameEvent;
 use engine::particles::field::reaction::words;
 use engine::render::GameRender;
 
-/// The class of the biggest break a theme has a sound for.
-///
-/// Three in every game and it has to be: the background particle field fires its big-clear
-/// silhouette on class 3 and nothing else, so a game grading its best clear any lower would
-/// never call one up.
+/// The class of the biggest break; must be 3, the only class the particle field's big-clear
+/// silhouette fires on.
 const LONG_CHAIN_CLASS: u16 = 3;
 
 impl GameRender for Game {
@@ -22,21 +19,13 @@ impl GameRender for Game {
         "Super Rustle Fighter"
     }
 
-    /// Counter gems arrive in a slab and the game waits for them.
-    ///
-    /// They are the one thing on this board the player did not put there, and a tray that has
-    /// been filling while you built is the moment you have been watching for - so they drop in
-    /// from over the top rather than appearing.
+    /// counter gems drop in from the top rather than appearing
     fn attack_fall(&self) -> Option<NuisanceFall> {
         Some(rules::COUNTER_FALL)
     }
 
-    /// One pass of a chain at a time, graded by how far into the chain it is - so a chain is
-    /// *heard* climbing.
-    ///
-    /// A pass that takes a lot of gems at once is graded with the long chains whatever its
-    /// position: a first pass that takes a whole power gem is a bigger moment than the second
-    /// pass of an ordinary two chain.
+    /// Each chain pass is graded by its depth, and a pass of at least `BIG_BREAK_GEMS` gems
+    /// is graded with the long chains whatever its depth.
     fn clear_class(&self, event: &GameEvent) -> u16 {
         match event {
             GameEvent::Clear { count, detail, .. } => {
@@ -51,12 +40,7 @@ impl GameRender for Game {
         }
     }
 
-    /// Every pass of a chain says so over the gems that just went.
-    ///
-    /// The Tech Bonus gets its own word instead, because ten thousand points for dropping a
-    /// rainbow down an empty lane is the one moment in this game that is worth more than the
-    /// chain it did not make - and a player who has just spent a rainbow needs telling whether
-    /// they spent it well.
+    /// every chain pass pops its depth, and a Tech Bonus pops its own word instead
     fn clear_popup(&self, event: &GameEvent) -> Option<String> {
         match event {
             GameEvent::Clear { detail, .. } => {
@@ -71,7 +55,7 @@ impl GameRender for Game {
         }
     }
 
-    /// an emptied board is worth saying so, then a chain long enough to be worth watching
+    /// an emptied board, then a long chain
     fn clear_word(&self, event: &GameEvent) -> Option<&'static str> {
         match event {
             GameEvent::Clear { detail, .. } => {

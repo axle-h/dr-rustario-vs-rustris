@@ -64,7 +64,6 @@ impl<const R: usize, const C: usize> Tensor<R, C> {
         result
     }
 
-    /// zero one column of the tensor, whatever else is in it
     pub fn zero_column(&mut self, column: usize) {
         for row in self.data.iter_mut() {
             row[column] = 0.0;
@@ -276,8 +275,7 @@ impl<const IN: usize, const SIZE: usize> Display for Layer<IN, SIZE> {
 }
 
 impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
-    /// zero every weight this layer gives to one of its inputs, so nothing it carries reaches
-    /// the layer after it
+    /// zero every weight this layer gives to one input, so nothing it carries reaches the next
     pub fn silence_input(&mut self, input: usize) {
         self.weights.zero_column(input);
     }
@@ -340,17 +338,14 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
             data.len()
         );
         Self {
-            // First WEIGHTS_SIZE elements are weights
             weights: Tensor::from_slice(&data[..Self::WEIGHTS_SIZE]),
-            // Remaining SIZE elements are biases
             bias: Tensor::from_slice(&data[Self::WEIGHTS_SIZE..]),
-            // Use default activation function
             activation: [Default::default(); SIZE],
         }
     }
 
     fn forward(&self, input: &Tensor<IN>) -> Tensor<SIZE> {
-        // Perform forward propagation: output = (weights · input) + bias
+        // output = (weights · input) + bias
         let mut result = self.weights.dot(input);
         result += self.bias;
         result.activate_mut(self.activation);
@@ -363,7 +358,6 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
         output: &Tensor<SIZE>,
         upstream_gradient: &Tensor<SIZE>,
     ) -> (Tensor<SIZE, IN>, Tensor<SIZE>, Tensor<IN>) {
-        // First apply activation function derivative
         let mut activation_gradient = *upstream_gradient;
         for i in 0..SIZE {
             activation_gradient.data[i][0] *= match self.activation[i] {
@@ -383,7 +377,6 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
             };
         }
 
-        // Calculate gradients
         // dL/dW = dL/dY * X^T
         let mut weight_gradient = Tensor::ZEROS;
         for i in 0..SIZE {
@@ -414,14 +407,14 @@ impl<const IN: usize, const SIZE: usize> Layer<IN, SIZE> {
         bias_gradient: &Tensor<SIZE>,
         learning_rate: f64,
     ) {
-        // Update weights: W = W - learning_rate * dL/dW
+        // W = W - learning_rate * dL/dW
         for i in 0..SIZE {
             for j in 0..IN {
                 self.weights.data[i][j] -= learning_rate * weight_gradient.data[i][j];
             }
         }
 
-        // Update biases: b = b - learning_rate * dL/db
+        // b = b - learning_rate * dL/db
         for i in 0..SIZE {
             self.bias.data[i][0] -= learning_rate * bias_gradient.data[i][0];
         }
@@ -434,7 +427,7 @@ impl<const IN: usize, const SIZE: usize> Distribution<Layer<IN, SIZE>> for Stand
         let mut weights = Tensor::ZEROS;
         let mut bias = Tensor::ZEROS;
 
-        // Xavier/Glorot initialization
+        // Xavier/Glorot initialisation
         for i in 0..SIZE {
             for j in 0..IN {
                 weights.data[i][j] = (rng.random::<f64>() * 2.0 - 1.0) * scale;
@@ -482,14 +475,8 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         Self::INPUT_LAYER_SIZE + HIDDEN * Self::HIDDEN_LAYER_SIZE + Self::OUTPUT_LAYER_SIZE;
 
     /// Zero every weight the first layer gives to one input, so the network scores as though
-    /// that input were not there.
-    ///
-    /// This is for an input the teaching had nothing to say about. Gradient descent only ever
-    /// moves a weight the corpus gives it a gradient for, so an input that is zero on every
-    /// lesson comes out of teaching carrying whatever the initial draw left there - an
-    /// arbitrary opinion, learned from nothing, held with the same confidence as everything the
-    /// network was actually taught. Zeroing it says the honest thing instead, and leaves the
-    /// genetic algorithm free to move it either way once it has a fitness that can judge it.
+    /// it were absent. Teaching never moves the weight of an input that is zero on every lesson, so
+    /// this clears the arbitrary initial draw.
     pub fn silence_input(&mut self, input: usize) {
         self.input.silence_input(input);
     }
@@ -497,15 +484,12 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
     pub fn flatten(&self) -> Vec<f64> {
         let mut result = Vec::with_capacity(Self::TOTAL_SIZE);
 
-        // Flatten input layer
         result.extend(self.input.flatten());
 
-        // Flatten hidden layers
         for layer in self.hidden.iter() {
             result.extend(layer.flatten());
         }
 
-        // Flatten output layer
         result.extend(self.output.flatten());
 
         debug_assert_eq!(
@@ -531,11 +515,9 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
 
         let mut offset = 0;
 
-        // Create input layer
         let input = Layer::from_slice(&data[offset..offset + Self::INPUT_LAYER_SIZE]);
         offset += Self::INPUT_LAYER_SIZE;
 
-        // Create hidden layers
         let mut hidden = Vec::with_capacity(HIDDEN);
         for _ in 0..HIDDEN {
             hidden.push(Layer::from_slice(
@@ -545,7 +527,6 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         }
         let hidden = hidden.try_into().unwrap();
 
-        // Create output layer
         let output = Layer::from_slice(&data[offset..offset + Self::OUTPUT_LAYER_SIZE]);
 
         Self {
@@ -593,29 +574,22 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
         target: &Tensor<OUT>,
         learning_rate: f64,
     ) -> f64 {
-        // Store activations during forward pass
         let mut hidden_activations = Vec::with_capacity(HIDDEN);
         let mut hidden_outputs = Vec::with_capacity(HIDDEN);
 
-        // Forward pass
-
-        // input layer
         let initial_activation = *input;
         let mut current = self.input.forward(input);
         let initial_output = current;
 
-        // hidden layers
         for layer in self.hidden.iter() {
             hidden_activations.push(current);
             current = layer.forward(&current);
             hidden_outputs.push(current);
         }
 
-        // output layer
         let final_activation = current;
         let final_output = self.output.forward(&current);
 
-        // Calculate loss and initial gradient
         let mut loss = 0.0;
         let mut output_gradient = Tensor::ZEROS;
         for i in 0..OUT {
@@ -624,13 +598,12 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
             output_gradient.data[i][0] = diff; // derivative of MSE
         }
 
-        // Backward pass
+        // backward pass
         let (w_grad, b_grad, mut upstream_grad) =
             self.output
                 .backward(&final_activation, &final_output, &output_gradient);
         self.output.update(&w_grad, &b_grad, learning_rate);
 
-        // Backpropagate through hidden layers
         for i in (0..HIDDEN).rev() {
             let (w_grad, b_grad, grad) =
                 self.hidden[i].backward(&hidden_activations[i], &hidden_outputs[i], &upstream_grad);
@@ -638,7 +611,6 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
             upstream_grad = grad;
         }
 
-        // Input layer
         let (w_grad, b_grad, _) =
             self.input
                 .backward(&initial_activation, &initial_output, &upstream_grad);
@@ -693,32 +665,16 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
 /// how many extracted board features Rustris feeds its network
 pub const FEATURE_INPUTS: usize = 20;
 
-/// How many extracted bottle features Dr. Rustario feeds its network: six readings of the
-/// bottle before the pill, the same six as the change the placement made, what it cleared, and
-/// the held flag. See [`crate::ai`]'s consumer for what each of them is.
+/// Dr. Rustario's bottle feature count.
 pub const BOTTLE_FEATURE_INPUTS: usize = 19;
 
-/// How wide Dr. Rustario's hidden layers are.
-///
-/// It is named separately from the input count for two reasons. The first is that the two are
-/// the control on each other: a feature set that cannot learn its teacher at its own width and
-/// *can* at a wider one has run out of neurons rather than out of features, and no new input
-/// will fix it. That control has been run and both answers have turned up - fourteen inputs
-/// learned no better at thirty two wide than at fourteen, so those features were the limit;
-/// nine inputs went from a median of 1152 to 2264 between nine wide and twenty six, so those
-/// neurons were. Twenty one is where the sweep flattens.
-///
-/// The second is that `Genome` is keyed on nothing but its length, so two `feature_network!`
-/// calls whose shapes happen to total the same number of weights would both declare `From`
-/// between `Genome<N>` and their own network and the second would not compile. Rustris is
-/// [`NEURAL_GENOME_SIZE`] = 1281; this one is 1366.
+/// Dr. Rustario's hidden layer width, kept apart from the input count so running out of neurons
+/// can be told from running out of features.
 pub const BOTTLE_FEATURE_WIDTH: usize = 21;
 
-/// Declares a network shape a game can train and play: the alias, the genome size that goes
-/// with it, and the conversions between the two. The shapes live here rather than in the games
-/// because the conversions are between two types the games do not own. Both games use the same
-/// architecture - as many neurons wide as it has features, two hidden layers deep - since that
-/// is the shape the Rustris model trained well at.
+/// Declares a network shape a game can train and play: the alias, its genome size and the
+/// conversions between them. `Genome` is keyed only on its length, so two shapes with the same
+/// weight count would both implement `From` for one `Genome<N>` and the second will not compile.
 macro_rules! feature_network {
     ($network:ident, $genome:ident, $size:ident, $inputs:expr, $hidden:expr, $width:expr) => {
         pub type $network = NeuralNetwork<$inputs, $hidden, 1, $width>;
@@ -734,9 +690,8 @@ macro_rules! feature_network {
         }
 
         impl From<$genome> for $network {
-            /// via [`$network::new`], so the network a genome is trained as is exactly the
-            /// network the embedded weights are played as: `from_slice` on its own would leave
-            /// the output layer on sigmoid, which saturates and ties every placement together
+            /// via `$network::new`, so a trained genome plays with the embedded weights' output
+            /// activation; `from_slice` alone leaves sigmoid, which ties every placement
             fn from(genome: $genome) -> Self {
                 Self::new(&genome.chromosome().map(Coefficient::into_f64))
             }
@@ -744,7 +699,6 @@ macro_rules! feature_network {
     };
 }
 
-// the shape Rustris trains: a wide network for a game with a lot of board to read
 feature_network!(
     FeatureNetwork,
     NeuralGenome,
@@ -754,7 +708,6 @@ feature_network!(
     20
 );
 
-// the shape Dr. Rustario trains: the same architecture as above, sized to its own feature count
 feature_network!(
     BottleFeatureNetwork,
     BottleNeuralGenome,
@@ -767,8 +720,8 @@ feature_network!(
 impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
     NeuralNetwork<IN, HIDDEN, OUT, WIDTH>
 {
-    /// a network of raw trained weights, as embedded by each game. The length is checked by
-    /// [NeuralNetwork::from_slice]; a const generic bound cannot express it here.
+    /// A network of raw trained weights as embedded by each game; [NeuralNetwork::from_slice]
+    /// checks the length.
     pub fn new(weights: &[f64]) -> Self {
         let mut network = Self::from_slice(weights);
         network.set_default_activation();
@@ -838,17 +791,14 @@ mod tests {
         ];
         assert_eq!(flattened, expected);
 
-        // Reconstruct network from flattened vector
         let reconstructed = NeuralNetwork::from_slice(&flattened);
         assert_eq!(reconstructed, network);
     }
 
     #[test]
     fn a_genome_round_trips_to_the_same_network_as_the_embedded_weights() {
-        // the network the ga trains must be the network the trained weights are played as,
-        // activations included, or a model plays differently once it is embedded
+        // the ga's network must be the embedded one, activations included
         let genome = NeuralGenome::from(rand::random::<[f64; FeatureNetwork::TOTAL_SIZE]>());
-        // the weights as they would be written out of a training record and back into the source
         let weights: [f64; FeatureNetwork::TOTAL_SIZE] = genome.into();
         let embedded = FeatureNetwork::new(&weights);
         let trained: FeatureNetwork = genome.into();
@@ -871,7 +821,6 @@ mod tests {
         let mut row = [0.5; FEATURE_INPUTS];
         let before = network.forward(&Tensor::vector(row)).value();
 
-        // moving the input moves the answer, until it is silenced
         row[FEATURE_INPUTS - 1] = -0.5;
         assert_ne!(before, network.forward(&Tensor::vector(row)).value());
 
@@ -879,7 +828,6 @@ mod tests {
         let silenced = network.forward(&Tensor::vector(row)).value();
         row[FEATURE_INPUTS - 1] = 1000.0;
         assert_eq!(silenced, network.forward(&Tensor::vector(row)).value());
-        // and nothing else about the network moved with it
         let mut untouched = [0.5; FEATURE_INPUTS];
         untouched[0] = -0.5;
         assert_ne!(
@@ -991,11 +939,9 @@ mod tests {
         epochs: usize,
         function: impl Fn(f64, f64) -> f64,
     ) -> NeuralNetwork<2, HIDDEN, 1, WIDTH> {
-        // Create a simple network: 2 inputs, 1 output
         let mut network: NeuralNetwork<2, HIDDEN, 1, WIDTH> = rng.random();
         network.set_activation(ActivationFunction::Sigmoid);
 
-        // build training data from random numbers
         let mut inputs = vec![];
         let mut targets = vec![];
         for _ in 0..training_set_size {
@@ -1004,7 +950,6 @@ mod tests {
             targets.push(Tensor::vector([function(x, y)]))
         }
 
-        // Train the network
         network.train(&inputs, &targets, epochs, 0.01);
 
         network

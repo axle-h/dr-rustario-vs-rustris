@@ -1,27 +1,7 @@
-//! `ga dr explain`: what every input of the network is, what it is for, and how much the model
-//! that is embedded actually uses it.
-//!
-//! This is the companion to [`crate::game::ai::probe`] and asks a different question. The probe
-//! asks what a *feature set* could express about the deterministic ai it was designed to
-//! reproduce - a question about the features. This asks what the *trained model* does with each
-//! of them - a question about the network - and the two do not agree, which is the point. The
-//! model has beaten the ai it learned from, so how well an input predicts that ai has stopped
-//! being the measure of whether it is worth feeding.
-//!
-//! Three numbers per input, weakest evidence first:
-//!
-//! 1. **weight** - the size of the first layer's weight column for that input. It is the only
-//!    one of the three that can be read straight off the model, and an input whose column is
-//!    all zeros is provably doing nothing at all. Anything else it says is weak: a large column
-//!    on an input that never moves is still nothing, and the layers after it can undo whatever
-//!    the first one does.
-//! 2. **spread** - how far the input actually moves between the placements of one pill, in the
-//!    units the network is fed. An input with no spread cannot rank anything whatever its
-//!    weights are, since every candidate gets the same value.
-//! 3. **mind changes** - the model is asked to play with that input *silenced*
-//!    ([`engine::ai::NeuralNetwork::silence_input`]) and how often it then picks a different
-//!    placement is counted. This is the one that matters: it is the model's own answer, over
-//!    real pills, about what it would do differently without the input.
+//! `ga dr explain`: the diagnostic for trained-model behaviour, where [`crate::game::ai::probe`]
+//! is the one for feature choice. For every input it reports the first layer's weight column,
+//! its spread between one pill's placements, and how often silencing it
+//! ([`engine::ai::NeuralNetwork::silence_input`]) changes the model's pick, the one that matters.
 
 use crate::game::ai::evaluator::{self, Scorer};
 use crate::game::ai::features::BottleFeatures;
@@ -34,8 +14,7 @@ use engine::ai::BOTTLE_FEATURE_INPUTS;
 mod scenarios;
 pub use scenarios::{scenarios, FeatureScenario};
 
-/// What every input is called and what it is for, in [`evaluator::raw_inputs`]'s order. The
-/// names match the probe's so the two reports can be read side by side.
+/// Every input's name and purpose in `evaluator::raw_inputs`'s order; names match the probe's.
 #[rustfmt::skip]
 pub const INPUTS: [Input; BOTTLE_FEATURE_INPUTS] = [
     Input::comparative("delta.virus_work", "how the work its viruses need changed. Work is the fewest blocks a line of four through a cell still needs, counting only lines no other colour blocks and whose gaps a pill could still be dropped into - the cheaper of the two axes."),
@@ -64,9 +43,7 @@ pub const INPUTS: [Input; BOTTLE_FEATURE_INPUTS] = [
 pub struct Input {
     pub name: &'static str,
     pub purpose: &'static str,
-    /// Whether it is centred on the candidates of the pill in play. The rest are context and
-    /// are the same for every candidate, so they cannot separate them - they are there to say
-    /// what kind of bottle this is.
+    /// whether it is centred on the pill's candidates; context inputs are not
     pub comparative: bool,
 }
 
@@ -100,13 +77,8 @@ pub struct Influence {
     pub viruses_without: u32,
 }
 
-/// The first layer's weight column for `input`, as its length.
-///
-/// The layer is a `Tensor<WIDTH, IN>` flattened one neuron at a time, so the weights an input
-/// reaches are every `IN`th number from its own index. Reading them off the flattened genome
-/// rather than through the network is deliberate: it is the same order
-/// [`crate::game::ai::genetic`] prints and mutation walks, so what is measured here is what a
-/// run is actually moving about.
+/// The length of the first layer's weight column for `input`: every `IN`th weight of the
+/// flattened genome from its own index, since the layer is a `Tensor<WIDTH, IN>` stored by neuron.
 pub fn weight_column(network: &DrNeuralNetwork, input: usize) -> f64 {
     let flat = network.flatten();
     (0..BOTTLE_FEATURE_INPUTS)
@@ -240,8 +212,7 @@ pub fn explain_main(args: &[String]) -> Result<(), String> {
         );
     }
 
-    // The pictures are checked here rather than in a test because the crate's own test build
-    // swaps the bottle for a mock, so nothing that builds one can run in it.
+    // checked here rather than in a test, since the test build swaps the bottle for a mock
     println!("\n== the scenarios the shots are drawn from ==");
     let all = scenarios();
     assert_eq!(all.len(), BOTTLE_FEATURE_INPUTS, "an input has no picture");

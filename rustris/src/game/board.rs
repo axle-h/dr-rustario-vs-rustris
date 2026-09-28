@@ -219,7 +219,6 @@ impl Board {
     }
 
     fn render_ghost(&mut self) {
-        // todo test
         // remove all existing ghost blocks
         for i in 0..(TOTAL_BLOCKS as usize) {
             if matches!(self.blocks[i], BlockState::Ghost(_, _, _)) {
@@ -405,7 +404,7 @@ impl Board {
         for y in rows.into_iter().rev() {
             self.clear_row(y);
             if y + 1 == TOTAL_HEIGHT {
-                // cannot drop down hte top row
+                // cannot drop down the top row
                 continue;
             }
             // drop down all rows above the line clear
@@ -463,12 +462,9 @@ impl Board {
             .all(|mino| mino.y >= BOARD_HEIGHT as i32)
     }
 
-    /// Whether the piece resting on the stack counts as a T-spin, by the guideline's three
-    /// corner rule: a T that was rotated into place with three of the four corners of its
-    /// bounding box filled. It is a full T-spin rather than a mini when both of the corners in
-    /// front of its stem are filled, or when it took the last of the SRS kicks to get there.
-    ///
-    /// Ask before locking, while the piece is still the board's.
+    /// Whether the resting piece is a T-spin by the guideline's three corner rule: rotated into
+    /// place with three of its box's four corners filled, and full rather than mini when both
+    /// front corners are filled or it took the last kick. Ask before locking.
     pub fn t_spin(&self) -> Option<Spin> {
         let tetromino = self.tetromino?;
         if tetromino.shape() != TetrominoShape::T {

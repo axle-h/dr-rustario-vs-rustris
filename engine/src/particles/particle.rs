@@ -3,7 +3,7 @@ use crate::particles::color::ParticleColor;
 use crate::particles::geometry::Vec2D;
 use crate::particles::meta::ParticleSprite;
 
-/// A particle wave modelled as a sin function magnitude * sin(frequency * lifetime)
+/// A particle wave: magnitude * sin(frequency * lifetime).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ParticleWave {
     magnitude: f64,
@@ -84,38 +84,39 @@ impl ParticleAnimation {
     }
 }
 
-/// A force acting on every particle of a group or pool. [`Field::Orbit`] is the gravity well
-/// the background has always used; the rest are what the scene routines steer with.
+/// A force acting on every particle of a group or pool.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Field {
     /// Newtonian attraction toward a point
     Orbit(Vec2D),
-    /// spiral: tangential about `centre` with a mild inward pull, so arms form and shear
-    Vortex { centre: Vec2D, strength: f64 },
+    /// tangential about `centre` with a mild inward pull, so arms form and shear
+    Vortex {
+        centre: Vec2D,
+        strength: f64,
+    },
     /// sum-of-sines advection; `phase` walks with time to keep it from repeating
     Flow {
         scale: f64,
         strength: f64,
         phase: f64,
     },
-    /// pushed away from a point
-    Repel { centre: Vec2D, strength: f64 },
+    Repel {
+        centre: Vec2D,
+        strength: f64,
+    },
 }
 
 impl Field {
-    /// the empirically ideal `G * m` of the original orbit source
+    /// `G * m`, tuned by eye
     const GRAVITY: f64 = 0.001;
 
-    /// nudge one particle for one step
     pub fn apply(&self, particle: &mut Particle, delta_time: f64) {
         match self {
             Field::Orbit(orbit) => {
                 let delta = particle.position - *orbit;
                 let magnitude_squared = delta.magnitude_squared();
-                // only apply gravitation when particle is sufficiently distant as this
-                // approximation breaks down for small distances
+                // the approximation breaks down at small distances
                 if magnitude_squared > 0.001 {
-                    // Vector form of Newtons law of gravitation
                     let f = delta.unit_vector() * (-Self::GRAVITY / magnitude_squared);
                     particle.velocity += f * delta_time;
                 }
@@ -135,7 +136,7 @@ impl Field {
                     let unit = delta * (1.0 / magnitude);
                     // angular velocity falls off with distance, so the middle winds up first
                     let tangent = unit.perpendicular() * (strength / magnitude);
-                    // and a light pull inward keeps the arms from unwinding forever
+                    // a light inward pull keeps the arms from unwinding forever
                     let inward = unit * (-strength * 0.25);
                     particle.velocity += (tangent + inward) * delta_time;
                 }
@@ -146,8 +147,7 @@ impl Field {
                 phase,
             } => {
                 let (x, y) = (particle.position.x() * scale, particle.position.y() * scale);
-                // the curl of a sum of sines: divergence free, so the field circulates
-                // rather than piling particles up in one corner
+                // a curl of sines is divergence free, so particles circulate rather than pile up
                 let vx = (y + phase).sin() + 0.5 * (2.0 * y - phase * 0.7).cos();
                 let vy = (x - phase * 0.9).cos() + 0.5 * (2.0 * x + phase * 0.5).sin();
                 particle.velocity += Vec2D::new(vx, vy) * (*strength * delta_time);
@@ -156,8 +156,7 @@ impl Field {
     }
 }
 
-/// Somewhere a particle is being pulled to, as a critically damped spring. This is the
-/// primitive every formation routine is built on.
+/// A critically damped spring pulling a particle to a target; what every formation is built on.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParticleTarget {
     pub position: Vec2D,
@@ -167,7 +166,6 @@ pub struct ParticleTarget {
 
 impl ParticleTarget {
     pub fn new(position: Vec2D, stiffness: f64) -> Self {
-        // critical damping for a unit mass: nothing overshoots its place in a silhouette
         Self {
             position,
             stiffness,
@@ -232,7 +230,7 @@ impl Particle {
         }
     }
 
-    /// checks if the particle is out of bounds (0-1) and trajectory will not bring it back
+    /// out of bounds (0-1) and its trajectory will not bring it back
     pub fn is_escaped(&self) -> bool {
         const THRESHOLD_MAX: f64 = 1.05;
         const THRESHOLD_MIN: f64 = -0.05;
@@ -381,7 +379,6 @@ impl ParticleGroup {
     pub fn update_life(&mut self, delta_time: f64) {
         self.lifetime += delta_time;
 
-        // remove dead particles
         let mut to_remove = vec![];
         for (index, particle) in self.particles.iter().enumerate() {
             if particle.is_escaped() {
@@ -406,7 +403,6 @@ impl ParticleGroup {
     }
 
     pub fn update_particles(&mut self, delta_time: f64) {
-        // spatial
         if let Some(anchor_for) = self.anchor_for {
             self.anchor_for = if delta_time >= anchor_for {
                 None
@@ -425,7 +421,6 @@ impl ParticleGroup {
             }
         }
 
-        // alpha
         if let Some(fade_in) = self.fade_in {
             if self.lifetime >= fade_in {
                 self.fade_in = None;
@@ -434,9 +429,7 @@ impl ParticleGroup {
                     particle.alpha = particle.max_alpha * self.lifetime.min(fade_in) / fade_in;
                 }
             }
-        }
-        // fade out
-        else if self.fade_out {
+        } else if self.fade_out {
             for particle in self.particles.iter_mut() {
                 if let Some(ttl) = particle.time_to_live {
                     particle.alpha = particle.max_alpha * (1.0 - self.lifetime.min(ttl) / ttl);
@@ -445,7 +438,6 @@ impl ParticleGroup {
         }
 
         for particle in self.particles.iter_mut() {
-            // pulse
             if let Some(pulse) = particle.pulse.as_ref() {
                 let pulse_magnitude = pulse.next(self.lifetime);
                 particle.alpha = (particle.alpha + pulse_magnitude)

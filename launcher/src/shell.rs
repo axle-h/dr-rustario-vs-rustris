@@ -22,8 +22,7 @@ const MAX_PLAYERS: u32 = 2;
 
 const QUIT: &str = "quit";
 
-/// The pre-menu: which mode to run - one of the games on its own, or the versus playlist
-/// over all of them.
+/// The pre-menu: one of the games on its own, or the versus playlist.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModeChoice {
     Game(GameKind),
@@ -43,8 +42,6 @@ impl ModeChoice {
     fn name(&self) -> &'static str {
         match self {
             ModeChoice::Game(game) => game.name(),
-            // named for what it is rather than for the two games it used to be, since its
-            // own menu now picks which games it deals
             ModeChoice::Versus => "vs. playlist",
         }
     }
@@ -70,8 +67,7 @@ enum Screen {
     },
     Playing {
         mode: ModeChoice,
-        /// the high score table the match competes for, or `None` for a mode that does not
-        /// rank - which never reaches [`PostGameAction::NewHighScore`] to want one
+        /// the high score table the match competes for, or `None` for a mode that does not rank
         key: Option<HighScoreKey>,
         screen: Box<MatchScreen<'static, AnyGame>>,
     },
@@ -114,10 +110,8 @@ pub struct Shell {
     screen: Screen,
 }
 
-/// How many themes the loading bar is about to watch being built.
-///
-/// Asked of each game rather than counted from the list, because the list does not exist until
-/// they are built. If the two ever disagree the bar arrives early or late and nothing worse.
+/// How many themes the loading bar will watch being built, asked of each game since the list
+/// does not exist yet.
 fn theme_count() -> u32 {
     GameKind::ALL
         .into_iter()
@@ -134,23 +128,18 @@ fn theme_count() -> u32 {
 impl Shell {
     pub fn new() -> Result<Self, String> {
         let mut app = App::new(MAX_PLAYERS, include_bytes!("../icon.png"))?;
-        // the texture creator, and everything borrowing it (themes, screens), lives for
-        // the whole process: leak one so the per-frame state machine has no self-references
+        // leaked so the themes and screens borrowing it leave the state machine no
+        // self-references
         let tc: &'static TextureCreator<WindowContext> =
             Box::leak(Box::new(app.canvas().texture_creator()));
         let config = app.config();
-        // Every theme of every game is built here, up front, and that is deliberate: the title
-        // screen's sprite race draws from all of them at once and so does the particle field's
-        // silhouette bank, so there is no theme this could afford to defer. What it costs is
-        // time - some thirty megabytes of embedded png and ogg, which on a handheld is a long
-        // wait - so it is done behind a progress bar, one step per theme.
+        // every theme is built up front, since the title's sprite race and the particle
+        // field's silhouettes draw from all of them; a progress bar steps once per theme
         let mut loading = Loading::new(theme_count());
-        // both, for the length of the load: the themes are built with the canvas and nothing
-        // any of them draws reaches the screen unless the queue is pumped as they land
+        // the events are pumped during the load or nothing drawn reaches the screen
         let (canvas, events) = app.canvas_and_events();
         loading.draw(canvas, events)?;
-        // every game's themes in one list, each game's slice of it recorded: built in
-        // GameKind::ALL order, so a game's themes keep one place in the list
+        // one list in `GameKind::ALL` order, with each game's slice recorded
         let mut all = vec![];
         let mut ranges = vec![];
         for game in GameKind::ALL {
@@ -235,7 +224,6 @@ impl Shell {
                 Ok(exit.map(|exit| match exit {
                     MenuExit::Custom(PreMenuAction::Play(mode)) => Transition::ToTitle(mode),
                     MenuExit::Custom(PreMenuAction::ViewHighScores) => Transition::ToHighScores,
-                    // Start just re-enters the pre-menu, as the old loop's `continue` did
                     MenuExit::Start => Transition::ToPreMenu,
                     MenuExit::Back | MenuExit::Quit => Transition::Exit,
                 }))
@@ -268,8 +256,7 @@ impl Shell {
                         None
                     }
                 })?;
-                // one option can change what another offers: a single theme takes the
-                // theme sprint off the mode list
+                // a single theme takes the theme sprint off the mode list
                 if selected {
                     menu.set_items(app, &m.menu_items())?;
                 }
@@ -286,8 +273,6 @@ impl Shell {
                         m.next_stage(themes, player, completed)
                     })?;
                 Ok(exit.map(|exit| match exit {
-                    // a match with no table can never report one, so there is no name entry
-                    // to offer and the playlist simply goes back to its menu
                     PostGameAction::NewHighScore(high_score) => match key {
                         Some(key) => Transition::ToNameEntry {
                             mode: *mode,
@@ -334,7 +319,6 @@ impl Shell {
                     &mut self.bg_particles,
                 )? {
                     Some(view) => Screen::HighScores(view),
-                    // nothing to show: straight back, as the old code's early return
                     None => pre_menu(&mut self.app, self.tc, self.themes, &mut self.bg_particles)?,
                 }
             }

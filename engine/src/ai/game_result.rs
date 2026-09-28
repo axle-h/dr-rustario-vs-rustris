@@ -51,9 +51,8 @@ impl GameResult {
         self
     }
 
-    /// Say whether the candidate this result belongs to is out. Averaging several games leaves
-    /// the flag meaning "one of them was buried", which is not the same question as whether the
-    /// candidate is out of the run, and only whatever played them can tell the two apart.
+    /// Set whether the candidate is out, which an average of several games cannot tell from one
+    /// of them being buried.
     pub fn with_game_over(mut self, game_over: bool) -> Self {
         self.game_over = game_over;
         self
@@ -63,7 +62,6 @@ impl GameResult {
         self.pieces
     }
 
-    /// the game defined bonus counter
     pub fn bonus(&self) -> u32 {
         self.bonus
     }

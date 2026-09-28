@@ -1,14 +1,6 @@
-//! Attacks arriving in the tray.
-//!
-//! An attack is *routed* the moment the chain that earned it ends, and the receiving game
-//! puts it in its tray there and then - so without this the icons appear a third of a second
-//! before the ball that is carrying them across the window lands. This holds the new ones
-//! back until it does, and then slides them into their slots from over the middle of the
-//! board, which is what Mean Bean Machine does.
-//!
-//! Decoration: it holds nothing and changes no rule - [`crate::game::Game::pending_attacks`]
-//! still says what is queued, and this only delays *drawing* part of it by the flight time.
-//! A theme with no [`crate::render::PendingLayout`] never sees any of it.
+//! Holds newly queued tray icons back until the attack ball carrying them lands, then slides them
+//! in from over the middle of the board. Fed by `ThemeContext::send_attack_ball` and the ball's
+//! arrival; [`crate::game::Game::pending_attacks`] still says what is queued.
 
 use std::time::Duration;
 
@@ -30,8 +22,8 @@ impl TrayAnimation {
 
     /// an attack is on its way; `held` is how many icons the tray had before it
     pub fn expect(&mut self, held: usize) {
-        // an attack already in the air keeps its own count: the earlier one is the one whose
-        // icons are furthest along, and the later ball reveals whatever is left
+        // an attack already in the air keeps its own count, and the later ball reveals whatever is
+        // left
         self.in_flight.get_or_insert(held);
     }
 
@@ -61,10 +53,8 @@ impl TrayAnimation {
         self.in_flight.map_or(queued, |held| held.min(queued))
     }
 
-    /// How far into its slot an icon is, 0.0 out over the board and 1.0 home.
-    ///
-    /// `None` for an icon that has always been there, which is the answer for every icon on
-    /// every frame but the quarter second after an attack lands.
+    /// How far into its slot an icon is, 0.0 out over the board and 1.0 home; `None` for an icon
+    /// that is not sliding.
     pub fn slide(&self, index: usize) -> Option<f64> {
         let (from, elapsed) = self.sliding?;
         (index >= from).then(|| elapsed.as_secs_f64() / SLIDE.as_secs_f64())
@@ -106,7 +96,7 @@ mod test {
         assert!(tray.is_idle());
     }
 
-    /// a tray that never had an attack routed to it draws exactly what the game says
+    /// A tray that never had an attack routed to it draws exactly what the game says.
     #[test]
     fn an_untouched_tray_hides_nothing() {
         let tray = TrayAnimation::new();
@@ -115,7 +105,7 @@ mod test {
         assert!(tray.is_idle());
     }
 
-    /// a second ball behind the first does not push the first one's icons back into the air
+    /// A second ball does not push the first one's icons back into the air.
     #[test]
     fn the_earliest_attack_in_the_air_is_the_one_that_counts() {
         let mut tray = TrayAnimation::new();

@@ -1,5 +1,5 @@
-//! The genetic algorithm: generic over genome size and over how a genome is scored.
-//! Each game supplies a [Fitness] that plays its own headless game.
+//! The genetic algorithm, generic over genome size; each game supplies a [Fitness] that plays
+//! its own headless game.
 
 use crate::ai::end_game::EndGame;
 use crate::ai::game_result::GameResult;
@@ -13,25 +13,16 @@ use crate::ai::seed::Seed;
 use rayon::prelude::*;
 use std::time::{Duration, Instant};
 
-/// how a genome is turned into a score: play it and report how the game went.
-/// This is the whole game-specific half of training.
+/// How a genome is scored: the game-specific half of training.
 pub trait Fitness<const GENOME: usize>: Send + Sync {
     /// play `genome` over the current block of seeds and return the averaged result
     fn evaluate(&self, genome: &Genome<GENOME>) -> GameResult;
 
-    /// Called with the best member of every generation, so a run with no generation cap on it
-    /// can still be stopped at any point and have something to show for itself. The default does
-    /// nothing, which is what a run that ends on its own wants.
+    /// Called with every generation's best member, so an uncapped run can be stopped at any point.
     fn checkpoint(&self, _generation: usize, _genome: &Genome<GENOME>) {}
 
-    /// Whether a candidate that has just tripped the phase's finish line really has finished.
-    ///
-    /// A phase is ended by its best member, and the best of a whole population is an extreme of
-    /// as many noisy samples as there are candidates: whatever the finish line asks, somebody
-    /// clears it on the seeds they happened to be dealt. So a fitness may ask the question
-    /// again, on seeds nothing has trained against, and refuse to let the phase end on a lucky
-    /// generation. The default trusts the finish line, which is what a game with no second
-    /// opinion to offer wants.
+    /// Re-check a candidate that tripped the phase's finish line, on seeds nothing trained against.
+    /// The best of a population is the luckiest of many noisy samples; the default trusts it.
     fn confirm(&self, _genome: &Genome<GENOME>) -> bool {
         true
     }
@@ -103,8 +94,8 @@ pub struct GeneticAlgorithm<const GENOME: usize, F: Fitness<GENOME>> {
 }
 
 impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
-    /// `phases` are run in order; a phase ends when it is complete (see [Phase::is_complete]) or has run
-    /// for its `max_generations`, the best member is then used to seed the population of the next phase.
+    /// `phases` run in order, each ending when [Phase::is_complete] or at its `max_generations`;
+    /// its best member seeds the next phase.
     pub fn new(
         mut fitness: F,
         mut mutation: GenomeMutation<N>,
@@ -140,7 +131,7 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
         );
     }
 
-    /// a seeded population keeps one pristine copy of the seed, the rest are mutations of it
+    /// one pristine copy of the seed, the rest mutations of it
     fn initial_population(
         hyper_parameters: &HyperParameters,
         mutation: &mut GenomeMutation<N>,
@@ -193,8 +184,6 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
             self.fitness
                 .checkpoint(self.generations.len(), &stats.max().genome());
 
-            // the finish line, and then the second opinion on it: a phase ended by its best
-            // member is a phase ended by the luckiest of `population_size` noisy samples
             let complete = self.phase().is_complete(&stats.max().result())
                 && self.confirm_finish(&stats.max().genome());
             let phase_over = complete || self.phase_generations >= self.phase().max_generations;
@@ -211,8 +200,6 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
         }
     }
 
-    /// ask the fitness for a second opinion on the candidate that just tripped the finish line,
-    /// and say so when it is not given one
     fn confirm_finish(&self, best: &Genome<N>) -> bool {
         if self.fitness.confirm(best) {
             return true;
@@ -237,15 +224,13 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
             Self::initial_population(&self.hyper_parameters, &mut self.mutation, Some(best));
     }
 
-    /// evaluate the population on fresh seeds and sort it best first, but do not breed
+    /// evaluate the population on fresh seeds and sort it best first, without breeding
     fn evolve(&mut self) -> GenerationStatistics<N> {
         let objective = self.objective();
 
-        // every generation plays new piece sequences, elites included, so nothing can overfit one seed
         self.fitness.next_seed();
         self.population.iter_mut().for_each(Organism::unset_result);
 
-        // Calculate fitness in parallel
         let generation_start = Instant::now();
         self.population.par_iter_mut().for_each(|member| {
             member.set_result(|genome| self.fitness.evaluate(genome));
@@ -254,14 +239,12 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
             .sort_by(|s1, s2| objective.cmp(&s2.result(), &s1.result()));
         let generation_duration = generation_start.elapsed();
 
-        // Calculate total gameplay time
         let total_gameplay_time: Duration = self
             .population
             .iter()
             .map(|organism| organism.result().time() * self.fitness.seeds_per_game() as u32)
             .sum();
 
-        // Calculate game seconds per real second
         let game_seconds_per_second = if generation_duration.as_secs_f64() > 0.0 {
             total_gameplay_time.as_secs_f64() / generation_duration.as_secs_f64()
         } else {

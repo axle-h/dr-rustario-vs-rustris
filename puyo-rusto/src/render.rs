@@ -8,11 +8,8 @@ use engine::game::GameEvent;
 use engine::particles::field::reaction::words;
 use engine::render::GameRender;
 
-/// The class of the biggest clear a theme has a sound for.
-///
-/// It is 3 in every game and it has to be: the background particle field fires its big-clear
-/// silhouette on class 3 and on nothing else, so a game that graded its best clear any lower
-/// would simply never call one up. See `TETRIS_CLEAR_CLASS` in `rustris/src/render.rs`.
+/// The class of the biggest clear a theme has a sound for. Must be 3: the background field
+/// fires its big-clear silhouette on class 3 only, as `TETRIS_CLEAR_CLASS` in Rustris.
 const LONG_CHAIN_CLASS: u16 = 3;
 
 impl GameRender for Game {
@@ -20,18 +17,13 @@ impl GameRender for Game {
         "Puyo Rusto"
     }
 
-    /// Nuisance is the one thing on this board the player did not put there, and it arrives in
-    /// a slab: it drops in from over the top rather than appearing, and the game waits for it.
+    /// nuisance drops in from over the top rather than appearing, and the game waits for it
     fn attack_fall(&self) -> Option<NuisanceFall> {
         Some(crate::game::rules::NUISANCE_FALL)
     }
 
-    /// One step of a chain at a time, graded by how far into the chain it is - so a chain is
-    /// *heard* climbing, which is the sound the game is known for.
-    ///
-    /// A step that takes a lot of puyos at once is graded with the long chains whatever its
-    /// position: a first step that clears two whole groups is a bigger moment than the second
-    /// step of an ordinary two chain.
+    /// Graded by how far into the chain a step is, so a chain is heard climbing; a step that
+    /// takes a lot of puyos grades as a long chain whatever its position.
     fn clear_class(&self, event: &GameEvent) -> u16 {
         match event {
             GameEvent::Clear { count, detail, .. } => {
@@ -46,12 +38,7 @@ impl GameRender for Game {
         }
     }
 
-    /// Every step of a chain says so over the puyos that just went, from the first.
-    ///
-    /// This is the game's feedback rather than decoration: what a Puyo player is watching for
-    /// is whether the chain they built is still going, and a 1-chain saying "1 chain" is what
-    /// makes the second step reading "2 chain" mean anything. Tsu keeps no running chain
-    /// counter in the HUD for the same reason - a chain is a thing that happens, not a number.
+    /// Every step of a chain announces itself, from the first.
     fn clear_popup(&self, event: &GameEvent) -> Option<String> {
         match event {
             GameEvent::Clear { detail, .. } => {
@@ -62,7 +49,7 @@ impl GameRender for Game {
         }
     }
 
-    /// an emptied board is worth saying so, then a chain long enough to be worth watching
+    /// an all clear, else a chain long enough to be worth watching
     fn clear_word(&self, event: &GameEvent) -> Option<&'static str> {
         match event {
             GameEvent::Clear { detail, .. } => {
@@ -115,8 +102,7 @@ mod tests {
         }
     }
 
-    /// nuisance is drawn arriving rather than appearing, which is what a game with a tray of
-    /// it wants; the other two take their hits the instant they are sent and say nothing
+    /// nuisance is drawn arriving rather than appearing
     #[test]
     fn an_attack_falls_in_rather_than_appearing() {
         assert_eq!(
@@ -133,7 +119,7 @@ mod tests {
         }
     }
 
-    /// the field's silhouette interrupt fires on class 3 and nothing else
+    /// the field's silhouette fires on class 3 and nothing else
     #[test]
     fn a_long_chain_is_graded_as_the_biggest_clear_there_is() {
         let game = game();
@@ -183,8 +169,7 @@ mod tests {
         assert_eq!(game.clear_popup(&GameEvent::Move), None);
     }
 
-    /// every step counts itself out, the first one included - a chain that only announced
-    /// itself once it was already going would be telling the player something they knew
+    /// every step counts itself out, the first included
     #[test]
     fn every_step_of_a_chain_says_so_over_the_puyos_that_went() {
         let game = game();

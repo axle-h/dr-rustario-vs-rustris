@@ -6,11 +6,8 @@
 #                                  it sees (USB debugging, or `adb connect` for wireless)
 #   ABI=x86_64 ./build-android.sh  -> dist/dr-rustario-vs-rustris-x86_64.apk, for the emulator
 #
-# The APK is signed with android/release.keystore, which is made on the first build and which
-# git ignores. Keep it: Android only installs an update signed by the key already installed,
-# and uninstalling to change key deletes the config and high scores with the app. It is a
-# sideloading key, so its password is not a secret; ANDROID_KEYSTORE and
-# ANDROID_KEYSTORE_PASSWORD point it at another.
+# Signed with android/release.keystore, made on the first build: keep it, since Android only
+# installs an update signed with the installed key. ANDROID_KEYSTORE(_PASSWORD) pick another.
 set -euo pipefail
 cd "$(dirname "$0")"
 

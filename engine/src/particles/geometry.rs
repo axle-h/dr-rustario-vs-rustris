@@ -40,7 +40,6 @@ impl Vec2D {
 
         let n = self.x.powi(2) + self.y.powi(2);
         if approx_eq!(n, 1.0) {
-            // already normalized.
             return *self;
         }
         let n = n.sqrt();
@@ -55,7 +54,7 @@ impl Vec2D {
         self.magnitude_squared().sqrt()
     }
 
-    /// rotated a quarter turn anticlockwise, the tangent of an orbit about the origin
+    /// rotated a quarter turn anticlockwise
     pub fn perpendicular(&self) -> Self {
         Self::new(-self.y, self.x)
     }
@@ -182,7 +181,7 @@ impl RectF {
         )
     }
 
-    /// the inverse of [`RectF::denormalise`]: where a point sits within this rect, 0-1
+    /// the inverse of [`RectF::denormalise`]
     pub fn normalise(&self, point: Vec2D) -> Vec2D {
         Vec2D::new(
             (point.x() - self.x) / self.width,
@@ -190,13 +189,11 @@ impl RectF {
         )
     }
 
-    /// the same relative position within `other`, which is what keeps a field looking the
-    /// same when the canvas changes size under it
+    /// the same relative position within `other`
     pub fn remap(&self, point: Vec2D, other: &RectF) -> Vec2D {
         other.denormalise(self.normalise(point))
     }
 
-    /// the smallest rect containing both
     pub fn union(&self, other: &RectF) -> RectF {
         let x = self.x.min(other.x);
         let y = self.y.min(other.y);
@@ -235,12 +232,10 @@ mod tests {
     fn a_rect_remaps_a_point_into_another_rect() {
         let whole = RectF::new(0.0, 0.0, 1.0, 1.0);
         let half = RectF::new(0.5, 0.0, 0.5, 1.0);
-        // dead centre of the window is dead centre of the right half
         assert_eq!(
             whole.remap(Vec2D::new(0.5, 0.5), &half),
             Vec2D::new(0.75, 0.5)
         );
-        // and back again
         assert_eq!(
             half.remap(Vec2D::new(0.75, 0.5), &whole),
             Vec2D::new(0.5, 0.5)

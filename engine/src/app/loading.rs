@@ -1,68 +1,29 @@
-//! The bar the game shows while it builds its themes.
+//! The progress bar shown while every theme of every game is built in `Shell::new`. They are
+//! all built up front and stay built because the title screen's sprite race draws from all of
+//! them.
 //!
-//! It is here for two reasons and the first is not the obvious one. **A Wayland toplevel is not
-//! mapped until the client commits a buffer**, and nothing used to present a frame between
-//! creating the window and finishing the last theme - so for the whole of a load the window did
-//! not exist as far as the compositor was concerned. On a PortMaster handheld that is what the
-//! session's `swaymsg [app_id=...] fullscreen enable` helper could not find:
-//!
-//! ```text
-//! Attempting to fullscreen app_id=dr-rustario-vs-rustris.aarch64
-//! [{ "success": false, "parse_error": false, "error": "No matching node." }]
-//! Failed, waiting to try again
-//! ```
-//!
-//! Presenting frame zero the moment the window exists is what fixes that. The bar is the part
-//! the player sees, and on a handheld - which decodes some thirty megabytes of embedded png and
-//! ogg to build twelve themes - it is the difference between a progress bar and a black screen
-//! that looks like a hang.
-//!
-//! Every theme is still built up front, deliberately: the title screen's sprite race draws from
-//! all of them at once, and so does the particle field's silhouette bank, so there is no theme
-//! this can afford to defer.
-//!
-//! The second reason is the event queue, and it is why the bar takes an [`EventPump`] to draw
-//! itself. Presenting frame zero is not enough on its own: a Wayland client is handed its size
-//! in a `configure` it has to acknowledge, and the compositor paces its commits with frame
-//! callbacks - and both of those reach SDL only when the queue is dispatched. A load that
-//! draws a frame per theme and never pumps acknowledges nothing, so on a PortMaster handheld,
-//! whose session fullscreens the window from the outside *while* the load is running, every
-//! frame after the first goes nowhere and the bar is a black screen.
-//!
-//! It pumps rather than polls, and that matters: the queue is left standing so the events of
-//! the load are still there for the first poll of the main loop. `SDL_GAMECONTROLLERCONFIG`
-//! pads announce themselves once, as `ControllerDeviceAdded`, and draining them here would
-//! throw away the only notice the game gets of a pad that was plugged in before it started.
-//!
-//! It draws in flat rectangles and nothing else, because it runs before a single theme, font or
-//! sprite sheet exists to draw with.
-
+//! Presenting the first frame is what maps a Wayland window, and each draw pumps the event queue
+//! so the compositor's configure and frame callbacks are answered. It pumps rather than polls so
+//! the load's events, such as a pad's one `ControllerDeviceAdded`, reach the main loop.
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
 use sdl2::EventPump;
 
-/// What the screen is cleared to, and the two colours of the bar.
-///
-/// The background is `pub` because [`crate::app::App::new`] paints frame zero with it before
-/// there is a `Loading` to ask - the two have to be the same colour or the window flashes.
+/// [`crate::app::App::new`] paints frame zero in this too, or the window flashes.
 pub const BACKGROUND: Color = Color::RGB(0x08, 0x08, 0x0c);
 const TRACK: Color = Color::RGB(0x2a, 0x2a, 0x36);
 const FILL: Color = Color::RGB(0xe8, 0xe8, 0xf0);
 
-/// how much of the window's width the bar takes, and how thick it is relative to that
+/// the bar's share of the window's width, and its thickness relative to that
 const BAR_WIDTH: f64 = 0.55;
 const BAR_HEIGHT: f64 = 0.055;
-/// where its middle sits down the window
 const BAR_Y: f64 = 0.5;
-/// the track's border, which is also the gap between the track and the fill
+/// the track's border, and the gap between the track and the fill
 const BORDER: u32 = 3;
 
-/// A progress bar over a job of `steps` steps.
-///
-/// `steps` is how many themes are about to be built. It is only ever used to size the fill, so
-/// a count that turns out to be wrong makes the bar arrive early or late and nothing worse -
-/// [`Loading::step`] saturates rather than running off the end.
+/// A progress bar over `steps` themes. A wrong count only makes the bar fill early or late,
+/// since [`Loading::step`] saturates.
 pub struct Loading {
     steps: u32,
     done: u32,
@@ -76,7 +37,7 @@ impl Loading {
         }
     }
 
-    /// one more set of sprites is built; redraw
+    /// one more theme is built; redraw
     pub fn step(
         &mut self,
         canvas: &mut WindowCanvas,
@@ -86,12 +47,8 @@ impl Loading {
         self.draw(canvas, events)
     }
 
-    /// Draw the bar as it stands and put it on the screen.
-    ///
-    /// This presents, which is half the point of it: the first call is what maps the window.
-    /// The other half is the pump, which comes first so that a resize the compositor asked for
-    /// is settled before the window is measured for it - see this module's own docs, since a
-    /// load that skips it draws every one of these frames into the dark.
+    /// Draw and present the bar. It pumps first so a resize the compositor asked for is settled
+    /// before the window is measured.
     pub fn draw(&self, canvas: &mut WindowCanvas, events: &mut EventPump) -> Result<(), String> {
         events.pump_events();
         let (width, height) = canvas.window().size();
@@ -106,7 +63,7 @@ impl Loading {
         canvas.set_draw_color(TRACK);
         canvas.fill_rect(Rect::new(x, y, bar_width, bar_height))?;
 
-        // the fill is inset by the border on every side, so an empty bar still reads as a bar
+        // inset on every side, so an empty bar still reads as a bar
         let inset = BORDER * 2;
         if bar_width > inset && bar_height > inset {
             let full = bar_width - inset;
@@ -131,15 +88,14 @@ impl Loading {
 mod tests {
     use super::*;
 
-    /// a step count of nothing would divide by zero when the fill is sized
+    /// zero steps is clamped to one, so sizing the fill never divides by zero
     #[test]
     fn a_bar_over_no_steps_is_still_a_bar() {
         let loading = Loading::new(0);
         assert_eq!(loading.steps, 1);
     }
 
-    /// the caller's count and the number of themes actually built are worked out in different
-    /// places, so they are allowed to disagree - the bar fills up and stays there
+    /// stepping past the count leaves the bar full
     #[test]
     fn stepping_past_the_end_saturates() {
         let mut loading = Loading::new(2);

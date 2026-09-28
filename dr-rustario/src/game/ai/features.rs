@@ -1,23 +1,12 @@
-//! What the network sees, derived from the rules of Dr. Mario rather than from what another
-//! program pays attention to.
+//! What the network sees, from one scan of the bottle.
 //!
-//! Two measurements do nearly all of it, and both come out of the same scan.
+//! For a settled cell take the four windows of four containing it on each axis; a window is
+//! live when nothing in it is another colour and every empty cell in it is [`Grid::reachable`].
+//! Work is the fewest empties of any live window (1, 2 or 3), and buried is no live window on
+//! either axis, so [`BURIED`] is a work value rather than a separate measure.
 //!
-//! **Work** is how many blocks a settled cell still needs for a line of four through it. Take
-//! the four windows of four that contain the cell, on each axis; a window is *live* when no
-//! cell in it is another colour and every empty cell in it is one a pill could still be dropped
-//! into; the work is the fewest empty cells any live window has. It is 1, 2 or 3 - a window
-//! holds three cells besides the subject, and 0 would already have cleared.
-//!
-//! **Buried** is the same scan finding no live window at all, on either axis. So buried is
-//! simply work with no answer, which is why [`BURIED`] is a work value rather than a separate
-//! question, and why no cell can ever report a cost it cannot pay: a run of three whose only
-//! gap is under an overhang is junk, not a threat.
-//!
-//! Everything else is counting. The bottle is summarised six ways ([`BottleStats`]) and fed
-//! twice over - as it stood before the pill, which says whether the agent is digging a full
-//! bottle out or finishing one, and as the change the placement made to it, which is the only
-//! part that can rank one candidate against another.
+//! [`BottleStats`] is fed both as the bottle stood before the pill and as the change the
+//! placement made, since only the change ranks one candidate against another.
 
 use crate::game::bottle::{Bottle, BOTTLE_HEIGHT, BOTTLE_WIDTH};
 use crate::game::geometry::BottlePoint;
@@ -28,15 +17,12 @@ use std::sync::OnceLock;
 /// a run this long or longer clears, so a run one short is a threat
 const MATCH_LENGTH: usize = 4;
 
-/// What a cell's work comes to when no line through it can ever complete. It is the largest
-/// value a work can take, so `min` over the two axes picks a live answer over this one without
-/// having to ask which is which.
+/// The work of a cell no line can complete. It is the largest value so `min` over the two axes
+/// prefers any live answer.
 pub const BURIED: u8 = u8::MAX;
 
-/// What a block in the top three rows counts against you, by row from the top and then column.
-/// The N64's own `BadLineRate`, in the bottle's coordinates: it is steeply weighted towards the
-/// middle, because that is where a pill has to come in. Nothing in the model reads it, and it
-/// is here for [`crate::game::ai::probe`]'s control group.
+/// The N64's `BadLineRate`: what a block in the top three rows costs, by row from the top then
+/// column. Only [`crate::game::ai::probe`]'s control group reads it.
 #[cfg_attr(test, allow(dead_code))]
 pub const TOP_ROW_RATE: [[i32; BOTTLE_WIDTH as usize]; 3] = [
     [6, 7, 8, 9, 9, 8, 7, 6],
@@ -44,17 +30,13 @@ pub const TOP_ROW_RATE: [[i32; BOTTLE_WIDTH as usize]; 3] = [
     [1, 1, 2, 4, 4, 2, 1, 1],
 ];
 
-/// The columns a pill spawns over. A bottle is lost when nothing can be dealt into these, which
-/// is why how high they stand is not the same question as how high the bottle stands. Nothing
-/// in the model reads this either - it is measured as a control, in the probe's `EXTRA` group.
+/// The columns a pill spawns over. Only the probe's `EXTRA` control group reads it.
 pub const ENTRANCE: [usize; 2] = [3, 4];
 
-// ---------------------------------------------------------------------------------------
 // the scan
-// ---------------------------------------------------------------------------------------
 
-/// How one cell of a window reads to the subject in the middle of it. Two bits, because six of
-/// these are packed into the key of [`work_table`].
+/// How one cell of a window reads to the subject: two bits, since six are packed into a
+/// [`work_table`] key.
 const SAME: u8 = 0;
 /// a block of another colour: it has to clear before any line can pass through here
 const FOREIGN: u8 = 1;
@@ -66,10 +48,8 @@ const SHUT: u8 = 3;
 /// how many cells either side of the subject a window can reach
 const REACH: usize = MATCH_LENGTH - 1;
 
-/// The whole of the scan, worked out once for every arrangement a subject's neighbours can be
-/// in. Six neighbours - three either side - in one of four states each is `4^6` keys, so the
-/// four-window loop becomes one index. That is what buys the room to measure *every* occupied
-/// cell rather than only the viruses.
+/// The scan precomputed for every arrangement of six neighbours, three either side, at two
+/// bits each: 4096 keys, so the four-window loop is one index and every occupied cell is cheap.
 fn work_table() -> &'static [u8; 4096] {
     static TABLE: OnceLock<[u8; 4096]> = OnceLock::new();
     TABLE.get_or_init(|| {
@@ -85,8 +65,7 @@ fn work_table() -> &'static [u8; 4096] {
             let mut fewest = BURIED;
             for start in 0..MATCH_LENGTH {
                 let window = &line[start..start + MATCH_LENGTH];
-                // a foreign block cannot be moved and an unreachable gap cannot be filled, so
-                // either one takes this window out of the running altogether
+                // a foreign block or an unreachable gap kills the window
                 if window.iter().any(|cell| *cell == FOREIGN || *cell == SHUT) {
                     continue;
                 }
@@ -98,8 +77,7 @@ fn work_table() -> &'static [u8; 4096] {
     })
 }
 
-/// What one settled bottle looks like. Two of these - the bottle before the pill and the bottle
-/// after it - are the whole of what the network is shown about the stack.
+/// One settled bottle, summarised.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct BottleStats {
     viruses: i32,
@@ -126,23 +104,18 @@ impl BottleStats {
     pub fn viruses(&self) -> i32 {
         self.viruses
     }
-    /// The work every virus still needs, added up. Buried viruses are not in it - they are
-    /// counted in [`Self::viruses_buried`] instead, since a cost nothing can pay is not a cost.
+    /// the summed work of every live virus; buried ones are in [`Self::viruses_buried`]
     pub fn virus_work(&self) -> i32 {
         self.virus_work
     }
-    /// The same work, kept apart by the axis it is on. `min` over the two hides which way a
-    /// virus has to be finished, and the two are not the same job: finishing a column means
-    /// building upward, which is the only direction that can end a game.
+    /// the same work kept apart by axis, since only building a column upward can end a game
     pub fn virus_work_row(&self) -> i32 {
         self.virus_work_row
     }
     pub fn virus_work_col(&self) -> i32 {
         self.virus_work_col
     }
-    /// How many viruses are one block from dying. A pill delivers two cells a turn, so this is
-    /// the currency: a sum of work cannot tell four viruses at {3,3,1,1} from four at {2,2,2,2},
-    /// and the first is two kills away where the second is none.
+    /// viruses one block from dying, which a work sum cannot tell apart from an even spread
     pub fn viruses_at_work_1(&self) -> i32 {
         self.viruses_at_work_1
     }
@@ -171,32 +144,23 @@ impl BottleStats {
     pub fn blocks_at_work_1(&self) -> i32 {
         self.blocks_at_work_1
     }
-    /// blocks no line through them can ever complete: dead weight, and the thing a placement is
-    /// most easily talked into making
+    /// blocks no line through them can ever complete
     pub fn blocks_buried(&self) -> i32 {
         self.blocks_buried
     }
     pub fn max_height(&self) -> i32 {
         self.max_height
     }
-    /// How high the next pill has to come to rest at best: the shortest column in the bottle.
-    ///
-    /// This is the height that actually constrains play, where [`Self::max_height`] is the one
-    /// that looks like it does. A lone virus on the floor makes the tallest column 1 and
-    /// changes nothing at all - every other column is still open to the floor, so a pill can
-    /// still be put as low as it ever could, and this stays 0. A spike in one corner is not a
-    /// full bottle.
+    /// The shortest column: the lowest a pill can still be put. This is the height fed to the
+    /// network, not [`Self::max_height`], which one virus on the floor moves without changing play.
     pub fn landing_height(&self) -> i32 {
         self.landing_height
     }
-    /// The same for a pill laid **flat**, which needs two neighbouring columns rather than one:
-    /// the lowest a horizontal half can land anywhere. A bottle of alternating towers has a low
-    /// [`Self::landing_height`] and a high one of these.
+    /// the same for a pill laid flat, over two neighbouring columns
     pub fn flat_landing_height(&self) -> i32 {
         self.flat_landing_height
     }
-    /// How high the two columns a pill spawns over stand. Not the tallest column and not the
-    /// average one: the only height that can actually end a game.
+    /// how high the two [`ENTRANCE`] columns stand
     pub fn entrance_height(&self) -> i32 {
         self.entrance_height
     }
@@ -233,15 +197,9 @@ impl Sub<BottleStats> for BottleStats {
     }
 }
 
-/// What the placement itself did: what it cleared, and the same work scan read on the two
-/// cells it put down rather than summed over the whole bottle.
-///
-/// The bottle-wide sums cannot say this. [`BottleStats::block_work`] adds up forty-odd blocks,
-/// so the two the decision is actually about are a twentieth of the number and are conflated
-/// with every other block the placement happened to touch: two halves landing one block from a
-/// clear and two halves landing as dead weight beside a tidied corner move it by the same
-/// amount. Taking the equivalent term out of the N64 ai changes its mind on 47% of pills, more
-/// than three times anything else it measures.
+/// What the placement did: what it cleared, and the work scan read on the two cells it put
+/// down. Those two cells must be fed on their own, since in the bottle-wide sums they are lost
+/// among every other block.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct PlacementStats {
     patterns_cleared: i32,
@@ -259,10 +217,8 @@ impl PlacementStats {
     pub fn patterns_cleared(&self) -> i32 {
         self.patterns_cleared
     }
-    /// How much work the better of the two cells the pill put down still needs: 1, 2 or 3, or
-    /// [`HALF_BURIED`] where no line through either of them can ever complete. Zero when the
-    /// placement cleared, since then the halves have gone or moved and
-    /// [`Self::patterns_cleared`] is what says so.
+    /// The work of the better placed half (1 to 3), [`HALF_BURIED`] when neither can complete a
+    /// line, or zero when the placement cleared.
     pub fn halves_work(&self) -> i32 {
         self.halves_work
     }
@@ -270,20 +226,16 @@ impl PlacementStats {
     pub fn halves_buried(&self) -> i32 {
         self.halves_buried
     }
-    /// viruses in the line the placed halves are working on, which is what makes building one
-    /// worth doing at all rather than tidying a corner
+    /// viruses in the line the placed halves are working on
     pub fn halves_run_viruses(&self) -> i32 {
         self.halves_run_viruses
     }
-    /// halves resting in a column with a virus below them and none above. A virus never falls,
-    /// so everything on top of one is frozen until it goes.
+    /// halves resting in a column with a virus below them and none above
     pub fn halves_over_virus(&self) -> i32 {
         self.halves_over_virus
     }
-    /// how many of the two placed cells are exactly one block from a clear, and exactly two.
-    /// The same measurement as [`Self::halves_work`], told as an indicator rather than a
-    /// number: "exactly one short" is the thing a scorer wants and a sigmoid has to carve it
-    /// out of a continuous input.
+    /// How many placed cells are exactly one and exactly two blocks from a clear. These must be
+    /// fed together with [`Self::halves_work`]: either without the other is worth nothing.
     pub fn halves_one_short(&self) -> i32 {
         self.halves_one_short
     }
@@ -296,8 +248,7 @@ impl PlacementStats {
     }
 }
 
-/// What a placed half's work reads as when no line through it can ever complete. One worse than
-/// the worst live answer, so the input stays an ordering rather than needing a second question.
+/// a placed half's work when no line can complete: one worse than the worst live answer
 pub const HALF_BURIED: i32 = MATCH_LENGTH as i32;
 
 /// the stats of the settled bottle, how they moved, what the placement itself did, and whether
@@ -320,15 +271,13 @@ impl BottleFeatures {
         }
     }
 
-    /// Mark this as a placement of the *held* pill rather than the one in play, which is the
-    /// one thing about a candidate that nothing else here can see: the bottle it leaves behind
-    /// and what it did to get there read exactly the same either way.
+    /// Mark this as a placement of the held pill, which nothing else here can tell apart.
     pub fn of_the_held_pill(mut self) -> Self {
         self.held = true;
         self
     }
 
-    /// whether this is a placement of the held pill, which reaching for costs the pill in play
+    /// whether this is a placement of the held pill
     pub fn held(&self) -> bool {
         self.held
     }
@@ -354,9 +303,7 @@ impl BottleAnalysis for Bottle {
     }
 }
 
-/// The bottle as the features read it: the colour of every settled block, which of them are
-/// viruses, and how high each column stands. Built once and then asked everything, since every
-/// measurement here walks the same grid.
+/// The bottle as the features read it: settled colours, viruses and column heights.
 pub struct Grid {
     colours: Vec<Option<VirusColor>>,
     viruses: Vec<bool>,
@@ -402,20 +349,8 @@ impl Grid {
         &self.heights
     }
 
-    /// Whether a pill could still put a half in this cell: it is empty, and so is everything
-    /// above it. A gap under an overhang is not room, however empty it is.
-    ///
-    /// **The placement search can now tuck and this rule was not widened to match**, which
-    /// looks wrong and is measured. A cell under an overhang with a clear column beside it is
-    /// reachable in the sense that the search can get a half into it, so the obvious change is
-    /// to count a neighbouring column that is clear down to this row as a way in. Doing that
-    /// costs the model a fifth of everything: the hand written baseline over five whole games
-    /// went from 1431 viruses and 24 bottles to 1110 and 18, a clone fitted to the features
-    /// from 2082 and 33 to 1703 and 27. Being able to reach a cell and being able to *rely* on
-    /// reaching it are not the same thing - a tuck needs the column beside it filled to exactly
-    /// the row below, which is not something the pill in play can arrange - and a model told
-    /// that the cells under an overhang are still live stops minding whether it makes overhangs.
-    /// What it costs to bury a run is worth more than what tucking one out is worth.
+    /// Whether this cell and everything above it are empty. A cell under an overhang is not
+    /// reachable here even though a tuck can fill it, so the model keeps minding overhangs.
     pub fn reachable(&self, x: u32, y: u32) -> bool {
         self.colour(x, y).is_none() && (0..y).all(|above| self.colour(x, above).is_none())
     }
@@ -436,8 +371,7 @@ impl Grid {
                 } else {
                     let (nx, ny) = (nx as u32, ny as u32);
                     match self.colour(nx, ny) {
-                        // a virus and a settled half of the same colour are the same cell here:
-                        // both clear, and a line does not care which it took
+                        // a virus and a settled half of the same colour count alike
                         Some(other) if other == colour => SAME,
                         Some(_) => FOREIGN,
                         None if self.reachable(nx, ny) => OPEN,
@@ -460,10 +394,8 @@ impl Grid {
         }
     }
 
-    /// The cheapest live window through a cell, and how many viruses are already in it. The
-    /// lookup table answers the work of every cell in one index but knows nothing about what is
-    /// *in* the window it chose, so this walks them - which is affordable because only the two
-    /// cells a pill just put down ever ask.
+    /// The cheapest live window through a cell and how many viruses are in it. This walks the
+    /// windows rather than using the table, so only the two placed cells should ask.
     pub fn best_window(&self, x: u32, y: u32) -> Option<(u8, i32)> {
         let colour = self.colour(x, y)?;
         let mut best: Option<(u8, i32)> = None;
@@ -498,14 +430,8 @@ impl Grid {
         best
     }
 
-    /// The longest **contiguous** run of one colour through a cell, on its better axis.
-    ///
-    /// This is not [`Self::work`] upside down and the difference is the whole reason it is fed
-    /// beside it. Work counts a reachable gap as one block of work, so a run of two with a hole
-    /// in the middle and a run of three touching are both "one short"; touching counts only the
-    /// cells that are actually joined, which is what would clear this instant if it reached
-    /// four. In the thirty two input set that preceded this one they were the first and third
-    /// most decisive inputs the model had, and neither could stand in for the other.
+    /// The longest contiguous run of one colour through a cell, on its better axis. Unlike
+    /// [`Self::work`] it does not count a reachable gap as part of the run.
     pub fn touching(&self, x: u32, y: u32) -> i32 {
         let Some(colour) = self.colour(x, y) else {
             return 0;
@@ -599,13 +525,8 @@ impl Grid {
     }
 }
 
-/// What the placement did on its way to the bottle it left behind.
-///
-/// The halves are only read when **nothing cleared**. A clear takes cells out and drops
-/// whatever was resting on them, so the points the pill locked at are no longer where its
-/// halves are - and reading the work at a stale point measures some other cell's line. Where
-/// something did clear, [`PlacementStats::patterns_cleared`] is what carries the placement and
-/// the halves report nothing.
+/// What the placement did. The halves are read only when nothing cleared, since a clear moves
+/// cells away from the points the pill locked at.
 pub fn placement_stats(
     grid: &Grid,
     landed: &[BottlePoint],
@@ -675,9 +596,8 @@ mod tests {
         )
     }
 
-    /// One axis around a subject, written the way the specification is: `S` is the subject,
-    /// `_` an empty cell, `1` a block of the same colour and `0` a block of another. It is laid
-    /// along the floor with nothing above it, so every empty cell is one a pill can reach.
+    /// One axis around a subject laid along the floor: `S` the subject, `_` empty, `1` the same
+    /// colour and `0` another.
     fn row_work(pattern: &str) -> u8 {
         let mut blocks = vec![];
         let mut subject = None;
@@ -740,23 +660,21 @@ mod tests {
 
     #[test]
     fn a_gap_under_an_overhang_is_not_work() {
-        // a red virus in the corner whose row is otherwise empty, but with the two cells that
-        // would finish the line roofed over: they are empty and no pill can ever get to them
+        // a red virus whose row's empty cells are roofed over
         let covered = bottle(&[virus(7, 15, Red), stack(5, 14, Blue), stack(6, 14, Blue)]);
         assert_eq!(
             Grid::of(&covered).work_on(7, BOTTLE_FLOOR, Red, true),
             BURIED
         );
 
-        // lift the roof off and the same three cells are three blocks of work
+        // without the roof those cells are work
         let open = bottle(&[virus(7, 15, Red)]);
         assert_eq!(Grid::of(&open).work_on(7, BOTTLE_FLOOR, Red, true), 3);
     }
 
     #[test]
     fn work_is_the_cheaper_of_the_two_axes() {
-        // two reds along the floor beside a red virus: one block finishes the row, where the
-        // column above it is still three blocks away
+        // two reds beside a red virus on the floor: one block finishes the row, three the column
         let grid = Grid::of(&bottle(&[
             virus(2, 15, Red),
             stack(0, 15, Red),
@@ -776,7 +694,7 @@ mod tests {
     fn counts_viruses_apart_from_blocks() {
         let stats = bottle(&[virus(0, 15, Red), virus(2, 15, Blue), stack(4, 15, Red)]).stats();
         assert_eq!(stats.viruses(), 2);
-        // three blocks of work each, and nothing is buried in an otherwise empty bottle
+        // three blocks of work each, nothing buried
         assert_eq!(stats.virus_work(), 6);
         assert_eq!(stats.block_work(), 3);
         assert_eq!(stats.viruses_buried(), 0);
@@ -793,8 +711,7 @@ mod tests {
 
     #[test]
     fn a_walled_in_virus_is_buried_and_costs_no_work_at_all() {
-        // reds either side of a blue virus in the only row it has, and the column above it is
-        // capped too, so nothing can complete a line through it
+        // a blue virus boxed in by reds on its row and above
         let stats = bottle(&[
             stack(0, 15, Red),
             stack(1, 15, Red),
@@ -845,8 +762,7 @@ mod tests {
         assert_eq!(one_away.viruses_at_work_1(), 1);
         assert_eq!(one_away.blocks_at_work_1(), 2);
 
-        // take one away and nothing is one short any more, though the work sum is only two
-        // larger - which is the whole reason this is counted apart from the sum
+        // take one away and nothing is one short, though the work sum moves only by two
         let two_away = bottle(&[virus(0, 15, Red), stack(1, 15, Red)]).stats();
         assert_eq!(two_away.viruses_at_work_1(), 0);
         assert_eq!(two_away.blocks_at_work_1(), 0);
@@ -856,8 +772,7 @@ mod tests {
 
     #[test]
     fn a_sum_of_work_cannot_tell_two_bottles_apart_that_the_count_can() {
-        // four red viruses in their own quarters of the floor. Two of them have a red beside
-        // them and two have nothing: {2, 2, 3, 3}. Ten blocks of work.
+        // four red viruses apart on the floor, two with a red beside: {2, 2, 3, 3}
         let mixed = bottle(&[
             virus(0, 15, Red),
             stack(1, 15, Red),

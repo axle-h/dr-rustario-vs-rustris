@@ -1,4 +1,4 @@
-//! prints where every theme of both games puts its board, for a window size and player count
+//! Prints where every theme of every game puts its board, for a window size and player count
 
 use engine::config::{Config, VideoConfig, VideoMode};
 use engine::render::layout::BoardLayout;

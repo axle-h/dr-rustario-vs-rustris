@@ -63,21 +63,13 @@ pub struct AnimationMeta {
     pub hard_drop_rows_per_frame: f64,
     /// what a cell throws off as it pops, if the theme wants a burst
     pub pop_debris: Option<PopDebris>,
-    /// How hard the board shakes when a slab of nuisance lands, as a fraction of a block,
-    /// and for how long.
-    ///
-    /// Opt-in, and off by default, because the original **does not shake** - see
-    /// [`crate::animate::impact`], where that is measured rather than remembered. It is a
-    /// modern flare: the particle theme takes it and neither retro theme does.
+    /// How hard the board shakes when a slab of nuisance lands, as a fraction of a block, and for
+    /// how long; off by default, since the retro originals do not shake.
     pub nuisance_rumble: Option<(f64, Duration)>,
 }
 
-/// The pieces a popping cell throws, and when in its strip it throws them.
-///
-/// It is fired from [`PlayerAnimations::update`] rather than by the match screen, because
-/// what it needs to know - which frame of which cell's strip is on - lives here, and because
-/// the pieces have to **outlive the clear**: a chain settles and the next step starts
-/// blinking while the last one's droplets are still in the air.
+/// The pieces a popping cell throws, and when in its strip it throws them. Fired from
+/// [`PlayerAnimations::update`] because the pieces must outlive the clear.
 #[derive(Clone, Copy, Debug)]
 pub struct PopDebris {
     /// which frame of the pop strip the cell bursts on
@@ -98,10 +90,8 @@ impl AnimationMeta {
     }
 }
 
-/// The middle of a group of cells, in fractional board coordinates, and the cell id most of
-/// them are - which is the group's colour for anything that wants to be drawn in it.
-///
-/// Ties break on the cell id, so the same group always gives the same answer.
+/// The middle of a group of cells in fractional board coordinates, and the cell id most of them
+/// are, ties broken on the id so a group always gives the same answer.
 pub fn centre_and_modal(cells: &[PlacedCell]) -> Option<((f64, f64), CellId)> {
     if cells.is_empty() {
         return None;
@@ -216,9 +206,7 @@ impl PlayerAnimations {
         self.game_over.update(delta);
         self.victory.update(delta);
         self.next_stage.update(delta);
-        // a slab arrives one column at a time, and every bean of it bounces where it lands -
-        // which is the rumble a nuisance drop actually has: nothing shakes, but the whole
-        // bottom of the board is jolted at once
+        // every cell of a slab bounces as its column lands
         let landed = self.nuisance.update(delta);
         if !landed.is_empty() {
             self.bounce.land(&landed);
@@ -232,10 +220,8 @@ impl PlayerAnimations {
         events
     }
 
-    /// Throw the droplets of every cell that has just reached the burst frame of its strip.
-    ///
-    /// Once each, and only while a clear is playing - the pieces then live on in the debris
-    /// pool, on their own clock, long after the clear that threw them is over.
+    /// Throw the droplets of every cell that has just reached the burst frame of its strip, once
+    /// each, while a clear is playing.
     fn burst_popping_cells(&mut self) {
         let Some(spec) = self.pop_debris else {
             self.burst.clear();
@@ -273,8 +259,7 @@ impl PlayerAnimations {
         }
     }
 
-    /// the game must not tick while one of these plays. A popup is not among them: it is
-    /// decoration, and the board carries on underneath it
+    /// the game must not tick while one of these plays; popups do not block it
     pub fn blocks_tick(&self) -> bool {
         self.destroy.state().is_some()
             || self.lock.state().is_some()
@@ -287,8 +272,8 @@ impl PlayerAnimations {
             || self.interstitial.state().is_some()
     }
 
-    /// whether the player is between stages or out of the match, when a sprint clock stops.
-    /// In-play animations (spawn, lock, clears) are part of playing and keep the clock running.
+    /// whether the player is between stages or out of the match, when a sprint clock stops; in-play
+    /// animations keep the clock running
     pub fn stops_clock(&self) -> bool {
         self.game_over.state().is_some()
             || self.victory.state().is_some()

@@ -1,8 +1,5 @@
 //! The playfield: the grid, what is connected to what, popping, settling and the chain loop.
-//!
-//! Coordinates are the engine's, so `y` grows *downwards* and row 0 is the top row simulated.
-//! That top row is the game's hidden thirteenth, and it is not merely invisible - see
-//! [`is_ghost`].
+//! `y` grows downwards and row 0 is the hidden thirteenth, see [`is_ghost`].
 
 use crate::game::cell::{LinkMask, PuyoCell, PuyoSkin};
 use crate::game::score::{PoppedGroup, PUYOS_TO_POP};
@@ -18,47 +15,29 @@ pub const HIDDEN_ROWS: u32 = 1;
 pub const ROWS: u32 = VISIBLE_ROWS + HIDDEN_ROWS;
 pub const CELLS: usize = (COLUMNS * ROWS) as usize;
 
-/// The square that ends the game.
-///
-/// Puyo Nexus, *Basic rules*: "the game acts as if there was a red X in the square on the
-/// first row, third column". It is the top *visible* row, and it is also where a pair spawns -
-/// so the losing condition is a puyo coming to **rest** here, which is not the same rule as
-/// the new pair having nowhere to go.
+/// The square that ends the game when a puyo comes to rest on it: the top visible row, third
+/// column, which is also where a pair spawns. Puyo Nexus, *Basic rules*.
 pub const DEATH_SQUARE: Point = Point::new(2, HIDDEN_ROWS as i32);
 
 /// where a pair's pivot appears; its child sits in the hidden row above
 pub const SPAWN: Point = DEATH_SQUARE;
 
-/// Is this the hidden thirteenth row, where a puyo becomes a **ghost puyo**?
+/// Is this the hidden thirteenth row, where a puyo is a ghost? Puyo Nexus,
+/// [Special Maneuvers and Mechanics](https://puyonexus.com/wiki/Special_Maneuvers_and_Mechanics#The_13th_Row_and_Beyond).
 ///
-/// Puyo Nexus, [Special Maneuvers and
-/// Mechanics](https://puyonexus.com/wiki/Special_Maneuvers_and_Mechanics#The_13th_Row_and_Beyond):
-/// "Puyo in the 13th row can't be cleared even if they 'connect' in a group of four... You can
-/// use the 13th row's properties to make chains that won't pop until the Puyo in the 13th row
-/// drops down."
-///
-/// So a ghost puyo is inert rather than invisible. It does not pop, and it does not count
-/// towards the four that a group needs - which is the whole technique: a chain with a foot in
-/// the ghost row is *held back* until that puyo falls into row 12 and joins the game properly.
-/// Reading it the other way round, with the three visible ones popping and the ghost left
-/// behind, would make the chain fire immediately and there would be nothing to hold back.
-///
-/// Nothing in this row is ever cleared, nuisance included, and nothing here draws itself
-/// joined to anything - the link mask is the game telling a player what will pop together, and
-/// a ghost will not.
+/// A ghost does not pop, does not count towards a group of four, and is never cleared, so a
+/// group with a foot in this row is held back until that puyo falls into view.
 pub fn is_ghost(point: Point) -> bool {
     point.y < HIDDEN_ROWS as i32
 }
 
-/// The board as [`Pair`](crate::game::pair::Pair)'s movement sees it: which cells are free,
-/// and where the ceiling is.
+/// The board as [`Pair`](crate::game::pair::Pair)'s movement sees it.
 impl PairBoard for Board {
     fn is_free(&self, point: Point) -> bool {
         Board::is_free(self, point)
     }
 
-    /// The ghost row is Tsu's ceiling, and refuses an upright rotation outright - see
-    /// [`is_ghost`] and [`engine::game::pair::PairBoard::is_ceiling`].
+    /// The ghost row is Tsu's ceiling and refuses an upright rotation outright.
     fn is_ceiling(&self, pivot: Point) -> bool {
         is_ghost(pivot)
     }
@@ -75,16 +54,16 @@ const NEIGHBOURS: [(Point, LinkMask); 4] = [
 /// What one step of the chain loop took off the board.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChainStep {
-    /// every cell that went, coloured and nuisance alike, as the renderer wants them
+    /// every cell that went, coloured and nuisance alike
     pub cells: Vec<PlacedCell>,
-    /// the coloured groups, which is what the score is worked out from
+    /// the coloured groups, which the score is worked out from
     pub groups: Vec<PoppedGroup>,
     /// how many nuisance puyos were taken out alongside them
     pub nuisance: u32,
 }
 
 impl ChainStep {
-    /// how many puyos went in total, nuisance included: the count the engine's `Clear` carries
+    /// how many puyos went in total, nuisance included
     pub fn count(&self) -> u32 {
         self.cells.len() as u32
     }
@@ -93,9 +72,7 @@ impl ChainStep {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Board {
     cells: [Option<PuyoCell>; CELLS],
-    /// which of the theme's sprite sets this board's cells are drawn from - see
-    /// [`PuyoSkin`]. The board never reads it; it only stamps it on every [`CellId`] it
-    /// hands out, since a board belongs to one player and a sheet carries both
+    /// which sprite set this board's cells are drawn from; only stamped on every `CellId`
     skin: PuyoSkin,
 }
 
@@ -129,15 +106,12 @@ impl Board {
         Self::index(point).and_then(|i| self.cells[i])
     }
 
-    /// free *and* on the board; anything off the board counts as occupied, so a piece cannot
-    /// be moved into it
+    /// free and on the board; off the board counts as occupied
     pub fn is_free(&self, point: Point) -> bool {
         Self::index(point).is_some_and(|i| self.cells[i].is_none())
     }
 
-    /// whether whatever is at `point` has something under it, and so has come to rest
-    ///
-    /// Off the board counts as occupied, which is what puts the floor under the bottom row.
+    /// whether whatever is at `point` has something under it; off the board is the floor
     pub fn is_supported(&self, point: Point) -> bool {
         !self.is_free(Point::new(point.x, point.y + 1))
     }
@@ -189,14 +163,8 @@ impl Board {
             .unwrap_or(0)
     }
 
-    /// Let everything floating fall, one column at a time, and report where each cell that
-    /// moved came to rest.
-    ///
-    /// A settle is what happens between chain steps: a pop leaves holes and whatever was
-    /// resting on the group comes down into them. The points are the *new* ones, and the ids
-    /// are read after [`Board::recompute_links`] rather than before it - a cell that has just
-    /// landed beside a match of its own colour is drawn joined to it, and reading the id
-    /// first would draw a frame of the mask it had in the air.
+    /// Let everything floating fall and report where each moved cell came to rest. Ids are
+    /// read after [`Board::recompute_links`], so a landed cell is drawn with its new mask.
     pub fn settle(&mut self) -> Vec<Point> {
         let mut moved = vec![];
         for x in 0..COLUMNS as i32 {
@@ -220,10 +188,7 @@ impl Board {
         moved
     }
 
-    /// The colour of a cell for the purpose of grouping: a ghost puyo has none.
-    ///
-    /// This one function is the whole of the ghost rule. A ghost is neither the start of a
-    /// group nor reachable from one, so it can neither pop nor make up the numbers.
+    /// The colour of a cell for grouping; a ghost has none, which is the whole ghost rule.
     fn grouping_color(&self, point: Point) -> Option<crate::game::cell::PuyoColor> {
         if is_ghost(point) {
             return None;
@@ -235,7 +200,6 @@ impl Board {
     fn colour_groups(&self) -> Vec<Vec<Point>> {
         let mut seen = [false; CELLS];
         let mut groups = vec![];
-        // the ghost row is skipped outright: nothing there groups
         for y in HIDDEN_ROWS as i32..ROWS as i32 {
             for x in 0..COLUMNS as i32 {
                 let start = Point::new(x, y);
@@ -246,7 +210,6 @@ impl Board {
                 if seen[index] {
                     continue;
                 }
-                // flood fill this colour outwards from here
                 let mut group = vec![];
                 let mut stack = vec![start];
                 seen[index] = true;
@@ -280,10 +243,8 @@ impl Board {
             .collect()
     }
 
-    /// Pop everything that is ready to, and report it; `None` when nothing was.
-    ///
-    /// Nuisance is not cleared by being grouped - it has no colour to group with - but any
-    /// nuisance touching a group that pops goes with it.
+    /// Pop everything ready to, taking any nuisance touching a popped group, and report it;
+    /// `None` when nothing popped.
     pub fn pop(&mut self) -> Option<ChainStep> {
         let groups = self.popping_groups();
         if groups.is_empty() {
@@ -304,8 +265,7 @@ impl Board {
             going.extend(group.iter().copied());
         }
 
-        // nuisance beside anything that pops goes too, once however many groups touch it -
-        // unless it is a ghost, which nothing clears
+        // nuisance beside anything that pops goes too, once, unless it is a ghost
         let mut nuisance: Vec<Point> = vec![];
         for point in going.iter() {
             for (offset, _) in NEIGHBOURS {
@@ -331,12 +291,8 @@ impl Board {
         Some(step)
     }
 
-    /// Recompute every puyo's link mask from the colours around it.
-    ///
-    /// Cheap enough to do wholesale after every lock, pop and settle, and doing it wholesale
-    /// is why it cannot drift: a pop changes the mask of every survivor that was touching the
-    /// group, and a settle changes the masks of everything the fallen puyo left behind as well
-    /// as everything it arrives next to.
+    /// Recompute every puyo's link mask from the colours around it, wholesale after every
+    /// lock, pop and settle so it cannot drift.
     pub fn recompute_links(&mut self) {
         let before = self.cells;
         for y in 0..ROWS as i32 {
@@ -349,8 +305,7 @@ impl Board {
                     continue;
                 };
                 let mut links = LinkMask::NONE;
-                // a ghost puyo joins to nothing, and nothing joins up to it: the mask says
-                // what will pop together, and a ghost will not
+                // a ghost joins to nothing and nothing joins to it, since it will not pop
                 if !is_ghost(point) {
                     for (offset, bit) in NEIGHBOURS {
                         let next = point + offset;
@@ -385,11 +340,8 @@ pub mod tests {
     use super::*;
     use crate::game::cell::PuyoColor;
 
-    /// Build a board from rows of characters, bottom row last - the way a Puyo field is drawn.
-    ///
-    /// `.` is empty, `o` nuisance, and `r g b y p` the five colours. Rows shorter than the
-    /// board are padded, and the whole thing is bottom-aligned, so a test only writes the
-    /// stack it cares about.
+    /// Build a board from rows of characters, bottom row last and bottom-aligned: `.` is
+    /// empty, `o` nuisance, and `r g b y p` the five colours.
     pub fn board(rows: &[&str]) -> Board {
         let mut board = Board::new(PuyoSkin::FIRST);
         let top = ROWS as i32 - rows.len() as i32;
@@ -428,7 +380,7 @@ pub mod tests {
         board
     }
 
-    /// the board as `board` would have spelt it, visible rows only
+    /// the board as `board` would spell it, visible rows only
     pub fn render(board: &Board) -> Vec<String> {
         (0..ROWS as i32)
             .map(|y| {
@@ -481,15 +433,14 @@ pub mod tests {
         assert_eq!(board.occupied(), 3);
     }
 
-    /// Connectivity is orthogonal only: four puyos touching one another at the corners are
-    /// four groups of one, not a group of four.
+    /// connectivity is orthogonal only: four puyos touching at the corners are four groups
     #[test]
     fn diagonals_do_not_connect() {
         let mut checker = board(&["r.r...", ".r.r.."]);
         assert_eq!(checker.pop(), None, "corners do not join");
         assert_eq!(checker.occupied(), 4);
 
-        // an S *is* connected, though - its middle two share a column
+        // an S is connected, its middle two sharing a column
         let mut ess = board(&["rr....", ".rr..."]);
         assert!(ess.pop().is_some(), "an S of four is one group");
 
@@ -555,11 +506,11 @@ pub mod tests {
         assert_eq!(board.occupied(), 1);
     }
 
-    /// the chain loop: pop, settle, pop again
+    /// pop, settle, pop again
     #[test]
     fn a_settle_can_set_off_the_next_step() {
-        // four blues sit on top of four reds in one column; the reds go, the blues land on
-        // the blue already waiting beside them and go too
+        // four blues on four reds in one column; the reds go and the blues land on the blue
+        // waiting beside them
         let mut board = board(&[
             "b.....", "b.....", "b.....", "r.....", "r.....", "r.....", "r....", ".b....",
         ]);
@@ -647,8 +598,7 @@ pub mod tests {
     /// a pop re-joins whatever was touching the group
     #[test]
     fn links_are_recomputed_after_a_pop() {
-        // a lone red beside a group of four reds is joined to it; once the group goes it is
-        // joined to nothing
+        // a lone red beside a group of four reds is joined to it until the group goes
         let floor = ROWS as i32 - 1;
         let mut five = board(&["r.....", "rrrrr."]);
         assert!(links_at(&five, 4, floor).has(LinkMask::LEFT));
@@ -693,12 +643,7 @@ pub mod tests {
         assert!(board.is_dead());
     }
 
-    /// The death square is the top *visible* row, not the ghost row above it.
-    ///
-    /// Puyo Nexus, *Basic rules*: the game acts as if there were a red X "in the square on the
-    /// first row, third column", and the first row is the first one a player can see. Nothing
-    /// can rest in the ghost row above it without the death square being taken first anyway,
-    /// but the two are different squares and the game must not read the wrong one.
+    /// the death square is the top visible row, not the ghost row above it
     #[test]
     fn the_ghost_row_above_the_death_square_is_not_the_death_square() {
         let mut board = Board::new(PuyoSkin::FIRST);
@@ -722,9 +667,7 @@ pub mod tests {
         assert!(!board.is_dead());
     }
 
-    /// A column with three reds in view and a fourth in the ghost row: it does not pop.
-    ///
-    /// This is the whole point of the rule - the chain is *held back* until the ghost drops.
+    /// A column with three reds in view and a fourth in the ghost row, which does not pop.
     fn ghost_column() -> Board {
         board(&[
             "r.....", "r.....", "r.....", "r.....", "b.....", "g.....", "b.....", "g.....",
@@ -744,14 +687,13 @@ pub mod tests {
         assert_eq!(board.popping_groups().len(), 0);
     }
 
-    /// ... and it pops the moment the ghost falls into view, which is the technique
+    /// ... and it pops the moment the ghost falls into view
     #[test]
     fn a_held_back_chain_fires_once_the_ghost_drops() {
         let mut board = ghost_column();
         assert_eq!(board.pop(), None);
 
-        // take a puyo out from under the stack: everything shifts down a row and the ghost
-        // becomes an ordinary puyo
+        // take a puyo out from under the stack so the ghost drops into view
         board.set(Point::new(0, ROWS as i32 - 1), None);
         assert!(!board.settle().is_empty());
         let step = board.pop().expect("now it is four in view");
@@ -787,7 +729,7 @@ pub mod tests {
         assert_eq!(step.nuisance, 1);
     }
 
-    /// the mask tells a player what will pop together, so it must not cross into the ghost row
+    /// the link mask does not cross into the ghost row
     #[test]
     fn nothing_draws_itself_joined_to_a_ghost() {
         let board = board_rows(&["r.....", "r.....", "r....."]);

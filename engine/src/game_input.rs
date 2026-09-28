@@ -18,8 +18,7 @@ pub enum GameInputKey {
     RotateAnticlockwise { player: u32 },
     Hold { player: u32 },
     Pause,
-    // the app has gone into the background (Android's home button, or another app taking the
-    // screen): pause if playing, and unlike `Pause` never unpause
+    // the app went into the background: pause if playing, and unlike `Pause` never unpause
     Suspend,
     ReturnToMenu,
     Quit,
@@ -85,7 +84,6 @@ impl GameInputContext {
     {
         let mut result: Vec<GameInputKey> = vec![];
 
-        // update any keys that might still be held with the delta
         for event in self.current.values_mut() {
             event.duration += delta;
         }
@@ -116,11 +114,9 @@ impl GameInputContext {
             };
         }
 
-        // check for any held keys that have triggered a repeat
         for event in self.current.values_mut() {
             match event.key {
                 GameInputKey::MoveLeft { .. } | GameInputKey::MoveRight { .. } => {
-                    // check auto-repeat
                     if event.repeating {
                         if event.duration >= AUTO_REPEAT_ITERATION {
                             event.duration = Duration::ZERO;
@@ -142,8 +138,8 @@ impl GameInputContext {
         result
     }
 
-    /// the fixed pad layout: d-pad/stick moves and drops, A/B rotate, shoulders hold,
-    /// start pauses, select/back returns to the menu and Y cycles the theme
+    /// the fixed pad layout: d-pad/stick moves and drops, A/B rotate, shoulders hold, start
+    /// pauses, select/back returns to the menu and Y cycles the theme
     fn map_from_pad(player: u32, button: PadButton) -> Option<GameInputKey> {
         Some(match button {
             PadButton::DPadLeft => GameInputKey::MoveLeft { player },
@@ -165,7 +161,7 @@ impl GameInputContext {
     fn map_from_sdl_event(&self, event: Event) -> MaybeKey {
         match event {
             Event::Quit { .. } => MaybeKey::Down(GameInputKey::Quit),
-            // only a mobile SDL ever sends this
+            // only a mobile SDL sends this
             Event::AppWillEnterBackground { .. } => MaybeKey::Down(GameInputKey::Suspend),
             Event::KeyDown {
                 keycode: Some(keycode),

@@ -30,7 +30,6 @@ pub enum Ranking {
 }
 
 impl Ranking {
-    /// whether `new` ranks above `existing`
     pub fn beats(&self, new: u32, existing: u32) -> bool {
         match self {
             Ranking::HighestScore => new > existing,
@@ -45,7 +44,6 @@ impl Ranking {
         }
     }
 
-    /// the table's column header
     pub fn label(&self) -> &'static str {
         match self {
             Ranking::HighestScore => "Score",
@@ -103,7 +101,7 @@ impl Default for HighScoreTable {
 }
 
 impl HighScoreTable {
-    /// a fresh table of placeholder entries to beat: low scores, or long times for a sprint
+    /// placeholder entries to beat: low scores, or long times for a sprint
     pub fn new(ranking: Ranking) -> Self {
         const MINUTE: u32 = 60_000;
         let scores = match ranking {
@@ -168,18 +166,16 @@ impl HighScoreTable {
         }
     }
 
-    /// a table straight off disk into ranked shape
     fn normalise(&mut self) {
         self.sorted();
         self.scores.truncate(MAX_HIGH_SCORES);
     }
 }
 
-/// Every high score table in one `high_scores.yml`, structured by game and then mode. A
-/// table only lands in the file once a score is entered into it.
+/// Every high score table in one `high_scores.yml`, by game then mode. A table only lands in
+/// the file once a score is entered into it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HighScoreStore {
-    /// game -> mode -> table
     tables: BTreeMap<String, BTreeMap<String, HighScoreTable>>,
 }
 
@@ -215,8 +211,8 @@ impl HighScoreStore {
         Ok(())
     }
 
-    /// the table for `key`: the stored one, or a fresh table when there is none yet or the
-    /// stored one is ranked the other way (its entries would not be comparable)
+    /// the stored table for `key`, or a fresh one when there is none or it is ranked the other
+    /// way, since its entries would not be comparable
     pub fn table(&self, key: &HighScoreKey) -> HighScoreTable {
         self.tables
             .get(&key.game)
@@ -321,7 +317,6 @@ mod tests {
     fn store_keeps_tables_by_game_and_mode() {
         let mut store = HighScoreStore::default();
         let key = HighScoreKey::new("Rustris", "1 level sprint, level 3", Ranking::LowestTime);
-        // an unsaved table is the defaults, and a new entry is saved along with them
         assert_eq!(store.table(&key), HighScoreTable::new(Ranking::LowestTime));
         let mut table = store.table(&key);
         table.add_high_score(HighScore::new("A", 60_000));

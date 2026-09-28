@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, AddAssign, Neg, Sub};
 
-/// A point on the board grid. `y` grows downwards: row 0 is the top row the game simulates
-/// (which may be hidden above the visible board).
+/// A point on the board grid. `y` grows downwards from row 0, the top simulated row, which may
+/// be hidden.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Point {
     pub x: i32,
@@ -148,7 +148,6 @@ impl Rotation {
     }
 }
 
-/// A position plus orientation: where a piece is on the board.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Pose {
     pub position: Point,

@@ -1,21 +1,10 @@
-//! The seeded colour sequence.
+//! The seeded colour sequence: a pool of 128 pairs built when the match starts, each colour
+//! equally often, read in order and looping. The opening is dealt from fewer colours: the first
+//! two pairs use three, and in a five colour match the next two use four. Puyo Nexus,
+//! [Upcoming Pair Randomizer](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Upcoming_Pair_Randomizer).
 //!
-//! Puyo Puyo Tsu does not draw a colour when it needs one. It builds a **pool** of 128 pairs
-//! when the match starts, shared by every player, and reads it sequentially - looping when it
-//! runs off the end. The pool holds each colour equally often, so over 128 pairs a player has
-//! had exactly as many of one colour as of another.
-//!
-//! Sourced from Puyo Nexus,
-//! [Upcoming Pair Randomizer](https://puyonexus.com/wiki/Puyo_Puyo_Tsu/Upcoming_Pair_Randomizer),
-//! read 2026-08-27 - including the part that is easy to miss: the **opening** is dealt from a
-//! reduced set, so the first two pairs of any match use only three colours, and in a five
-//! colour match the two after that use only four. You cannot be handed a fifth colour before
-//! you have anywhere to put it.
-//!
-//! Building the whole pool up front is also what keeps a match fair. Every player is dealt the
-//! same game from one seed, and [`from_seed`] hands out *independent* randomisers that stay in
-//! step only because nothing they draw depends on player-local state. A pool that is fixed at
-//! construction cannot drift, however far apart a playlist moves two players.
+//! The pool is fixed at construction, so the independent randomisers [`from_seed`] hands every
+//! player stay in step however far apart a playlist moves them.
 
 use crate::game::cell::{PuyoColor, PuyoPiece};
 pub use engine::game::random::Seed;
@@ -32,7 +21,7 @@ pub const PEEK_SIZE: usize = 2;
 /// how many pairs of the opening are held down to a reduced set of colours
 const OPENING_PAIRS: usize = 2;
 
-/// how many colours a match may deal
+/// the fewest colours a match may deal
 pub const MIN_COLORS: usize = 3;
 pub const MAX_COLORS: usize = PuyoColor::N;
 
@@ -54,10 +43,8 @@ impl GameRandom {
         }
     }
 
-    /// The seed this match was dealt from, for anything that needs randomness of its own.
-    ///
-    /// Nothing drawn from it can put two players out of step: the pool above is fixed at
-    /// construction, so it is not a stream anybody else is reading from.
+    /// The seed this match was dealt from, for anything that needs randomness of its own. The
+    /// pool is already built, so drawing from it cannot put players out of step.
     pub fn seed(&self) -> Seed {
         self.seed
     }
@@ -80,7 +67,7 @@ impl GameRandom {
         PuyoPiece::new(self.pool[index], self.pool[(index + 1) % POOL_PUYOS])
     }
 
-    /// every colour this match can deal, which is what a theme keys its sprites on
+    /// every colour this match can deal, which a theme keys its sprites on
     pub fn colors(&self) -> Vec<PuyoColor> {
         let mut colors = self.pool.clone();
         colors.sort();
@@ -89,8 +76,7 @@ impl GameRandom {
     }
 }
 
-/// `count` randomisers all dealt from one seed: every player sees the same pairs, in the same
-/// order, whenever the playlist gets round to them
+/// `count` randomisers dealt from one seed: every player sees the same pairs in the same order
 pub fn from_seed(seed: Seed, count: usize, colors: usize) -> Vec<GameRandom> {
     (0..count)
         .map(|_| GameRandom::from_seed(seed, colors))
@@ -101,11 +87,8 @@ pub fn random(count: usize, colors: usize) -> Vec<GameRandom> {
     from_seed(Seed::random(), count, colors)
 }
 
-/// Build the pool a match of `colors` colours is dealt from.
-///
-/// The three pools are all built, whatever the match wants, because the smaller ones are what
-/// hold the opening down - and building them unconditionally keeps one seed dealing one
-/// sequence whichever difficulty asks for it.
+/// Build the pool a match of `colors` colours is dealt from. All three pools are built whatever
+/// the match wants, so one seed deals one sequence at every difficulty.
 fn build_pool(rng: &mut ChaChaRng, colors: usize) -> Vec<PuyoColor> {
     let colors = colors.clamp(MIN_COLORS, MAX_COLORS);
 
@@ -118,8 +101,7 @@ fn build_pool(rng: &mut ChaChaRng, colors: usize) -> Vec<PuyoColor> {
     let mut pools: Vec<Vec<PuyoColor>> = (MIN_COLORS..=MAX_COLORS)
         .map(|n| {
             let mut pool: Vec<PuyoColor> = (0..POOL_PUYOS).map(|i| set[i % n]).collect();
-            // the game's own shuffle: walk the pool from the end, swapping each puyo with one
-            // picked at random from anywhere in it
+            // the game's own shuffle: from the end, swap each puyo with any in the pool
             for i in (0..POOL_PUYOS).rev() {
                 pool.swap(i, rng.random_range(0..POOL_PUYOS));
             }
@@ -127,9 +109,8 @@ fn build_pool(rng: &mut ChaChaRng, colors: usize) -> Vec<PuyoColor> {
         })
         .collect();
 
-    // hold the opening down to three colours, then to four: the first two pairs of every
-    // larger pool are the three-colour pool's, and in the five colour pool the two pairs
-    // after that are the four-colour pool's
+    // the first two pairs are the three-colour pool's, and in a five colour pool the next two
+    // are the four-colour pool's
     let opening = OPENING_PAIRS * 2;
     for larger in 1..pools.len() {
         let held = pools[0][..opening].to_vec();
@@ -172,14 +153,13 @@ mod tests {
         }
     }
 
-    /// the pool holds each colour equally often, so nobody is starved of one over a match
+    /// the pool holds each colour equally often
     #[test]
     fn the_pool_is_evenly_divided_between_the_colours() {
         for colors in MIN_COLORS..=MAX_COLORS {
             let random = pool_of(11, colors);
             let counts = counts(&random.pool);
-            // the opening overwrite is the only thing that puts it out, and only by the two
-            // pairs it rewrites
+            // only the opening overwrite puts it out, by the pairs it rewrites
             let expected = POOL_PUYOS / colors;
             for (color, count) in counts {
                 let slack = 2 * OPENING_PAIRS * 2;
@@ -191,8 +171,7 @@ mod tests {
         }
     }
 
-    /// the sourced opening rule: no fourth colour in the first two pairs, whatever the match
-    /// is otherwise dealing
+    /// no fourth colour in the first two pairs, whatever the match deals
     #[test]
     fn the_first_two_pairs_use_only_three_colours() {
         for colors in MIN_COLORS..=MAX_COLORS {
@@ -211,7 +190,7 @@ mod tests {
         }
     }
 
-    /// ... and in a five colour match the two pairs after that are still held to four
+    /// in a five colour match the two pairs after that are held to four
     #[test]
     fn a_five_colour_match_holds_the_next_two_pairs_to_four() {
         for seed in 0..40 {
@@ -225,8 +204,7 @@ mod tests {
         }
     }
 
-    /// every player of a match is dealt the same pairs, however far apart a playlist has
-    /// moved them
+    /// every player of a match is dealt the same pairs, however late
     #[test]
     fn one_seed_deals_every_player_the_same_pairs() {
         let mut players = from_seed(Seed::from_u64(1234), 3, 4);
@@ -246,7 +224,6 @@ mod tests {
         assert_ne!(drawn(&mut a, 128), drawn(&mut b, 128));
     }
 
-    /// the pool loops rather than running out
     #[test]
     fn the_pool_repeats_after_a_hundred_and_twenty_eight_pairs() {
         let mut random = pool_of(99, 4);
@@ -277,15 +254,14 @@ mod tests {
         }
     }
 
-    /// asking for a silly number of colours is clamped rather than panicking
+    /// a silly colour count is clamped rather than panicking
     #[test]
     fn the_colour_count_is_held_to_what_the_game_has() {
         assert_eq!(pool_of(1, 0).colors().len(), MIN_COLORS);
         assert_eq!(pool_of(1, 99).colors().len(), MAX_COLORS);
     }
 
-    /// different seeds pick different colours for a three colour game, so it is not always
-    /// the same three
+    /// different seeds pick different colours for a three colour game
     #[test]
     fn a_three_colour_match_does_not_always_use_the_same_three() {
         let sets: std::collections::HashSet<Vec<PuyoColor>> =

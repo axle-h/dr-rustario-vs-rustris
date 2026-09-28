@@ -1,5 +1,4 @@
-//! renders one frame of a match on every theme of a game, straight to a PNG, without opening
-//! a visible window.
+//! Renders one frame of a match on every theme of a game to a PNG, without a visible window.
 //!
 //! `cargo run -p dr-rustario-vs-rustris --example frame_shot -- 640 480 1 out/ [game]`
 
@@ -40,8 +39,7 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-    // leaked for the life of the process, as `Shell::new` leaks its own: a `Theme` borrows
-    // the texture creator, and everything holding a theme has to outlive it
+    // leaked, as `Shell::new` leaks its own, since every `Theme` borrows it
     let texture_creator: &'static TextureCreator<WindowContext> =
         Box::leak(Box::new(canvas.texture_creator()));
 
@@ -136,9 +134,7 @@ fn main() -> Result<(), String> {
     }
 }
 
-/// A `Theme` borrows the texture creator, which is leaked for the life of the process - so
-/// the themes are leaked with it rather than threading two lifetimes through everything that
-/// holds one. This is a shot tool that renders a handful of frames and exits.
+/// Leaks the themes alongside the texture creator they borrow.
 fn leak(themes: Vec<Theme<'static>>) -> &'static [Theme<'static>] {
     Box::leak(themes.into_boxed_slice())
 }
@@ -168,10 +164,8 @@ fn shoot<'a, G: Game + GameRender>(
         let mut games = (0..players)
             .map(|player| new_game(player as usize))
             .collect::<Vec<G>>();
-        // Replay the caption a game asked for over its last clear, exactly as the match
-        // screen does - it is part of the frame and this is the only way to see one without
-        // a display. Games that ask for none (Dr. Rustario and Rustris) are untouched, down
-        // to the animation clock, which is why the shot only moves when there is a popup.
+        // replay the caption over the last clear as the match screen does; the animation
+        // clock only moves when there is one
         let mut has_popup = false;
         for (player, game) in games.iter_mut().enumerate() {
             let events = Game::drain_events(game);
@@ -187,8 +181,7 @@ fn shoot<'a, G: Game + GameRender>(
             }
         }
         if has_popup {
-            // a popup grows into place, so a frame taken the instant it is queued would draw
-            // it at nothing: hold the shot a quarter of the way through its life
+            // a popup grows from nothing, so shoot a quarter of the way through its life
             themes.update_animations(POPUP_DURATION / 4);
         }
         println!(
@@ -283,11 +276,7 @@ fn rustris_game(_player: usize) -> rustris::game::Game {
     game
 }
 
-/// a board part way through: a stack with groups linked up in it, an attack in the tray and,
-/// so the shot carries a clear to replay, play stopped the moment something popped
-/// A board stacked up without being tidied, so the shot shows what this game is *about*: gems
-/// of a colour beside each other, crash gems among them, and - once a rectangle turns up - a
-/// power gem drawn joined across its own cells.
+/// An untidy stack, so the shot shows same-colour gems together, crash gems and power gems.
 #[cfg(feature = "rustle-fighter")]
 fn rustle_fighter_game(_player: usize) -> rustle_fighter::game::Game {
     use engine::game::Game as _;
@@ -323,23 +312,20 @@ fn rustle_fighter_game(_player: usize) -> rustle_fighter::game::Game {
     game
 }
 
+/// A stack with linked groups, an attack in the tray, and play stopped on the first pop.
 fn puyo_game(player: usize) -> puyo_rusto::game::Game {
     use engine::game::Game as _;
-    // three colours make a group turn up in a handful of placements, which is what this shot
-    // wants; a five colour board would usually be a tidy heap and nothing more
+    // three colours link groups within a handful of placements
     let difficulty = puyo_rusto::game::rules::Difficulty::VeryEasy;
-    // one seed for the whole shot, since the players are built one at a time and the sets of
-    // puyos they are dealt are only different if they come out of the same deal
+    // one seed for every player, since skins only differ when dealt from the same seed
     static SEED: std::sync::OnceLock<puyo_rusto::game::random::Seed> = std::sync::OnceLock::new();
     let seed = *SEED.get_or_init(puyo_rusto::game::random::Seed::random);
     let random = puyo_rusto::game::random::from_seed(seed, 1, difficulty.colors())
         .pop()
         .unwrap();
-    // ... and a set of puyos per player, so a two player shot shows two of them
     let skins = puyo_rusto::game::cell::PuyoSkin::deal(seed, player + 1);
     let mut game = puyo_rusto::game::Game::new(difficulty, 2, random, skins[player]);
-    // round the columns from the left, which stacks the board up without tidying it - the
-    // point of the shot is the link masks, so it wants colours landing beside each other
+    // round the columns from the left, stacking colours beside each other
     for column in (0..puyo_rusto::game::board::COLUMNS as i32)
         .cycle()
         .take(48)
@@ -352,14 +338,12 @@ fn puyo_game(player: usize) -> puyo_rusto::game::Game {
         }
         game.hard_drop();
         game.update(Duration::from_millis(1200));
-        // the score only moves when something clears; stop on the first one so the clear the
-        // shot replays is the one the board is still settling out of
+        // stop on the first clear, so the replayed clear is the one still settling
         if game.score() > 0 {
             break;
         }
     }
-    // an attack arriving after the last placement is still in the tray, which is where the
-    // pending strip is drawn from
+    // arrives after the last placement, so it stays in the tray
     game.receive_attack(
         engine::game::Attack::new(puyo_rusto::game::GAME_ID, 9)
             .with_foreign_for(puyo_rusto::game::GAME_ID, 9),

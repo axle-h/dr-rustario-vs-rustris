@@ -1,13 +1,5 @@
 //! Walks Mean Bean Machine's whole cast through all four of their states and writes a contact
-//! sheet, without opening a visible window.
-//!
-//! These are *animations* in a box eighty pixels wide, and nothing but looking at them will
-//! catch a face holding its action pose instead of its rest one, a strip cut in the wrong
-//! order, or an overlay landing off a nose. `animation_shot` is the sibling for the board's
-//! moving parts; this one is for the faces.
-//!
-//! Two players, so the **mirroring** is in the picture too: a character faces the other
-//! player's board, which means the one on the left of the window is drawn flipped.
+//! sheet, without a visible window. Two players, so the left one shows the mirrored face.
 //!
 //! ```text
 //! cargo run -p dr-rustario-vs-rustris --example character_shot -- [out] [scale]
@@ -102,13 +94,11 @@ fn main() -> Result<(), String> {
     let mut sheet = image::RgbaImage::new(cell.0 * states.len() as u32, cell.1 * cast as u32);
 
     for character in 0..cast {
-        // player 0 is on the left of the window and so is drawn mirrored; player 1 is native.
-        // Both are dealt the same face here so one shot shows both orientations.
+        // both players get the same face, so one shot shows it mirrored (player 0) and native
         themes.deal_character(0, character, true);
         themes.deal_character(1, character, false);
         for (column, state) in states.iter().enumerate() {
-            // hold long enough that MIN_DWELL never refuses the change, then settle on a
-            // frame partway through the row rather than always on its first
+            // hold past MIN_DWELL so the change is taken, then settle partway through the row
             for player in 0..PLAYERS {
                 match *state {
                     "winning" => themes.animate_character_chain(player),
@@ -149,7 +139,7 @@ fn main() -> Result<(), String> {
                 (character as u32 * cell.1) as i64,
             );
         }
-        // and one whole-window shot per character, which is where placement and mirroring show
+        // one whole-window shot per character, for placement and mirroring
         let path = format!("{out}/character-{character:02}.png");
         let pixels = canvas.read_pixels(None, PixelFormatEnum::ABGR8888)?;
         image::RgbaImage::from_raw(width, height, pixels)

@@ -49,10 +49,8 @@ fn fmt_duration(duration: Duration) -> String {
 
 /// `args` are the arguments after `ga dr play`:
 /// `<seed> [virus level] [pill cap] [report every n pills] [brain]`, where the brain is `n64`
-/// (the default), `n64:0` to `n64:5` for one of the N64 ai's own rows of weights, `neural` for
-/// the trained network or `linear` for the hand written baseline it is measured against. A
-/// `+hold` on either of the last two lets the agent weigh the pill it is holding against the
-/// one in play, which is off everywhere else, and a `+drop` on any of them takes tucking away.
+/// (the default), `n64:0` to `n64:5` for one row, `neural` or `linear`. `+hold` on the last two
+/// turns hold on, and `+drop` on any takes tucking away.
 pub fn harness_main(args: &[String]) -> Result<(), String> {
     let seed: Seed = args
         .first()
@@ -67,9 +65,6 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
         .unwrap_or(u64::MAX);
     let every: u64 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(100);
     let brain = args.get(4).map(String::as_str).unwrap_or("n64");
-    // `+hold` lets the agent weigh the pill it is holding against the one in play, which is off
-    // everywhere else (see `DrAiAgent`'s `Hold`); `+drop` takes tucking away, which is what the
-    // tuck measurement is run with
     let (brain, hold) = match brain.strip_suffix("+hold") {
         Some(brain) => (brain, Hold::On),
         None => (brain, Hold::Off),

@@ -1,9 +1,5 @@
-//! The particle theme: puyos cut out of the Puyo Puyo Tetris rip by `puyo-rusto/art/rip.py`,
-//! sound effects cut out of a Puyo Puyo Tetris 2 one by `puyo-rusto/art/sfx.py`, and the
-//! game's own music cut out of the first rip by `puyo-rusto/art/music.py` - four tracks, of
-//! which a match is dealt one.
-//! Everything else - the background, the board frame, the HUD and the cards - the engine
-//! draws procedurally.
+//! The particle theme: puyos cut from the Puyo Puyo Tetris rip by `puyo-rusto/art/rip.py`;
+//! everything else the engine draws procedurally.
 
 use crate::game::board::{COLUMNS, HIDDEN_ROWS, ROWS, SPAWN, VISIBLE_ROWS};
 use crate::game::cell::{LinkMask, PuyoColor, PuyoSkin};
@@ -24,39 +20,24 @@ use sdl2::render::{TextureCreator, WindowCanvas};
 use sdl2::video::WindowContext;
 use std::time::Duration;
 
-/// the sheet's cell, and the padding around it that keeps one snip from bleeding into the
-/// next as the sheet is rescaled. Both are `puyo-rusto/art/rip.py`'s, and the cell is the
-/// rip's own grid: a neck runs exactly to its edge, so two linked puyos meet flush.
+/// the sheet's cell and the padding that stops snips bleeding when rescaled, both
+/// `puyo-rusto/art/rip.py`'s; a neck runs exactly to the cell's edge
 pub const SRC_BLOCK_SIZE: u32 = 72;
 const PAD: i32 = 4;
 const PITCH: i32 = SRC_BLOCK_SIZE as i32 + 2 * PAD;
 
-/// the row of a skin's band the nuisance puyo and the tray symbols are on, under the five
-/// colours
+/// the row of a skin's band holding the nuisance puyo and the tray symbols
 const EXTRAS_ROW: i32 = PuyoColor::N as i32;
 
 /// how many rows of the sheet one skin takes: a row per colour, then the extras
 const SKIN_ROWS: i32 = EXTRAS_ROW + 1;
 
-/// how many skins the sheet carries, which is `SKINS` in `puyo-rusto/art/rip.py`.
-///
-/// The rip is sixteen skins of the same puyos, fifteen of them whole, fourteen of those able
-/// to join a puyo below, eleven of those worth joining, and seven of *those* that belong on
-/// this theme - the script says which and why, and the ones it drops are two sets of retro
-/// art, the Sonic cast and a set that spells its colours out as letters. The sheet is those
-/// seven, [`BANDS_ACROSS`] bands at a time, and the theme keys **every** one of them. Which
-/// two a match shows is not the theme's to decide: [`PuyoSkin::deal`] hands each player one
-/// when the match starts, so the choice can change without rebuilding an atlas.
+/// how many skins the sheet carries, which is `SKINS` in `puyo-rusto/art/rip.py`; every one
+/// is keyed and [`PuyoSkin::deal`] picks a player's
 pub const SKINS: usize = PuyoSkin::COUNT;
 
-/// how many skin bands the sheet lies side by side, which is `BANDS_ACROSS` in
-/// `puyo-rusto/art/rip.py`.
-///
-/// The sheet is loaded whole, as one texture, and the bands in a single column stood it 6720
-/// pixels tall at the fourteen skins it carried then - past the [`MAX_ATLAS_WIDTH`] a driver
-/// will allocate in a dimension, and so a theme that could not be built at all on a handheld.
-/// Seven of them would fit stacked; the layout is kept because it is the same pixels either
-/// way, and 2560x1920 is one fewer thing for the script and this file to agree on.
+/// How many skin bands lie side by side, which is `BANDS_ACROSS` in `puyo-rusto/art/rip.py`.
+/// The sheet is one texture, so each dimension must stay within `MAX_ATLAS_WIDTH`.
 const BANDS_ACROSS: usize = 2;
 
 /// how wide one skin's band is, in cells: a link mask's worth
@@ -64,28 +45,17 @@ const BAND_COLUMNS: i32 = LinkMask::COUNT as i32;
 
 const SPRITES: &[u8] = include_bytes!("sprites.png");
 
-/// The caption a chain step says over the puyos it just took, cut from the same rip by
-/// `puyo-rusto/art/rip.py`: the ten digits along the top row and the word underneath.
-///
-/// Its layout is the script's `POPUP_CELL` and `POPUP_WORD_CELL` and nothing else. Every cell
-/// is the same height whatever it draws, because each glyph was cut against its row's own
-/// baseline rather than its own bounding box - the round digits hang a little below the line
-/// and the word sits well above it, exactly as the game drew them - so the whole caption is
-/// drawn at one y.
+/// The chain caption: ten digits along the top row and the word under them, laid out as
+/// `rip.py`'s `POPUP_CELL` and `POPUP_WORD_CELL`. Glyphs are cut against their row's baseline,
+/// so the whole caption is drawn at one y.
 const POPUP: &[u8] = include_bytes!("popup.png");
 const POPUP_PAD: i32 = 4;
 const POPUP_CELL: (u32, u32) = (64, 100);
 const POPUP_WORD_CELL: (u32, u32) = (132, 100);
-/// the gap between the number and the word, in the sheet's own pixels. Small, because the
-/// digits are on a fixed pitch and a narrow one - the `1` - already carries most of a gap of
-/// its own on either side
+/// the gap between the number and the word, in the sheet's pixels
 const POPUP_SPACE: u32 = 8;
 
-/// The sheet, as the ten digits on a fixed pitch and the word under them.
-///
-/// Fixed pitch because a counter climbing from 9 to 10 that shifted its digits about as it
-/// went would read worse than one that does not; and the word is one sprite rather than five
-/// letters, because that is how the rip drew it.
+/// The caption sheet as ten fixed-pitch digits and the word as one sprite.
 fn popup_sprites() -> PopupSpriteData {
     const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
     let pitch = POPUP_CELL.0 as i32 + 2 * POPUP_PAD;
@@ -112,12 +82,7 @@ fn popup_sprites() -> PopupSpriteData {
     }
 }
 
-/// What the theme radiates into the background particle field: the five puyo colours, read
-/// off the sheet.
-///
-/// The glossy Tsu skin's, and left at that whichever skins are dealt: every skin on the sheet
-/// draws the same five hues, and the field is a wash behind both boards rather than a legend
-/// for either of them.
+/// The five puyo colours the background particle field radiates, from the glossy Tsu skin.
 const PUYO_PALETTE: [Color; PuyoColor::N] = [
     Color::RGB(0xBC, 0x3F, 0x3E), // red
     Color::RGB(0x64, 0xC9, 0x43), // green
@@ -126,19 +91,12 @@ const PUYO_PALETTE: [Color; PuyoColor::N] = [
     Color::RGB(0x98, 0x47, 0xCC), // purple
 ];
 
-/// how long the popped puyos hold before the particles take over. Under the game's own
-/// It **adds** to [`crate::game::rules::POP_DELAY`] rather than fitting inside it: the match
-/// screen skips `game.update` outright while an animation blocks the tick, so a chain step
-/// costs this *and* the delay.
+/// How long the popped puyos hold before the particles take over. It adds to
+/// [`crate::game::rules::POP_DELAY`], since the match skips `game.update` while it blocks.
 const POP_HOLD: Duration = Duration::from_millis(200);
 
-/// How hard the board shakes when a slab of nuisance lands, and for how long.
-///
-/// This is a flare and not fidelity: neither game this one is drawn from shakes at all - see
-/// [`engine::animate::impact`], where that is measured - and neither retro theme here asks
-/// for it. The particle theme is the one that may take a liberty, and a rock arriving is the
-/// moment worth taking one on. A twelfth of a block, which is a jolt rather than an
-/// earthquake, and it is the board that moves: the panel and its shadow stay put.
+/// How far, in blocks, and how long the board shakes when a slab of nuisance lands. Only this
+/// theme shakes; the source games do not.
 const NUISANCE_RUMBLE: (f64, Duration) = (1.0 / 12.0, Duration::from_millis(280));
 
 fn block(col: i32, row: i32) -> Point {
@@ -203,29 +161,21 @@ pub fn modern_puyo_theme<'a>(
         )?,
         columns: COLUMNS,
         rows: ROWS,
-        // every row is drawn, the hidden thirteenth included: `visible_rows` counts the
-        // buffer in and `top_buffer_rows` is how many of them float above the frame, so the
-        // board frame ends up around the twelve rows that are played in
+        // every row is drawn, the hidden thirteenth included
         visible_rows: ROWS,
         block_size,
-        // the thirteenth row floats above the frame the way Rustris's buffer does. It is
-        // worth showing: a puyo up there cannot pop, so a chain with a foot in it is held
-        // back, and a player who cannot see it cannot plan around it
+        // the thirteenth row floats above the frame; a puyo there cannot pop
         top_buffer_rows: HIDDEN_ROWS,
-        // the score goes in the side column under the queue; the left column is empty, since
-        // a Puyo board has no hold box either
         metrics: HUD_MAX.to_vec(),
         metrics_left: vec![],
         mascot: None,
         spawn_cell: SPAWN,
         cell_idle_type: FrameAnimationType::Static,
         queue_max: 2,
-        // an attack waits in the tray until a chain answers it, which is the whole game -
-        // one icon per column of the board
+        // one tray icon per column
         pending_max: COLUMNS,
         particle_color: Color::WHITE,
         particle_palette: PUYO_PALETTE.to_vec(),
-        // particles in the shape of each puyo that went, which is how a group bursts
         clear_particles: ClearParticles::Masked { fade_in: POP_HOLD },
         destroy_style: Some(DestroyStyle::Vanish { hold: POP_HOLD }),
         game_over_style: Some(GameOverStyle::drain(VISIBLE_ROWS)),
@@ -234,9 +184,6 @@ pub fn modern_puyo_theme<'a>(
         pop_debris: None,
         nuisance_rumble: Some(NUISANCE_RUMBLE),
         attack_ball: None,
-        // "2 chain" in the game's own face rather than the engine's, which is worth the one
-        // extra sheet: the chain count is the only thing a Puyo player is reading while the
-        // board goes off, and `clear_popup` says it on every step of one
         popup_sprites: Some(popup_sprites()),
     };
     modern_theme(canvas, texture_creator, options)
@@ -248,16 +195,13 @@ mod tests {
     use engine::render::sprite_sheet::MAX_ATLAS_WIDTH;
     use std::collections::HashSet;
 
-    /// a PNG's width and height are big endian at a fixed offset, which is enough to check a
-    /// sheet without decoding one
+    /// a PNG's width and height, big endian at a fixed offset
     fn png_size(bytes: &[u8]) -> (u32, u32) {
         let word = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
         (word(16), word(20))
     }
 
-    /// [`SKINS`] is `puyo-rusto/art/rip.py`'s and nothing in Rust can check the script, but
-    /// the sheet it wrote is right here: a band too many and a player would be dealt a skin
-    /// off the bottom of it and draw nothing at all
+    /// the sprite png is exactly [`SKINS`] bands laid [`BANDS_ACROSS`]
     #[test]
     fn the_sheet_carries_every_skin_the_theme_deals() {
         let (width, height) = png_size(SPRITES);
@@ -266,9 +210,7 @@ mod tests {
         assert_eq!(height, (PITCH * SKIN_ROWS) as u32 * band_rows as u32);
     }
 
-    /// and it is laid out the way it is so that it can be a texture at all: the sheet is
-    /// loaded whole, and a driver that stops at [`MAX_ATLAS_WIDTH`] in a dimension would
-    /// refuse the bands stacked in one column
+    /// the sprite png fits within [`MAX_ATLAS_WIDTH`] both ways
     #[test]
     fn the_sheet_fits_a_texture() {
         let (width, height) = png_size(SPRITES);
@@ -276,7 +218,7 @@ mod tests {
         assert!(height <= MAX_ATLAS_WIDTH, "{height} tall");
     }
 
-    /// ... and every cell of the last skin's band is inside it
+    /// the last skin's extras lie inside the sprite png
     #[test]
     fn the_last_skins_extras_are_on_the_sheet() {
         let (width, height) = png_size(SPRITES);
@@ -285,8 +227,7 @@ mod tests {
         assert!(last.y + SRC_BLOCK_SIZE as i32 <= height as i32);
     }
 
-    /// the caption's sheet is `rip.py`'s too, and the same argument holds: a layout that has
-    /// drifted from the script's would draw the wrong half of a glyph rather than fail
+    /// the caption png's size matches the layout `popup_sprites` reads it as
     #[test]
     fn the_caption_sheet_is_the_shape_the_layout_reads_it_as() {
         let (width, height) = png_size(POPUP);
@@ -298,8 +239,7 @@ mod tests {
         }
     }
 
-    /// what the sheet has to spell is what `clear_popup` says, and a caption it cannot spell
-    /// is quietly written in the engine's face instead - so nothing but a test notices
+    /// the caption sheet spells every chain from 1 to 99
     #[test]
     fn the_sheet_spells_every_chain_a_game_can_count_to() {
         let sprites = popup_sprites();
@@ -308,8 +248,7 @@ mod tests {
         }
     }
 
-    /// every skin has to key a *different* band, or two players dealt different sets would
-    /// draw the same puyos
+    /// every skin reads a different band
     #[test]
     fn every_skin_reads_its_own_band() {
         let mut seen = HashSet::new();

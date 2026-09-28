@@ -1,43 +1,12 @@
-//! `ga cross` - what each game's ai actually throws, and what the six crossings between them
-//! deliver, so that a price is measured rather than guessed.
+//! `ga cross` measures the six attack prices between the games rather than guessing them.
 //!
-//! An attack is priced by the *sender*, in the receiver's own units, because only the sender
-//! knows what the clear took (see [`engine::game::ForeignPrices`]). That leaves six directed
-//! prices between three games and no way to reason a number out of first principles: a
-//! garbage block, a row and a nuisance puyo are not the same thing, and neither are the
-//! clears that earn them.
-//!
-//! So this measures the one thing that *is* comparable. Each game's ai plays alone, and every
-//! attack it sends is kept **as the sender priced it** - `strength` at home and
-//! [`Attack::strength_for`] abroad, which is the shipped table rather than a number worked out
-//! on paper. Two rates come off that:
-//!
-//! * **at home**: what a player of a game faces from an opponent of the same game, per minute,
-//!   as a share of their own board;
-//! * **abroad**: what the same player faces from each *other* game at the current prices.
-//!
-//! The ratio of the two is the number to tune on. **1.0 is a foreign opponent pressing exactly
-//! as hard as a home one**, which is the only definition of fair here that does not need a
-//! currency inventing - and the two crossings that already existed and play well, Dr. Rustario
-//! against Rustris, sit at roughly a half and nine tenths of it. That band is the target, and
-//! nothing should be over 1.
-//!
-//! The `parity` column is the price that *would* put a crossing at 1.0 exactly, as a guide for
-//! setting a new one; it is not what ships. Two things make it too hot on its own: the three
-//! ais are not equally strong, and a Puyo player alone is in a chain-building paradise with
-//! nothing arriving to offset - it throws four boards a minute where Rustris throws a third of
-//! one.
+//! Each game's own ai plays alone, at the fielded opponent's key delay, and every crossing is
+//! read as a share of what the receiving game's own opponents throw: 1.0 is a foreign opponent
+//! pressing as hard as a home one, and `parity` is the price that would give exactly that.
 //!
 //! ```shell
 //! cargo run --release -- ga cross [seeds] [minutes] [difficulty] [ai]
 //! ```
-//!
-//! Each game plays `seeds` boards of up to `minutes` minutes of game time, dealt by
-//! [`VersusMode`] at the versus difficulty dial `difficulty`, driven by the same ai a fielded
-//! `ai` opponent is - **at that opponent's own key delay**, since a row that presses keys
-//! every 400 ms throws far less than one at full speed and it is the fielded one a price has
-//! to be fair to. A board that is buried stops there and its time counts only as far as it
-//! got, so a rate is always per minute *played*.
 
 use crate::games::{AiBrain, GameKind};
 use crate::modes::{AiDifficulty, Difficulty, VersusAi, VersusMode};
@@ -51,7 +20,7 @@ const DEFAULT_SEEDS: u32 = 5;
 const DEFAULT_MINUTES: u64 = 10;
 const DEFAULT_DIFFICULTY: u32 = 5;
 
-/// the engine id of a game, which is what a price is keyed on
+/// the engine id a price is keyed on
 fn game_id(game: GameKind) -> GameId {
     match game {
         GameKind::DrRustario => ids::DR_RUSTARIO,
@@ -62,15 +31,11 @@ fn game_id(game: GameKind) -> GameId {
     }
 }
 
-/// How many cells of board one unit of a game's attack fills, which is what makes two games'
-/// rates readable side by side.
-///
-/// A row of Rustris garbage is the whole width less its hole; a Dr. Rustario garbage block and
-/// a nuisance puyo are one cell each.
+/// How many board cells one unit of a game's attack fills; a Rustris row is the width less
+/// its hole.
 fn cells_per_unit(game: GameKind) -> u32 {
     match game {
         GameKind::Rustris => 9,
-        // a Dr. Rustario garbage block, a nuisance puyo and a counter gem are one cell each
         GameKind::DrRustario | GameKind::Puyo => 1,
         #[cfg(feature = "rustle-fighter")]
         GameKind::RustleFighter => 1,
@@ -80,18 +45,18 @@ fn cells_per_unit(game: GameKind) -> u32 {
 /// what one game's ai did over every seed
 struct Measured {
     game: GameKind,
-    /// game time actually played, which is short of the cap for any board that was buried
+    /// game time played, short of the cap for a buried board
     played: Duration,
-    /// how many boards ended in a game over rather than reaching the cap
+    /// boards that ended in a game over before the cap
     buried: u32,
     seeds: u32,
     /// every attack sent, as the sender priced it for every game it can reach
     sent: Vec<Attack>,
-    /// pieces locked, which says whether the ai was playing at all
+    /// pieces locked
     locked: u32,
     /// stages finished: a bottle cleared, ten lines, thirty puyos
     stages: u32,
-    /// the board this game is played on, for reading a rate as a share of it
+    /// board cells, for reading a rate as a share of the board
     cells: u32,
 }
 
@@ -117,8 +82,7 @@ impl Measured {
         }
     }
 
-    /// what these attacks are worth per minute to a player of `receiver`, in that game's
-    /// units, at the prices the sending game ships
+    /// these attacks per minute in `receiver`'s units, at the shipped prices
     fn foreign_per_minute(&self, receiver: GameKind) -> f64 {
         self.sent
             .iter()
@@ -127,7 +91,7 @@ impl Measured {
             / self.minutes()
     }
 
-    /// how many of them cross at all, rather than being worth nothing to that receiver
+    /// how many are worth anything to `receiver`
     fn crossing(&self, receiver: GameKind) -> usize {
         self.sent
             .iter()
@@ -140,8 +104,8 @@ impl Measured {
         units * cells_per_unit(game) as f64 / cells as f64
     }
 
-    /// what a player of this game faces per minute from an opponent of the same game, as a
-    /// share of their board - the number every crossing into it is measured against
+    /// boards per minute from an opponent of the same game: what every crossing into it is
+    /// measured against
     fn home_boards_per_minute(&self) -> f64 {
         Self::boards_per_minute(self.home_per_minute(), self.game, self.cells)
     }

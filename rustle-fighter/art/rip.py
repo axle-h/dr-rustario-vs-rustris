@@ -1,28 +1,11 @@
 #!/usr/bin/env python3
-"""Cut the arcade theme's board art out of the Super Puzzle Fighter II Turbo sprite rips.
+"""Cut the arcade theme's board art from the rips in ~/Downloads/Super Puzzle Fighter Art/.
 
-The rips are **not** in the repository - they are Alex's drop at
-``~/Downloads/Super Puzzle Fighter Art/``, 20 sheets from the Spriters Resource. This script
-is the record of how the committed sheets were made; re-run it rather than hand-editing what
-it writes.
+    python3 rustle-fighter/art/rip.py         # write src/theme/arcade/
+    python3 rustle-fighter/art/rip.py check   # ... and gems-check.png, failing if a cell is off blue's
 
-    python3 rustle-fighter/art/rip.py            # cut everything
-    python3 rustle-fighter/art/rip.py check      # ... and write the alignment board beside it
-
-Four gem sheets share one geometry and differ only in their colour, in how they key their
-background and in **where the whole sheet sits**: the red sheet is ``Gems.png``, keys on green,
-and every pixel on it is one to the right and one up from where the other three put it. See
-[`SHEETS`] - that offset is what `check` exists to catch, and it was shipped once.
-
-**The power gem is synthesised, and this is the finding that made it necessary.** The plan for
-this game assumed the sheets carried per-cell power gem art that the corner codes could index.
-They do not. What is on them is a *tiled body texture* in four shine frames plus a top edge
-row with rounded corner notches: the arcade draws a power gem as a tiled fill with a border
-composited over it at draw time, at whatever size the rectangle happens to be. Our renderer is
-one snip per cell, so the nine masks a rectangle can actually produce - every cell of a
-rectangle at least two on a side is (top|middle|bottom) x (left|middle|right) - are built here
-out of the body texture, with the sheet's own corner notch and a bevel taken from the 2x2
-power gem tile. The art is the arcade's; the *arrangement* into nine cells is ours.
+The nine power gem masks are synthesised: the arcade composites a power gem from a tiled body and
+a border at draw time, so the sheets carry no per-cell art.
 """
 
 import os
@@ -33,85 +16,49 @@ RIPS = os.path.expanduser("~/Downloads/Super Puzzle Fighter Art")
 PREFIX = "Arcade - Super Puzzle Fighter 2 Turbo - "
 OUT = os.path.join(os.path.dirname(__file__), "..", "src", "theme", "arcade")
 
-# the arcade's own cell, and the grid this script writes on
 BLOCK = 16
-# transparent air around every cell, so a scaled sprite cannot bleed into its neighbour. The
-# same trick and the same number as `puyo-rusto/art/rip_retro.py`.
+# transparent air around every cell, so a scaled sprite cannot bleed into its neighbour
 PAD = 4
 PITCH = BLOCK + 2 * PAD
 
-# --- where things are on a gem sheet, measured 2026-09-07 -------------------------------
-# eight animation frames of the plain gem, then eight of the crash gem
 PLAIN_ROW = (0, 0)
 CRASH_ROW = (0, 16)
-# the 2x2 power gem, four shine frames across; the first is the one that is cut
 POWER_2X2 = (0, 32)
-# the tiled power gem body: four columns of increasing shine, four rows of which the first
-# carries the rounded top corner notches and the rest repeat
+# the tiled power gem body: four shine columns; the first row carries the top corner notches
 POWER_BODY = (128, 0)
-# ten counter gem digits, four flash frames tall; the second frame is the lit one
+# the lit frame of the ten counter gem digits
 COUNTER_DIGITS = (373, 499)
 
-# --- the HUD sheet, measured 2026-09-07 --------------------------------------------------
 HUD = "Miscellaneous - HUD.png"
-# The playfield frame. Its interior is exactly six columns wide and thirteen rows tall, and
-# its top row is hatched tabs over every column **except column 3** - which is the Drop Alley,
-# open because that is where pieces enter. The art confirms `board::DROP_ALLEY` independently
-# of the disassembly that gave us the number.
+# the playfield frame: 6x13 inside, its top row open over the Drop Alley (`board::DROP_ALLEY`)
 FRAME = (191, 16, 102, 211)
-# the frame's interior within it: three pixels of wall each side, and the top row is the lip
 FRAME_INSET = (3, 0)
-# the NEXT label and the black box under it
 NEXT_BOX = (301, 30, 36, 50)
-# player one's score plate, the pink one; player two's purple twin sits beside it
 SCORE_PLATE = (13, 14, 65, 38)
-# Where its baked-in zeros sit inside it, which are painted out so a real score can go there.
-# Measured off the plate at 8x: `SCORE` runs to y 12 and the seven zeros sit from y 14 to 26,
-# spanning x 2 to 62.
 PLATE_DIGITS = (2, 13, 61, 14)
-# a pixel of the plate's own bed to fill them with, well clear of any digit
 PLATE_BED = (2, 30)
-# The bed colour itself, which the digit strip is also drawn on.
-#
-# The sheet sets the score face on a patch of the same pink the plate is made of. On the plate
-# that is invisible; anywhere else - the speed step, printed on the brick wall - it is a pink
-# box round the number, so it is keyed out of the font.
+# the plate's pink, keyed out of the score face or the speed step shows a pink box
 PLATE_BED_COLOR = (192, 96, 160)
-# The score face: the sheet lays it out as two rows of five, and it is the face the score
-# plate's own baked-in zeros are set in - eight pixels a digit, which is what fits the plate.
-# The wide cyan strip along the bottom of the sheet is the block counter's and is twice as
-# wide as this, so seven digits of it would run off the plate's end.
+# the score face, two rows of five at eight pixels a digit so seven fit the plate
 DIGITS = (138, 86, 8, 14)
 DIGITS_PER_ROW = 5
 
-# the brick wall the boards stand on, off the character background tile sheet
 TILES = "Miscellaneous - Character-Specific Background Tiles.png"
 BRICK = (8, 74, 64, 32)
 
-# name, background key, and where the sheet's own grid starts.
-#
-# **The red sheet is laid out one pixel over.** Its art is the same art - matched against blue
-# as a silhouette it agrees on all 347,616 pixels - but the whole sheet is shifted right one
-# and up one. A cut on the grid the other three share therefore takes the red gem sitting a
-# pixel high and a pixel right in its cell: flush to the top and to the right, with a bare row
-# under it, which on a board is a red gem that does not stand where its neighbours do. That is
-# a rip artefact and not something the arcade draws, so it is corrected here in [`load`] rather
-# than in the twenty-odd coordinates below, all of which are measured off blue.
+# name, background key, and where the sheet's own grid starts. Every coordinate is measured off
+# blue; the red sheet is a rip laid out one right and one up, corrected by its origin in `load`.
 SHEETS = {
     "blue": ("Miscellaneous - Blue Gems.png", (255, 0, 255), (0, 0)),
     "yellow": ("Miscellaneous - Yellow Gems.png", (255, 0, 255), (0, 0)),
     "green": ("Miscellaneous - Green Gems.png", (255, 0, 255), (0, 0)),
-    # the red sheet is the odd one out three times over: it is the unprefixed `Gems.png`, it
-    # keys on green rather than magenta, and it is the shifted one
     "red": ("Miscellaneous - Gems.png", (0, 255, 0), (1, -1)),
 }
 
-# the order colours are written in, which is `GemColor`'s own numbering: 1 blue, 2 yellow,
-# 3 green, 4 red. `theme/arcade/mod.rs` indexes rows by it.
+# `GemColor`'s numbering, which `theme/arcade/mod.rs` indexes rows by
 COLORS = ["blue", "yellow", "green", "red"]
 
-# The nine masks a rectangle can produce, as (up, down, left, right) and the cell of a 3x3
-# they are cut as. Bits are `PowerMask`'s: UP 1, DOWN 2, LEFT 4, RIGHT 8.
+# (mask, column, row) of the 3x3 each mask is cut from; bits are `PowerMask`'s
 UP, DOWN, LEFT, RIGHT = 1, 2, 4, 8
 POWER_MASKS = [
     (DOWN | RIGHT, 0, 0),
@@ -127,16 +74,7 @@ POWER_MASKS = [
 
 
 def load(name, key, origin=(0, 0)):
-    """One sheet, keyed to real transparency and slid onto the grid the cuts are measured on.
-
-    The key is matched with a little slack rather than exactly. The red sheet is a JPEG-era
-    rip and its green has a hundred-odd pixels that are a shade off, which as an exact match
-    leaves a fringe of green confetti round the art.
-
-    `origin` is where that sheet's grid begins - see [`SHEETS`]. The sheet is slid back by it,
-    so everything downstream reads one set of coordinates and the shifted sheet is a fact
-    stated once rather than an offset threaded through every cut.
-    """
+    """One sheet keyed to transparency, slid back by `origin`; `None` keys on the top-left pixel."""
     im = Image.open(os.path.join(RIPS, PREFIX + name)).convert("RGBA")
     px = im.load()
     for y in range(im.height):
@@ -158,21 +96,7 @@ def cell(sheet, at, size=BLOCK):
 
 
 def power_cells(sheet):
-    """The nine masks, cut out of a 3x3 power gem built from the sheet's own art.
-
-    Every pixel here is the arcade's; only the arrangement is ours. A 3x3 template is laid
-    out at 48x48 and then cut into nine cells:
-
-    * the **four corners** are the 2x2 power gem tile's own four quadrants, so a rounded
-      corner is the corner the game draws;
-    * the **four edges** are the middle band of that tile - the half of an edge that has no
-      corner in it - which is what an edge cell between two corners looks like;
-    * the **centre** is the tiled body texture, which is what the arcade fills a large gem
-      with.
-
-    That is exactly the nine a rectangle at least two on a side can produce, and no more: with
-    two or more cells on each axis every cell is (top|middle|bottom) x (left|middle|right).
-    """
+    """The nine masks: the 2x2 tile's corners and edge middles round the body, cut as a 3x3."""
     body = cell(sheet, (POWER_BODY[0], POWER_BODY[1] + BLOCK))
     tile = sheet.crop(
         (POWER_2X2[0], POWER_2X2[1], POWER_2X2[0] + 2 * BLOCK, POWER_2X2[1] + 2 * BLOCK)
@@ -180,13 +104,11 @@ def power_cells(sheet):
     half = BLOCK // 2
 
     template = Image.new("RGBA", (3 * BLOCK, 3 * BLOCK), (0, 0, 0, 0))
-    # the middle, and the four edge bands, out of the body and the tile's cornerless middles
     template.paste(body, (BLOCK, BLOCK))
     template.paste(tile.crop((half, 0, half + BLOCK, BLOCK)), (BLOCK, 0))
     template.paste(tile.crop((half, BLOCK, half + BLOCK, 2 * BLOCK)), (BLOCK, 2 * BLOCK))
     template.paste(tile.crop((0, half, BLOCK, half + BLOCK)), (0, BLOCK))
     template.paste(tile.crop((BLOCK, half, 2 * BLOCK, half + BLOCK)), (2 * BLOCK, BLOCK))
-    # ... and the four corners, which are the tile's own quadrants
     template.paste(tile.crop((0, 0, BLOCK, BLOCK)), (0, 0))
     template.paste(tile.crop((BLOCK, 0, 2 * BLOCK, BLOCK)), (2 * BLOCK, 0))
     template.paste(tile.crop((0, BLOCK, BLOCK, 2 * BLOCK)), (0, 2 * BLOCK))
@@ -216,10 +138,6 @@ def gems():
     return sheet
 
 
-# --- the panel ---------------------------------------------------------------------------
-# Everything below is arcade art; the *arrangement* is ours. The house rule is that retro
-# geometry is measured against the emulated game, and that could not be done here - see the
-# theme module, which says so where a reader will meet it.
 PANEL = (171, 211)
 FRAME_AT = (0, 0)
 NEXT_AT = (110, 4)
@@ -231,11 +149,7 @@ def hud():
 
 
 def board_backdrop(sheet):
-    """The board's own interior: what the cells are drawn on top of.
-
-    Dark, so the brick wall does not show through the playfield, with the frame's hatched top
-    lip laid over its first row.
-    """
+    """The board's interior, dark so the brick wall does not show through, under the frame's lip."""
     inner = (FRAME[0] + FRAME_INSET[0], FRAME[1] + FRAME_INSET[1])
     width, height = BLOCK * 6, BLOCK * 13
     out = Image.new("RGBA", (width, height), (12, 10, 24, 235))
@@ -244,7 +158,6 @@ def board_backdrop(sheet):
 
 
 def panel(sheet):
-    """The furniture round the board: the frame, the NEXT box and the score plate."""
     out = Image.new("RGBA", PANEL, (0, 0, 0, 0))
     out.alpha_composite(sheet.crop((FRAME[0], FRAME[1], FRAME[0] + FRAME[2], FRAME[1] + FRAME[3])), FRAME_AT)
     out.alpha_composite(sheet.crop((NEXT_BOX[0], NEXT_BOX[1], NEXT_BOX[0] + NEXT_BOX[2], NEXT_BOX[1] + NEXT_BOX[3])), NEXT_AT)
@@ -256,11 +169,7 @@ def panel(sheet):
 
 
 def digits(sheet):
-    """The ten score glyphs, dealt out of the sheet's two rows of five into one strip.
-
-    `FontRenderOptions::numeric_sprites` wants a strip ten glyphs wide and reads the glyph
-    width off the file, so the two rows have to become one.
-    """
+    """The ten score glyphs as one strip, which `FontRenderOptions::numeric_sprites` requires."""
     x, y, width, height = DIGITS
     out = Image.new("RGBA", (width * 10, height), (0, 0, 0, 0))
     for digit in range(10):
@@ -269,7 +178,6 @@ def digits(sheet):
             (x + column * width, y + row * height, x + (column + 1) * width, y + (row + 1) * height)
         )
         out.paste(glyph, (digit * width, 0))
-    # the plate's own pink comes with the face and has to go - see `PLATE_BED_COLOR`
     px = out.load()
     for gy in range(out.height):
         for gx in range(out.width):
@@ -284,14 +192,7 @@ def digits(sheet):
 
 
 def blank_plate_digits(plate):
-    """Take the zeros the score plate is drawn with off it, so the real score can go there.
-
-    The plate art has `0000000` baked in. Painted over rather than left underneath: a drawn
-    glyph does not cover the whole cell, so a baked zero shows through the gaps of every digit
-    that is not one and the number comes out unreadable. The fill is the plate's own bed,
-    sampled at [`PLATE_BED`] - which is a point well clear of the digits, because sampling
-    beside them picks up the yellow of a zero and paints the plate a solid yellow bar.
-    """
+    """Paint the baked-in zeros out with the bed at `PLATE_BED`, which must stay clear of them."""
     px = plate.load()
     bed = px[PLATE_BED[0], PLATE_BED[1]]
     for y in range(PLATE_DIGITS[1], PLATE_DIGITS[1] + PLATE_DIGITS[3]):
@@ -301,15 +202,12 @@ def blank_plate_digits(plate):
 
 
 def scene():
-    """the brick wall the panels stand on, as one tile"""
     im = Image.open(os.path.join(RIPS, PREFIX + TILES)).convert("RGBA")
     return im.crop((BRICK[0], BRICK[1], BRICK[0] + BRICK[2], BRICK[1] + BRICK[3]))
 
 
-# --- the alignment board -----------------------------------------------------------------
 CHECK_OUT = os.path.normpath(os.path.join(os.path.dirname(__file__), "gems-check.png"))
 CHECK_SCALE = 6
-# the sprite columns of the written sheet, in the order `gems` writes them
 PLAIN, CRASH = 0, 1
 POWER_COLUMNS = [2 + index for index in range(len(POWER_MASKS))]
 DIGIT_COLUMNS = [2 + len(POWER_MASKS) + digit for digit in range(10)]
@@ -322,16 +220,7 @@ def sprite(sheet, color, column):
 
 
 def boxes(sheet):
-    """Where the art actually sits inside every cell of the written sheet.
-
-    The four colours are the same shapes in four palettes, so every colour's cell has to have
-    the same bounding box as blue's. A colour whose sheet is laid out a pixel over reads as a
-    whole row of cells one out, which is exactly what the red sheet did.
-
-    It is a floor and not a proof: a cell with no transparency in it - the power gem body, a
-    counter gem - boxes the same whole 16 square however far over it is cut, and the red sheet
-    tripped only six of its twenty-one cells. The board below is what shows the other fifteen.
-    """
+    """Every cell's bounding box; an opaque cell boxes the full square however it is cut."""
     out = {}
     for color in COLORS:
         for column in range(2 + len(POWER_MASKS) + 10):
@@ -341,13 +230,7 @@ def boxes(sheet):
 
 
 def check(sheet):
-    """Draw the gems on a board, and say which cells do not sit where blue's do.
-
-    The picture is the point. A one pixel shift is invisible on a contact sheet of separated
-    cells and unmissable in a run of gems: the checker underneath is one square to the cell, so
-    a gem that is not centred in its cell shows a fat border on one side and none on the other,
-    and its neighbours' gaps go uneven.
-    """
+    """Draw the gems on a board, and say which cells do not sit where blue's do."""
     bad = []
     found = boxes(sheet)
     for (color, column), box in found.items():
@@ -358,15 +241,13 @@ def check(sheet):
     for line in bad:
         print(line)
 
-    # every colour beside and above every other, so a shift shows as an uneven gap
     def weave(column, height):
         return [
             [(COLORS[(x + y) % len(COLORS)], column) for x in range(12)]
             for y in range(height)
         ]
 
-    # the nine masks assembled, which is what a 3x3 power gem looks like in play, once per
-    # colour and side by side: a seam between two of the nine shows here and nowhere else
+    # a 3x3 power gem per colour, so a seam between masks shows
     power = [
         [
             (color, POWER_COLUMNS[index])
@@ -393,8 +274,7 @@ def check(sheet):
     for title, rows in sections:
         label.text((2, top + 1), title, fill=(255, 235, 0, 255))
         top += header
-        # a checker one square to the cell: a gem is inset a pixel all round, so a gem that is
-        # not centred in its cell shows a fat border on one side and none on the other
+        # a checker one square to the cell, so an off-centre gem shows an uneven border
         for y in range(len(rows)):
             for x in range(width // BLOCK):
                 shade = 88 if (x + y) % 2 else 64

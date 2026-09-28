@@ -3,8 +3,8 @@ use sdl2::rect::{Point, Rect};
 use sdl2::render::{Texture, WindowCanvas};
 
 const BASE_TRANSPARENCY: u8 = 0;
-/// where the alpha byte of an `ARGB8888` pixel lands once SDL has written the packed 32-bit
-/// value into a byte buffer: last on a little-endian machine, first on a big-endian one
+/// where the alpha byte of an `ARGB8888` pixel lands once SDL has written the packed 32-bit value
+/// into a byte buffer: last on a little-endian machine, first on a big-endian one
 #[cfg(target_endian = "little")]
 const ALPHA_BYTE: usize = 3;
 #[cfg(target_endian = "big")]
@@ -33,9 +33,8 @@ impl BlockMask {
         Ok(Self::from_pixels(&pixels, rect.width(), rect.height()))
     }
 
-    /// One cell cut out of a whole texture's pixels, so a sheet reads itself back once rather
-    /// than once per cell - see `BlockSpriteSheet::new`, which has twelve hundred of them to
-    /// mask on Puyo Rusto's particle theme and would otherwise stall the pipeline that often.
+    /// One cell cut out of a whole texture's pixels, so a sheet reads itself back once rather than
+    /// once per cell.
     pub fn from_region(pixels: &[u8], texture_width: u32, rect: Rect) -> Self {
         let (width, height) = (rect.width(), rect.height());
         let mut mask = Vec::with_capacity((width * height) as usize);
@@ -52,10 +51,8 @@ impl BlockMask {
         }
     }
 
-    /// `pixels` is `ARGB8888`, which SDL packs into a 32-bit word and then writes out in the
-    /// machine's byte order, so the alpha byte is the last of the four here rather than the
-    /// first. Reading the first byte instead reads *blue*, which quietly masks out every
-    /// sprite with none in it: a red pill or a yellow tetromino comes out empty.
+    /// `pixels` is `ARGB8888` in machine byte order, so on little endian the alpha byte is the last
+    /// of the four; reading the first reads blue.
     fn from_pixels(pixels: &[u8], width: u32, height: u32) -> Self {
         Self {
             width,
@@ -83,8 +80,7 @@ impl BlockMask {
         self.mask[y as usize * self.width as usize + x as usize]
     }
 
-    /// every lattice point of the mask that is set. The last row and column are included even
-    /// when the mask does not divide exactly by `spacing`, so an edge is never dropped.
+    /// every lattice point of the mask that is set; the last row and column are always included
     pub fn lattice(&self, offset: Point, spacing: u32) -> Vec<Point> {
         let mut result = vec![];
         for y in Self::steps(self.height, spacing) {
@@ -98,7 +94,7 @@ impl BlockMask {
     }
 
     /// the lattice points where the mask is set and at least one 4-neighbour is not: the
-    /// outline of the silhouette, which is all a particle field ever draws
+    /// silhouette's outline
     pub fn edges(&self, offset: Point, spacing: u32) -> Vec<Point> {
         let spacing = spacing.max(1);
         let mut result = vec![];
@@ -127,9 +123,8 @@ impl BlockMask {
         result
     }
 
-    /// `spacing` apart from 0 to the last row or column inclusive, distributed evenly so that
-    /// both edges are sampled without the final step landing on top of the one before it: a
-    /// doubled bottom row shows up as a solid line of particles against a dotted outline.
+    /// `spacing` apart from 0 to the last row or column inclusive, spread evenly so the final step
+    /// never lands next to the one before it.
     fn steps(size: u32, spacing: u32) -> impl Iterator<Item = u32> {
         let spacing = spacing.max(1);
         let last = size.saturating_sub(1) as u64;
@@ -208,8 +203,7 @@ mod tests {
             BlockMask::steps(7, 2).collect::<Vec<u32>>(),
             vec![0, 2, 4, 6]
         );
-        // and an inexact one is spread evenly rather than tacking the last index on next to
-        // the one before it
+        // and an inexact one is spread evenly
         assert_eq!(
             BlockMask::steps(8, 2).collect::<Vec<u32>>(),
             vec![0, 1, 3, 5, 7]
