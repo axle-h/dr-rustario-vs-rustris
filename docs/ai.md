@@ -6,9 +6,9 @@ once a frame and always interruptible (`agent.rs`), so a piece keeps falling whi
 
 ## Dr. Rustario
 
-* Every difficulty and both demos play the Dr. Mario 64 port in `game/ai/n64/`; `params.rs` holds
-  the weights and `SKILL_ORDER`. The trained network (`ai/models.rs`) is fielded by nothing: it is
-  not good to watch. `DrAiKind` picks between them; `ga dr` trains it.
+* Every difficulty plays the Dr. Mario 64 port in `game/ai/n64/`; `params.rs` holds the weights
+  and `SKILL_ORDER`. The demos field the trained network (`ai/models.rs`), the two player one
+  against the port's best row. `DrAiKind` picks between them; `ga dr` trains it.
 * A tuck soft drops: see `DrAiAgent` in `agent.rs`.
 * The network's inputs are `evaluator::raw_inputs`, off the one scan in `features.rs`. Change them
   only through `ga dr screen`, and compare medians, never best-of-N.

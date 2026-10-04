@@ -31,8 +31,8 @@ mod run;
 pub use models::{DrNeuralGenome, DrNeuralNetwork, DR_NEURAL_GENOME_SIZE};
 pub use n64::{N64Ai, DEFAULT_SKILL, SKILLS, SKILL_ORDER};
 
-/// Which brain an ai player thinks with. Every difficulty and both demos play the n64 port;
-/// the trained network is reachable only through `ga dr`, and nothing in the game fields it.
+/// Which brain an ai player thinks with. Every difficulty plays the n64 port; the demos field the
+/// trained network, the two player one against the n64's best row.
 #[derive(Clone, Copy, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum DrAiKind {
@@ -50,6 +50,11 @@ impl DrAiKind {
     /// the `nth` weakest of the six rows, as measured in [`SKILL_ORDER`]
     pub fn n64_nth_weakest(nth: usize) -> Self {
         Self::n64(SKILL_ORDER[nth.min(SKILLS - 1)])
+    }
+
+    /// the network embedded in [`models`]
+    pub fn trained() -> Self {
+        Self::Neural(models::survival_trained())
     }
 }
 

@@ -162,9 +162,9 @@ impl GameConfig {
     pub fn ai_players(&self) -> Vec<(u32, Duration, DrAiKind)> {
         match self.ai {
             AiMode::Off => vec![],
-            AiMode::Demo => vec![(0, Duration::ZERO, DrAiKind::default())],
+            AiMode::Demo => vec![(0, Duration::ZERO, DrAiKind::trained())],
             AiMode::VsDemo => vec![
-                (0, Duration::ZERO, DrAiKind::n64_nth_weakest(SKILLS - 2)),
+                (0, Duration::ZERO, DrAiKind::trained()),
                 (1, Duration::ZERO, DrAiKind::n64_nth_weakest(SKILLS - 1)),
             ],
             AiMode::Opponent(difficulty) => {
@@ -278,28 +278,24 @@ mod tests {
         assert!(AiDifficulty::Impossible.key_delay() < AiDifficulty::Hard.key_delay());
     }
 
-    /// Every difficulty and both demos play rows of the N64 port, never the network.
+    fn is_trained(brain: DrAiKind) -> bool {
+        matches!(brain, DrAiKind::Neural(_))
+    }
+
+    /// A human's opponent is a row of the N64 port at every difficulty, never the network.
     #[test]
-    fn nothing_an_ai_player_thinks_with_is_the_network() {
+    fn every_opponent_of_a_human_is_an_n64_row() {
         for difficulty in AiDifficulty::ALL {
-            skill(difficulty.brain());
-        }
-        for mode in [
-            AiMode::Demo,
-            AiMode::VsDemo,
-            AiMode::Opponent(AiDifficulty::Impossible),
-        ] {
             let mut config = GameConfig::default();
-            config.set_ai(mode);
+            config.set_ai(AiMode::Opponent(difficulty));
             for (_, _, brain) in config.ai_players() {
                 skill(brain);
             }
         }
-        skill(DrAiKind::default());
     }
 
     #[test]
-    fn the_two_player_demo_puts_the_two_best_rows_against_each_other() {
+    fn the_two_player_demo_puts_the_network_against_the_best_row() {
         let mut config = GameConfig::default();
         config.set_ai(AiMode::VsDemo);
         let players = config.ai_players();
@@ -310,19 +306,19 @@ mod tests {
         );
         // both at full speed
         assert!(players.iter().all(|(_, delay, _)| delay.is_zero()));
-        // the runner up on the first board and the best on the second
-        assert_eq!(skill(players[0].2), SKILL_ORDER[SKILLS - 2]);
+        // the network on the first board and the best row on the second
+        assert!(is_trained(players[0].2));
         assert_eq!(skill(players[1].2), SKILL_ORDER[SKILLS - 1]);
     }
 
     #[test]
-    fn the_one_player_demo_plays_the_best_row_at_full_speed() {
+    fn the_one_player_demo_plays_the_network_at_full_speed() {
         let mut config = GameConfig::default();
         config.set_ai(AiMode::Demo);
         let players = config.ai_players();
         assert_eq!(players.len(), 1);
         assert_eq!(players[0].0, 0);
         assert!(players[0].1.is_zero());
-        assert_eq!(skill(players[0].2), SKILL_ORDER[SKILLS - 1]);
+        assert!(is_trained(players[0].2));
     }
 }
