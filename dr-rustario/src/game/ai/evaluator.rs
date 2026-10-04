@@ -4,7 +4,7 @@
 //! separates those; the context inputs at the end are the bottle before the pill, the same for
 //! every candidate, and tell the network whether it is digging out or finishing.
 //!
-//! The nineteen inputs were selected by `ga dr screen` (medians over fifty taught clones, with
+//! The twenty-four inputs were selected by `ga dr screen` (medians over fifty taught clones, with
 //! inputs silenced), and each costs something to learn to ignore, so do not add one without a
 //! screen. To change the set, edit [`raw_inputs`] and [`SPREAD`], [`COMPARATIVE`] and
 //! `BOTTLE_FEATURE_INPUTS`.
@@ -14,7 +14,7 @@ use crate::game::ai::models::DrNeuralNetwork;
 use engine::ai::{Tensor, BOTTLE_FEATURE_INPUTS};
 
 /// how many leading inputs are centred on the pill's own candidates; the rest are context
-pub const COMPARATIVE: usize = 16;
+pub const COMPARATIVE: usize = 19;
 
 /// Roughly how far each input moves between one pill's placements, which it is divided by so
 /// that no input saturates the sigmoid first layer.
@@ -39,9 +39,14 @@ const SPREAD: [f64; BOTTLE_FEATURE_INPUTS] = [
     2.0,   // blocks one from clearing along a row
     2.0,   // and down a column
     3.0,   // the lowest a pill can still be put
+    1.0,   // viruses the placement killed
+    1.0,   // runs it cleared, cascades included: two or more is garbage sent
+    2.0,   // how far it raised the columns a pill spawns over
     // what kind of bottle this is, which is not centred
     50.0,  // blocks already one from clearing
     30.0,  // viruses already one from dying
+    40.0,  // viruses left in the bottle
+    8.0,   // how high the columns a pill spawns over stand
     1.0,   // whether this is the held pill rather than the one in play
 ];
 
@@ -69,8 +74,16 @@ pub fn raw_inputs(features: &BottleFeatures) -> [f64; BOTTLE_FEATURE_INPUTS] {
         delta.blocks_at_work_1_row() as f64,
         delta.blocks_at_work_1_col() as f64,
         delta.landing_height() as f64,
+        // a kill otherwise reads as its last block of work, the same as laying one beside it
+        -delta.viruses() as f64,
+        placement.patterns_cleared() as f64,
+        // a game is lost when a pill cannot spawn, so these are the columns that bury it
+        delta.entrance_height() as f64,
         before.blocks_at_work_1() as f64,
         before.viruses_at_work_1() as f64,
+        // the kill input is centred, so only this says whether a kill finishes the bottle
+        before.viruses() as f64,
+        before.entrance_height() as f64,
         features.held() as u8 as f64,
     ]
 }

@@ -1,13 +1,22 @@
 //! Playing Dr. Rustario headless, as fast as the machine will go, to score a genome.
 
-use crate::game::ai::agent::{DrAiAgent, Hold};
+use crate::game::ai::agent::{Choices, DrAiAgent, Hold};
 use crate::game::ai::models::DrNeuralNetwork;
-use crate::game::ai::run::{going_nowhere, survived_the_budget, PROBE_SEEDS, TOP_TRAINING_LEVEL};
+use crate::game::ai::run::{
+    merit, survived_the_budget, Fire, Incoming, Traffic, TOP_TRAINING_LEVEL,
+};
+use crate::game::pill::VirusColor;
 use crate::game::random::{viruses_at_level, GameRandom, RandomMode};
 use crate::game::{Game, GameSpeed};
 use engine::ai::{EndGame, GameResult, Seed};
-use engine::game::{Game as _, GameEvent};
+use engine::game::{Attack, Game as _, GameEvent};
+use rand::prelude::*;
+use rand_chacha::ChaChaRng;
+use std::ops::Range;
 use std::time::Duration;
+
+/// the stream of a game's seed its incoming garbage is rolled from, apart from what it deals
+const INCOMING_STREAM: u64 = 1;
 
 /// how long the clear animation holds the game up for, matched to the real one
 const CLEAR_DURATION: Duration = Duration::from_millis(400);
@@ -15,8 +24,13 @@ const CLEAR_DURATION: Duration = Duration::from_millis(400);
 pub struct HeadlessGame {
     agent: DrAiAgent,
     game: Game,
+    /// the bottle the game was dealt first, so the one it is on is this plus `stages`
+    start_level: u32,
     end_game: EndGame,
     options: HeadlessGameOptions,
+    /// what rolls the garbage dropped on it, when [`HeadlessGameOptions::incoming`] is set
+    incoming: ChaChaRng,
+    traffic: Traffic,
     duration: Duration,
     game_over: bool,
     pills: u32,
@@ -25,6 +39,10 @@ pub struct HeadlessGame {
     viruses: u32,
     /// pills placed since the last virus went, so a game going nowhere can be called off
     pills_since_clear: u32,
+    /// whether the game was called off for going nowhere rather than topped out
+    stalled: bool,
+    /// what the last frame sent, for a duel to deliver
+    sent: Vec<Attack>,
 }
 
 impl HeadlessGame {
@@ -33,16 +51,24 @@ impl HeadlessGame {
         agent: DrAiAgent,
         options: HeadlessGameOptions,
         end_game: EndGame,
+        seed: Seed,
     ) -> Self {
+        let mut incoming: ChaChaRng = seed.into();
+        incoming.set_stream(INCOMING_STREAM);
         Self {
             agent,
+            start_level: game.virus_level(),
             game,
+            incoming,
+            traffic: Traffic::default(),
             duration: Duration::ZERO,
             game_over: false,
             pills: 0,
             stages: 0,
             viruses: 0,
             pills_since_clear: 0,
+            stalled: false,
+            sent: vec![],
             options,
             end_game,
         }
@@ -56,12 +82,66 @@ impl HeadlessGame {
         }
     }
 
-    fn update(&mut self) -> Option<GameResult> {
+    pub fn choices(&self) -> Choices {
+        self.agent.choices()
+    }
+
+    pub fn traffic(&self) -> Traffic {
+        self.traffic
+    }
+
+    pub fn stalled(&self) -> bool {
+        self.stalled
+    }
+
+    pub fn game(&self) -> &Game {
+        &self.game
+    }
+
+    /// bottles cleared since it was dealt
+    pub fn stages(&self) -> u32 {
+        self.stages
+    }
+
+    pub fn viruses(&self) -> u32 {
+        self.viruses
+    }
+
+    pub fn pills(&self) -> u32 {
+        self.pills
+    }
+
+    /// the attacks the last frame sent
+    pub fn sent(&self) -> &[Attack] {
+        &self.sent
+    }
+
+    /// an opponent's attack, landing as the real game lands one
+    pub fn receive_attack(&mut self, attack: Attack) {
+        self.traffic.blocks_received += attack.strength;
+        self.game.receive_attack(attack);
+    }
+
+    /// Roll for an attack as a pill spawns. It lands before the next one, as an opponent's does.
+    fn receive(&mut self, incoming: Incoming) {
+        if self.incoming.random::<f64>() >= incoming.per_pill {
+            return;
+        }
+        let blocks = incoming.size(self.incoming.random());
+        let garbage: Vec<VirusColor> = (0..blocks).map(|_| self.incoming.random()).collect();
+        self.game.send_garbage(garbage);
+        self.traffic.blocks_received += blocks;
+    }
+
+    /// one frame, and the result once the game is over
+    pub fn update(&mut self) -> Option<GameResult> {
         self.duration += self.options.step;
+        self.sent.clear();
 
         // a game called off for going nowhere counts as buried
         if self.pills_since_clear >= self.options.stall_pills {
             self.game_over = true;
+            self.stalled = true;
         }
         let result = self.result();
         if self.game_over || self.end_game.is_end_game(result, self.duration) {
@@ -95,6 +175,13 @@ impl HeadlessGame {
                 GameEvent::Spawn { .. } => {
                     self.pills += 1;
                     self.pills_since_clear += 1;
+                    if let Some(fire) = self.options.incoming {
+                        self.receive(fire.at(self.start_level));
+                    }
+                }
+                GameEvent::AttackSent(attack) => {
+                    self.traffic.sent(attack.strength);
+                    self.sent.push(attack);
                 }
                 GameEvent::StageComplete => {
                     self.stages += 1;
@@ -125,6 +212,12 @@ impl HeadlessGame {
             self.duration,
         )
         .with_pieces(self.pills, self.stages)
+        .with_merit(merit(
+            self.viruses,
+            self.stages,
+            self.traffic.blocks_sent,
+            self.game_over,
+        ))
     }
 }
 
@@ -139,6 +232,8 @@ pub struct HeadlessGameOptions {
     pub stall_pills: u32,
     /// whether the agent may weigh the held pill; see [`Hold`] for why it is off
     pub hold: Hold,
+    /// garbage dropped on the game in place of an opponent's, if any
+    pub incoming: Option<Fire>,
 }
 
 impl Default for HeadlessGameOptions {
@@ -150,6 +245,7 @@ impl Default for HeadlessGameOptions {
             top_level: TOP_TRAINING_LEVEL,
             stall_pills: STALL_PILLS,
             hold: Hold::Off,
+            incoming: None,
         }
     }
 }
@@ -168,12 +264,32 @@ pub const VIRUSES_TO_CLEAR: u32 = {
 /// pills without a virus destroyed before a game is called off as going nowhere
 const STALL_PILLS: u32 = 200;
 
+/// Games averaged into one result, whose game over flag is set if any of them was buried.
+pub fn summarise(results: &[GameResult]) -> GameResult {
+    let total: GameResult = results.iter().copied().sum();
+    (total / results.len()).with_game_over(!survived_the_budget(results))
+}
+
 pub struct HeadlessGameFixture {
     random_mode: RandomMode,
     seed: Seed,
     seeds_per_game: usize,
+    /// the bottle each seed of a block starts from, in turn
+    levels: &'static [u32],
     game_options: HeadlessGameOptions,
     end_game: EndGame,
+}
+
+/// One game and how it was played.
+#[derive(Clone, Copy, Debug)]
+pub struct Played {
+    pub result: GameResult,
+    pub choices: Choices,
+    pub traffic: Traffic,
+    /// the bottle it started from
+    pub level: u32,
+    /// buried by being called off for going nowhere, not by topping out
+    pub stalled: bool,
 }
 
 impl HeadlessGameFixture {
@@ -187,9 +303,17 @@ impl HeadlessGameFixture {
             random_mode,
             seed,
             seeds_per_game: 1,
+            levels: &[0],
             game_options,
             end_game,
         }
+    }
+
+    /// start the seeds of a block from each of `levels` in turn rather than all from the first
+    pub fn with_levels(mut self, levels: &'static [u32]) -> Self {
+        assert!(!levels.is_empty(), "a game has to start somewhere");
+        self.levels = levels;
+        self
     }
 
     pub fn set_seeds_per_game(&mut self, seeds_per_game: usize) {
@@ -214,38 +338,57 @@ impl HeadlessGameFixture {
         self.seed
     }
 
-    /// Play one whole game per seed and average them. The average's game over flag is set if any
-    /// seed was buried, and a candidate cut after [`PROBE_SEEDS`] is still divided by every seed
-    /// it was given, so a cut can only cost it.
+    /// play every seed of the current block and [`summarise`] them
     pub fn play(&self, network: DrNeuralNetwork) -> GameResult {
-        let results = self.play_run(network, self.seed);
-        let total: GameResult = results.iter().copied().sum();
-        (total / self.seeds_per_game).with_game_over(!survived_the_budget(&results))
+        summarise(&self.play_games(network, 0..self.seeds_per_game))
     }
 
-    /// the seeds of one run from `block`, cut short if the probe seeds go nowhere
-    pub fn play_run(&self, network: DrNeuralNetwork, block: Seed) -> Vec<GameResult> {
-        let mut results: Vec<GameResult> = Vec::with_capacity(self.seeds_per_game);
-        for i in 0..self.seeds_per_game as u128 {
-            results.push(self.play_seed(network, block + Seed::from(i)));
-            if results.len() == PROBE_SEEDS && going_nowhere(&results, self.seeds_per_game) {
-                break;
-            }
+    /// seeds `games` of the current block, a result each
+    pub fn play_games(&self, network: DrNeuralNetwork, games: Range<usize>) -> Vec<GameResult> {
+        games
+            .map(|index| {
+                self.game(self.network_agent(network), self.seed, index)
+                    .result
+            })
+            .collect()
+    }
+
+    /// every seed of `block`, played at once, by the agent `agent` makes
+    pub fn games(&self, agent: impl Fn() -> DrAiAgent + Sync, block: Seed) -> Vec<Played> {
+        use rayon::prelude::*;
+        (0..self.seeds_per_game)
+            .into_par_iter()
+            .map(|index| self.game(agent(), block, index))
+            .collect()
+    }
+
+    /// the network as training plays it
+    pub fn network_agent(&self, network: DrNeuralNetwork) -> DrAiAgent {
+        DrAiAgent::new(network).with_hold(self.game_options.hold)
+    }
+
+    /// The `index`th seed of `block`, from its level until it is buried, runs out of bottles or
+    /// hits the end game.
+    pub fn game(&self, agent: DrAiAgent, block: Seed, index: usize) -> Played {
+        let (mut headless, level) = self.headless(agent, block, index);
+        let result = headless.play();
+        Played {
+            result,
+            choices: headless.choices(),
+            traffic: headless.traffic(),
+            level,
+            stalled: headless.stalled(),
         }
-        results
     }
 
-    /// one game, played from the first bottle up until it is buried or runs out of bottles
-    pub fn play_seed(&self, network: DrNeuralNetwork, seed: Seed) -> GameResult {
+    /// the `index`th seed of `block` dealt and ready to play, with the level it starts from
+    pub fn headless(&self, agent: DrAiAgent, block: Seed, index: usize) -> (HeadlessGame, u32) {
+        let seed = block + Seed::from(index as u128);
+        let level = self.levels[index % self.levels.len()];
         let random = GameRandom::from_seed(seed.into(), self.random_mode);
-        let game = Game::new(0, self.game_options.speed, random).expect("could not deal a bottle");
-
-        HeadlessGame::new(
-            game,
-            DrAiAgent::new(network).with_hold(self.game_options.hold),
-            self.game_options,
-            self.end_game,
-        )
-        .play()
+        let game =
+            Game::new(level, self.game_options.speed, random).expect("could not deal a bottle");
+        let headless = HeadlessGame::new(game, agent, self.game_options, self.end_game, seed);
+        (headless, level)
     }
 }

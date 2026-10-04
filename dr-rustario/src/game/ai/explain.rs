@@ -12,6 +12,7 @@ use crate::game::bottle::{Bottle, BOTTLE_HEIGHT, BOTTLE_WIDTH};
 use engine::ai::BOTTLE_FEATURE_INPUTS;
 
 mod scenarios;
+pub(crate) use scenarios::read_pair;
 pub use scenarios::{scenarios, FeatureScenario};
 
 /// Every input's name and purpose in `evaluator::raw_inputs`'s order; names match the probe's.
@@ -33,8 +34,13 @@ pub const INPUTS: [Input; BOTTLE_FEATURE_INPUTS] = [
     Input::comparative("delta.blocks_at_work_1_row", "blocks one from clearing along a row."),
     Input::comparative("delta.blocks_at_work_1_col", "and down a column."),
     Input::comparative("delta.landing_height", "how the *shortest* column moved - the lowest a pill can still be put. This is the height that constrains play where the tallest column only looks like it does: one virus on the floor makes the tallest column 1 and changes nothing, because every other column is still open to the floor. Feeding it is worth +337; feeding the tallest column instead costs 201."),
+    Input::comparative("delta.viruses_killed", "viruses the placement destroyed. The work sums cannot say it: a virus one block short that is killed moves them by one, exactly as laying a block beside it does, so without this a clump of loose vitamins outbids a lone virus."),
+    Input::comparative("place.patterns_cleared", "runs of four the placement cleared, cascades included. Two or more is a combo, which is garbage sent; the work sums only see what is left behind."),
+    Input::comparative("delta.entrance_height", "how far the placement raised the two columns a pill spawns over. A game is lost when a pill cannot spawn, so these are the columns that bury it; landing_height watches the shortest column, which says where a pill can still go, not how close the game is to ending."),
     Input::context("context.blocks_at_work_1", "how many blocks were already one from clearing before the pill. Context, not a ranking signal: it is the same for every candidate by construction, and it is there to tell the network whether the bottle it is in is one it can finish."),
     Input::context("context.viruses_at_work_1", "how many viruses were already one from dying before the pill."),
+    Input::context("context.viruses", "viruses left in the bottle before the pill. The kill input is centred on the pill's own candidates, so without this a kill that finishes the bottle reads like any other."),
+    Input::context("context.entrance_height", "how high the two spawn columns stood before the pill: how close the game already is to ending."),
     Input::context("context.held", "whether this candidate is a placement of the pill being *held* rather than the one in play. Zero everywhere while hold is off, which is everywhere, and silencing it is measurably a no-op."),
 ];
 

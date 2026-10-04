@@ -148,5 +148,6 @@ pub fn harness_main(args: &[String]) -> Result<(), String> {
         &game,
         game.metric(MetricKind::Level).unwrap_or(0),
     );
+    println!("{}", agent.choices());
     Ok(())
 }

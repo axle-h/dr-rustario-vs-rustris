@@ -41,6 +41,6 @@ pub use genetic::{Fitness, GeneticAlgorithm, HyperParameters};
 #[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 pub use mutation::{GenomeMutation, RateLimits};
 #[cfg(not(any(target_os = "emscripten", target_os = "android")))]
-pub use objective::{Objective, Phase};
+pub use objective::{Objective, Phase, Rung};
 #[cfg(not(any(target_os = "emscripten", target_os = "android")))]
 pub use organism::Organism;

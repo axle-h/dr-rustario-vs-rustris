@@ -296,21 +296,22 @@ fn names() -> Vec<String> {
 const NOW: usize = BOTTLE_FEATURE_INPUTS;
 
 #[rustfmt::skip]
-const NOW_NAMES: [&str; BOTTLE_FEATURE_INPUTS] = [
+pub(super) const NOW_NAMES: [&str; BOTTLE_FEATURE_INPUTS] = [
     "delta.virus_work", "delta.virus_work_row", "delta.virus_work_col",
     "delta.viruses_buried", "delta.block_work", "delta.blocks_buried",
     "place.halves_work", "place.halves_touching", "place.halves_run_viruses",
     "place.halves_one_short", "place.halves_two_short",
     "delta.viruses_at_work_1_row", "delta.viruses_at_work_1_col",
     "delta.blocks_at_work_1_row", "delta.blocks_at_work_1_col",
-    "delta.landing_height",
-    "context.blocks_at_work_1", "context.viruses_at_work_1", "context.held",
+    "delta.landing_height", "delta.viruses_killed",
+    "place.patterns_cleared", "delta.entrance_height",
+    "context.blocks_at_work_1", "context.viruses_at_work_1",
+    "context.viruses", "context.entrance_height", "context.held",
 ];
 
 /// Measured here and left out of the model: the control group. If a clone fed these as well
 /// plays better, the model is missing something.
-const EXTRA: [&str; 8] = [
-    "entrance_height",
+const EXTRA: [&str; 7] = [
     "holes",
     "place_top_weight",
     "place_dead_weight",
@@ -386,7 +387,6 @@ fn left_out(placement: &Placement) -> [f64; EXTRA.len()] {
         (heights[..4].iter().sum::<i32>() - heights[4..].iter().sum::<i32>()).abs() as f64;
 
     [
-        settled.entrance_height() as f64,
         settled.holes() as f64,
         top_weight,
         dead_weight,

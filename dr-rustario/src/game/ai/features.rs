@@ -218,7 +218,7 @@ impl PlacementStats {
         self.patterns_cleared
     }
     /// The work of the better placed half (1 to 3), [`HALF_BURIED`] when neither can complete a
-    /// line, or zero when the placement cleared.
+    /// line, or zero when it finished one.
     pub fn halves_work(&self) -> i32 {
         self.halves_work
     }
@@ -525,8 +525,8 @@ impl Grid {
     }
 }
 
-/// What the placement did. The halves are read only when nothing cleared, since a clear moves
-/// cells away from the points the pill locked at.
+/// What the placement did, with the halves read on `grid` as the pill locked, before anything
+/// clears. Read after, a kill's halves are gone and it scores as a pill that did nothing.
 pub fn placement_stats(
     grid: &Grid,
     landed: &[BottlePoint],
@@ -536,9 +536,6 @@ pub fn placement_stats(
         patterns_cleared,
         ..Default::default()
     };
-    if patterns_cleared > 0 {
-        return stats;
-    }
 
     let mut best = HALF_BURIED;
     for point in landed {

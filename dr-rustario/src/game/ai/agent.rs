@@ -26,6 +26,83 @@ pub struct DrAiAgent {
     hold: Hold,
     /// how far the agent's placement search may walk the pill
     reach: Reach,
+    choices: Choices,
+}
+
+/// What the agent chose when a virus could have been killed, which is what watching it judges.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Choices {
+    pub pills: u32,
+    /// pills with a placement on offer that destroys a virus
+    pub kills_on_offer: u32,
+    /// of those, how many it spent clearing only vitamins
+    pub tidied_instead: u32,
+    /// pills with a placement on offer that finishes the bottle
+    pub finishes_on_offer: u32,
+    /// of those, how many it did not take
+    pub finishes_passed: u32,
+}
+
+impl Choices {
+    fn record(&mut self, candidates: &[BottleFeatures], chosen: usize, viruses: i32) {
+        let killed = |features: &BottleFeatures| -features.delta().viruses();
+        let most = candidates.iter().map(killed).max().unwrap_or(0);
+        let choice = &candidates[chosen];
+        self.pills += 1;
+        if most > 0 {
+            self.kills_on_offer += 1;
+            if killed(choice) == 0 && choice.placement().patterns_cleared() > 0 {
+                self.tidied_instead += 1;
+            }
+        }
+        if viruses > 0 && most == viruses {
+            self.finishes_on_offer += 1;
+            if killed(choice) < viruses {
+                self.finishes_passed += 1;
+            }
+        }
+    }
+
+    /// the share of pills with a kill on offer spent clearing only vitamins instead
+    pub fn tidy_rate(&self) -> f64 {
+        self.tidied_instead as f64 / self.kills_on_offer.max(1) as f64
+    }
+}
+
+impl std::ops::Add for Choices {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            pills: self.pills + other.pills,
+            kills_on_offer: self.kills_on_offer + other.kills_on_offer,
+            tidied_instead: self.tidied_instead + other.tidied_instead,
+            finishes_on_offer: self.finishes_on_offer + other.finishes_on_offer,
+            finishes_passed: self.finishes_passed + other.finishes_passed,
+        }
+    }
+}
+
+impl std::iter::Sum for Choices {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::default(), |a, b| a + b)
+    }
+}
+
+impl std::fmt::Display for Choices {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "a kill on offer {} of {} pills, cleared only vitamins instead {} times ({:.1}%); \
+             passed on finishing the bottle {} of {} times",
+            self.kills_on_offer,
+            self.pills,
+            self.tidied_instead,
+            100.0 * self.tidy_rate(),
+            self.finishes_passed,
+            self.finishes_on_offer
+        )
+    }
 }
 
 /// Whether an agent weighs the pill it is holding against the one in play. Off by default:
@@ -67,6 +144,7 @@ impl DrAiAgent {
             swapping: false,
             hold: Hold::default(),
             reach: Reach::default(),
+            choices: Choices::default(),
         }
     }
 
@@ -172,6 +250,11 @@ impl DrAiAgent {
         let Some(chosen) = ai.choose(bottle, &placements) else {
             return;
         };
+        if chosen < own {
+            let features: Vec<BottleFeatures> =
+                placements[..own].iter().map(|p| p.features()).collect();
+            self.choices.record(&features, chosen, stats.viruses());
+        }
         if chosen >= own {
             self.keys.queue([Translation::Hold]);
         }
@@ -206,10 +289,18 @@ impl DrAiAgent {
             return;
         };
 
+        if best < own {
+            self.choices.record(&features[..own], best, stats.viruses());
+        }
         if best >= own {
             self.keys.queue([Translation::Hold]);
         }
         self.keys.queue(placements[best].inputs().clone());
+    }
+
+    /// every choice this agent has made so far, across bottles
+    pub fn choices(&self) -> Choices {
+        self.choices
     }
 
     pub fn reset(&mut self) {

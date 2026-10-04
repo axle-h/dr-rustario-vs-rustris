@@ -3,7 +3,7 @@ use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Sub};
 use std::time::Duration;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GameResult {
     score: u32,
     /// the game defined progress counter: Rustris lines, Dr. Rustario viruses
@@ -14,18 +14,22 @@ pub struct GameResult {
     pieces: u32,
     /// the game defined bonus counter: Rustris tetris lines, Dr. Rustario stages
     bonus: u32,
+    /// the game defined fitness [`crate::ai::Objective::Merit`] ranks on, when one counter is
+    /// not enough; it may be negative
+    merit: f64,
 }
 
 impl Display for GameResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "score: {}, cleared: {}, level: {}, pieces: {}, bonus: {}, game over: {}, time: {:?}",
+            "score: {}, cleared: {}, level: {}, pieces: {}, bonus: {}, merit: {:.1}, game over: {}, time: {:?}",
             self.score,
             self.cleared,
             self.level,
             self.pieces,
             self.bonus,
+            self.merit,
             self.game_over,
             self.time
         )
@@ -42,6 +46,7 @@ impl GameResult {
             time,
             pieces: 0,
             bonus: 0,
+            merit: 0.0,
         }
     }
 
@@ -56,6 +61,15 @@ impl GameResult {
     pub fn with_game_over(mut self, game_over: bool) -> Self {
         self.game_over = game_over;
         self
+    }
+
+    pub fn with_merit(mut self, merit: f64) -> Self {
+        self.merit = merit;
+        self
+    }
+
+    pub fn merit(&self) -> f64 {
+        self.merit
     }
 
     pub fn pieces(&self) -> u32 {
@@ -114,6 +128,7 @@ impl Add for GameResult {
             time: self.time + rhs.time,
             pieces: self.pieces + rhs.pieces,
             bonus: self.bonus + rhs.bonus,
+            merit: self.merit + rhs.merit,
         }
     }
 }
@@ -133,6 +148,7 @@ impl AddAssign for GameResult {
         self.time += rhs.time;
         self.pieces += rhs.pieces;
         self.bonus += rhs.bonus;
+        self.merit += rhs.merit;
     }
 }
 
@@ -157,6 +173,7 @@ impl Div<usize> for GameResult {
             time: self.time.div_f64(rhs_f64),
             pieces: (self.pieces as f64 / rhs_f64).round() as u32,
             bonus: (self.bonus as f64 / rhs_f64).round() as u32,
+            merit: self.merit / rhs_f64,
         }
     }
 }

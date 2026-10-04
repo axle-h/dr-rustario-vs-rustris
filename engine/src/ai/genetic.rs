@@ -7,16 +7,35 @@ use crate::ai::generation_record::GenerationRecord;
 use crate::ai::generation_stats::GenerationStatistics;
 use crate::ai::genome::Genome;
 use crate::ai::mutation::GenomeMutation;
-use crate::ai::objective::{Objective, Phase};
+use crate::ai::objective::{Objective, Phase, Rung};
 use crate::ai::organism::Organism;
 use crate::ai::seed::Seed;
 use rayon::prelude::*;
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 /// How a genome is scored: the game-specific half of training.
 pub trait Fitness<const GENOME: usize>: Send + Sync {
     /// play `genome` over the current block of seeds and return the averaged result
     fn evaluate(&self, genome: &Genome<GENOME>) -> GameResult;
+
+    /// Games `games` of the current block, a result each, which a racing phase plays a slice
+    /// at a time. Only a fitness that races needs it.
+    fn evaluate_games(&self, _genome: &Genome<GENOME>, _games: Range<usize>) -> Vec<GameResult> {
+        unimplemented!("a racing phase needs a fitness that can play part of its block")
+    }
+
+    /// fold one member's games into the single result [`Fitness::evaluate`] returns
+    fn summarise(&self, games: &[GameResult]) -> GameResult {
+        let total: GameResult = games.iter().copied().sum();
+        total / games.len()
+    }
+
+    /// Asked after every generation's checkpoint; a run asked to stop ends there as if its last
+    /// phase were over, so whatever follows a run still happens.
+    fn stop_requested(&self) -> bool {
+        false
+    }
 
     /// Called with every generation's best member, so an uncapped run can be stopped at any point.
     fn checkpoint(&self, _generation: usize, _genome: &Genome<GENOME>) {}
@@ -183,6 +202,13 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
 
             self.fitness
                 .checkpoint(self.generations.len(), &stats.max().genome());
+            if self.fitness.stop_requested() {
+                println!(
+                    "stopped on request after generation {}",
+                    self.generations.len()
+                );
+                return stats;
+            }
 
             let complete = self.phase().is_complete(&stats.max().result())
                 && self.confirm_finish(&stats.max().genome());
@@ -232,18 +258,21 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
         self.population.iter_mut().for_each(Organism::unset_result);
 
         let generation_start = Instant::now();
-        self.population.par_iter_mut().for_each(|member| {
-            member.set_result(|genome| self.fitness.evaluate(genome));
-        });
-        self.population
-            .sort_by(|s1, s2| objective.cmp(&s2.result(), &s1.result()));
+        let racing = self.phase().racing.clone();
+        let total_gameplay_time = if racing.is_empty() {
+            self.population.par_iter_mut().for_each(|member| {
+                member.set_result(|genome| self.fitness.evaluate(genome));
+            });
+            self.population
+                .sort_by(|s1, s2| objective.cmp(&s2.result(), &s1.result()));
+            self.population
+                .iter()
+                .map(|organism| organism.result().time() * self.fitness.seeds_per_game() as u32)
+                .sum()
+        } else {
+            self.race(&racing)
+        };
         let generation_duration = generation_start.elapsed();
-
-        let total_gameplay_time: Duration = self
-            .population
-            .iter()
-            .map(|organism| organism.result().time() * self.fitness.seeds_per_game() as u32)
-            .sum();
 
         let game_seconds_per_second = if generation_duration.as_secs_f64() > 0.0 {
             total_gameplay_time.as_secs_f64() / generation_duration.as_secs_f64()
@@ -271,6 +300,60 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
         self.mutation.add_sample(stats);
 
         stats
+    }
+
+    /// Play the population up `rungs` and sort it: those that climbed higher first, then by their
+    /// results over the games they played. Returns the game time played.
+    fn race(&mut self, rungs: &[Rung]) -> Duration {
+        let objective = self.objective();
+        let size = self.population.len();
+        let mut games: Vec<Vec<GameResult>> = vec![vec![]; size];
+        let mut racing: Vec<usize> = (0..size).collect();
+        // each rung's dropouts in the order they dropped, best first within one
+        let mut dropped: Vec<Vec<usize>> = vec![];
+
+        for (index, rung) in rungs.iter().enumerate() {
+            if index > 0 {
+                let keep = ((size as f64 * rung.share).ceil() as usize).clamp(1, racing.len());
+                dropped.push(racing.split_off(keep));
+            }
+            let slices: Vec<(usize, usize)> = racing
+                .iter()
+                .flat_map(|&member| (games[member].len()..rung.games).map(move |g| (member, g)))
+                .collect();
+            let played: Vec<(usize, GameResult)> = slices
+                .into_par_iter()
+                .map(|(member, game)| {
+                    let genome = self.population[member].genome();
+                    let result = self.fitness.evaluate_games(&genome, game..game + 1);
+                    (member, result[0])
+                })
+                .collect();
+            for (member, result) in played {
+                games[member].push(result);
+            }
+
+            let mut ranked: Vec<(GameResult, usize)> = racing
+                .iter()
+                .map(|&member| (self.fitness.summarise(&games[member]), member))
+                .collect();
+            ranked.sort_by(|a, b| objective.cmp(&b.0, &a.0));
+            racing = ranked.into_iter().map(|(_, member)| member).collect();
+        }
+
+        let order: Vec<usize> = racing
+            .into_iter()
+            .chain(dropped.into_iter().rev().flatten())
+            .collect();
+        let mut population: Vec<Organism<N>> = order
+            .iter()
+            .map(|&member| self.population[member])
+            .collect();
+        for (organism, &member) in population.iter_mut().zip(&order) {
+            organism.set_result(|_| self.fitness.summarise(&games[member]));
+        }
+        self.population = population;
+        games.iter().flatten().map(GameResult::time).sum()
     }
 
     fn next_generation(&mut self) {
@@ -317,5 +400,102 @@ impl<const N: usize, F: Fitness<N>> GeneticAlgorithm<N, F> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai::mutation::RateLimits;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// every game of a genome scores its one gene, and every game played is counted
+    struct Gene {
+        games: AtomicUsize,
+    }
+
+    impl Fitness<1> for Gene {
+        fn evaluate(&self, genome: &Genome<1>) -> GameResult {
+            self.summarise(&self.evaluate_games(genome, 0..4))
+        }
+
+        fn evaluate_games(&self, genome: &Genome<1>, games: Range<usize>) -> Vec<GameResult> {
+            let gene: [f64; 1] = (*genome).into();
+            games
+                .map(|_| {
+                    self.games.fetch_add(1, Ordering::Relaxed);
+                    GameResult::new(0, 0, 0, false, Duration::from_secs(1)).with_merit(gene[0])
+                })
+                .collect()
+        }
+
+        fn next_seed(&mut self) {}
+
+        fn current_seed(&self) -> Seed {
+            Seed::from(0u128)
+        }
+
+        fn seeds_per_game(&self) -> usize {
+            4
+        }
+
+        fn set_seeds_per_game(&mut self, _seeds_per_game: usize) {}
+
+        fn set_end_game(&mut self, _end_game: EndGame) {}
+    }
+
+    #[test]
+    fn racing_plays_on_only_the_best_and_ranks_them_first() {
+        let phase = Phase {
+            objective: Objective::Merit,
+            ..Phase::score(10)
+        }
+        .with_racing(vec![
+            Rung {
+                games: 1,
+                share: 1.0,
+            },
+            Rung {
+                games: 2,
+                share: 0.5,
+            },
+            Rung {
+                games: 4,
+                share: 0.25,
+            },
+        ]);
+        let mut algorithm = GeneticAlgorithm::new(
+            Gene {
+                games: AtomicUsize::new(0),
+            },
+            GenomeMutation::of_max(
+                RateLimits::new(0.1..=0.2),
+                RateLimits::new(0.1..=0.2),
+                5,
+                Seed::from(7u128),
+            ),
+            HyperParameters::new(8, 0.0, 0.5),
+            vec![phase],
+            None,
+        );
+
+        let stats = algorithm.evolve();
+
+        // eight play one game, the best four a second, the best two two more
+        assert_eq!(
+            algorithm.fitness().games.load(Ordering::Relaxed),
+            8 + 4 + 2 * 2
+        );
+        assert_eq!(stats.total_gameplay_time(), Duration::from_secs(16));
+        let merits: Vec<f64> = algorithm
+            .population()
+            .iter()
+            .map(|o| o.result().merit())
+            .collect();
+        assert!(
+            merits.windows(2).all(|pair| pair[0] >= pair[1]),
+            "{:?}",
+            merits
+        );
     }
 }

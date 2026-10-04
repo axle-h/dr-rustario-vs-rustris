@@ -171,7 +171,15 @@ const SCENARIOS: [Scene; engine::ai::BOTTLE_FEATURE_INPUTS] = [
     Scene::one(&["r.......", "r......."]),
     // empty: a pill stood up raises its column twice as far as one laid flat
     Scene::one(&["........"]),
+    // a virus two blocks short: a matching half on top kills it
+    Scene::one(&["r.......", "r.......", "R......."]),
+    // two runs one short, stacked: a pill stood up between them clears both at once
+    Scene::one(&["rrr.....", "bbb....."]),
+    // empty: a pill in the middle raises the spawn columns, one at the side does not
+    Scene::one(&["........"]),
     // context: two bottles, not two placements
+    Scene::two(&FULL, &EMPTY),
+    Scene::two(&FULL, &EMPTY),
     Scene::two(&FULL, &EMPTY),
     Scene::two(&FULL, &EMPTY),
     // hold is off, so this is zero in any bottle at all
@@ -231,7 +239,7 @@ fn scenario(input: usize, before: &Bottle, placements: &[Placement]) -> FeatureS
 }
 
 /// gather the two placements a scenario is built from, in the order they are to be drawn
-fn read_pair(
+pub(crate) fn read_pair(
     input: usize,
     before: &Bottle,
     placements: &[Placement],

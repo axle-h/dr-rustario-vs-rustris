@@ -9,6 +9,8 @@ mod placement;
 #[cfg(not(test))]
 pub mod agent;
 #[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
+pub mod duel;
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod explain;
 #[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod genetic;
@@ -20,6 +22,8 @@ mod headless_game;
 pub mod imitation;
 pub mod input_sequence;
 pub mod models;
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
+pub mod passes;
 #[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod probe;
 mod run;

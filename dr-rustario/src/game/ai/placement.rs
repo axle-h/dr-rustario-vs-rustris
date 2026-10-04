@@ -195,13 +195,21 @@ fn drop_and_settle(
         .unwrap_or_default();
 
     let mut patterns_cleared = 0;
+    // the halves are read as they locked, so a kill's count the run they finished
+    let mut landed = None;
     loop {
         let (blocks, patterns) = bottle.pattern();
         if blocks.is_empty() {
             break;
         }
+        landed.get_or_insert_with(|| Grid::of(&bottle));
         patterns_cleared += patterns.len() as i32;
         bottle.destroy(blocks);
+        // the last virus ends the bottle there, so nothing it leaves behind is ever played on
+        if bottle.virus_count() == 0 {
+            bottle = Bottle::new();
+            break;
+        }
         // settle whatever the clear left unsupported, then look for the cascade
         while bottle.step_down_garbage() {}
     }
@@ -209,7 +217,7 @@ fn drop_and_settle(
     // the settled bottle is read once and then asked everything
     let grid = Grid::of(&bottle);
     let stats = grid.stats();
-    let placement = placement_stats(&grid, &placed, patterns_cleared);
+    let placement = placement_stats(landed.as_ref().unwrap_or(&grid), &placed, patterns_cleared);
 
     Placement {
         inputs: inputs.with(Translation::HardDrop),
@@ -289,6 +297,28 @@ mod tests {
     }
 
     #[test]
+    fn a_kill_reads_its_halves_as_the_run_they_finished() {
+        // two red viruses on the floor and a third out of reach, so the bottle does not end
+        let bottle = with_pill(
+            PillShape::new(Red, Red),
+            &[
+                (0, BOTTLE_FLOOR, Block::Virus(Red)),
+                (1, BOTTLE_FLOOR, Block::Virus(Red)),
+                (7, BOTTLE_FLOOR, Block::Virus(Blue)),
+            ],
+        );
+        let kill = bottle
+            .placements(bottle.stats())
+            .into_iter()
+            .find(|p| p.features().delta().viruses() == -2)
+            .expect("no placement killed both");
+        let halves = kill.features().placement();
+        assert_eq!(halves.halves_touching(), 4);
+        assert_eq!(halves.halves_work(), 0);
+        assert!(halves.halves_run_viruses() >= 2);
+    }
+
+    #[test]
     fn a_settled_placement_has_no_pending_matches_left() {
         let bottle = with_pill(
             PillShape::new(Red, Red),
@@ -303,6 +333,32 @@ mod tests {
                 placement.settled().pattern().0.is_empty(),
                 "a settled bottle still has a match in it"
             );
+        }
+    }
+
+    #[test]
+    fn killing_the_last_virus_leaves_nothing_to_play_on() {
+        // the last virus beside a heap of vitamins that the finish does not touch
+        let bottle = with_pill(
+            PillShape::new(Red, Red),
+            &[
+                (0, BOTTLE_FLOOR, Block::Virus(Red)),
+                (1, BOTTLE_FLOOR, Block::Virus(Red)),
+                (7, BOTTLE_FLOOR, Block::Garbage(Blue)),
+                (7, BOTTLE_FLOOR - 1, Block::Garbage(Blue)),
+            ],
+        );
+        let before = bottle.stats();
+
+        let finishes: Vec<_> = bottle
+            .placements(before)
+            .into_iter()
+            .filter(|p| p.features().delta().viruses() == -2)
+            .collect();
+
+        assert!(!finishes.is_empty(), "no placement finished the bottle");
+        for finish in finishes {
+            assert_eq!(finish.settled().stats().max_height(), 0);
         }
     }
 

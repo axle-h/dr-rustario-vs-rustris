@@ -24,7 +24,7 @@ cargo run --release -- ga ... # ai training and measurement, dispatched in launc
 Headless render harnesses, the way to see a change; with no display, prefix
 `SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software`. Each example's doc comment has its usage:
 `frame_shot`, `animation_shot`, `menu_shot`, `field_preview`, `character_shot`, `kirby_shot`,
-`feature_shots`, `scale_report` (all `cargo run --example <name>`).
+`feature_shots`, `oddity_shots`, `scale_report` (all `cargo run --example <name>`).
 
 ## Rules of the road
 

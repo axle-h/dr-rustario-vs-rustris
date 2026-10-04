@@ -666,7 +666,7 @@ impl<const IN: usize, const HIDDEN: usize, const OUT: usize, const WIDTH: usize>
 pub const FEATURE_INPUTS: usize = 20;
 
 /// Dr. Rustario's bottle feature count.
-pub const BOTTLE_FEATURE_INPUTS: usize = 19;
+pub const BOTTLE_FEATURE_INPUTS: usize = 24;
 
 /// Dr. Rustario's hidden layer width, kept apart from the input count so running out of neurons
 /// can be told from running out of features.

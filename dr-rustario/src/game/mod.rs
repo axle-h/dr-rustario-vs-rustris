@@ -430,6 +430,11 @@ impl Game {
         self.garbage_buffer.push(garbage);
     }
 
+    /// the level of the bottle in play
+    pub fn virus_level(&self) -> u32 {
+        self.virus_level
+    }
+
     pub fn attack(garbage: &SendGarbage) -> Attack {
         let blocks = garbage.len() as u32;
         Attack::new(GAME_ID, blocks)

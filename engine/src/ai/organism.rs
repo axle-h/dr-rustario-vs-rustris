@@ -3,7 +3,7 @@ use crate::ai::genome::Genome;
 use crate::ai::objective::Objective;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Organism<const GENOME: usize> {
     genome: Genome<GENOME>,
     result: Option<GameResult>,

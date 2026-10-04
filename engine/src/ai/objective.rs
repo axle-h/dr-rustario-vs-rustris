@@ -13,6 +13,9 @@ pub enum Objective {
     /// Clear as much of the game as possible from the first board. The phase's piece budget stops
     /// a game, so dawdling costs the boards never reached rather than a speed term.
     Progress,
+    /// the game's own [`GameResult::merit`], for a fitness weighing several counters. It has no
+    /// finish line, so a phase runs to its `max_generations` or is stopped by hand.
+    Merit,
 }
 
 impl Display for Objective {
@@ -21,6 +24,7 @@ impl Display for Objective {
             Objective::Survival => write!(f, "survival"),
             Objective::Score => write!(f, "score"),
             Objective::Progress => write!(f, "progress"),
+            Objective::Merit => write!(f, "merit"),
         }
     }
 }
@@ -32,6 +36,8 @@ impl Objective {
             Objective::Survival => result.score() as f64,
             Objective::Score => result.bonus() as f64,
             Objective::Progress => result.cleared() as f64,
+            // a candidate below nothing is not bred from
+            Objective::Merit => result.merit().max(0.0),
         }
     }
 
@@ -52,6 +58,10 @@ impl Objective {
                 .cmp(&b.cleared())
                 .then_with(|| a.bonus().cmp(&b.bonus()))
                 .then_with(|| a.score().cmp(&b.score())),
+            Objective::Merit => a
+                .merit()
+                .total_cmp(&b.merit())
+                .then_with(|| a.cleared().cmp(&b.cleared())),
         }
     }
 }
@@ -67,6 +77,17 @@ pub struct Phase {
     /// magnitude of a coefficient nudge when a gene mutates
     pub mutation_step: f64,
     pub max_generations: usize,
+    /// Empty plays every member the whole block. Otherwise each rung in turn plays on the best of
+    /// what the last rung played, so the games go where selection decides something.
+    pub racing: Vec<Rung>,
+}
+
+/// One step of racing a generation: the best `share` of the population, by the games each has
+/// played so far, plays on to `games` of the block.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rung {
+    pub games: usize,
+    pub share: f64,
 }
 
 impl Phase {
@@ -80,6 +101,7 @@ impl Phase {
             crossover_rate: RateLimits::new(0.1..=0.20),
             mutation_step: 0.1,
             max_generations: usize::MAX,
+            racing: vec![],
         }
     }
 
@@ -93,11 +115,34 @@ impl Phase {
             crossover_rate: RateLimits::new(0.01..=0.05),
             mutation_step: 0.02,
             max_generations: usize::MAX,
+            racing: vec![],
         }
     }
 
     pub fn with_max_generations(mut self, max_generations: usize) -> Self {
         self.max_generations = max_generations;
+        self
+    }
+
+    /// Race each generation up `rungs`: the first plays everyone, so its share is ignored. Games
+    /// climb, shares fall, and the last rung is the whole block.
+    pub fn with_racing(mut self, rungs: Vec<Rung>) -> Self {
+        assert!(
+            rungs
+                .windows(2)
+                .all(|pair| pair[0].games < pair[1].games && pair[0].share >= pair[1].share),
+            "rungs must play more games among fewer members"
+        );
+        assert!(
+            rungs
+                .iter()
+                .all(|rung| rung.share > 0.0 && rung.share <= 1.0),
+            "a rung's share is a fraction of the population"
+        );
+        if let Some(last) = rungs.last() {
+            self.seeds_per_game = last.games;
+        }
+        self.racing = rungs;
         self
     }
 
@@ -107,7 +152,7 @@ impl Phase {
             // a progress phase ends only when every board is cleared on every seed without being
             // buried; otherwise it runs for `max_generations`
             Objective::Progress => !best.game_over() && best.cleared() >= self.end_game.cleared,
-            Objective::Score => false,
+            Objective::Score | Objective::Merit => false,
         }
     }
 }
@@ -154,6 +199,15 @@ mod tests {
         );
         let slow = result(0, 60, true, 2).with_pieces(9000, 2);
         assert_eq!(Objective::Progress.cmp(&slow, &further), Ordering::Equal);
+    }
+
+    #[test]
+    fn merit_ranks_on_the_game_own_measure_and_never_breeds_from_below_zero() {
+        let buried = result(0, 80, true, 0).with_merit(-12.0);
+        let standing = result(0, 60, false, 0).with_merit(70.5);
+        assert_eq!(Objective::Merit.cmp(&standing, &buried), Ordering::Greater);
+        assert_eq!(Objective::Merit.fitness(&buried), 0.0);
+        assert_eq!(Objective::Merit.fitness(&standing), 70.5);
     }
 
     #[test]
