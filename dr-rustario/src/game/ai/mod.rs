@@ -9,6 +9,8 @@ mod placement;
 #[cfg(not(test))]
 pub mod agent;
 #[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
+pub mod align;
+#[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod duel;
 #[cfg(all(not(test), not(any(target_os = "emscripten", target_os = "android"))))]
 pub mod explain;

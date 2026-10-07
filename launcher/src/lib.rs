@@ -23,7 +23,9 @@ pub fn run() -> Result<(), String> {
         let args: Vec<String> = std::env::args().skip(1).collect();
         if args.first().map(String::as_str) == Some("ga") {
             if args.get(1).map(String::as_str) == Some("dr") {
-                use dr_rustario::game::ai::{duel, explain, genetic, harness, passes, probe};
+                use dr_rustario::game::ai::{
+                    align, duel, explain, genetic, harness, passes, probe,
+                };
                 return match args.get(2).map(String::as_str) {
                     None | Some("auto") => genetic::ga_main_auto(),
                     Some("pretrain") => genetic::ga_main_pretrain(&args[3..]),
@@ -35,13 +37,14 @@ pub fn run() -> Result<(), String> {
                     Some("trial") => genetic::ga_main_trial(&args[3..]),
                     Some("garbage") => genetic::ga_main_garbage(&args[3..]),
                     Some("passes") => passes::ga_main_passes(&args[3..]),
+                    Some("align") => align::ga_main_align(&args[3..]),
                     Some("compare") => genetic::ga_main_compare(&args[3..]),
                     Some("duel") => duel::ga_main_duel(&args[3..]),
                     Some("probe") => probe::probe_main(&args[3..]),
                     Some("explain") => explain::explain_main(&args[3..]),
                     Some(other) => Err(format!(
                         "unknown ga dr mode '{}', expected: auto, pretrain, screen, survive, tune, \
-                         trial, garbage, passes, compare, duel, diagnose, play, probe or explain",
+                         trial, garbage, passes, align, compare, duel, diagnose, play, probe or explain",
                         other
                     )),
                 };

@@ -1,7 +1,8 @@
 //! What the network sees, from one scan of the bottle.
 //!
 //! For a settled cell take the four windows of four containing it on each axis; a window is
-//! live when nothing in it is another colour and every empty cell in it is [`Grid::reachable`].
+//! live when nothing in it is another colour and every empty cell in it is [`Grid::reachable`],
+//! and along a row also [`Grid::fillable`].
 //! Work is the fewest empties of any live window (1, 2 or 3), and buried is no live window on
 //! either axis, so [`BURIED`] is a work value rather than a separate measure.
 //!
@@ -352,7 +353,25 @@ impl Grid {
     /// Whether this cell and everything above it are empty. A cell under an overhang is not
     /// reachable here even though a tuck can fill it, so the model keeps minding overhangs.
     pub fn reachable(&self, x: u32, y: u32) -> bool {
-        self.colour(x, y).is_none() && (0..y).all(|above| self.colour(x, above).is_none())
+        (y as i32) < BOTTLE_HEIGHT as i32 - self.heights[x as usize]
+    }
+
+    /// whether a half dropped here would rest on whatever is under it
+    fn grounded(&self, x: u32, y: u32) -> bool {
+        y + 1 >= BOTTLE_HEIGHT || self.colour(x, y + 1).is_some()
+    }
+
+    /// Whether one pill dropped straight down can leave a half in this empty cell: it is
+    /// [`Self::reachable`] and the half rests on what is under it, tops an upright pill filling a
+    /// one deep hole, or lies beside a half resting on a neighbour. A row gap over a deeper well
+    /// takes filler first, and a half dropped into it falls to the bottom.
+    pub fn fillable(&self, x: u32, y: u32) -> bool {
+        self.reachable(x, y)
+            && (self.grounded(x, y)
+                || self.grounded(x, y + 1)
+                || [x.wrapping_sub(1), x + 1].into_iter().any(|beside| {
+                    beside < BOTTLE_WIDTH && self.reachable(beside, y) && self.grounded(beside, y)
+                }))
     }
 
     /// How many blocks the cell at `(x, y)` still needs for a line of four through it along one
@@ -374,7 +393,8 @@ impl Grid {
                         // a virus and a settled half of the same colour count alike
                         Some(other) if other == colour => SAME,
                         Some(_) => FOREIGN,
-                        None if self.reachable(nx, ny) => OPEN,
+                        None if horizontal && self.fillable(nx, ny) => OPEN,
+                        None if !horizontal && self.reachable(nx, ny) => OPEN,
                         None => SHUT,
                     }
                 };
@@ -415,7 +435,8 @@ impl Grid {
                     match self.colour(cx, cy) {
                         Some(other) if other == colour => viruses += self.is_virus(cx, cy) as i32,
                         Some(_) => live = false,
-                        None if self.reachable(cx, cy) => empties += 1,
+                        None if dx == 1 && self.fillable(cx, cy) => empties += 1,
+                        None if dx == 0 && self.reachable(cx, cy) => empties += 1,
                         None => live = false,
                     }
                     if !live {
@@ -667,6 +688,115 @@ mod tests {
         // without the roof those cells are work
         let open = bottle(&[virus(7, 15, Red)]);
         assert_eq!(Grid::of(&open).work_on(7, BOTTLE_FLOOR, Red, true), 3);
+    }
+
+    /// a column of blue from the floor up to and including `top`
+    fn tower(x: u32, top: u32) -> Vec<(u32, u32, Block)> {
+        (top..BOTTLE_HEIGHT).map(|y| stack(x, y, Blue)).collect()
+    }
+
+    fn grid(towers: &[(u32, u32)], extra: &[(u32, u32, Block)]) -> Grid {
+        let mut blocks: Vec<_> = towers.iter().flat_map(|(x, top)| tower(*x, *top)).collect();
+        blocks.extend_from_slice(extra);
+        Grid::of(&bottle(&blocks))
+    }
+
+    #[test]
+    fn a_gap_with_something_under_it_is_fillable() {
+        let grid = grid(&[(1, 14)], &[]);
+        assert!(grid.fillable(0, 15), "the floor holds it");
+        assert!(grid.fillable(1, 13), "a block holds it");
+    }
+
+    #[test]
+    fn a_gap_over_a_one_deep_hole_is_the_top_of_an_upright_pill() {
+        let grid = grid(&[(0, 13), (2, 13)], &[]);
+        assert!(grid.fillable(1, 14));
+        // two deep with walls either side: the half would fall to the bottom
+        assert!(!grid.fillable(1, 13));
+    }
+
+    #[test]
+    fn a_gap_over_a_well_is_fillable_by_a_pill_resting_on_a_lower_neighbour() {
+        // the well in column 1 is two deep at row 13, but column 0 stops one lower
+        let grid = grid(&[(0, 14), (2, 13)], &[]);
+        assert!(grid.fillable(1, 13));
+        // and on either side
+        let grid = grid_mirrored();
+        assert!(grid.fillable(6, 13));
+    }
+
+    fn grid_mirrored() -> Grid {
+        grid(&[(7, 14), (5, 13)], &[])
+    }
+
+    #[test]
+    fn a_neighbour_must_be_exactly_one_lower_to_hold_a_pill_over_the_well() {
+        // level with the gap: there is no room beside it for the other half
+        let grid = grid(&[(0, 13), (2, 13)], &[]);
+        assert!(!grid.fillable(1, 13));
+        // so one row up, the towers' own tops hold the pill
+        assert!(grid.fillable(1, 12));
+        // two lower: the cell beside the gap is itself over a hole
+        let grid = self::grid(&[(0, 15), (2, 12)], &[]);
+        assert!(!grid.fillable(1, 13));
+    }
+
+    #[test]
+    fn a_neighbour_under_an_overhang_cannot_take_the_other_half() {
+        let grid = grid(&[(0, 14), (2, 13)], &[stack(0, 9, Red)]);
+        assert!(!grid.fillable(1, 13));
+    }
+
+    #[test]
+    fn the_wall_holds_nothing_up() {
+        let grid = grid(&[(1, 13)], &[]);
+        assert!(!grid.fillable(0, 13));
+        assert!(grid.fillable(0, 14));
+    }
+
+    #[test]
+    fn only_the_edges_of_a_wide_well_can_be_bridged() {
+        // columns 1 to 3 open to the floor between towers standing to row 14
+        let grid = grid(&[(0, 14), (4, 14)], &[]);
+        assert!(grid.fillable(1, 13));
+        assert!(grid.fillable(3, 13));
+        assert!(
+            !grid.fillable(2, 13),
+            "both of its neighbours are over the well too"
+        );
+        assert!(!grid.fillable(1, 12));
+    }
+
+    #[test]
+    fn a_line_across_a_well_is_not_work_until_the_well_is_filled() {
+        // a red virus and a red half level on two towers, a two wide well between them
+        let grid = grid(&[(0, 14), (3, 14)], &[virus(0, 13, Red), stack(3, 13, Red)]);
+        assert_eq!(grid.work_on(0, 13, Red, true), BURIED);
+        assert_eq!(grid.work(0, 13), 3, "the column above it is still open");
+
+        // with the well one deep the upright pills reach it
+        let grid = self::grid(
+            &[(0, 14), (1, 15), (2, 15), (3, 14)],
+            &[virus(0, 13, Red), stack(3, 13, Red)],
+        );
+        assert_eq!(grid.work_on(0, 13, Red, true), 2);
+    }
+
+    #[test]
+    fn the_scan_and_the_halves_read_wells_alike() {
+        let grid = grid(&[(0, 14), (3, 14)], &[virus(0, 13, Red), stack(3, 13, Red)]);
+        // the half's row is dead, so its best window is the column above it
+        assert_eq!(grid.best_window(3, 13), Some((3, 0)));
+    }
+
+    #[test]
+    fn reachable_is_everything_above_the_top_of_a_column() {
+        let grid = grid(&[(0, 12)], &[stack(1, 9, Red)]);
+        assert!(grid.reachable(0, 11));
+        assert!(!grid.reachable(0, 12));
+        assert!(!grid.reachable(1, 10), "under an overhang");
+        assert!(grid.reachable(2, 15));
     }
 
     #[test]

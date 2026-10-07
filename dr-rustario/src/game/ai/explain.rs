@@ -18,7 +18,7 @@ pub use scenarios::{scenarios, FeatureScenario};
 /// Every input's name and purpose in `evaluator::raw_inputs`'s order; names match the probe's.
 #[rustfmt::skip]
 pub const INPUTS: [Input; BOTTLE_FEATURE_INPUTS] = [
-    Input::comparative("delta.virus_work", "how the work its viruses need changed. Work is the fewest blocks a line of four through a cell still needs, counting only lines no other colour blocks and whose gaps a pill could still be dropped into - the cheaper of the two axes."),
+    Input::comparative("delta.virus_work", "how the work its viruses need changed. Work is the fewest blocks a line of four through a cell still needs, counting only lines no other colour blocks and whose gaps one pill dropped now could leave a half in, so a row gap over a deeper well does not count - the cheaper of the two axes."),
     Input::comparative("delta.virus_work_row", "the same along rows only."),
     Input::comparative("delta.virus_work_col", "and down columns only. Both are fed beside the cheaper of them because they are not the same job: finishing a column means building upward."),
     Input::comparative("delta.viruses_buried", "viruses with no line left at all - on neither axis a window of four that another colour does not block or an overhang does not shut. Not a cost that can be paid off later: the virus has to be dug back out."),

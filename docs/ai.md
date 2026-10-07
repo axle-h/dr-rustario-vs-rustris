@@ -27,6 +27,8 @@ once a frame and always interruptible (`agent.rs`), so a piece keeps falling whi
   has seen garbage land. Watch vitamins over a kill: it climbed when garbage was worth too much
   or the charge grew with the bottle.
   `ga dr garbage` measures the price and the fire off the n64 port; never tune them by hand.
+* A row gap is work only if one pill can leave a half in it now (`Grid::fillable`); counted over
+  a well, the network built lines across valleys it could not fill.
 * The `place.*` inputs read the halves as the pill locks, before anything clears; read after,
   a kill's halves are gone and it outbids nothing. The rest describe the settled bottle.
 * A placement that kills the last virus settles to an empty bottle (`drop_and_settle`), as the
@@ -47,7 +49,8 @@ once a frame and always interruptible (`agent.rs`), so a piece keeps falling whi
   its working directory ends it after the next generation, playoff and all.
 * Also measured worse: counting tuck-reachable cells in `Grid::reachable`, a rounded fitness
   (selection falls through to the tiebreak), and the engine's default elite rate.
-* `probe.rs` and `explain.rs` diagnose feature choice and trained-model behaviour.
+* `probe.rs` and `explain.rs` diagnose feature choice and trained-model behaviour; `ga dr align`
+  shows where placed halves sit against their colour, chosen against offered.
 
 ## Rustris
 
